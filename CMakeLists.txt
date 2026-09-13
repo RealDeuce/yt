@@ -213,6 +213,7 @@ if(BUILD_TESTING)
 
     yt_add_test(test_session_credit tests/test_session_credit.c yt_runtime)
     yt_add_test(test_session_planets tests/test_session_planets.c yt_runtime)
+    yt_add_test(test_planet_updater tests/test_planet_updater.c yt_game)
 
     add_executable(test_assets tests/test_assets.c)
     yt_configure_target(test_assets)

@@ -108,7 +108,7 @@ spy_update_planet(struct yt_session *session, float link,
 	    &session->door->game.config, (int)link);
 	struct yt_planet planet;
 
-	return planet_update_cached_physical(session, physical, &planet, NULL,
+	return yt_session_update_planet_physical(session, physical, &planet, NULL,
 	    error);
 }
 

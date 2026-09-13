@@ -22,8 +22,6 @@ struct projectile_route_state {
 	float amount;
 };
 
-struct planet_update_cache;
-
 struct yt_session {
 	struct yt_door *door;
 	struct yt_error *error;
@@ -62,8 +60,7 @@ struct yt_session {
 	float foreground;
 	float market_bases[3];
 	float clearance_discounts[4];
-	struct yt_planet_updater_raw_cache planet_updater_cache;
-	uint8_t planet_updater_day_raw[4];
+	struct yt_planet_economy planet_economy;
 	float disruption_sectors[2];
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_player_name_length;
@@ -87,7 +84,6 @@ struct yt_session {
 	char computer_route_scratch[YT_COMMAND_SIZE];
 	size_t computer_route_scratch_length;
 	char planet_name[42];
-	double planet_quantity[10];
 	struct yt_present_time_state time;
 	struct yt_pager_state pager;
 	struct yt_input_value input_residue;
@@ -155,9 +151,12 @@ bool read_planet_physical(struct yt_session *session,
 bool session_write_planet_physical(struct yt_session *session,
     uint32_t physical_record, struct yt_planet *planet, bool encode,
     struct yt_error *error);
-bool planet_update_cached_physical(struct yt_session *session,
+bool yt_session_update_planet_physical(struct yt_session *session,
     uint32_t physical_record, struct yt_planet *planet,
-    struct planet_update_cache *cache, struct yt_error *error);
+    struct yt_planet_economy *economy, struct yt_error *error);
+bool yt_session_update_planet(struct yt_session *session,
+    int logical_planet, struct yt_planet *planet,
+    struct yt_planet_economy *economy, struct yt_error *error);
 void session_clear_queue(struct yt_session *session);
 bool session_append_radio_bytes(const uint8_t *text, size_t length,
     float sender, float recipient, struct yt_error *error);

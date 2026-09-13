@@ -22,6 +22,7 @@ test_self_owned_planet(void)
 	struct yt_door door;
 	struct yt_session session;
 	struct yt_planet planet;
+	struct yt_record persisted;
 	struct yt_error error;
 	int today;
 	int adjusted_year;
@@ -50,6 +51,11 @@ test_self_owned_planet(void)
 	CHECK(yt_session_planet_permission(&session, 1, &denied, &error));
 	CHECK(!denied);
 	CHECK(door.game.random.draws == 0U);
+	CHECK(session.planet_economy.current_day == (float)today);
+	CHECK(yt_database_read(&door.game.database, 4U, &persisted, &error));
+	CHECK(yt_record_get_number(&persisted, YT_F41) == (float)today);
+	CHECK(yt_record_get_number(&persisted, YT_F73) == 2.0f);
+	CHECK(yt_record_get_number(&persisted, YT_F77) == 5.0f);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);
 }

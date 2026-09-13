@@ -2890,12 +2890,6 @@ port_update(struct yt_session *session, int sector_number,
 	return true;
 }
 
-struct planet_update_cache {
-	float rate[10];
-	double quantity[10];
-	float contribution[10];
-};
-
 bool
 read_planet_physical(struct yt_session *session, uint32_t physical_record,
     struct yt_planet *planet, struct yt_error *error)
@@ -2924,183 +2918,6 @@ session_write_planet_physical(struct yt_session *session,
 	return yt_database_write(&session->door->game.database,
 	    (size_t)physical_record, &planet->record, error);
 }
-
-static bool
-planet_updater_date(void *context, uint8_t current_day_raw[4],
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-	int today;
-	int adjusted_year;
-
-	if (!session_current_date_serial(session, &today, &adjusted_year,
-	    error))
-		return false;
-	session->door->game.today = today;
-	session->door->game.adjusted_year = adjusted_year;
-	if (qb_mbf32_encode((float)today, current_day_raw) == QB_MBF_OVERFLOW) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation), "%s",
-			    "planet updater current day MBF32");
-		}
-		return false;
-	}
-	return true;
-}
-
-static bool
-planet_updater_record_expression(void *context, bool closing,
-    struct yt_error *error)
-{
-	(void)context;
-	(void)closing;
-	(void)error;
-	return true;
-}
-
-static bool
-planet_updater_get(void *context, uint32_t physical_record,
-    struct yt_record *record, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, record, error);
-}
-
-static bool
-planet_updater_timer(void *context, uint8_t timer_seconds_raw[4],
-    struct yt_error *error)
-{
-	float timer_seconds;
-
-	(void)context;
-	timer_seconds = (float)yt_platform_timer();
-	if (qb_mbf32_encode(timer_seconds, timer_seconds_raw) == QB_MBF_OVERFLOW) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation), "%s",
-			    "planet updater TIMER MBF32");
-		}
-		return false;
-	}
-	return true;
-}
-
-static bool
-planet_updater_lset(void *context, enum yt_planet_updater_stage stage,
-    size_t offset, const uint8_t raw[4], struct yt_error *error)
-{
-	(void)context;
-	(void)stage;
-	(void)offset;
-	(void)raw;
-	(void)error;
-	return true;
-}
-
-static bool
-planet_updater_put(void *context, uint32_t physical_record,
-    const struct yt_record *record, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database,
-	    (size_t)physical_record, record, error)
-	    && yt_database_flush(&session->door->game.database, error);
-}
-
-static void
-planet_updater_load_cache(struct yt_session *session,
-    struct yt_planet_updater_state *state)
-{
-	state->raw_cache = session->planet_updater_cache;
-	memcpy(state->current_day_raw, session->planet_updater_day_raw,
-	    sizeof(state->current_day_raw));
-}
-
-static void
-planet_updater_store_cache(struct yt_session *session,
-    const struct yt_planet_updater_state *state)
-{
-	session->planet_updater_cache = state->raw_cache;
-	memcpy(session->planet_updater_day_raw, state->current_day_raw,
-	    sizeof(session->planet_updater_day_raw));
-}
-
-bool
-planet_update_cached_physical(struct yt_session *session,
-    uint32_t physical_record,
-    struct yt_planet *planet, struct planet_update_cache *cache,
-    struct yt_error *error)
-{
-	static const struct yt_planet_updater_ops ops = {
-		planet_updater_date,
-		planet_updater_record_expression,
-		planet_updater_get,
-		planet_updater_timer,
-		planet_updater_lset,
-		planet_updater_put,
-	};
-	struct yt_planet_updater_state state = {0};
-	float logical;
-	float expression;
-
-	logical = single_sub((float)physical_record,
-	    session_planet_offset(session));
-	expression = single_add(session_planet_offset(session),
-	    logical);
-	if (qb_brun_random_record_number(expression) != physical_record
-	    || qb_mbf32_encode(logical, state.logical_planet_raw)
-	    == QB_MBF_OVERFLOW
-	    || qb_mbf32_encode(session_planet_offset(session),
-	    state.planet_offset_raw) == QB_MBF_OVERFLOW) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation), "%s",
-			    "planet updater physical record");
-		}
-		return false;
-	}
-	planet_updater_load_cache(session, &state);
-	if (!yt_planet_updater_raw_run(&state, &ops, session, error)) {
-		planet_updater_store_cache(session, &state);
-		return false;
-	}
-	planet_updater_store_cache(session, &state);
-	yt_planet_decode(planet, &state.field);
-	memcpy(session->planet_quantity, state.cache.quantity,
-	    sizeof(session->planet_quantity));
-	if (cache != NULL) {
-		memcpy(cache->rate, state.cache.production, sizeof(cache->rate));
-		memcpy(cache->quantity, state.cache.quantity,
-		    sizeof(cache->quantity));
-		memcpy(cache->contribution, state.cache.contribution,
-		    sizeof(cache->contribution));
-	}
-	return true;
-}
-
-static bool
-planet_update_cached(struct yt_session *session, int logical_planet,
-    struct yt_planet *planet, struct planet_update_cache *cache,
-    struct yt_error *error)
-{
-	uint32_t physical = session_planet_basic_record(session,
-	    (float)logical_planet);
-
-	return planet_update_cached_physical(session, physical,
-	    planet, cache, error);
-}
-
-static bool
-planet_update(struct yt_session *session, int logical_planet,
-    struct yt_planet *planet, struct yt_error *error)
-{
-	return planet_update_cached(session, logical_planet, planet, NULL, error);
-}
-
 static bool
 friendship_read_player(void *context, int player_record,
     struct yt_player *player, struct yt_error *error)
@@ -3315,7 +3132,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 		    sector.planet);
 		float saved_foreground;
 
-		if (!planet_update_cached_physical(session, physical_planet,
+		if (!yt_session_update_planet_physical(session, physical_planet,
 		    &planet, NULL, error)
 		    || !scanner_read_planet(session, physical_planet, &planet,
 		    error)
@@ -7924,7 +7741,7 @@ planet_inventory(struct yt_session *session, int logical_planet,
     struct yt_error *error)
 {
 	struct yt_planet planet;
-	struct planet_update_cache cache;
+	struct yt_planet_economy economy;
 	static const char *labels[9] = {
 		"Ore..........", "Organics.....", "Equipment....",
 		"Fighters.....", "Missiles.....", "Mines........",
@@ -7941,8 +7758,8 @@ planet_inventory(struct yt_session *session, int logical_planet,
 	int index;
 
 	if (!session_reload_player(session, error)
-	    || !planet_update_cached(session, logical_planet, &planet, &cache,
-	    error)
+	    || !yt_session_update_planet(session, logical_planet, &planet,
+	    &economy, error)
 	    || !session_read_planet(session, logical_planet,
 	    &planet, error)
 	    || !port_report_length(session, planet.name_length,
@@ -7979,8 +7796,8 @@ planet_inventory(struct yt_session *session, int logical_planet,
 		double available;
 
 		if (index < 6) {
-			produced = (double)floorf(cache.rate[index + 1]);
-			available = floor(cache.quantity[index + 1]);
+			produced = (double)floorf(economy.production[index + 1]);
+			available = floor(economy.quantity[index + 1]);
 			if (qb_str_single(production, sizeof(production),
 			    (float)produced) < 0
 			    || qb_str_double(amount, sizeof(amount), available) < 0
@@ -7990,9 +7807,9 @@ planet_inventory(struct yt_session *session, int logical_planet,
 				    "planet inventory numeric format");
 		}
 		else if (index == 6) {
-			produced = floor(double_mul(cache.quantity[7],
+			produced = floor(double_mul(economy.quantity[7],
 			    0x1.47ae14p-7));
-			available = floor(cache.quantity[7]);
+			available = floor(economy.quantity[7]);
 			if (qb_str_double(production, sizeof(production), produced) < 0
 			    || qb_str_double(amount, sizeof(amount), available) < 0
 			    || qb_str_double(in_holds, sizeof(in_holds), held[index]) < 0)
@@ -8000,9 +7817,9 @@ planet_inventory(struct yt_session *session, int logical_planet,
 				    "planet inventory credit format");
 		}
 		else if (index == 7) {
-			produced = floor(double_add(double_mul(cache.quantity[8],
-			    0x1.47ae14p-7), (double)cache.contribution[8]));
-			available = floor(cache.quantity[8]);
+			produced = floor(double_add(double_mul(economy.quantity[8],
+			    0x1.47ae14p-7), (double)economy.contribution[8]));
+			available = floor(economy.quantity[8]);
 			if (qb_str_double(production, sizeof(production), produced) < 0
 			    || qb_str_double(amount, sizeof(amount), available) < 0
 			    || qb_str_single(in_holds, sizeof(in_holds),
@@ -8011,8 +7828,8 @@ planet_inventory(struct yt_session *session, int logical_planet,
 				    "planet inventory force format");
 		}
 		else {
-			produced = (double)floorf(cache.rate[9]);
-			available = floor(cache.quantity[9]);
+			produced = (double)floorf(economy.production[9]);
+			available = floor(economy.quantity[9]);
 			if (qb_str_single(production, sizeof(production),
 			    (float)produced) < 0
 			    || qb_str_double(amount, sizeof(amount), available) < 0
@@ -8061,7 +7878,7 @@ planet_take_one(struct yt_session *session, int logical_planet, int item,
 	    (double)session->player.holds, (double)session->player.ore),
 	    (double)session->player.organics),
 	    (double)session->player.equipment);
-	available = (float)floor(session->planet_quantity[item]);
+	available = (float)floor(session->planet_economy.quantity[item]);
 	maximum = item <= 3 && free_holds < available
 	    ? free_holds : available;
 	if (qb_str_single(maximum_text, sizeof(maximum_text), maximum) < 0
@@ -8080,7 +7897,7 @@ planet_take_one(struct yt_session *session, int logical_planet, int item,
 		parsed = qb_val(response);
 		quantity = (float)floor(parsed.valid ? parsed.value : 0.0);
 	}
-	if ((double)quantity > floor(session->planet_quantity[item])
+	if ((double)quantity > floor(session->planet_economy.quantity[item])
 	    || quantity < 0.0f) {
 		static const uint8_t stock[] = "They don't have that many.";
 
@@ -8102,12 +7919,12 @@ planet_take_one(struct yt_session *session, int logical_planet, int item,
 	    &planet, error))
 		return false;
 	yt_planet_take_one_planet_overlay(&planet, item,
-	    session->planet_quantity[item], quantity);
+	    session->planet_economy.quantity[item], quantity);
 	if (!session_write_planet(session, logical_planet,
 	    &planet, error))
 		return false;
-	session->planet_quantity[item] = double_sub(
-	    session->planet_quantity[item], (double)quantity);
+	session->planet_economy.quantity[item] = double_sub(
+	    session->planet_economy.quantity[item], (double)quantity);
 	return session_reload_player(session, error);
 }
 
@@ -8134,7 +7951,7 @@ planet_take_all(struct yt_session *session, int logical_planet,
 	    || !session_reload_player(session, error))
 		return false;
 	yt_planet_take_all_weapon_player_overlay(&session->player,
-	    session->planet_quantity, amount);
+	    session->planet_economy.quantity, amount);
 	if (!write_player(session, error)
 	    || !session_present_paged_line(session, taking, sizeof(taking) - 1U,
 	    "planet take-all taking", error))
@@ -8164,7 +7981,7 @@ planet_take_all(struct yt_session *session, int logical_planet,
 	    &planet, error))
 		return false;
 	yt_planet_take_all_weapon_planet_overlay(&planet,
-	    session->planet_quantity, amount);
+	    session->planet_economy.quantity, amount);
 	if (!session_write_planet(session, logical_planet,
 	    &planet, error))
 		return false;
@@ -8176,14 +7993,15 @@ planet_take_all(struct yt_session *session, int logical_planet,
 		if (!session_reload_player(session, error))
 			return false;
 		commodity_amount = yt_planet_take_all_commodity_player_overlay(
-		    &session->player, index, session->planet_quantity[index]);
+		    &session->player, index,
+		    session->planet_economy.quantity[index]);
 		if (!write_player(session, error))
 			return false;
 		if (!session_read_planet(session,
 		    logical_planet, &planet, error))
 			return false;
 		yt_planet_take_all_commodity_planet_overlay(&planet, index,
-		    session->planet_quantity[index], commodity_amount);
+		    session->planet_economy.quantity[index], commodity_amount);
 		if (!session_write_planet(session,
 		    logical_planet, &planet, error))
 			return false;
@@ -8465,7 +8283,7 @@ planet_transfer(struct yt_session *session, int logical_planet,
 	if (yt_planet_transfer_selector_position(command) == 0)
 		return true;
 	if (strcmp(command, "C") == 0) {
-		struct planet_update_cache cache;
+		struct yt_planet_economy economy;
 		double held[3];
 		size_t index;
 
@@ -8474,8 +8292,8 @@ planet_transfer(struct yt_session *session, int logical_planet,
 		held[0] = (double)session->player.ore;
 		held[1] = (double)session->player.organics;
 		held[2] = (double)session->player.equipment;
-		if (!planet_update_cached(session, logical_planet, &planet,
-		    &cache, error))
+		if (!yt_session_update_planet(session, logical_planet, &planet,
+		    &economy, error))
 			return false;
 		if (yt_planet_transfer_cargo_empty(held)) {
 			static const uint8_t empty[] =
@@ -8487,11 +8305,13 @@ planet_transfer(struct yt_session *session, int logical_planet,
 		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "planet Transfer cargo blank", error))
 			return false;
-		yt_planet_transfer_cargo_cache(cache.rate, cache.quantity, held);
+		yt_planet_transfer_cargo_cache(economy.production,
+		    economy.quantity, held);
 		for (index = 0; index < 3; ++index) {
 			int item = (int)index + 1;
 
-			session->planet_quantity[item] = cache.quantity[item];
+			session->planet_economy.quantity[item] =
+			    economy.quantity[item];
 		}
 		if (!yt_game_read_player(&session->door->game,
 		    session_record(session), &session->player, error))
@@ -8501,8 +8321,8 @@ planet_transfer(struct yt_session *session, int logical_planet,
 		    || !session_read_planet(session,
 		    logical_planet, &planet, error))
 			return false;
-		yt_planet_transfer_cargo_planet_overlay(&planet, cache.rate,
-		    cache.quantity, cache.contribution);
+		yt_planet_transfer_cargo_planet_overlay(&planet,
+		    economy.production, economy.quantity, economy.contribution);
 		if (!session_write_planet(session,
 		    logical_planet, &planet, error))
 			return false;
@@ -8548,7 +8368,7 @@ planet_transfer(struct yt_session *session, int logical_planet,
 		    logical_planet, &planet, error))
 			return false;
 		yt_planet_transfer_fighter_planet_overlay(&planet,
-		    session->planet_quantity[4], amount);
+		    session->planet_economy.quantity[4], amount);
 		if (!session_write_planet(session, logical_planet,
 		    &planet, error))
 			return false;
@@ -8584,7 +8404,7 @@ planet_transfer(struct yt_session *session, int logical_planet,
 		    logical_planet, &planet, error))
 			return false;
 		yt_planet_transfer_direct_planet_overlay(&planet, item,
-		    session->planet_quantity[item], amount);
+		    session->planet_economy.quantity[item], amount);
 		if (!session_write_planet(session, logical_planet,
 		    &planet, error)
 		    || !session_present_text(session, NULL, 0,
@@ -8614,7 +8434,8 @@ planet_transfer(struct yt_session *session, int logical_planet,
 			return false;
 	}
 	if (!session_reload_player(session, error)
-	    || !planet_update(session, logical_planet, &planet, error))
+	    || !yt_session_update_planet(session, logical_planet, &planet,
+	    NULL, error))
 		return false;
 	return session_sound(session, 4.0f,
 	    "planet transfer sound", error);
@@ -8635,7 +8456,7 @@ planet_productivity(struct yt_session *session, int logical_planet,
 		"Also increased: Fighters:", ", Missiles:",
 		", Mines:", ", Plasma Bolts:"
 	};
-	struct planet_update_cache cache;
+	struct yt_planet_economy economy;
 	struct yt_planet planet;
 	struct qb_val_result parsed;
 	char response[160];
@@ -8650,8 +8471,8 @@ planet_productivity(struct yt_session *session, int logical_planet,
 	size_t index;
 
 	if (!session_reload_player(session, error)
-	    || !planet_update_cached(session, logical_planet, &planet, &cache,
-	    error))
+	    || !yt_session_update_planet(session, logical_planet, &planet,
+	    &economy, error))
 		return false;
 	if (qb_str_double(credits_text, sizeof(credits_text),
 	    (double)session->player.credits) < 0
@@ -8686,7 +8507,7 @@ planet_productivity(struct yt_session *session, int logical_planet,
 	    || !session_present_paged_line(session, (const uint8_t *)success,
 	    strlen(success), "planet Productivity accepted", error))
 		return false;
-	yt_planet_productivity_cache(cache.rate, units, delta);
+	yt_planet_productivity_cache(economy.production, units, delta);
 	for (index = 0; index < 4U; ++index) {
 		char delta_text[64];
 		char fragment[128];
@@ -8710,8 +8531,8 @@ planet_productivity(struct yt_session *session, int logical_planet,
 	    || !session_read_planet(session, logical_planet,
 	    &planet, error))
 		return false;
-	yt_planet_productivity_planet_overlay(&planet, cache.rate,
-	    cache.quantity, cache.contribution);
+	yt_planet_productivity_planet_overlay(&planet, economy.production,
+	    economy.quantity, economy.contribution);
 	if (!session_write_planet(session, logical_planet,
 	    &planet, error))
 		return false;
@@ -8745,7 +8566,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 	    "planet assault entry blank", error))
 		return false;
 	saved_foreground = session_foreground(session);
-	if (!planet_update_cached_physical(session, physical_planet, &planet,
+	if (!yt_session_update_planet_physical(session, physical_planet, &planet,
 	    NULL, error)
 	    || !read_planet_physical(session, physical_planet, &planet, error)
 	    || !yt_planet_stored_name(&planet, planet_name,
@@ -9464,8 +9285,8 @@ planet_menu(struct yt_session *session, int logical_planet,
 		    sizeof(prompt_body) - 1U);
 		prompt_length += sizeof(prompt_body) - 1U;
 		if (!session_reload_player(session, error)
-		    || !planet_update(session, logical_planet,
-		    &(struct yt_planet){0}, error)
+		    || !yt_session_update_planet(session, logical_planet,
+		    &(struct yt_planet){0}, NULL, error)
 		    || !session_present_timed_paged_row(session, prompt, prompt_length,
 		    "planet command prompt", error)
 		    || !session_read_upper_command(session, upper, sizeof(upper)))
@@ -11652,7 +11473,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	    session_planet_offset(session), sector->planet);
 	physical_sector = yt_projectile_physical_record(
 	    session_sector_offset(session), (float)sector_number);
-	if (!planet_update_cached_physical(session, physical_planet,
+	if (!yt_session_update_planet_physical(session, physical_planet,
 	    &updater_planet, NULL, error))
 		return false;
 	/* DS:1A48 remains the updater's ore value across the independent GET. */
@@ -12482,7 +12303,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
     size_t attacker_length, double *energy, struct yt_error *error)
 {
 	static const uint8_t destroyed_row[] = "The planet was destroyed!!";
-	struct planet_update_cache update_cache;
+	struct yt_planet_economy economy;
 	struct yt_planet updated;
 	struct yt_planet planet;
 	struct yt_planet persistence;
@@ -12510,11 +12331,11 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	logical_planet = (int)sector->planet;
 	if (logical_planet == 0)
 		return true;
-	if (!planet_update_cached(session, logical_planet, &updated,
-	    &update_cache, error))
+	if (!yt_session_update_planet(session, logical_planet, &updated,
+	    &economy, error))
 		return false;
 	/* The updater returns its P(1) cache before this fresh planet read. */
-	stale_ore = update_cache.rate[1];
+	stale_ore = economy.production[1];
 	if (!session_read_planet(session, logical_planet, &planet, error))
 		return false;
 	for (index = 0U; index < 3U; ++index) {

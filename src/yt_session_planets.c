@@ -1,7 +1,55 @@
 #include "yt_session_internal.h"
 
+#include "yt_platform.h"
+
 #include <math.h>
 #include <string.h>
+
+bool
+yt_session_update_planet_physical(struct yt_session *session,
+    uint32_t physical_record, struct yt_planet *planet,
+    struct yt_planet_economy *economy, struct yt_error *error)
+{
+	struct yt_planet_economy updated_economy;
+	struct yt_planet_update update;
+	struct yt_record record;
+	int today;
+	int adjusted_year;
+	float timer_seconds;
+
+	if (!yt_current_date_serial(session->door->game.config.epoch_year,
+	    &today, &adjusted_year, error))
+		return false;
+	session->door->game.today = today;
+	session->door->game.adjusted_year = adjusted_year;
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	if (!yt_planet_update_prepare(&record, &update, error))
+		return false;
+	timer_seconds = (float)yt_platform_timer();
+	if (!yt_planet_update_record(&record, &update, (float)today,
+	    timer_seconds, &updated_economy, error)
+	    || !yt_database_write(&session->door->game.database,
+	    (size_t)physical_record, &record, error)
+	    || !yt_database_flush(&session->door->game.database, error))
+		return false;
+	yt_planet_decode(planet, &record);
+	session->planet_economy = updated_economy;
+	if (economy != NULL)
+		*economy = updated_economy;
+	return true;
+}
+
+bool
+yt_session_update_planet(struct yt_session *session, int logical_planet,
+    struct yt_planet *planet, struct yt_planet_economy *economy,
+    struct yt_error *error)
+{
+	return yt_session_update_planet_physical(session,
+	    session_planet_basic_record(session, (float)logical_planet), planet,
+	    economy, error);
+}
 
 bool
 yt_session_planet_permission(struct yt_session *session,
@@ -36,7 +84,7 @@ yt_session_planet_permission(struct yt_session *session,
 	*denied = false;
 	physical_planet_record = session_planet_basic_record(session,
 	    (float)logical_planet);
-	if (!planet_update_cached_physical(session, physical_planet_record,
+	if (!yt_session_update_planet_physical(session, physical_planet_record,
 	    &(struct yt_planet){0}, NULL, error)
 	    || !read_planet_physical(session, physical_planet_record,
 	    &planet, error)
