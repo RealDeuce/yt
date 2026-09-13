@@ -13239,26 +13239,6 @@ plasma_mine_result_row(const uint8_t *attacker, size_t attacker_length,
 }
 
 static bool
-plasma_player_read(void *context, int player_record,
-    struct yt_player *value, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_game_read_player(&session->door->game, player_record, value,
-	    error);
-}
-
-static bool
-plasma_player_write(void *context, int player_record,
-    const struct yt_player *value, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database,
-	    (size_t)player_record, &value->record, error);
-}
-
-static bool
 plasma_player_second_row(float remaining_shields, double destroyed_fighters,
     uint8_t *row, size_t capacity, size_t *length)
 {
@@ -13297,28 +13277,7 @@ plasma_player_second_row(float remaining_shields, double destroyed_fighters,
 }
 
 static bool
-plasma_killed_present(void *context, const uint8_t *text, size_t length,
-    enum yt_projectile_plasma_killed_output_kind kind,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-	const char *operation;
-
-	/* The killed-player model assigns through its by-reference carrier. */
-	yt_present_set_blink(&session->presentation,
-	    session->presentation.blink);
-	if (kind == YT_PROJECTILE_PLASMA_KILLED_DESTROYED_ROW)
-		operation = "plasma victim-destruction row";
-	else if (kind == YT_PROJECTILE_PLASMA_KILLED_SELF_DESTROYED_ROW)
-		operation = "plasma self-destruction row";
-	else
-		operation = "plasma carried-mine warning";
-	return session_present_text(context, text, length,
-	    SESSION_PRESENT_BOLD_LINE, operation, error);
-}
-
-static bool
-plasma_killed_read_sector(void *context, int sector,
+plasma_planet_read_sector(void *context, int sector,
     struct yt_sector *value, struct yt_error *error)
 {
 	struct yt_session *session = context;
@@ -13327,7 +13286,7 @@ plasma_killed_read_sector(void *context, int sector,
 }
 
 static bool
-plasma_killed_write_sector(void *context, int sector,
+plasma_planet_write_sector(void *context, int sector,
     const struct yt_sector *value, struct yt_error *error)
 {
 	struct yt_session *session = context;
@@ -13335,26 +13294,6 @@ plasma_killed_write_sector(void *context, int sector,
 	return yt_database_write(&session->door->game.database,
 	    (size_t)session_sector_basic_record(session, (float)sector),
 	    &value->record, error);
-}
-
-static bool
-plasma_killed_death(void *context, int victim, int shooter,
-    struct yt_error *error)
-{
-	return kill_player(context, victim, (float)shooter, error);
-}
-
-static bool
-plasma_killed_sound(void *context, float selector, struct yt_error *error)
-{
-	return session_sound(context, selector, "plasma salvage sound", error);
-}
-
-static bool
-plasma_killed_salvage(void *context, int victim, int shooter,
-    struct yt_error *error)
-{
-	return yt_session_salvage_player(context, victim, shooter, error);
 }
 
 static bool
@@ -13819,8 +13758,8 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		plasma_planet_update,
 		plasma_planet_read,
 		plasma_planet_write,
-		plasma_killed_read_sector,
-		plasma_killed_write_sector,
+		plasma_planet_read_sector,
+		plasma_planet_write_sector,
 		plasma_planet_present,
 		session_append_news_bytes,
 		plasma_planet_sound,
@@ -13858,18 +13797,7 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
     const struct yt_sector *initial, const uint8_t *attacker,
     size_t launch_attacker_length, double *energy, struct yt_error *error)
 {
-	static const struct yt_projectile_plasma_killed_ops killed_ops = {
-		plasma_player_read,
-		plasma_player_write,
-		plasma_killed_present,
-		plasma_killed_read_sector,
-		plasma_killed_write_sector,
-		plasma_killed_death,
-		plasma_killed_sound,
-		plasma_killed_salvage,
-	};
 	struct yt_sector sector;
-	struct yt_projectile_plasma_killed_state killed;
 	float planet_link;
 	int basic;
 
@@ -14136,21 +14064,99 @@ plasma_reload_sector:
 			}
 		}
 		{
-			memset(&killed, 0, sizeof(killed));
-			killed.victim = basic;
-			killed.shooter = session_record(session);
-			killed.sector = sector_number;
-			killed.energy = energy;
-			killed.blink = &session->presentation.blink;
-			killed.destroyed = &session->destroyed;
-			killed.player_cache = &session->player_cache;
-			if (!yt_projectile_plasma_killed_run(&killed, &killed_ops,
-			    session, error))
+			static const uint8_t self_row[] = "YOU were destroyed!";
+			static const uint8_t cache_zero[4] = {
+				0x00, 0x00, 0x80, 0x00
+			};
+			struct yt_player victim;
+			struct yt_sector mine_persistence;
+			uint8_t victim_name[YT_TEXT_FIELD_SIZE];
+			uint8_t destroyed_row[128];
+			uint8_t warning_row[160];
+			size_t victim_name_length = 0U;
+			size_t destroyed_length = 0U;
+			size_t warning_length = 0U;
+			float saved_mines;
+			bool self_hit = basic == session_record(session);
+			bool rows_ready = false;
+
+			if (!yt_game_read_player(&session->door->game, basic, &victim,
+			    error))
 				return false;
-			if (killed.route ==
-			    YT_PROJECTILE_PLASMA_KILLED_RELOAD_SECTOR)
+			if (!self_hit) {
+				if (!yt_player_stored_name(&victim, victim_name,
+				    &victim_name_length, error)
+				    || !yt_projectile_destroyed_rows(victim_name,
+				    victim_name_length, destroyed_row,
+				    sizeof(destroyed_row), &destroyed_length, warning_row,
+				    sizeof(warning_row), &warning_length))
+					return false;
+				rows_ready = true;
+			}
+			saved_mines = victim.mines;
+			victim.mines = 0.0f;
+			victim.danger_scanner = 0.0f;
+			if (!yt_record_set_number(&victim.record, YT_F129, 0.0f)
+			    || !yt_record_set_number(&victim.record, YT_F93, 0.0f)
+			    || !yt_database_write(&session->door->game.database,
+			    (size_t)basic, &victim.record, error))
+				return false;
+
+			yt_present_set_blink(&session->presentation, 1.0f);
+			if (self_hit) {
+				if (!session_present_text(session, self_row,
+				    sizeof(self_row) - 1U, SESSION_PRESENT_BOLD_LINE,
+				    "plasma self-destruction row", error))
+					return false;
+			}
+			else if (!session_present_text(session, destroyed_row,
+			    destroyed_length, SESSION_PRESENT_BOLD_LINE,
+			    "plasma victim-destruction row", error))
+				return false;
+
+			if (saved_mines != 0.0f) {
+				if (!rows_ready
+				    && (!yt_player_stored_name(&victim, victim_name,
+				    &victim_name_length, error)
+				    || !yt_projectile_destroyed_rows(victim_name,
+				    victim_name_length, destroyed_row,
+				    sizeof(destroyed_row), &destroyed_length, warning_row,
+				    sizeof(warning_row), &warning_length)))
+					return false;
+				yt_present_set_blink(&session->presentation, 1.0f);
+				if (!session_present_text(session, warning_row,
+				    warning_length, SESSION_PRESENT_BOLD_LINE,
+				    "plasma carried-mine warning", error)
+				    || !session_read_sector(session, sector_number,
+				    &mine_persistence, error))
+					return false;
+				mine_persistence.mines = single_add(
+				    mine_persistence.mines, saved_mines);
+				if (!yt_record_set_number(&mine_persistence.record, YT_F129,
+				    mine_persistence.mines)
+				    || !yt_database_write(&session->door->game.database,
+				    (size_t)session_sector_basic_record(session,
+				    (float)sector_number), &mine_persistence.record, error))
+					return false;
+			}
+
+			if (self_hit) {
+				session->destroyed = true;
+				if (!yt_player_cache_set_raw(&session->player_cache, basic,
+				    YT_PLAYER_CACHE_SECTOR, cache_zero))
+					return false;
+			}
+			else if (!kill_player(session, basic,
+			    (float)session_record(session), error)
+			    || !session_sound(session, 3.0f, "plasma salvage sound",
+			    error)
+			    || !yt_session_salvage_player(session, basic,
+			    session_record(session), error))
+				return false;
+
+			if (*energy > 0.0 && saved_mines > 0.0f)
 				goto plasma_reload_sector;
-			if (killed.route == YT_PROJECTILE_PLASMA_KILLED_FOOTER)
+			if (*energy < 1.0)
 				return true;
 		}
 	}
