@@ -4279,188 +4279,10 @@ check_projectile_defense_combat_transaction(void)
 	    && !yt_projectile_defense_combat_run(&state, NULL, &tape, NULL);
 }
 
-enum projectile_sector_mine_event {
-	PROJECTILE_SECTOR_MINE_READ = 1,
-	PROJECTILE_SECTOR_MINE_PRESENT,
-	PROJECTILE_SECTOR_MINE_SOUND,
-	PROJECTILE_SECTOR_MINE_NEWS,
-	PROJECTILE_SECTOR_MINE_WRITE,
-};
-
-struct projectile_sector_mine_tape {
-	int events[16];
-	size_t event_count;
-	size_t fail_at;
-	struct yt_sector reads[4];
-	size_t read_position;
-	uint8_t rows[2][256];
-	size_t row_lengths[2];
-	size_t row_count;
-	uint8_t news[256];
-	size_t news_length;
-	float selector;
-	float sector_at_read[4];
-	float sector_at_write;
-	struct yt_sector written;
-};
-
 static bool
-projectile_sector_mine_step(struct projectile_sector_mine_tape *tape,
-    enum projectile_sector_mine_event event)
+check_projectile_sector_mine_rows(void)
 {
-	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
-		return false;
-	tape->events[tape->event_count++] = (int)event;
-	return tape->event_count != tape->fail_at;
-}
-
-static bool
-projectile_sector_mine_read(void *context, float sector,
-    struct yt_sector *value, struct yt_error *error)
-{
-	struct projectile_sector_mine_tape *tape = context;
-	size_t position = tape->read_position;
-
-	(void)error;
-	if (position >= YT_ARRAY_LEN(tape->reads)
-	    || !projectile_sector_mine_step(tape,
-	    PROJECTILE_SECTOR_MINE_READ))
-		return false;
-	tape->sector_at_read[position] = sector;
-	*value = tape->reads[position];
-	tape->read_position++;
-	return true;
-}
-
-static bool
-projectile_sector_mine_present(void *context, const uint8_t *text,
-    size_t length, struct yt_error *error)
-{
-	struct projectile_sector_mine_tape *tape = context;
-	size_t position = tape->row_count;
-
-	(void)error;
-	if (position >= YT_ARRAY_LEN(tape->rows)
-	    || length > sizeof(tape->rows[position])
-	    || !projectile_sector_mine_step(tape,
-	    PROJECTILE_SECTOR_MINE_PRESENT))
-		return false;
-	memcpy(tape->rows[position], text, length);
-	tape->row_lengths[position] = length;
-	tape->row_count++;
-	return true;
-}
-
-static bool
-projectile_sector_mine_sound(void *context, float selector,
-    struct yt_error *error)
-{
-	struct projectile_sector_mine_tape *tape = context;
-
-	(void)error;
-	tape->selector = selector;
-	return projectile_sector_mine_step(tape, PROJECTILE_SECTOR_MINE_SOUND);
-}
-
-static bool
-projectile_sector_mine_news(void *context, const uint8_t *text,
-    size_t length, struct yt_error *error)
-{
-	struct projectile_sector_mine_tape *tape = context;
-
-	(void)error;
-	if (length > sizeof(tape->news)
-	    || !projectile_sector_mine_step(tape,
-	    PROJECTILE_SECTOR_MINE_NEWS))
-		return false;
-	memcpy(tape->news, text, length);
-	tape->news_length = length;
-	return true;
-}
-
-static bool
-projectile_sector_mine_write(void *context, float sector,
-    const struct yt_sector *value, struct yt_error *error)
-{
-	struct projectile_sector_mine_tape *tape = context;
-
-	(void)error;
-	if (!projectile_sector_mine_step(tape,
-	    PROJECTILE_SECTOR_MINE_WRITE))
-		return false;
-	tape->sector_at_write = sector;
-	tape->written = *value;
-	if (tape->read_position < YT_ARRAY_LEN(tape->reads))
-		tape->reads[tape->read_position] = *value;
-	return true;
-}
-
-static void
-projectile_sector_mine_fixture(struct projectile_sector_mine_tape *tape,
-    struct yt_projectile_sector_mine_state *state, float *missiles,
-    float *last_news)
-{
-	static const uint8_t shooter_name[] = {'A', 0, 'B'};
-
-	memset(tape, 0, sizeof(*tape));
-	memset(state, 0, sizeof(*state));
-	memset(tape->reads[0].record.bytes, 0xa5,
-	    sizeof(tape->reads[0].record.bytes));
-	memset(tape->reads[1].record.bytes, 0x5a,
-	    sizeof(tape->reads[1].record.bytes));
-	tape->reads[0].mines = 5.25f;
-	tape->reads[1].mines = 999.0f;
-	(void)yt_record_set_number(&tape->reads[0].record, YT_F129,
-	    tape->reads[0].mines);
-	(void)yt_record_set_number(&tape->reads[1].record, YT_F129,
-	    tape->reads[1].mines);
-	tape->fail_at = SIZE_MAX;
-	*missiles = 2.5f;
-	*last_news = -3.5f;
-	state->sector = 7.0f;
-	state->shooter_name = shooter_name;
-	state->shooter_name_length = sizeof(shooter_name);
-	state->missiles = missiles;
-	state->last_news_sector = last_news;
-}
-
-static bool
-check_projectile_sector_mine_transaction(void)
-{
-	static const struct yt_projectile_sector_mine_ops ops = {
-		projectile_sector_mine_read,
-		projectile_sector_mine_present,
-		projectile_sector_mine_sound,
-		projectile_sector_mine_news,
-		projectile_sector_mine_write,
-	};
-	static const int ordinary_events[] = {
-		PROJECTILE_SECTOR_MINE_READ,
-		PROJECTILE_SECTOR_MINE_PRESENT,
-		PROJECTILE_SECTOR_MINE_SOUND,
-		PROJECTILE_SECTOR_MINE_NEWS,
-		PROJECTILE_SECTOR_MINE_PRESENT,
-		PROJECTILE_SECTOR_MINE_READ,
-		PROJECTILE_SECTOR_MINE_WRITE,
-	};
-	static const int suppressed_events[] = {
-		PROJECTILE_SECTOR_MINE_READ,
-		PROJECTILE_SECTOR_MINE_PRESENT,
-		PROJECTILE_SECTOR_MINE_SOUND,
-		PROJECTILE_SECTOR_MINE_PRESENT,
-		PROJECTILE_SECTOR_MINE_READ,
-		PROJECTILE_SECTOR_MINE_WRITE,
-	};
-	static const int reentry_events[] = {
-		PROJECTILE_SECTOR_MINE_READ,
-		PROJECTILE_SECTOR_MINE_PRESENT,
-		PROJECTILE_SECTOR_MINE_SOUND,
-		PROJECTILE_SECTOR_MINE_NEWS,
-		PROJECTILE_SECTOR_MINE_PRESENT,
-		PROJECTILE_SECTOR_MINE_READ,
-		PROJECTILE_SECTOR_MINE_WRITE,
-		PROJECTILE_SECTOR_MINE_READ,
-	};
+	static const uint8_t shooter[] = {'A', 0, 'B'};
 	static const uint8_t hit[] =
 	    "The missiles hit 5.25 SECTOR MINES in sector 7!";
 	static const uint8_t news[] =
@@ -4469,88 +4291,32 @@ check_projectile_sector_mine_transaction(void)
 	    "The missiles destroyed 2.5 mines!";
 	static const uint8_t singular[] =
 	    "The missile destroyed .5 mine!";
-	struct projectile_sector_mine_tape tape;
-	struct yt_projectile_sector_mine_state state;
-	struct yt_record expected;
-	float missiles;
-	float last_news;
-	size_t failure;
+	uint8_t row[256];
+	size_t length;
 
-	projectile_sector_mine_fixture(&tape, &state, &missiles, &last_news);
-	expected = tape.reads[1].record;
-	(void)yt_record_set_number(&expected, YT_F129, 2.75f);
-	if (!yt_projectile_sector_mine_run(&state, &ops, &tape, NULL)
-	    || tape.event_count != YT_ARRAY_LEN(ordinary_events)
-	    || memcmp(tape.events, ordinary_events, sizeof(ordinary_events)) != 0
-	    || tape.read_position != 2U || tape.row_count != 2U
-	    || state.observed_mines != 5.25 || state.destroyed != 2.5f
-	    || missiles != 0.0f || last_news != 7.0f
-	    || state.route != YT_PROJECTILE_SECTOR_MINE_RETURN
-	    || tape.selector != 5.0f || tape.sector_at_read[0] != 7.0f
-	    || tape.sector_at_read[1] != 7.0f
-	    || tape.sector_at_write != 7.0f
-	    || tape.row_lengths[0] != sizeof(hit) - 1U
-	    || memcmp(tape.rows[0], hit, sizeof(hit) - 1U) != 0
-	    || tape.news_length != sizeof(news) - 1U
-	    || memcmp(tape.news, news, sizeof(news) - 1U) != 0
-	    || tape.row_lengths[1] != sizeof(destroyed) - 1U
-	    || memcmp(tape.rows[1], destroyed, sizeof(destroyed) - 1U) != 0
-	    || tape.written.mines != 2.75f
-	    || memcmp(&tape.written.record, &expected, sizeof(expected)) != 0)
+	if (!yt_projectile_sector_mine_hit_row(5.25, 7.0f, row,
+	    sizeof(row), &length)
+	    || length != sizeof(hit) - 1U
+	    || memcmp(row, hit, sizeof(hit) - 1U) != 0
+	    || !yt_projectile_sector_mine_news_row(shooter,
+	    sizeof(shooter), 7.0f, row, sizeof(row), &length)
+	    || length != sizeof(news) - 1U
+	    || memcmp(row, news, sizeof(news) - 1U) != 0
+	    || !yt_projectile_sector_mine_destroyed_row(2.5f, row,
+	    sizeof(row), &length)
+	    || length != sizeof(destroyed) - 1U
+	    || memcmp(row, destroyed, sizeof(destroyed) - 1U) != 0
+	    || !yt_projectile_sector_mine_destroyed_row(0.5f, row,
+	    sizeof(row), &length)
+	    || length != sizeof(singular) - 1U
+	    || memcmp(row, singular, sizeof(singular) - 1U) != 0)
 		return false;
-
-	projectile_sector_mine_fixture(&tape, &state, &missiles, &last_news);
-	last_news = 7.0f;
-	if (!yt_projectile_sector_mine_run(&state, &ops, &tape, NULL)
-	    || tape.event_count != YT_ARRAY_LEN(suppressed_events)
-	    || memcmp(tape.events, suppressed_events,
-	    sizeof(suppressed_events)) != 0
-	    || tape.news_length != 0U || last_news != 7.0f)
-		return false;
-
-	projectile_sector_mine_fixture(&tape, &state, &missiles, &last_news);
-	tape.reads[0].mines = 0.5f;
-	(void)yt_record_set_number(&tape.reads[0].record, YT_F129, 0.5f);
-	missiles = 2.0f;
-	if (!yt_projectile_sector_mine_run(&state, &ops, &tape, NULL)
-	    || tape.event_count != YT_ARRAY_LEN(reentry_events)
-	    || memcmp(tape.events, reentry_events, sizeof(reentry_events)) != 0
-	    || tape.read_position != 3U || missiles != 1.5f
-	    || state.destroyed != 0.5f || state.observed_mines != 0.0
-	    || state.route != YT_PROJECTILE_SECTOR_MINE_CONTINUE_PLAYERS
-	    || tape.row_lengths[1] != sizeof(singular) - 1U
-	    || memcmp(tape.rows[1], singular, sizeof(singular) - 1U) != 0
-	    || tape.written.mines != 0.0f)
-		return false;
-
-	projectile_sector_mine_fixture(&tape, &state, &missiles, &last_news);
-	tape.reads[0].mines = NAN;
-	for (failure = 0U; failure < 3U; ++failure) {
-		if (failure == 1U)
-			tape.reads[0].mines = 0.0f;
-		else if (failure == 2U)
-			tape.reads[0].mines = -0.5f;
-		if (!yt_projectile_sector_mine_run(&state, &ops, &tape, NULL)
-		    || tape.event_count != 1U
-		    || tape.events[0] != PROJECTILE_SECTOR_MINE_READ
-		    || state.route != YT_PROJECTILE_SECTOR_MINE_CONTINUE_PLAYERS)
-			return false;
-		projectile_sector_mine_fixture(&tape, &state, &missiles,
-		    &last_news);
-	}
-
-	for (failure = 1U; failure <= YT_ARRAY_LEN(ordinary_events); ++failure) {
-		projectile_sector_mine_fixture(&tape, &state, &missiles,
-		    &last_news);
-		tape.fail_at = failure;
-		if (yt_projectile_sector_mine_run(&state, &ops, &tape, NULL)
-		    || tape.event_count != failure
-		    || memcmp(tape.events, ordinary_events,
-		    failure * sizeof(ordinary_events[0])) != 0)
-			return false;
-	}
-	return !yt_projectile_sector_mine_run(NULL, &ops, &tape, NULL)
-	    && !yt_projectile_sector_mine_run(&state, NULL, &tape, NULL);
+	return !yt_projectile_sector_mine_hit_row(5.25, 7.0f, row,
+	    sizeof(hit) - 2U, &length)
+	    && !yt_projectile_sector_mine_news_row(shooter,
+	    sizeof(shooter), 7.0f, row, sizeof(news) - 2U, &length)
+	    && !yt_projectile_sector_mine_destroyed_row(2.5f, row,
+	    sizeof(destroyed) - 2U, &length);
 }
 
 enum projectile_planet_event {
@@ -27418,8 +27184,8 @@ main(void)
 		return fail("projectile plasma-planet transaction differs");
 	if (!check_projectile_defense_combat_transaction())
 		return fail("projectile defense-combat transaction differs");
-	if (!check_projectile_sector_mine_transaction())
-		return fail("projectile sector-mine transaction differs");
+	if (!check_projectile_sector_mine_rows())
+		return fail("projectile sector-mine rows differ");
 	if (!check_projectile_damage_model())
 		return fail("projectile player-damage model differs");
 	if (!check_projectile_persistence_model())

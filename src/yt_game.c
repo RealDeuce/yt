@@ -12342,138 +12342,105 @@ yt_projectile_defense_combat_run(
 }
 
 bool
-yt_projectile_sector_mine_run(
-    struct yt_projectile_sector_mine_state *state,
-    const struct yt_projectile_sector_mine_ops *ops, void *context,
-    struct yt_error *error)
+yt_projectile_sector_mine_hit_row(double mines, float sector,
+    uint8_t *row, size_t capacity, size_t *length)
 {
 	static const uint8_t hit_prefix[] = "The missiles hit";
 	static const uint8_t hit_middle[] = " SECTOR MINES in sector";
-	static const uint8_t news_middle[] =
-	    "'s Missiles hit sector mines in sector";
-	static const uint8_t destroyed_prefix[] = "The missile";
-	static const uint8_t destroyed_middle[] = " destroyed";
-	static const uint8_t destroyed_mine[] = " mine";
-	static const uint8_t plural[] = "s";
-	uint8_t row[256];
 	char mine_text[64];
 	char sector_text[64];
 	int mine_length;
 	int sector_length;
 	size_t row_length;
 
-	if (state == NULL || ops == NULL || state->missiles == NULL
-	    || state->last_news_sector == NULL || ops->read_sector == NULL
-	    || ops->present == NULL || ops->sound == NULL || ops->news == NULL
-	    || ops->write_sector == NULL
-	    || (state->shooter_name == NULL
-	    && state->shooter_name_length != 0U))
+	if (row == NULL || length == NULL)
 		return false;
-	state->observed_mines = 0.0;
-	state->destroyed = 0.0f;
-	state->route = YT_PROJECTILE_SECTOR_MINE_CONTINUE_PLAYERS;
 	sector_length = qb_str_single(sector_text, sizeof(sector_text),
-	    state->sector);
-	if (sector_length < 0)
+	    sector);
+	mine_length = qb_str_double(mine_text, sizeof(mine_text), mines);
+	if (sector_length < 0 || mine_length < 0
+	    || sizeof(hit_prefix) - 1U + (size_t)mine_length
+	    + sizeof(hit_middle) - 1U + (size_t)sector_length + 1U
+	    > capacity)
 		return false;
-	for (;;) {
-		double remaining_mines;
-		const uint8_t *suffix;
-		size_t suffix_length;
+	memcpy(row, hit_prefix, sizeof(hit_prefix) - 1U);
+	memcpy(row + sizeof(hit_prefix) - 1U, mine_text,
+	    (size_t)mine_length);
+	row_length = sizeof(hit_prefix) - 1U + (size_t)mine_length;
+	memcpy(row + row_length, hit_middle, sizeof(hit_middle) - 1U);
+	row_length += sizeof(hit_middle) - 1U;
+	memcpy(row + row_length, sector_text, (size_t)sector_length);
+	row_length += (size_t)sector_length;
+	row[row_length++] = '!';
+	*length = row_length;
+	return true;
+}
 
-		if (!ops->read_sector(context, state->sector,
-		    &state->persistence, error))
-			return false;
-		state->observed_mines = (double)state->persistence.mines;
-		if (!(state->observed_mines > 0.0))
-			return true;
-		mine_length = qb_str_double(mine_text, sizeof(mine_text),
-		    state->observed_mines);
-		if (mine_length < 0
-		    || sizeof(hit_prefix) - 1U + (size_t)mine_length
-		    + sizeof(hit_middle) - 1U + (size_t)sector_length + 1U
-		    > sizeof(row))
-			return false;
-		memcpy(row, hit_prefix, sizeof(hit_prefix) - 1U);
-		memcpy(row + sizeof(hit_prefix) - 1U, mine_text,
-		    (size_t)mine_length);
-		row_length = sizeof(hit_prefix) - 1U + (size_t)mine_length;
-		memcpy(row + row_length, hit_middle, sizeof(hit_middle) - 1U);
-		row_length += sizeof(hit_middle) - 1U;
-		memcpy(row + row_length, sector_text, (size_t)sector_length);
-		row_length += (size_t)sector_length;
-		row[row_length++] = '!';
-		if (!ops->present(context, row, row_length, error)
-		    || !ops->sound(context, 5.0f, error))
-			return false;
-		if (*state->last_news_sector != state->sector) {
-			if (state->shooter_name_length + sizeof(news_middle) - 1U
-			    + (size_t)sector_length + 1U > sizeof(row))
-				return false;
-			row_length = 0U;
-			if (state->shooter_name_length != 0U) {
-				memcpy(row, state->shooter_name,
-				    state->shooter_name_length);
-				row_length = state->shooter_name_length;
-			}
-			memcpy(row + row_length, news_middle,
-			    sizeof(news_middle) - 1U);
-			row_length += sizeof(news_middle) - 1U;
-			memcpy(row + row_length, sector_text,
-			    (size_t)sector_length);
-			row_length += (size_t)sector_length;
-			row[row_length++] = '!';
-			if (!ops->news(context, row, row_length, error))
-				return false;
-			*state->last_news_sector = state->sector;
-		}
-		state->destroyed = (double)*state->missiles
-		    < state->observed_mines ? *state->missiles
-		    : (float)state->observed_mines;
-		suffix = state->destroyed > 1.0f ? plural : NULL;
-		suffix_length = suffix == NULL ? 0U : sizeof(plural) - 1U;
-		mine_length = qb_str_single(mine_text, sizeof(mine_text),
-		    state->destroyed);
-		if (mine_length < 0
-		    || sizeof(destroyed_prefix) - 1U + suffix_length
-		    + sizeof(destroyed_middle) - 1U + (size_t)mine_length
-		    + sizeof(destroyed_mine) - 1U + suffix_length + 1U
-		    > sizeof(row))
-			return false;
-		memcpy(row, destroyed_prefix, sizeof(destroyed_prefix) - 1U);
-		row_length = sizeof(destroyed_prefix) - 1U;
-		if (suffix_length != 0U)
-			row[row_length++] = *suffix;
-		memcpy(row + row_length, destroyed_middle,
-		    sizeof(destroyed_middle) - 1U);
-		row_length += sizeof(destroyed_middle) - 1U;
-		memcpy(row + row_length, mine_text, (size_t)mine_length);
-		row_length += (size_t)mine_length;
-		memcpy(row + row_length, destroyed_mine,
-		    sizeof(destroyed_mine) - 1U);
-		row_length += sizeof(destroyed_mine) - 1U;
-		if (suffix_length != 0U)
-			row[row_length++] = *suffix;
-		row[row_length++] = '!';
-		if (!ops->present(context, row, row_length, error)
-		    || !ops->read_sector(context, state->sector,
-		    &state->persistence, error))
-			return false;
-		remaining_mines = state->observed_mines
-		    - (double)state->destroyed;
-		state->persistence.mines = (float)remaining_mines;
-		if (!yt_record_set_number(&state->persistence.record, YT_F129,
-		    state->persistence.mines)
-		    || !ops->write_sector(context, state->sector,
-		    &state->persistence, error))
-			return false;
-		*state->missiles = projectile_single_sub(*state->missiles,
-		    state->destroyed);
-		if (*state->missiles < 1.0f) {
-			state->route = YT_PROJECTILE_SECTOR_MINE_RETURN;
-			return true;
-		}
+bool
+yt_projectile_sector_mine_news_row(const uint8_t *shooter,
+    size_t shooter_length, float sector, uint8_t *row, size_t capacity,
+    size_t *length)
+{
+	static const uint8_t middle[] =
+	    "'s Missiles hit sector mines in sector";
+	char sector_text[64];
+	int sector_length;
+	size_t row_length = 0U;
+
+	if (row == NULL || length == NULL
+	    || (shooter == NULL && shooter_length != 0U))
+		return false;
+	sector_length = qb_str_single(sector_text, sizeof(sector_text), sector);
+	if (sector_length < 0 || shooter_length + sizeof(middle) - 1U
+	    + (size_t)sector_length + 1U > capacity)
+		return false;
+	if (shooter_length != 0U) {
+		memcpy(row, shooter, shooter_length);
+		row_length = shooter_length;
 	}
+	memcpy(row + row_length, middle, sizeof(middle) - 1U);
+	row_length += sizeof(middle) - 1U;
+	memcpy(row + row_length, sector_text, (size_t)sector_length);
+	row_length += (size_t)sector_length;
+	row[row_length++] = '!';
+	*length = row_length;
+	return true;
+}
+
+bool
+yt_projectile_sector_mine_destroyed_row(float destroyed,
+    uint8_t *row, size_t capacity, size_t *length)
+{
+	static const uint8_t prefix[] = "The missile";
+	static const uint8_t middle[] = " destroyed";
+	static const uint8_t mine[] = " mine";
+	char number[64];
+	int number_length;
+	size_t plural = destroyed > 1.0f ? 1U : 0U;
+	size_t row_length;
+
+	if (row == NULL || length == NULL)
+		return false;
+	number_length = qb_str_single(number, sizeof(number), destroyed);
+	if (number_length < 0 || sizeof(prefix) - 1U + plural
+	    + sizeof(middle) - 1U + (size_t)number_length
+	    + sizeof(mine) - 1U + plural + 1U > capacity)
+		return false;
+	memcpy(row, prefix, sizeof(prefix) - 1U);
+	row_length = sizeof(prefix) - 1U;
+	if (plural != 0U)
+		row[row_length++] = 's';
+	memcpy(row + row_length, middle, sizeof(middle) - 1U);
+	row_length += sizeof(middle) - 1U;
+	memcpy(row + row_length, number, (size_t)number_length);
+	row_length += (size_t)number_length;
+	memcpy(row + row_length, mine, sizeof(mine) - 1U);
+	row_length += sizeof(mine) - 1U;
+	if (plural != 0U)
+		row[row_length++] = 's';
+	row[row_length++] = '!';
+	*length = row_length;
+	return true;
 }
 
 bool

@@ -13446,42 +13446,6 @@ cruise_defense_victory(void *context, struct yt_error *error)
 	return xannor_victory(context, error);
 }
 
-static bool
-cruise_mine_present(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return session_present_text(context, text, length,
-	    SESSION_PRESENT_BOLD_LINE, "cruise missile sector-mine row", error);
-}
-
-static bool
-cruise_mine_sound(void *context, float selector, struct yt_error *error)
-{
-	return session_sound(context, selector,
-	    "cruise missile sector-mine sound", error);
-}
-
-static bool
-cruise_mine_read_sector(void *context, float sector,
-    struct yt_sector *value, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_read_sector(session, (int)sector, value,
-	    error);
-}
-
-static bool
-cruise_mine_write_sector(void *context, float sector,
-    const struct yt_sector *value, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database,
-	    (size_t)session_sector_basic_record(session, sector),
-	    &value->record, error);
-}
-
 enum missile_sector_route {
 	MISSILE_SECTOR_RETURN,
 	MISSILE_SECTOR_POST_IMPACT,
@@ -13501,16 +13465,8 @@ missile_sector(struct yt_session *session, int sector_number,
 		cruise_defense_write_sector,
 		cruise_defense_victory,
 	};
-	static const struct yt_projectile_sector_mine_ops mine_ops = {
-		cruise_mine_read_sector,
-		cruise_mine_present,
-		cruise_mine_sound,
-		session_append_news_bytes,
-		cruise_mine_write_sector,
-	};
 	struct yt_sector sector;
 	struct yt_projectile_defense_combat_state combat;
-	struct yt_projectile_sector_mine_state mine;
 	struct yt_projectile_sector_probe_state probe;
 	int basic;
 
@@ -13600,15 +13556,60 @@ missile_sector(struct yt_session *session, int sector_number,
 		return true;
 
 missile_mines:
-	mine.sector = (float)sector_number;
-	mine.shooter_name = (const uint8_t *)session->player.name;
-	mine.shooter_name_length = strlen(session->player.name);
-	mine.missiles = remaining;
-	mine.last_news_sector = last_mine_news_sector;
-	if (!yt_projectile_sector_mine_run(&mine, &mine_ops, session, error))
-		return false;
-	if (mine.route == YT_PROJECTILE_SECTOR_MINE_RETURN)
-		return true;
+	for (;;) {
+		struct yt_sector mine_sector;
+		double observed_mines;
+		float destroyed;
+		volatile float missiles_after;
+		uint8_t row[256];
+		size_t row_length;
+
+		if (!session_read_sector(session, sector_number, &mine_sector,
+		    error))
+			return false;
+		observed_mines = (double)mine_sector.mines;
+		if (!(observed_mines > 0.0))
+			break;
+		if (!yt_projectile_sector_mine_hit_row(observed_mines,
+		    (float)sector_number, row, sizeof(row), &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_BOLD_LINE, "cruise missile sector-mine row",
+		    error)
+		    || !session_sound(session, 5.0f,
+		    "cruise missile sector-mine sound", error))
+			return false;
+		if (*last_mine_news_sector != (float)sector_number) {
+			if (!yt_projectile_sector_mine_news_row(
+			    (const uint8_t *)session->player.name,
+			    strlen(session->player.name), (float)sector_number,
+			    row, sizeof(row), &row_length)
+			    || !session_append_news_bytes(session, row, row_length,
+			    error))
+				return false;
+			*last_mine_news_sector = (float)sector_number;
+		}
+		destroyed = (double)*remaining < observed_mines
+		    ? *remaining : (float)observed_mines;
+		if (!yt_projectile_sector_mine_destroyed_row(destroyed, row,
+		    sizeof(row), &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_BOLD_LINE, "cruise missile sector-mine row",
+		    error)
+		    || !session_read_sector(session, sector_number, &mine_sector,
+		    error))
+			return false;
+		mine_sector.mines = (float)(observed_mines - (double)destroyed);
+		if (!yt_record_set_number(&mine_sector.record, YT_F129,
+		    mine_sector.mines)
+		    || !yt_database_write(&session->door->game.database,
+		    (size_t)session_sector_basic_record(session,
+		    (float)sector_number), &mine_sector.record, error))
+			return false;
+		missiles_after = *remaining - destroyed;
+		*remaining = missiles_after;
+		if (*remaining < 1.0f)
+			return true;
+	}
 	for (basic = YT_PLAYER_FIRST;
 	    basic <= (int)session_sector_offset(session); ++basic) {
 		struct yt_player target;

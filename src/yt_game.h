@@ -972,32 +972,13 @@ bool yt_projectile_defense_combat_run(
     const struct yt_projectile_defense_combat_ops *ops, void *context,
     struct yt_error *error);
 
-enum yt_projectile_sector_mine_route {
-	YT_PROJECTILE_SECTOR_MINE_CONTINUE_PLAYERS,
-	YT_PROJECTILE_SECTOR_MINE_RETURN,
-};
-struct yt_projectile_sector_mine_state {
-	float sector;
-	const uint8_t *shooter_name;
-	size_t shooter_name_length;
-	float *missiles;
-	float *last_news_sector;
-	double observed_mines;
-	float destroyed;
-	struct yt_sector persistence;
-	enum yt_projectile_sector_mine_route route;
-};
-struct yt_projectile_sector_mine_ops {
-	yt_projectile_defense_sector_read_fn read_sector;
-	yt_projectile_output_fn present;
-	yt_projectile_sound_fn sound;
-	yt_projectile_output_fn news;
-	yt_projectile_defense_sector_write_fn write_sector;
-};
-bool yt_projectile_sector_mine_run(
-    struct yt_projectile_sector_mine_state *state,
-    const struct yt_projectile_sector_mine_ops *ops, void *context,
-    struct yt_error *error);
+bool yt_projectile_sector_mine_hit_row(double mines, float sector,
+    uint8_t *row, size_t capacity, size_t *length);
+bool yt_projectile_sector_mine_news_row(const uint8_t *shooter,
+    size_t shooter_length, float sector, uint8_t *row, size_t capacity,
+    size_t *length);
+bool yt_projectile_sector_mine_destroyed_row(float destroyed,
+    uint8_t *row, size_t capacity, size_t *length);
 
 struct yt_xannor_retaliation_state {
 	struct yt_player *player;
