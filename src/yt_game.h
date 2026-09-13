@@ -1322,18 +1322,6 @@ enum yt_salvage_cargo_kind {
 	YT_SALVAGE_EQUIPMENT,
 };
 
-struct yt_current_player_hydration_state {
-	struct yt_player *player;
-	int player_record;
-	uint8_t sector_record_offset_raw[4];
-	bool anti_cloak_enabled;
-	float *current_sector_record;
-	struct yt_player_cache *player_cache;
-};
-
-typedef bool (*yt_current_player_read_fn)(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error);
-
 enum yt_port_name_row_kind {
 	YT_PORT_NAME_CURRENT_ROW,
 	YT_PORT_NAME_KEEP_ROW,
@@ -4239,9 +4227,10 @@ bool yt_profit_run(struct yt_profit_state *state,
 	const struct yt_profit_ops *ops, void *context,
 	struct yt_error *error);
 
-bool yt_current_player_hydrate_run(
-    struct yt_current_player_hydration_state *state,
-    yt_current_player_read_fn read_player, void *context,
+bool yt_current_player_hydrate(struct yt_player *player,
+    const struct yt_player *fresh, int player_record,
+    float sector_record_offset, bool anti_cloak_enabled,
+    float *current_sector_record, struct yt_player_cache *player_cache,
     struct yt_error *error);
 
 void yt_player_construct(struct yt_player *player,

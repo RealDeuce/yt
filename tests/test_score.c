@@ -132,85 +132,51 @@ done:
 	return passed;
 }
 
-struct hydration_tape {
-	struct yt_player fresh;
-	int requested_record;
-	unsigned calls;
-	bool succeeds;
-};
-
-static bool
-hydration_read(void *context, int player_record, struct yt_player *player,
-    struct yt_error *error)
-{
-	struct hydration_tape *tape = context;
-
-	(void)error;
-	++tape->calls;
-	tape->requested_record = player_record;
-	if (!tape->succeeds)
-		return false;
-	*player = tape->fresh;
-	return true;
-}
-
 static bool
 check_current_player_cache_model(void)
 {
-	struct yt_current_player_hydration_state state;
-	struct hydration_tape tape;
+	struct yt_player fresh;
 	struct yt_player player;
-	struct yt_player before;
 	struct yt_player_cache player_cache = {0};
 	float current_sector = -1.0f;
 	struct yt_error error;
 
 	memset(&player, 0, sizeof(player));
-	memset(&tape, 0, sizeof(tape));
-	memset(&state, 0, sizeof(state));
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Cached Name");
 	player.name_length = 11.0f;
 	player.last_active = 71.0f;
 	player.killed_by = 72.0f;
 	player.lottery_plays = 73.0f;
-	memset(&tape.fresh, 0, sizeof(tape.fresh));
-	(void)snprintf(tape.fresh.name, sizeof(tape.fresh.name), "%s", "Field Name");
-	tape.fresh.name_length = 10.0f;
-	tape.fresh.last_active = 1.0f;
-	tape.fresh.killed_by = 2.0f;
-	tape.fresh.lottery_plays = 3.0f;
-	tape.fresh.turns = 4.0f;
-	tape.fresh.shields = 5.0f;
-	tape.fresh.sector = 6.0f;
-	tape.fresh.fighters = 7.0f;
-	tape.fresh.holds = 8.0f;
-	tape.fresh.ore = 9.0f;
-	tape.fresh.organics = 10.0f;
-	tape.fresh.equipment = 11.0f;
-	tape.fresh.credits = 12.0f;
-	tape.fresh.team = 13.0f;
-	tape.fresh.danger_scanner = 14.0f;
-	tape.fresh.missiles = 15.0f;
-	tape.fresh.score = 16.0f;
-	tape.fresh.plasma = 17.0f;
-	tape.fresh.ports_owned = 18.0f;
-	tape.fresh.ground_forces = 19.0f;
-	tape.fresh.cloak = 20.0f;
-	tape.fresh.mines = 21.0f;
-	yt_player_encode(&tape.fresh);
-	memcpy(tape.fresh.record.bytes + YT_F109, "\x11\x22\x33\0", 4U);
-	tape.fresh.score = qb_mbf32_decode(
-	    tape.fresh.record.bytes + YT_F109);
-	tape.fresh.record.bytes[YT_RECORD_TAIL_OFFSET] = 0x7f;
-	tape.succeeds = true;
-	state.player = &player;
-	state.player_record = 2;
-	if (qb_mbf32_encode(51.0f, state.sector_record_offset_raw) != QB_MBF_OK)
-		return false;
-	state.current_sector_record = &current_sector;
-	state.player_cache = &player_cache;
-	if (!yt_current_player_hydrate_run(&state, hydration_read, &tape, NULL)
-	    || tape.calls != 1U || tape.requested_record != 2
+	memset(&fresh, 0, sizeof(fresh));
+	(void)snprintf(fresh.name, sizeof(fresh.name), "%s", "Field Name");
+	fresh.name_length = 10.0f;
+	fresh.last_active = 1.0f;
+	fresh.killed_by = 2.0f;
+	fresh.lottery_plays = 3.0f;
+	fresh.turns = 4.0f;
+	fresh.shields = 5.0f;
+	fresh.sector = 6.0f;
+	fresh.fighters = 7.0f;
+	fresh.holds = 8.0f;
+	fresh.ore = 9.0f;
+	fresh.organics = 10.0f;
+	fresh.equipment = 11.0f;
+	fresh.credits = 12.0f;
+	fresh.team = 13.0f;
+	fresh.danger_scanner = 14.0f;
+	fresh.missiles = 15.0f;
+	fresh.score = 16.0f;
+	fresh.plasma = 17.0f;
+	fresh.ports_owned = 18.0f;
+	fresh.ground_forces = 19.0f;
+	fresh.cloak = 20.0f;
+	fresh.mines = 21.0f;
+	yt_player_encode(&fresh);
+	memcpy(fresh.record.bytes + YT_F109, "\x11\x22\x33\0", 4U);
+	fresh.score = qb_mbf32_decode(fresh.record.bytes + YT_F109);
+	fresh.record.bytes[YT_RECORD_TAIL_OFFSET] = 0x7f;
+	if (!yt_current_player_hydrate(&player, &fresh, 2, 51.0f, false,
+	    &current_sector, &player_cache, NULL)
 	    || strcmp(player.name, "Cached Name") != 0
 	    || player.name_length != 11.0f || player.last_active != 71.0f
 	    || player.killed_by != 72.0f || player.lottery_plays != 73.0f
@@ -223,41 +189,28 @@ check_current_player_cache_model(void)
 	    || player.score != 0.0f || player.plasma != 17.0f
 	    || player.ports_owned != 18.0f || player.ground_forces != 19.0f
 	    || player.cloak != 20.0f || player.mines != 21.0f
-	    || memcmp(&player.record, &tape.fresh.record,
+	    || memcmp(&player.record, &fresh.record,
 	    sizeof(player.record)) != 0
 	    || current_sector != 57.0f
 	    || player_cache.cloak[2] != 20.0f)
 		return false;
 
-	tape.fresh.sector = 22.0f;
-	tape.fresh.cloak = 23.0f;
-	yt_player_encode(&tape.fresh);
-	state.anti_cloak_enabled = true;
-	if (!yt_current_player_hydrate_run(&state, hydration_read, &tape, NULL)
+	fresh.sector = 22.0f;
+	fresh.cloak = 23.0f;
+	yt_player_encode(&fresh);
+	if (!yt_current_player_hydrate(&player, &fresh, 2, 51.0f, true,
+	    &current_sector, &player_cache, NULL)
 	    || player_cache.cloak[2] != 20.0f
 	    || current_sector != 73.0f)
 		return false;
 
-	before = player;
-	tape.succeeds = false;
-	current_sector = 99.0f;
-	if (yt_current_player_hydrate_run(&state, hydration_read, &tape, NULL)
-	    || memcmp(&player, &before, sizeof(player)) != 0
-	    || current_sector != 99.0f)
-		return false;
-
-	state.player_record = 2;
-	state.anti_cloak_enabled = false;
-	if (qb_mbf32_encode(1.0e38f, state.sector_record_offset_raw)
-	    != QB_MBF_OK)
-		return false;
-	tape.fresh.sector = 1.0e38f;
-	tape.fresh.fighters = 7.0f;
-	yt_player_encode(&tape.fresh);
-	tape.succeeds = true;
+	fresh.sector = 1.0e38f;
+	fresh.fighters = 7.0f;
+	yt_player_encode(&fresh);
 	current_sector = 77.0f;
 	yt_error_clear(&error);
-	if (yt_current_player_hydrate_run(&state, hydration_read, &tape, &error)
+	if (yt_current_player_hydrate(&player, &fresh, 2, 1.0e38f, false,
+	    &current_sector, &player_cache, &error)
 	    || error.status != YT_RANGE || !error.basic_fault_valid
 	    || !error.basic_error_valid || error.basic_error != 6U
 	    || error.basic_fault_site
@@ -265,17 +218,14 @@ check_current_player_cache_model(void)
 	    || current_sector != 77.0f)
 		return false;
 
-	state.player_record = 2;
-	if (qb_mbf32_encode(-5.0f, state.sector_record_offset_raw) != QB_MBF_OK)
-		return false;
-	tape.fresh.sector = 5.0f;
-	tape.fresh.fighters = 0.0f;
-	yt_player_encode(&tape.fresh);
-	memcpy(tape.fresh.record.bytes + YT_F61,
+	fresh.sector = 5.0f;
+	fresh.fighters = 0.0f;
+	yt_player_encode(&fresh);
+	memcpy(fresh.record.bytes + YT_F61,
 	    (const uint8_t[4]){0xA1U, 0xB2U, 0xC3U, 0x00U}, 4U);
 	yt_error_clear(&error);
-	return yt_current_player_hydrate_run(&state, hydration_read, &tape,
-	    &error) && current_sector == 0.0f
+	return yt_current_player_hydrate(&player, &fresh, 2, -5.0f, false,
+	    &current_sector, &player_cache, &error) && current_sector == 0.0f
 	    && memcmp(player.record.bytes + YT_F61,
 	    (const uint8_t[4]){0xA1U, 0xB2U, 0xC3U, 0x00U}, 4U) == 0;
 }

@@ -681,31 +681,17 @@ write_database_record_at_fault(struct yt_session *session,
 	return yt_database_flush(&session->door->game.database, error);
 }
 
-static bool
-session_hydration_read_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
+bool
+session_reload_player(struct yt_session *session, struct yt_error *error)
 {
-	struct yt_session *session = context;
+	struct yt_player fresh;
 
-	return read_player_at_fault(session, player_record, player,
-	    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET, error);
-}
-
-static bool
-reload_player(struct yt_session *session, struct yt_error *error)
-{
-	struct yt_current_player_hydration_state state = {
-		.player = &session->player,
-		.player_record = session_record(session),
-		.current_sector_record = &session->current_sector_record,
-		.player_cache = &session->player_cache,
-	};
-
-	memcpy(state.sector_record_offset_raw,
-	    session->door->game.config.record.bytes + YT_F53, 4U);
-	state.anti_cloak_enabled = session->anti_cloak_enabled;
-	if (!yt_current_player_hydrate_run(&state,
-	    session_hydration_read_player, session, error))
+	if (!read_player_at_fault(session, session_record(session), &fresh,
+	    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET, error)
+	    || !yt_current_player_hydrate(&session->player, &fresh,
+	    session_record(session), session_sector_offset(session),
+	    session->anti_cloak_enabled, &session->current_sector_record,
+	    &session->player_cache, error))
 		return false;
 	session->combat_ship_fighters = session->player.fighters;
 	session->combat_ship_shields = session->player.shields;
@@ -731,7 +717,7 @@ session_mutate_player_credits(struct yt_session *session, float argument,
 		}
 		return false;
 	}
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	if (hydrated != NULL)
 		*hydrated = true;
@@ -784,7 +770,7 @@ apply_player_credit_mutation(void *context, float player_record,
 static bool
 computer_prompt_hydrate(struct yt_session *session, struct yt_error *error)
 {
-	return reload_player(session, error);
+	return session_reload_player(session, error);
 }
 
 static bool
@@ -3253,7 +3239,7 @@ post_login(struct yt_session *session, struct yt_error *error)
 		struct yt_record repaired;
 		uint8_t maximum_raw[4];
 
-		if (!reload_player(session, error))
+		if (!session_reload_player(session, error))
 			return false;
 		if (session->player.sector < 1.0f) {
 			repaired = session->player.record;
@@ -3264,7 +3250,7 @@ post_login(struct yt_session *session, struct yt_error *error)
 			    YT_BASIC_FAULT_POST_LOGIN_SECTOR_PUT, error))
 				return false;
 		}
-		if (!reload_player(session, error))
+		if (!session_reload_player(session, error))
 			return false;
 		memcpy(maximum_raw, session->door->game.config.record.bytes + YT_F121,
 	    sizeof(maximum_raw));
@@ -4145,7 +4131,7 @@ danger_scan_read_player(void *context, float record,
 static bool
 danger_scan_restore_current(void *context, struct yt_error *error)
 {
-	return reload_player(context, error);
+	return session_reload_player(context, error);
 }
 
 static bool
@@ -4460,7 +4446,7 @@ fresh_no_turn_gate(struct yt_session *session, bool *denied,
 	static const uint8_t notice[] = "Sorry but you have no turns left.";
 	uint8_t result_raw[4];
 
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	yt_no_turn_gate_result_raw(false, result_raw);
 	session->shared_status = qb_mbf32_decode(result_raw);
@@ -4490,7 +4476,7 @@ finalize_action(struct yt_session *session, float amount,
 	bool anti_cloak_allows;
 
 	(void)amount;
-	if (!spy_sweep(session, error) || !reload_player(session, error))
+	if (!spy_sweep(session, error) || !session_reload_player(session, error))
 		return false;
 	memcpy(turn_raw, session->player.record.bytes + YT_F49,
 	    sizeof(turn_raw));
@@ -4573,7 +4559,7 @@ finalize_action(struct yt_session *session, float amount,
 			return false;
 		if (session_is_destroyed(session))
 			return false;
-		if (!reload_player(session, error))
+		if (!session_reload_player(session, error))
 			return false;
 	}
 	return true;
@@ -4683,7 +4669,7 @@ emergency_warp(struct yt_session *session, struct yt_error *error)
 	    "emergency warp post-gauge blank one", error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "emergency warp post-gauge blank two", error)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	if (!random_value(session, &first, error)
 	    || !random_value(session, &override, error)
@@ -4882,7 +4868,7 @@ movement_hydrate(void *context, int player_record, struct yt_player *player,
 	struct yt_session *session = context;
 
 	if (player_record != session_record(session)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -5202,7 +5188,7 @@ common_fatal_read_player(void *context, int player_record,
 
 	memcpy(cached_name, session->player.name, sizeof(cached_name));
 	if (player_record != session_record(session)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	memcpy(session->player.name, cached_name, sizeof(cached_name));
 	*player = session->player;
@@ -5259,7 +5245,7 @@ salvage_load_player(struct yt_session *session, int player_record,
     struct yt_player *player, struct yt_error *error)
 {
 	if (player_record == session_record(session)) {
-		if (!reload_player(session, error))
+		if (!session_reload_player(session, error))
 			return false;
 		*player = session->player;
 		return true;
@@ -5728,7 +5714,7 @@ direct_attack_combat_read(void *context, int player_record,
 	if (player_record != session_record(session))
 		return yt_game_read_player(&session->door->game, player_record,
 		    player, error);
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -6594,7 +6580,7 @@ hostile_bribe_accept_read_player(void *context, int player_record,
 	struct yt_session *session = context;
 
 	if (player_record != session_record(session)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -6755,7 +6741,7 @@ mine_read_current(void *context, struct yt_player *player,
 {
 	struct yt_session *session = context;
 
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -6993,7 +6979,7 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 
 		session->shared_status = 0.0f;
 		if (!display_sector(session, false, error)
-		    || !reload_player(session, error))
+		    || !session_reload_player(session, error))
 			return false;
 		if (session_is_disruption_sector(session,
 		    session->player.sector)) {
@@ -7045,7 +7031,7 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 			size_t row_length;
 			bool fresh_menu = true;
 
-			if (!reload_player(session, error))
+			if (!session_reload_player(session, error))
 				return false;
 			session_set_foreground(session, 3.0f);
 			if (!yt_hostile_menu_row(session->combat_ship_fighters,
@@ -7184,7 +7170,7 @@ main_fighters_hydrate(void *context, int player_record,
 	struct yt_session *session = context;
 
 	if (player_record != session_record(session)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -7299,7 +7285,7 @@ drop_mines_read_player(void *context, int player_record,
 	struct yt_session *session = context;
 
 	if (player_record != session_record(session)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -7515,7 +7501,7 @@ port_report_read_player(void *context, uint32_t physical_record,
 	struct yt_record record;
 
 	if (physical_record == (uint32_t)session_record(session)) {
-		if (!reload_player(session, error))
+		if (!session_reload_player(session, error))
 			return false;
 		*player = session->player;
 		return true;
@@ -7747,7 +7733,7 @@ commodity_trade_read_player(void *context, uint32_t physical_record,
 	if (physical_record != (uint32_t)session_record(session))
 		return port_report_failure(error,
 		    "commodity trade player record");
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -8567,7 +8553,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 	float award = 0.0f;
 
 	memcpy(cached_name, session->player.name, sizeof(cached_name));
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	if (session->player.credits < 5.0f) {
 		if (!earth_credit_error(session,
@@ -8599,7 +8585,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 		    error))
 			return false;
 	}
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	session->player.lottery_plays =
 	    single_add(session->player.lottery_plays, 1.0f);
@@ -8784,7 +8770,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 		    SESSION_PRESENT_LINE, "lottery award suffix", error))
 			return false;
 	}
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	for (index = 0; index < matches; ++index) {
 		if (!session_sound(session, 1.0f,
@@ -8858,7 +8844,7 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 	    SESSION_PRESENT_LINE, "Earth report ordinary blank", error))
 		return false;
 	session->earth_report_seen = true;
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	if (!session_present_paged_row(session, separator, sizeof(separator) - 1U)
 	    || !session_present_paged_row(session, header, sizeof(header) - 1U)
@@ -9119,7 +9105,7 @@ planet_inventory(struct yt_session *session, int logical_planet,
 	size_t name_length;
 	int index;
 
-	if (!reload_player(session, error)
+	if (!session_reload_player(session, error)
 	    || !planet_update_cached(session, logical_planet, &planet, &cache,
 	    error)
 	    || !session_read_planet(session, logical_planet,
@@ -9272,7 +9258,7 @@ planet_take_one(struct yt_session *session, int logical_planet, int item,
 		return session_present_alert(session, capacity, sizeof(capacity) - 1U,
 		    "planet Take One capacity error", error);
 	}
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	yt_planet_take_one_player_overlay(&session->player, item, quantity);
 	if (!write_player(session, error))
@@ -9287,7 +9273,7 @@ planet_take_one(struct yt_session *session, int logical_planet, int item,
 		return false;
 	session->planet_quantity[item] = double_sub(
 	    session->planet_quantity[item], (double)quantity);
-	return reload_player(session, error);
+	return session_reload_player(session, error);
 }
 
 static bool
@@ -9310,7 +9296,7 @@ planet_take_all(struct yt_session *session, int logical_planet,
 
 	if (!session_present_paged_line(session, title, sizeof(title) - 1U,
 	    "planet take-all title", error)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	yt_planet_take_all_weapon_player_overlay(&session->player,
 	    session->planet_quantity, amount);
@@ -9352,7 +9338,7 @@ planet_take_all(struct yt_session *session, int logical_planet,
 		char row[96];
 		float commodity_amount;
 
-		if (!reload_player(session, error))
+		if (!session_reload_player(session, error))
 			return false;
 		commodity_amount = yt_planet_take_all_commodity_player_overlay(
 		    &session->player, index, session->planet_quantity[index]);
@@ -9397,7 +9383,7 @@ planet_garrison(struct yt_session *session, int logical_planet,
 	    &planet, error))
 		return false;
 	old_garrison = planet.ground_forces;
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	session_set_foreground(session, 6.0f);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -9440,7 +9426,7 @@ planet_garrison(struct yt_session *session, int logical_planet,
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)session_planet_basic_record(session, (float)logical_planet),
 	    &planet.record, error)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	yt_planet_garrison_player_overlay(&session->player, after);
 	return yt_database_write(&session->door->game.database,
@@ -9648,7 +9634,7 @@ planet_transfer(struct yt_session *session, int logical_planet,
 		double held[3];
 		size_t index;
 
-		if (!reload_player(session, error))
+		if (!session_reload_player(session, error))
 			return false;
 		held[0] = (double)session->player.ore;
 		held[1] = (double)session->player.organics;
@@ -9792,7 +9778,7 @@ planet_transfer(struct yt_session *session, int logical_planet,
 		if (!session_present_paged_fragment(session, success, success_length))
 			return false;
 	}
-	if (!reload_player(session, error)
+	if (!session_reload_player(session, error)
 	    || !planet_update(session, logical_planet, &planet, error))
 		return false;
 	return session_sound(session, 4.0f,
@@ -9828,7 +9814,7 @@ planet_productivity(struct yt_session *session, int logical_planet,
 	float credit_argument;
 	size_t index;
 
-	if (!reload_player(session, error)
+	if (!session_reload_player(session, error)
 	    || !planet_update_cached(session, logical_planet, &planet, &cache,
 	    error))
 		return false;
@@ -9894,7 +9880,7 @@ planet_productivity(struct yt_session *session, int logical_planet,
 	if (!session_write_planet(session, logical_planet,
 	    &planet, error))
 		return false;
-	return reload_player(session, error);
+	return session_reload_player(session, error);
 }
 
 static bool
@@ -9929,7 +9915,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 	    || !read_planet_physical(session, physical_planet, &planet, error)
 	    || !yt_planet_stored_name(&planet, planet_name,
 	    &planet_name_length, error)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	defenders = floorf(planet.ground_forces);
 	if (!yt_player_stored_name(&session->player, player_name,
@@ -10290,7 +10276,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 		    || !append_news_bytes(session, row, row_length, error)
 		    || !session_sound(session, 3.0f,
 		    "planet move explosion sound", error)
-		    || !reload_player(session, error))
+		    || !session_reload_player(session, error))
 			return false;
 		if (session->player.fighters != 0.0f) {
 			float range = session->player.fighters;
@@ -10378,7 +10364,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	if (!yt_database_write(
 	    &session->door->game.database, (size_t)destination_record,
 	    &target.record, error)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	yt_planet_move_success_overlay(&session->player, (float)destination);
 	return yt_database_write(&session->door->game.database,
@@ -10608,7 +10594,7 @@ planet_menu(struct yt_session *session, int logical_planet,
 		int position;
 
 		session_set_pager_line_count(session, 0.0f);
-		if (!reload_player(session, error))
+		if (!session_reload_player(session, error))
 			return false;
 		free_holds = double_sub(double_sub(double_sub(
 		    (double)session->player.holds,
@@ -10642,7 +10628,7 @@ planet_menu(struct yt_session *session, int logical_planet,
 		memcpy(prompt + prompt_length, prompt_body,
 		    sizeof(prompt_body) - 1U);
 		prompt_length += sizeof(prompt_body) - 1U;
-		if (!reload_player(session, error)
+		if (!session_reload_player(session, error)
 		    || !planet_update(session, logical_planet,
 		    &(struct yt_planet){0}, error)
 		    || !session_present_timed_paged_row(session, prompt, prompt_length,
@@ -10840,7 +10826,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	    || !session_present_paged_fragment(session, price, sizeof(price) - 1U)
 	    || !yt_player_stored_name(&session->player, cached_trader,
 	    &cached_trader_length, error)
-	    || !reload_player(session, error)
+	    || !session_reload_player(session, error)
 	    || !yt_planet_creation_credit_row((double)session->player.credits,
 	    row, sizeof(row), &row_length)
 	    || !session_present_paged_fragment(session, row, row_length))
@@ -11074,7 +11060,7 @@ command_land(struct yt_session *session, bool *enter_sector,
 
 	if (!session_present_paged_line(session, title, sizeof(title) - 1U,
 	    "planet landing title", error)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	cached_carried = session->player.ground_forces;
 	if (!session_read_sector(session,
@@ -11551,7 +11537,7 @@ info_panel_read_player(void *context, struct yt_player *player,
 {
 	struct yt_session *session = context;
 
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -12088,7 +12074,7 @@ team_transfer(struct yt_session *session, struct yt_error *error)
 	double initial_defense;
 	int logical_sector;
 
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	logical_sector = (int)session->player.sector;
 	initial_fighters = (double)session->player.fighters;
@@ -12170,7 +12156,7 @@ team_transfer(struct yt_session *session, struct yt_error *error)
 			    &fresh_sector.record, error))
 				return false;
 		}
-		if (!reload_player(session, error))
+		if (!session_reload_player(session, error))
 			return false;
 		yt_team_transfer_apply_player(&session->player, amount);
 		if (!yt_database_write(&session->door->game.database,
@@ -12193,7 +12179,7 @@ team_banish(struct yt_session *session, struct yt_team *team,
 	int team_id;
 	size_t index;
 
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	team_id = (int)session->player.team;
 	if (!team_load(session, team_id, team, error))
@@ -12293,10 +12279,10 @@ command_team(struct yt_session *session, struct yt_error *error)
 		    || !info_team_lines(session, &team, &captain, error))
 			return false;
 		session_set_pager_line_count(session, 0.0f);
-		if (!reload_player(session, error)
+		if (!session_reload_player(session, error)
 		    || !session_present_paged_line(session, exit_row, sizeof(exit_row) - 1U,
 		    "team exit row", error)
-		    || !reload_player(session, error))
+		    || !session_reload_player(session, error))
 			return false;
 		if (session->player.team == 0.0f) {
 			for (index = 0; index < YT_ARRAY_LEN(teamless_rows); ++index)
@@ -12539,7 +12525,7 @@ port_rename_hydrate(void *context, int player_record,
 	struct yt_session *session = context;
 
 	if (player_record != session_record(session)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -12720,7 +12706,7 @@ port_purchase_accept_hydrate(void *context, int player_record,
 	struct yt_session *session = context;
 
 	if (player_record != session_record(session)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -12733,7 +12719,7 @@ port_purchase_hydrate(void *context, int player_record,
 	struct yt_session *session = context;
 
 	if (player_record != session_record(session)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -13056,7 +13042,7 @@ genesis_hydrate(void *context, int player_record, struct yt_player *player,
 	struct yt_session *session = context;
 
 	if (player_record != session_record(session)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -15133,7 +15119,7 @@ projectile_command_hydrate(void *context, int player_record,
 	struct yt_session *session = context;
 
 	if (player_record != session_record(session)
-	    || !reload_player(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -15526,7 +15512,7 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 		static const uint8_t teamless[] =
 		    "You Don't belong to a team!";
 
-		if (!reload_player(session, error))
+		if (!session_reload_player(session, error))
 			return false;
 		if (session->player.team == 0.0f) {
 			return session_present_alert(session, teamless,
@@ -16034,7 +16020,7 @@ computer_route(struct yt_session *session, bool autopilot,
 	session->path_marker = 0.0f;
 	if (!autopilot || stale_marker)
 		return true;
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	if (hop_count > session->player.turns) {
 		if (!session_present_alert(session, insufficient,
@@ -16801,7 +16787,7 @@ nearest_front_hydrate(void *context, float *current_team,
 {
 	struct yt_session *session = context;
 
-	if (!reload_player(session, error))
+	if (!session_reload_player(session, error))
 		return false;
 	*current_team = session->player.team;
 	*ports_owned = session->player.ports_owned;
@@ -17486,7 +17472,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 		bool enter_sector = false;
 
 		session_set_pager_line_count(session, 0.0f);
-		if (!reload_player(session, error))
+		if (!session_reload_player(session, error))
 			return false;
 		session_set_foreground(session, 2.0f);
 		if (!session_present_text(session, NULL, 0U,

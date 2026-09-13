@@ -22411,20 +22411,6 @@ struct direct_warp_gate_runtime_state {
 };
 
 static bool
-direct_warp_gate_runtime_read(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct direct_warp_gate_runtime_state *state = context;
-
-	(void)error;
-	++state->read_count;
-	if (player_record != 2)
-		return false;
-	*player = state->fresh;
-	return true;
-}
-
-static bool
 direct_emergency_warp_gate_runtime_failure_run(
     struct hostile_mines_hazard_fixture *fixture, bool hostile, bool ansi,
     const uint8_t *command, size_t command_length,
@@ -22436,7 +22422,6 @@ direct_emergency_warp_gate_runtime_failure_run(
 	static const uint8_t main_gate_raw[4] = {0x00U, 0x00U, 0x00U, 0x00U};
 	const uint8_t *expected_gate_raw = hostile
 	    ? scanner_gate_raw : main_gate_raw;
-	struct yt_current_player_hydration_state hydration;
 	struct yt_player before;
 	struct yt_player expected;
 	struct yt_record fresh_record;
@@ -22478,16 +22463,10 @@ direct_emergency_warp_gate_runtime_failure_run(
 	(void)yt_record_set_number(&fresh_record, YT_F125, 120.0f);
 	(void)yt_record_set_number(&fresh_record, YT_F129, 121.0f);
 	yt_player_decode(&gate->fresh, &fresh_record);
-	memset(&hydration, 0, sizeof(hydration));
-	hydration.player = &fixture->emergency_player;
-	hydration.player_record = 2;
-	hydration.current_sector_record = &current_sector;
-	if (qb_mbf32_encode(1.0e38f,
-	    hydration.sector_record_offset_raw) != QB_MBF_OK)
-		return false;
+	++gate->read_count;
 	yt_error_clear(&error);
-	if (yt_current_player_hydrate_run(&hydration,
-	    direct_warp_gate_runtime_read, gate, &error)
+	if (yt_current_player_hydrate(&fixture->emergency_player, &gate->fresh,
+	    2, 1.0e38f, false, &current_sector, NULL, &error)
 	    || !yt_basic_fault_project(&error, NULL, 0U, NULL, 0U, NULL, 0U,
 	    projection)
 	    || gate->read_count != 1U
@@ -24875,7 +24854,6 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 {
 	struct direct_warp_attack_database_state *io;
 	struct viewer_pager_join *join;
-	struct yt_current_player_hydration_state hydration;
 	struct yt_present_result sound;
 	struct yt_player before;
 	struct yt_player fresh;
@@ -24952,20 +24930,12 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 	entry->player_cache.cloak[1] = -2.0f;
 	entry->player_cache.cloak[2] = -3.0f;
 	entry->player_cache.cloak[3] = -4.0f;
-	memset(&hydration, 0, sizeof(hydration));
-	hydration.player = &fixture->emergency_player;
-	hydration.player_record = 2;
-	hydration.current_sector_record = &entry->current_sector;
-	hydration.player_cache = &entry->player_cache;
-	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
-	    != QB_MBF_OK) {
-		yt_database_close(&io->database);
-		return false;
-	}
 	++cycle->fresh_hostile_player_reads;
 	yt_error_clear(&error);
-	if (!yt_current_player_hydrate_run(&hydration,
-	    direct_warp_attack_read_player, io, &error)) {
+	if (!direct_warp_attack_read_player(io, 2, &fresh, &error)
+	    || !yt_current_player_hydrate(&fixture->emergency_player, &fresh,
+	    2, 51.0f, false, &entry->current_sector, &entry->player_cache,
+	    &error)) {
 		yt_database_close(&io->database);
 		return false;
 	}
@@ -25169,18 +25139,13 @@ direct_warp_attack_combat_read_player(void *context, int player_record,
     struct yt_player *player, struct yt_error *error)
 {
 	struct direct_warp_attack_combat_join *join = context;
-	struct yt_current_player_hydration_state hydration;
+	struct yt_player fresh;
 
-	memset(&hydration, 0, sizeof(hydration));
-	hydration.player = &join->fixture->emergency_player;
-	hydration.player_record = player_record;
-	hydration.current_sector_record = &join->current_sector_record;
-	hydration.player_cache = &join->player_cache;
-	if (qb_mbf32_encode(join->sector_record_offset,
-	    hydration.sector_record_offset_raw) != QB_MBF_OK)
-		return false;
-	if (!yt_current_player_hydrate_run(&hydration,
-	    direct_warp_attack_combat_a41c_source, join, error)) {
+	if (!direct_warp_attack_combat_a41c_source(join, player_record,
+	    &fresh, error)
+	    || !yt_current_player_hydrate(&join->fixture->emergency_player,
+	    &fresh, player_record, join->sector_record_offset, false,
+	    &join->current_sector_record, &join->player_cache, error)) {
 		memset(join->ship_raw, 0, 4U);
 		memcpy(join->ship_raw + 4U,
 		    join->fixture->emergency_player.record.bytes + YT_F61, 4U);
@@ -25929,12 +25894,7 @@ direct_warp_attack_victory_mutate_credits(void *context,
     bool *hydrated, struct yt_error *error)
 {
 	struct direct_warp_attack_combat_join *join = context;
-	struct yt_current_player_hydration_state hydration = {
-		.player = player,
-		.player_record = 2,
-		.current_sector_record = &join->current_sector_record,
-		.player_cache = &join->player_cache,
-	};
+	struct yt_player fresh;
 	uint8_t raw[4];
 	volatile float sum;
 	float result;
@@ -25947,11 +25907,10 @@ direct_warp_attack_victory_mutate_credits(void *context,
 	join->victory_credit_written = false;
 	if (qb_mbf32_encode(argument, raw) == QB_MBF_OVERFLOW)
 		return false;
-	if (qb_mbf32_encode(join->sector_record_offset,
-	    hydration.sector_record_offset_raw) != QB_MBF_OK)
-		return false;
-	if (!yt_current_player_hydrate_run(&hydration,
-	    direct_warp_attack_victory_read_credit, join, error))
+	if (!direct_warp_attack_victory_read_credit(join, 2, &fresh, error)
+	    || !yt_current_player_hydrate(player, &fresh, 2,
+	    join->sector_record_offset, false, &join->current_sector_record,
+	    &join->player_cache, error))
 		return false;
 	*hydrated = true;
 	join->victory_credit_hydrated = true;

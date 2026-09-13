@@ -3861,56 +3861,55 @@ current_player_add_single_raw(const uint8_t left[4], const uint8_t right[4],
 }
 
 bool
-yt_current_player_hydrate_run(
-    struct yt_current_player_hydration_state *state,
-    yt_current_player_read_fn read_player, void *context,
+yt_current_player_hydrate(struct yt_player *player,
+    const struct yt_player *fresh, int player_record,
+    float sector_record_offset, bool anti_cloak_enabled,
+    float *current_sector_record, struct yt_player_cache *player_cache,
     struct yt_error *error)
 {
-	struct yt_player fresh;
+	uint8_t sector_record_offset_raw[4];
 	uint8_t current_sector_raw[8] = {0};
 	enum qb_mbf_status add_status;
-	int record;
 
-	if (state == NULL || state->player == NULL || read_player == NULL
-	    || state->current_sector_record == NULL)
+	if (player == NULL || fresh == NULL || current_sector_record == NULL)
 		return false;
-	record = state->player_record;
-	if (!read_player(context, record, &fresh, error))
+	if (qb_mbf32_encode(sector_record_offset, sector_record_offset_raw)
+	    != QB_MBF_OK)
 		return false;
 
-	state->player->record = fresh.record;
-	state->player->sector = fresh.sector;
-	state->player->fighters = fresh.fighters;
-	add_status = current_player_add_single_raw(state->sector_record_offset_raw,
-	    fresh.record.bytes + YT_F57, fresh.record.bytes + YT_F61,
+	player->record = fresh->record;
+	player->sector = fresh->sector;
+	player->fighters = fresh->fighters;
+	add_status = current_player_add_single_raw(sector_record_offset_raw,
+	    fresh->record.bytes + YT_F57, fresh->record.bytes + YT_F61,
 	    current_sector_raw);
 	if (add_status == QB_MBF_OVERFLOW || add_status == QB_MBF_DOMAIN)
 		return current_player_hydration_fault(error,
 		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_SECTOR_ADD,
 		    "current-player A41C sector ADD_FLOAT");
-	*state->current_sector_record = qb_mbf32_decode(current_sector_raw);
-	state->player->turns = fresh.turns;
-	state->player->credits = fresh.credits;
-	state->player->danger_scanner = fresh.danger_scanner;
-	state->player->missiles = fresh.missiles;
-	state->player->mines = fresh.mines;
-	state->player->team = fresh.team;
-	state->player->holds = fresh.holds;
-	state->player->ore = fresh.ore;
-	state->player->organics = fresh.organics;
-	state->player->equipment = fresh.equipment;
-	state->player->plasma = fresh.plasma;
-	state->player->score = fresh.score;
-	state->player->ports_owned = fresh.ports_owned;
-	state->player->ground_forces = fresh.ground_forces;
-	state->player->cloak = fresh.cloak;
-	if (!state->anti_cloak_enabled) {
-		if (state->player_cache != NULL)
-			(void)yt_player_cache_set_raw(state->player_cache, record,
+	*current_sector_record = qb_mbf32_decode(current_sector_raw);
+	player->turns = fresh->turns;
+	player->credits = fresh->credits;
+	player->danger_scanner = fresh->danger_scanner;
+	player->missiles = fresh->missiles;
+	player->mines = fresh->mines;
+	player->team = fresh->team;
+	player->holds = fresh->holds;
+	player->ore = fresh->ore;
+	player->organics = fresh->organics;
+	player->equipment = fresh->equipment;
+	player->plasma = fresh->plasma;
+	player->score = fresh->score;
+	player->ports_owned = fresh->ports_owned;
+	player->ground_forces = fresh->ground_forces;
+	player->cloak = fresh->cloak;
+	if (!anti_cloak_enabled) {
+		if (player_cache != NULL)
+			(void)yt_player_cache_set_raw(player_cache, player_record,
 			    YT_PLAYER_CACHE_CLOAK,
-			    fresh.record.bytes + YT_F125);
+			    fresh->record.bytes + YT_F125);
 	}
-	state->player->shields = fresh.shields;
+	player->shields = fresh->shields;
 	return true;
 }
 
