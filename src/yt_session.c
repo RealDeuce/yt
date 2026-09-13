@@ -5702,47 +5702,34 @@ command_attack_player(struct yt_session *session, bool *enter_sector,
 }
 
 static bool
-fighter_shield_spill_present(void *context, const uint8_t *text,
-    size_t length, enum yt_fighter_shield_spill_output_kind kind,
-    struct yt_error *error)
-{
-	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
-	    kind == YT_FIGHTER_SHIELD_SPILL_FIGHTER_ROW
-	    ? "fighter spill result" : "shield spill result", error);
-}
-
-static void
-fighter_shield_spill_store(void *context,
-    enum yt_fighter_shield_spill_store_kind kind, double fighters,
-    float shields)
-{
-	struct yt_session *session = context;
-
-	if (kind == YT_FIGHTER_SHIELD_SPILL_STORE_FIGHTERS)
-		session->hostile_deployed_fighters = fighters;
-	else
-		session->combat_ship_shields = shields;
-}
-
-static bool
 fighter_shield_spill(struct yt_session *session, double *fighters,
     float *shields, bool bind_hostile_cells, struct yt_error *error)
 {
-	const struct yt_fighter_shield_spill_ops ops = {
-		random_value,
-		fighter_shield_spill_present,
-		bind_hostile_cells ? fighter_shield_spill_store : NULL,
-	};
-	struct yt_fighter_shield_spill_state state = {
-		.fighters = *fighters,
-		.shields = *shields,
-	};
-	bool result = yt_fighter_shield_spill_run(&state, &ops, session,
-	    error);
+	uint8_t fighter_row[128];
+	uint8_t shield_row[128];
+	size_t fighter_length;
+	size_t shield_length;
 
-	*fighters = state.fighters;
-	*shields = state.shields;
-	return result;
+	while (*fighters > 0.0 && *shields > 0.0f) {
+		float draw;
+
+		if (!random_value(session, &draw, error)
+		    || !yt_fighter_shield_spill_step(fighters, shields, draw))
+			return false;
+		if (bind_hostile_cells) {
+			if (draw >= 0.5f)
+				session->hostile_deployed_fighters = *fighters;
+			else
+				session->combat_ship_shields = *shields;
+		}
+	}
+	return yt_fighter_shield_spill_rows(*fighters, *shields,
+	    fighter_row, sizeof(fighter_row), &fighter_length,
+	    shield_row, sizeof(shield_row), &shield_length)
+	    && session_present_text(session, fighter_row, fighter_length,
+	    SESSION_PRESENT_LINE, "fighter spill result", error)
+	    && session_present_text(session, shield_row, shield_length,
+	    SESSION_PRESENT_LINE, "shield spill result", error);
 }
 
 static bool

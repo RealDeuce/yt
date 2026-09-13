@@ -24776,6 +24776,15 @@ struct clearance_observation {
 	bool complete;
 };
 
+struct fighter_shield_spill_observation {
+	double fighters;
+	float shields;
+	size_t iterations;
+	bool fighter_row_presented;
+	bool shield_row_presented;
+	bool complete;
+};
+
 struct direct_warp_attack_combat_join {
 	struct hostile_mines_hazard_fixture *fixture;
 	struct direct_warp_main_cycle_state *cycle;
@@ -24789,7 +24798,7 @@ struct direct_warp_attack_combat_join {
 	struct yt_player persistence_player;
 	struct yt_player written_player;
 	struct yt_player cached_player;
-	struct yt_fighter_shield_spill_state spill;
+	struct fighter_shield_spill_observation spill;
 	float current_sector_record;
 	float sector_record_offset;
 	struct yt_player_cache player_cache;
@@ -25187,14 +25196,12 @@ direct_warp_attack_combat_cache_sector(void *context,
 
 static bool
 direct_warp_attack_spill_present(void *context, const uint8_t *text,
-    size_t length, enum yt_fighter_shield_spill_output_kind kind,
-    struct yt_error *error)
+    size_t length, struct yt_error *error)
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
 	    &join->fixture->cycle.presentation.viewer->join;
 
-	(void)kind;
 	(void)error;
 	++join->spill_present_calls;
 	if (join->spill_present_calls == join->fail_spill_present_at)
@@ -25202,45 +25209,54 @@ direct_warp_attack_spill_present(void *context, const uint8_t *text,
 	return normal_exit_line(viewer, text, length);
 }
 
-static void
-direct_warp_attack_spill_store(void *context,
-    enum yt_fighter_shield_spill_store_kind kind, double fighters,
-    float shields)
-{
-	struct direct_warp_attack_combat_join *join = context;
-
-	if (kind == YT_FIGHTER_SHIELD_SPILL_STORE_FIGHTERS)
-		(void)qb_mbf64_encode(fighters, join->spill_fighters_raw);
-	else
-		(void)qb_mbf32_encode(shields, join->spill_shields_raw);
-	++join->spill_stores;
-}
-
 static bool
 direct_warp_attack_combat_spill(void *context, double *fighters,
     float *shields, struct yt_error *error)
 {
 	struct direct_warp_attack_combat_join *join = context;
-	const struct yt_fighter_shield_spill_ops ops = {
-		direct_warp_attack_combat_random,
-		direct_warp_attack_spill_present,
-		direct_warp_attack_spill_store,
-	};
-	bool result;
+	uint8_t fighter_row[128];
+	uint8_t shield_row[128];
+	size_t fighter_length;
+	size_t shield_length;
 
 	if (!join->allow_spill) {
 		join->unexpected_spill = true;
 		return false;
 	}
 	++join->spill_calls;
-	join->spill = (struct yt_fighter_shield_spill_state){
+	join->spill = (struct fighter_shield_spill_observation){
 		.fighters = *fighters,
 		.shields = *shields,
 	};
-	result = yt_fighter_shield_spill_run(&join->spill, &ops, join, error);
-	*fighters = join->spill.fighters;
-	*shields = join->spill.shields;
-	return result;
+	while (*fighters > 0.0 && *shields > 0.0f) {
+		float draw;
+
+		if (!direct_warp_attack_combat_random(join, &draw, error))
+			return false;
+		if (!yt_fighter_shield_spill_step(fighters, shields, draw))
+			return false;
+		join->spill.fighters = *fighters;
+		join->spill.shields = *shields;
+		++join->spill.iterations;
+		if (draw >= 0.5f)
+			(void)qb_mbf64_encode(*fighters, join->spill_fighters_raw);
+		else
+			(void)qb_mbf32_encode(*shields, join->spill_shields_raw);
+		++join->spill_stores;
+	}
+	if (!yt_fighter_shield_spill_rows(*fighters, *shields,
+	    fighter_row, sizeof(fighter_row), &fighter_length,
+	    shield_row, sizeof(shield_row), &shield_length)
+	    || !direct_warp_attack_spill_present(join, fighter_row,
+	    fighter_length, error))
+		return false;
+	join->spill.fighter_row_presented = true;
+	if (!direct_warp_attack_spill_present(join, shield_row,
+	    shield_length, error))
+		return false;
+	join->spill.shield_row_presented = true;
+	join->spill.complete = true;
+	return true;
 }
 
 static bool

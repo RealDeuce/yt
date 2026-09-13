@@ -1135,40 +1135,6 @@ bool yt_fighter_shield_spill_step(double *fighters, float *shields,
 bool yt_fighter_shield_spill_rows(double fighters, float shields,
     uint8_t *fighter_row, size_t fighter_capacity, size_t *fighter_length,
     uint8_t *shield_row, size_t shield_capacity, size_t *shield_length);
-enum yt_fighter_shield_spill_output_kind {
-	YT_FIGHTER_SHIELD_SPILL_FIGHTER_ROW,
-	YT_FIGHTER_SHIELD_SPILL_SHIELD_ROW,
-};
-struct yt_fighter_shield_spill_state {
-	double fighters;
-	float shields;
-	size_t iterations;
-	bool fighter_row_presented;
-	bool shield_row_presented;
-	bool complete;
-};
-typedef bool (*yt_fighter_shield_spill_draw_fn)(void *context,
-    float *value, struct yt_error *error);
-typedef bool (*yt_fighter_shield_spill_present_fn)(void *context,
-    const uint8_t *text, size_t length,
-    enum yt_fighter_shield_spill_output_kind kind,
-    struct yt_error *error);
-enum yt_fighter_shield_spill_store_kind {
-	YT_FIGHTER_SHIELD_SPILL_STORE_FIGHTERS,
-	YT_FIGHTER_SHIELD_SPILL_STORE_SHIELDS,
-};
-typedef void (*yt_fighter_shield_spill_store_fn)(void *context,
-    enum yt_fighter_shield_spill_store_kind kind, double fighters,
-    float shields);
-struct yt_fighter_shield_spill_ops {
-	yt_fighter_shield_spill_draw_fn random;
-	yt_fighter_shield_spill_present_fn present;
-	yt_fighter_shield_spill_store_fn store;
-};
-bool yt_fighter_shield_spill_run(
-    struct yt_fighter_shield_spill_state *state,
-    const struct yt_fighter_shield_spill_ops *ops, void *context,
-    struct yt_error *error);
 bool yt_hostile_defeated_row(double fighters, uint8_t *row,
     size_t capacity, size_t *length);
 bool yt_xannor_attack_reward_rows(const uint8_t *name, size_t name_length,
