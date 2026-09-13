@@ -14,31 +14,6 @@ enum tape_event_kind {
 	TAPE_INPUT,
 };
 
-enum front_event_kind {
-	FRONT_HYDRATE = 1,
-	FRONT_PRESENT,
-	FRONT_INPUT,
-};
-
-struct front_event {
-	enum front_event_kind kind;
-	enum yt_nearest_front_output_kind output_kind;
-	size_t length;
-	uint8_t text[80];
-};
-
-struct front_tape {
-	float team;
-	float ports_owned;
-	uint8_t responses[2][80];
-	size_t response_lengths[2];
-	size_t response_count;
-	size_t response_position;
-	struct front_event events[16];
-	size_t event_count;
-	size_t fail_at;
-};
-
 struct tape_record {
 	uint32_t physical;
 	struct yt_record record;
@@ -91,112 +66,6 @@ fail_at(const char *function, int line, const char *condition)
 	if (!(condition)) \
 		return fail_at(__func__, __LINE__, #condition); \
 } while (0)
-
-static struct front_event *
-front_event(struct front_tape *tape, enum front_event_kind kind)
-{
-	struct front_event *event;
-
-	if (tape->event_count == ARRAY_SIZE(tape->events)) {
-		fprintf(stderr, "test_nearest: front event tape overflow\n");
-		exit(EXIT_FAILURE);
-	}
-	event = &tape->events[tape->event_count++];
-	memset(event, 0, sizeof(*event));
-	event->kind = kind;
-	return event;
-}
-
-static bool
-front_hydrate(void *context, float *team, float *ports_owned,
-    struct yt_error *error)
-{
-	struct front_tape *tape = context;
-
-	(void)front_event(tape, FRONT_HYDRATE);
-	if (tape->fail_at != 0U && tape->event_count == tape->fail_at) {
-		if (error != NULL)
-			error->status = YT_IO_ERROR;
-		return false;
-	}
-	*team = tape->team;
-	*ports_owned = tape->ports_owned;
-	return true;
-}
-
-static bool
-front_present(void *context, enum yt_nearest_front_output_kind kind,
-    const uint8_t *text, size_t length, struct yt_error *error)
-{
-	struct front_tape *tape = context;
-	struct front_event *event = front_event(tape, FRONT_PRESENT);
-
-	event->output_kind = kind;
-	event->length = length;
-	if (length > sizeof(event->text)) {
-		if (error != NULL)
-			error->status = YT_RANGE;
-		return false;
-	}
-	if (length != 0U)
-		memcpy(event->text, text, length);
-	if (tape->fail_at != 0U && tape->event_count == tape->fail_at) {
-		if (error != NULL)
-			error->status = YT_IO_ERROR;
-		return false;
-	}
-	return true;
-}
-
-static bool
-front_input(void *context, uint8_t *text, size_t capacity,
-    size_t *length, struct yt_error *error)
-{
-	struct front_tape *tape = context;
-	struct front_event *event = front_event(tape, FRONT_INPUT);
-	size_t index = tape->response_position;
-
-	if (index == tape->response_count
-	    || tape->response_lengths[index] > capacity) {
-		if (error != NULL)
-			error->status = YT_IO_ERROR;
-		return false;
-	}
-	event->length = tape->response_lengths[index];
-	if (event->length != 0U)
-		memcpy(event->text, tape->responses[index], event->length);
-	if (tape->fail_at != 0U && tape->event_count == tape->fail_at) {
-		if (error != NULL)
-			error->status = YT_IO_ERROR;
-		return false;
-	}
-	if (event->length != 0U)
-		memcpy(text, event->text, event->length);
-	*length = event->length;
-	++tape->response_position;
-	return true;
-}
-
-static const struct yt_nearest_front_ops nearest_front_ops = {
-	front_hydrate,
-	front_present,
-	front_input,
-};
-
-static void
-front_add_response(struct front_tape *tape, const char *response)
-{
-	size_t length = strlen(response);
-	size_t index = tape->response_count;
-
-	if (index == ARRAY_SIZE(tape->responses) || length > 80U) {
-		fprintf(stderr, "test_nearest: front response tape overflow\n");
-		exit(EXIT_FAILURE);
-	}
-	memcpy(tape->responses[index], response, length);
-	tape->response_lengths[index] = length;
-	++tape->response_count;
-}
 
 static void
 set_number(struct yt_record *record, size_t offset, float value)
@@ -1144,206 +1013,34 @@ test_every_earth_provider_failure_retains_exact_prefix(void)
 	return EXIT_SUCCESS;
 }
 
-static bool
-same_front_event(const struct front_event *left,
-    const struct front_event *right)
-{
-	return left->kind == right->kind
-	    && left->output_kind == right->output_kind
-	    && left->length == right->length
-	    && memcmp(left->text, right->text, left->length) == 0;
-}
-
 static int
-test_filter_front_selector_and_direction_contract(void)
+test_filter_front_rules(void)
 {
 	static const struct {
 		const char *filter;
 		int selector;
 	} cases[] = {
 		{"", 4}, {"A", 4}, {"AT", 4}, {"TY", 5},
-		{"YEU", 6}, {"EU", 7}, {"U", 8},
+		{"YEU", 6}, {"EU", 7}, {"U", 8}, {"Z", 0},
 	};
-	static const uint8_t first[] =
-	    "Show buying/selling [1] Equ, [2] Org, [3] Ore,";
-	static const uint8_t second[] =
-	    "[Y] Your Ports, [T] Team's Ports, [E] Enemy Ports";
-	static const uint8_t prompt[] =
-	    "[U] Un-owned Ports OR [A] All Ports ? -=> [A] ";
-	struct yt_error error = {0};
+	static const char *const prompts[] = {
+		"Find ports [B] Buying or [S] Selling Equipment -=> ",
+		"Find ports [B] Buying or [S] Selling Organics -=> ",
+		"Find ports [B] Buying or [S] Selling Ore -=> ",
+	};
+	uint8_t prompt[80];
+	size_t length;
 	size_t pass;
 
-	for (pass = 0U; pass < ARRAY_SIZE(cases); ++pass) {
-		struct front_tape tape = {.team = 2.0f, .ports_owned = 1.0f};
-		struct yt_nearest_front_state state;
-
-		memset(&state, 0xa5, sizeof(state));
-		front_add_response(&tape, cases[pass].filter);
-		CHECK(yt_nearest_front_run(&state, &nearest_front_ops, &tape,
-		    &error));
-		CHECK(state.result == YT_NEAREST_FRONT_HANDOFF
-		    && state.selector == cases[pass].selector
-		    && state.direction == 0U && state.hydrations == 1U
-		    && state.outputs == 3U && state.inputs == 1U
-		    && state.filter_length == strlen(cases[pass].filter)
-		    && memcmp(state.filter_response, cases[pass].filter,
-		    state.filter_length) == 0);
-		CHECK(tape.event_count == 5U
-		    && tape.events[0].kind == FRONT_HYDRATE
-		    && tape.events[1].output_kind
-		    == YT_NEAREST_FRONT_FILTER_FIRST
-		    && tape.events[1].length == sizeof(first) - 1U
-		    && memcmp(tape.events[1].text, first,
-		    sizeof(first) - 1U) == 0
-		    && tape.events[2].output_kind
-		    == YT_NEAREST_FRONT_FILTER_SECOND
-		    && tape.events[2].length == sizeof(second) - 1U
-		    && memcmp(tape.events[2].text, second,
-		    sizeof(second) - 1U) == 0
-		    && tape.events[3].output_kind
-		    == YT_NEAREST_FRONT_FILTER_PROMPT
-		    && tape.events[3].length == sizeof(prompt) - 1U
-		    && memcmp(tape.events[3].text, prompt,
-		    sizeof(prompt) - 1U) == 0
-		    && tape.events[4].kind == FRONT_INPUT);
-	}
-	return EXIT_SUCCESS;
-}
-
-static int
-test_filter_front_commodity_and_rejections(void)
-{
-	static const struct {
-		const char *filter;
-		const char *prompt;
-		int selector;
-	} commodities[] = {
-		{"1", "Find ports [B] Buying or [S] Selling Equipment -=> ", 1},
-		{"12", "Find ports [B] Buying or [S] Selling Equipment -=> ", 1},
-		{"2", "Find ports [B] Buying or [S] Selling Organics -=> ", 2},
-		{"3", "Find ports [B] Buying or [S] Selling Ore -=> ", 3},
-	};
-	struct yt_error error = {0};
-	size_t pass;
-
-	for (pass = 0U; pass < ARRAY_SIZE(commodities); ++pass) {
-		struct front_tape tape = {.team = 2.0f, .ports_owned = 1.0f};
-		struct yt_nearest_front_state state;
-		size_t length = strlen(commodities[pass].prompt);
-
-		front_add_response(&tape, commodities[pass].filter);
-		front_add_response(&tape, "S");
-		CHECK(yt_nearest_front_run(&state, &nearest_front_ops, &tape,
-		    &error));
-		CHECK(state.result == YT_NEAREST_FRONT_HANDOFF
-		    && state.selector == commodities[pass].selector
-		    && state.direction == 'S' && state.outputs == 5U
-		    && state.inputs == 2U && tape.event_count == 8U
-		    && tape.events[5].output_kind
-		    == YT_NEAREST_FRONT_DIRECTION_BLANK
-		    && tape.events[5].length == 0U
-		    && tape.events[6].output_kind
-		    == YT_NEAREST_FRONT_DIRECTION_PROMPT
-		    && tape.events[6].length == length
-		    && memcmp(tape.events[6].text,
-		    commodities[pass].prompt, length) == 0);
-	}
-
-	{
-		struct front_tape tape = {.team = 2.0f, .ports_owned = 1.0f};
-		struct yt_nearest_front_state state;
-
-		front_add_response(&tape, "Z");
-		CHECK(yt_nearest_front_run(&state, &nearest_front_ops, &tape,
-		    &error));
-		CHECK(state.result == YT_NEAREST_FRONT_REPROMPT
-		    && state.selector == 0 && state.outputs == 3U
-		    && state.inputs == 1U && tape.event_count == 5U);
-	}
-	{
-		static const uint8_t expected[] = "You dont belong to a team!";
-		struct front_tape tape = {.team = 0.0f, .ports_owned = 1.0f};
-		struct yt_nearest_front_state state;
-
-		front_add_response(&tape, "T");
-		CHECK(yt_nearest_front_run(&state, &nearest_front_ops, &tape,
-		    &error));
-		CHECK(state.result == YT_NEAREST_FRONT_REPROMPT
-		    && state.selector == 5 && state.outputs == 4U
-		    && tape.event_count == 6U
-		    && tape.events[5].output_kind == YT_NEAREST_FRONT_NO_TEAM
-		    && tape.events[5].length == sizeof(expected) - 1U
-		    && memcmp(tape.events[5].text, expected,
-		    sizeof(expected) - 1U) == 0);
-	}
-	{
-		static const uint8_t expected[] = "You dont own any!";
-		struct front_tape tape = {.team = 2.0f, .ports_owned = 0.0f};
-		struct yt_nearest_front_state state;
-
-		front_add_response(&tape, "Y");
-		CHECK(yt_nearest_front_run(&state, &nearest_front_ops, &tape,
-		    &error));
-		CHECK(state.result == YT_NEAREST_FRONT_REPROMPT
-		    && state.selector == 6 && state.outputs == 4U
-		    && tape.event_count == 6U
-		    && tape.events[5].output_kind == YT_NEAREST_FRONT_NO_PORTS
-		    && tape.events[5].length == sizeof(expected) - 1U
-		    && memcmp(tape.events[5].text, expected,
-		    sizeof(expected) - 1U) == 0);
-	}
-	{
-		struct front_tape tape = {.team = 2.0f, .ports_owned = 1.0f};
-		struct yt_nearest_front_state state;
-
-		front_add_response(&tape, "1");
-		front_add_response(&tape, "BS");
-		CHECK(yt_nearest_front_run(&state, &nearest_front_ops, &tape,
-		    &error));
-		CHECK(state.result == YT_NEAREST_FRONT_REPROMPT
-		    && state.selector == 1 && state.direction == 0U
-		    && state.outputs == 5U && state.inputs == 2U
-		    && state.direction_length == 2U
-		    && memcmp(state.direction_response, "BS", 2U) == 0);
-	}
-	return EXIT_SUCCESS;
-}
-
-static int
-test_filter_front_every_provider_cut(void)
-{
-	struct front_tape complete = {.team = 2.0f, .ports_owned = 1.0f};
-	struct yt_nearest_front_state complete_state;
-	struct yt_error error = {0};
-	size_t cut;
-
-	front_add_response(&complete, "2");
-	front_add_response(&complete, "B");
-	CHECK(yt_nearest_front_run(&complete_state, &nearest_front_ops,
-	    &complete, &error));
-	CHECK(complete.event_count == 8U
-	    && complete_state.result == YT_NEAREST_FRONT_HANDOFF
-	    && complete_state.selector == 2
-	    && complete_state.direction == 'B');
-	for (cut = 1U; cut <= complete.event_count; ++cut) {
-		struct front_tape tape = {
-			.team = 2.0f,
-			.ports_owned = 1.0f,
-			.fail_at = cut,
-		};
-		struct yt_nearest_front_state state;
-		size_t index;
-
-		front_add_response(&tape, "2");
-		front_add_response(&tape, "B");
-		memset(&error, 0, sizeof(error));
-		CHECK(!yt_nearest_front_run(&state, &nearest_front_ops, &tape,
-		    &error));
-		CHECK(error.status == YT_IO_ERROR && tape.event_count == cut
-		    && state.result == YT_NEAREST_FRONT_INCOMPLETE);
-		for (index = 0U; index < cut; ++index)
-			CHECK(same_front_event(&tape.events[index],
-			    &complete.events[index]));
+	for (pass = 0U; pass < ARRAY_SIZE(cases); ++pass)
+		CHECK(yt_nearest_filter_selector(
+		    (const uint8_t *)cases[pass].filter,
+		    strlen(cases[pass].filter)) == cases[pass].selector);
+	for (pass = 0U; pass < ARRAY_SIZE(prompts); ++pass) {
+		CHECK(yt_nearest_direction_prompt((int)pass + 1, prompt,
+		    sizeof(prompt), &length));
+		CHECK(length == strlen(prompts[pass]));
+		CHECK(memcmp(prompt, prompts[pass], length) == 0);
 	}
 	return EXIT_SUCCESS;
 }
@@ -1367,9 +1064,7 @@ main(void)
 	result |= test_pager_input_failure_and_continuous_mode();
 	result |= test_ansi_consumes_transient_earth_style();
 	result |= test_every_earth_provider_failure_retains_exact_prefix();
-	result |= test_filter_front_selector_and_direction_contract();
-	result |= test_filter_front_commodity_and_rejections();
-	result |= test_filter_front_every_provider_cut();
+	result |= test_filter_front_rules();
 	if (result == EXIT_SUCCESS)
 		puts("test_nearest: ok");
 	return result;

@@ -3676,50 +3676,9 @@ bool yt_salvage_simple_row(enum yt_salvage_simple_kind kind, float amount,
 bool yt_salvage_cargo_row(enum yt_salvage_cargo_kind kind, float amount,
     uint8_t *row, size_t capacity, size_t *length);
 
-enum yt_nearest_front_output_kind {
-	YT_NEAREST_FRONT_FILTER_FIRST,
-	YT_NEAREST_FRONT_FILTER_SECOND,
-	YT_NEAREST_FRONT_FILTER_PROMPT,
-	YT_NEAREST_FRONT_NO_TEAM,
-	YT_NEAREST_FRONT_NO_PORTS,
-	YT_NEAREST_FRONT_DIRECTION_BLANK,
-	YT_NEAREST_FRONT_DIRECTION_PROMPT,
-};
-
-enum yt_nearest_front_result {
-	YT_NEAREST_FRONT_INCOMPLETE,
-	YT_NEAREST_FRONT_HANDOFF,
-	YT_NEAREST_FRONT_REPROMPT,
-};
-
-struct yt_nearest_front_state {
-	float current_team;
-	float ports_owned;
-	int selector;
-	uint8_t direction;
-	uint8_t filter_response[80];
-	size_t filter_length;
-	uint8_t direction_response[80];
-	size_t direction_length;
-	size_t hydrations;
-	size_t outputs;
-	size_t inputs;
-	enum yt_nearest_front_result result;
-};
-
-struct yt_nearest_front_ops {
-	bool (*hydrate)(void *context, float *current_team,
-	    float *ports_owned, struct yt_error *error);
-	bool (*present)(void *context,
-	    enum yt_nearest_front_output_kind kind, const uint8_t *text,
-	    size_t length, struct yt_error *error);
-	bool (*input)(void *context, uint8_t *text, size_t capacity,
-	    size_t *length, struct yt_error *error);
-};
-
-bool yt_nearest_front_run(struct yt_nearest_front_state *state,
-	const struct yt_nearest_front_ops *ops, void *context,
-	struct yt_error *error);
+int yt_nearest_filter_selector(const uint8_t *response, size_t length);
+bool yt_nearest_direction_prompt(int selector, uint8_t *prompt,
+    size_t capacity, size_t *length);
 
 enum yt_nearest_field_kind {
 	YT_NEAREST_FIELD_NONE,

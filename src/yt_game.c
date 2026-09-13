@@ -1727,35 +1727,8 @@ yt_salvage_cargo_row(enum yt_salvage_cargo_kind kind, float amount,
 	return true;
 }
 
-static bool
-nearest_front_present(struct yt_nearest_front_state *state,
-    const struct yt_nearest_front_ops *ops, void *context,
-    enum yt_nearest_front_output_kind kind, const uint8_t *text,
-    size_t length, struct yt_error *error)
-{
-	if (!ops->present(context, kind, text, length, error))
-		return false;
-	++state->outputs;
-	return true;
-}
-
-static bool
-nearest_front_input(struct yt_nearest_front_state *state,
-    const struct yt_nearest_front_ops *ops, void *context, uint8_t *text,
-    size_t capacity, size_t *length, struct yt_error *error)
-{
-	*length = 0U;
-	if (!ops->input(context, text, capacity, length, error))
-		return false;
-	if (*length > capacity)
-		return startup_configuration_error(error, YT_INVALID,
-		    "nearest filter input length");
-	++state->inputs;
-	return true;
-}
-
-static int
-nearest_front_selector(const uint8_t *response, size_t length)
+int
+yt_nearest_filter_selector(const uint8_t *response, size_t length)
 {
 	static const uint8_t alphabet[] = "123ATYEU";
 	size_t offset;
@@ -1773,108 +1746,22 @@ nearest_front_selector(const uint8_t *response, size_t length)
 }
 
 bool
-yt_nearest_front_run(struct yt_nearest_front_state *state,
-    const struct yt_nearest_front_ops *ops, void *context,
-    struct yt_error *error)
+yt_nearest_direction_prompt(int selector, uint8_t *prompt,
+    size_t capacity, size_t *length)
 {
-	static const uint8_t first_line[] =
-	    "Show buying/selling [1] Equ, [2] Org, [3] Ore,";
-	static const uint8_t second_line[] =
-	    "[Y] Your Ports, [T] Team's Ports, [E] Enemy Ports";
-	static const uint8_t filter_prompt[] =
-	    "[U] Un-owned Ports OR [A] All Ports ? -=> [A] ";
-	static const uint8_t no_team[] = "You dont belong to a team!";
-	static const uint8_t no_ports[] = "You dont own any!";
 	static const char *const commodities[3] = {
 		"Equipment", "Organics", "Ore"
 	};
-	uint8_t prompt[80];
 	int written;
 
-	if (state == NULL || ops == NULL || ops->hydrate == NULL
-	    || ops->present == NULL || ops->input == NULL)
-		return startup_configuration_error(error, YT_INVALID,
-		    "nearest filter arguments");
-	state->current_team = 0.0f;
-	state->ports_owned = 0.0f;
-	state->selector = 0;
-	state->direction = 0U;
-	state->filter_length = 0U;
-	state->direction_length = 0U;
-	state->hydrations = 0U;
-	state->outputs = 0U;
-	state->inputs = 0U;
-	state->result = YT_NEAREST_FRONT_INCOMPLETE;
-	memset(state->filter_response, 0, sizeof(state->filter_response));
-	memset(state->direction_response, 0,
-	    sizeof(state->direction_response));
-
-	if (!ops->hydrate(context, &state->current_team,
-	    &state->ports_owned, error))
+	if (selector < 1 || selector > 3 || prompt == NULL || length == NULL)
 		return false;
-	++state->hydrations;
-	if (!nearest_front_present(state, ops, context,
-	    YT_NEAREST_FRONT_FILTER_FIRST, first_line,
-	    sizeof(first_line) - 1U, error)
-	    || !nearest_front_present(state, ops, context,
-	    YT_NEAREST_FRONT_FILTER_SECOND, second_line,
-	    sizeof(second_line) - 1U, error)
-	    || !nearest_front_present(state, ops, context,
-	    YT_NEAREST_FRONT_FILTER_PROMPT, filter_prompt,
-	    sizeof(filter_prompt) - 1U, error)
-	    || !nearest_front_input(state, ops, context,
-	    state->filter_response, sizeof(state->filter_response),
-	    &state->filter_length, error))
+	written = snprintf((char *)prompt, capacity,
+	    "Find ports [B] Buying or [S] Selling %s -=> ",
+	    commodities[selector - 1]);
+	if (written < 0 || (size_t)written >= capacity)
 		return false;
-	state->selector = nearest_front_selector(state->filter_response,
-	    state->filter_length);
-	if (state->selector == 0) {
-		state->result = YT_NEAREST_FRONT_REPROMPT;
-		return true;
-	}
-	if (state->selector == 5 && state->current_team == 0.0f) {
-		if (!nearest_front_present(state, ops, context,
-		    YT_NEAREST_FRONT_NO_TEAM, no_team,
-		    sizeof(no_team) - 1U, error))
-			return false;
-		state->result = YT_NEAREST_FRONT_REPROMPT;
-		return true;
-	}
-	if (state->selector == 6 && state->ports_owned == 0.0f) {
-		if (!nearest_front_present(state, ops, context,
-		    YT_NEAREST_FRONT_NO_PORTS, no_ports,
-		    sizeof(no_ports) - 1U, error))
-			return false;
-		state->result = YT_NEAREST_FRONT_REPROMPT;
-		return true;
-	}
-	if (state->selector >= 1 && state->selector <= 3) {
-		if (!nearest_front_present(state, ops, context,
-		    YT_NEAREST_FRONT_DIRECTION_BLANK, NULL, 0U, error))
-			return false;
-		written = snprintf((char *)prompt, sizeof(prompt),
-		    "Find ports [B] Buying or [S] Selling %s -=> ",
-		    commodities[state->selector - 1]);
-		if (written < 0 || (size_t)written >= sizeof(prompt))
-			return startup_configuration_error(error, YT_RANGE,
-			    "nearest direction prompt");
-		if (!nearest_front_present(state, ops, context,
-		    YT_NEAREST_FRONT_DIRECTION_PROMPT, prompt,
-		    (size_t)written, error)
-		    || !nearest_front_input(state, ops, context,
-		    state->direction_response,
-		    sizeof(state->direction_response),
-		    &state->direction_length, error))
-			return false;
-		if (state->direction_length != 1U
-		    || (state->direction_response[0] != 'B'
-		    && state->direction_response[0] != 'S')) {
-			state->result = YT_NEAREST_FRONT_REPROMPT;
-			return true;
-		}
-		state->direction = state->direction_response[0];
-	}
-	state->result = YT_NEAREST_FRONT_HANDOFF;
+	*length = (size_t)written;
 	return true;
 }
 

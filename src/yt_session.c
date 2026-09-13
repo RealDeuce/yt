@@ -16470,83 +16470,68 @@ nearest_session_body(struct yt_session *session, int selector,
 }
 
 static bool
-nearest_front_hydrate(void *context, float *current_team,
-    float *ports_owned, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (!session_reload_player(session, error))
-		return false;
-	*current_team = session->player.team;
-	*ports_owned = session->player.ports_owned;
-	return true;
-}
-
-static bool
-nearest_front_present(void *context,
-    enum yt_nearest_front_output_kind kind, const uint8_t *text,
-    size_t length, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	switch (kind) {
-	case YT_NEAREST_FRONT_FILTER_FIRST:
-		return session_present_paged_line(session, text, length,
-		    "nearest-port first filter row", error);
-	case YT_NEAREST_FRONT_FILTER_SECOND:
-		return session_present_paged_fragment(session, text, length);
-	case YT_NEAREST_FRONT_FILTER_PROMPT:
-		return session_present_timed_paged_row(session, text, length,
-		    "nearest-port filter prompt", error);
-	case YT_NEAREST_FRONT_NO_TEAM:
-		return session_present_alert(session, text, length,
-		    "nearest-port team rejection", error);
-	case YT_NEAREST_FRONT_NO_PORTS:
-		return session_present_alert(session, text, length,
-		    "nearest-port ownership rejection", error);
-	case YT_NEAREST_FRONT_DIRECTION_BLANK:
-		return session_present_text(session, text, length,
-		    SESSION_PRESENT_LINE, "nearest-port direction blank", error);
-	case YT_NEAREST_FRONT_DIRECTION_PROMPT:
-		return session_present_timed_paged_row(session, text, length,
-		    "nearest-port direction prompt", error);
-	default:
-		if (error != NULL)
-			error->status = YT_INVALID;
-		return false;
-	}
-}
-
-static bool
-nearest_front_input(void *context, uint8_t *text, size_t capacity,
-    size_t *length, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	(void)error;
-	if (capacity == 0U || !session_read_upper_command(session, (char *)text, capacity))
-		return false;
-	*length = strlen((const char *)text);
-	return true;
-}
-
-static bool
 computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 {
-	static const struct yt_nearest_front_ops ops = {
-		nearest_front_hydrate,
-		nearest_front_present,
-		nearest_front_input,
-	};
-	struct yt_nearest_front_state state;
+	static const uint8_t first_line[] =
+	    "Show buying/selling [1] Equ, [2] Org, [3] Ore,";
+	static const uint8_t second_line[] =
+	    "[Y] Your Ports, [T] Team's Ports, [E] Enemy Ports";
+	static const uint8_t filter_prompt[] =
+	    "[U] Un-owned Ports OR [A] All Ports ? -=> [A] ";
+	static const uint8_t no_team[] = "You dont belong to a team!";
+	static const uint8_t no_ports[] = "You dont own any!";
+	uint8_t direction_prompt[80];
+	char response[80];
+	size_t direction_prompt_length;
+	size_t response_length;
+	uint8_t direction = 0U;
+	int selector;
 
-	memset(&state, 0, sizeof(state));
-	if (!yt_nearest_front_run(&state, &ops, session, error))
+	if (!session_reload_player(session, error)
+	    || !session_present_paged_line(session, first_line,
+	    sizeof(first_line) - 1U, "nearest-port first filter row", error)
+	    || !session_present_paged_fragment(session, second_line,
+	    sizeof(second_line) - 1U)
+	    || !session_present_timed_paged_row(session, filter_prompt,
+	    sizeof(filter_prompt) - 1U, "nearest-port filter prompt", error)
+	    || !session_read_upper_command(session, response, sizeof(response)))
 		return false;
-	if (state.result == YT_NEAREST_FRONT_REPROMPT)
+	response_length = strlen(response);
+	selector = yt_nearest_filter_selector((const uint8_t *)response,
+	    response_length);
+	if (selector == 0)
 		return true;
-	return nearest_session_body(session, state.selector, state.direction,
-	    error);
+	if (selector == 5 && session->player.team == 0.0f)
+		return session_present_alert(session, no_team,
+		    sizeof(no_team) - 1U, "nearest-port team rejection", error);
+	if (selector == 6 && session->player.ports_owned == 0.0f)
+		return session_present_alert(session, no_ports,
+		    sizeof(no_ports) - 1U, "nearest-port ownership rejection", error);
+	if (selector >= 1 && selector <= 3) {
+		if (!session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "nearest-port direction blank", error))
+			return false;
+		if (!yt_nearest_direction_prompt(selector, direction_prompt,
+		    sizeof(direction_prompt), &direction_prompt_length)) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation, sizeof(error->operation), "%s",
+				    "nearest direction prompt");
+			}
+			return false;
+		}
+		if (!session_present_timed_paged_row(session, direction_prompt,
+		    direction_prompt_length, "nearest-port direction prompt", error)
+		    || !session_read_upper_command(session, response,
+		    sizeof(response)))
+			return false;
+		response_length = strlen(response);
+		if (response_length != 1U
+		    || (response[0] != 'B' && response[0] != 'S'))
+			return true;
+		direction = (uint8_t)response[0];
+	}
+	return nearest_session_body(session, selector, direction, error);
 }
 
 struct profit_session_context {
