@@ -516,12 +516,6 @@ bool yt_sector_is_black_hole(float current_sector, float first,
     float second);
 bool yt_sector_mines_admitted(float mines, float suppression);
 bool yt_sector_force_same_team(float current_team, float owner_team);
-typedef bool (*yt_friendship_reader_fn)(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error);
-bool yt_friendship_resolve(float candidate_record,
-    float current_player_record, float last_player_record,
-    yt_friendship_reader_fn reader, void *reader_context, bool *friendly,
-    struct yt_error *error);
 enum yt_port_owner_kind yt_port_owner_classify(float owner,
     int current_player_record, int *owner_record);
 bool yt_port_owner_compose(enum yt_port_owner_kind kind, float treasury,

@@ -2796,11 +2796,39 @@ session_write_planet_physical(struct yt_session *session,
 	return yt_database_write(&session->door->game.database,
 	    (size_t)physical_record, &planet->record, error);
 }
-static bool
-friendship_read_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
+bool
+yt_session_players_are_friendly(struct yt_session *session,
+    int candidate_record, bool *friendly, struct yt_error *error)
 {
-	return yt_game_read_player(context, player_record, player, error);
+	struct yt_player current;
+	struct yt_player candidate;
+	int current_record;
+	int last_player_record;
+
+	if (session == NULL || friendly == NULL)
+		return false;
+	*friendly = false;
+	current_record = session_record(session);
+	last_player_record = (int)session_sector_offset(session);
+	if (candidate_record < YT_PLAYER_FIRST
+	    || candidate_record > last_player_record
+	    || current_record < YT_PLAYER_FIRST
+	    || current_record > last_player_record)
+		return true;
+	if (candidate_record == current_record) {
+		*friendly = true;
+		return true;
+	}
+	if (!yt_game_read_player(&session->door->game, current_record,
+	    &current, error))
+		return false;
+	if (current.team == 0.0f)
+		return true;
+	if (!yt_game_read_player(&session->door->game, candidate_record,
+	    &candidate, error))
+		return false;
+	*friendly = candidate.team == current.team;
+	return true;
 }
 
 static bool
@@ -2809,10 +2837,8 @@ same_team(struct yt_session *session, int other_record,
 {
 	bool friendly;
 
-	if (!yt_friendship_resolve((float)other_record,
-	    (float)session_record(session),
-	    session_sector_offset(session),
-	    friendship_read_player, &session->door->game, &friendly, error))
+	if (!yt_session_players_are_friendly(session, other_record, &friendly,
+	    error))
 		return false;
 	return friendly;
 }
@@ -10212,11 +10238,8 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		friendly = true;
 	else if (planet.owner > 1.0f
 	    && planet.owner <= session_sector_offset(session)) {
-		if (!yt_friendship_resolve(planet.owner,
-		    (float)session_record(session),
-		    session_sector_offset(session),
-		    friendship_read_player, &session->door->game, &friendly,
-		    error))
+		if (!yt_session_players_are_friendly(session, (int)planet.owner,
+		    &friendly, error))
 			return false;
 		if (!read_planet_physical(session, physical_planet, &planet,
 		    error))
@@ -10679,10 +10702,8 @@ missile_sector(struct yt_session *session, int sector_number,
 			    || !yt_player_stored_name(&defender, owner_name,
 			    &owner_length, error)
 			    || owner_length > sizeof(owner_name)
-			    || !yt_friendship_resolve(sector.fighter_owner,
-			    (float)session_record(session),
-			    session_sector_offset(session), friendship_read_player,
-			    &session->door->game, &friendly, error))
+			    || !yt_session_players_are_friendly(session,
+			    (int)sector.fighter_owner, &friendly, error))
 				return false;
 		}
 		if (sector.fighter_owner == (float)session_record(session)) {
@@ -10869,10 +10890,7 @@ missile_mines:
 		{
 			bool ignored_friendship;
 
-			if (!yt_friendship_resolve((float)basic,
-			    (float)session_record(session),
-			    session_sector_offset(session),
-			    friendship_read_player, &session->door->game,
+			if (!yt_session_players_are_friendly(session, basic,
 			    &ignored_friendship, error))
 				return false;
 		}

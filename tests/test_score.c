@@ -231,115 +231,6 @@ check_current_player_cache_model(void)
 	    (const uint8_t[4]){0xA1U, 0xB2U, 0xC3U, 0x00U}, 4U) == 0;
 }
 
-struct friendship_reader_tape {
-	int records[2];
-	float teams[2];
-	size_t count;
-	int fail_call;
-};
-
-static bool
-friendship_reader(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct friendship_reader_tape *tape = context;
-	size_t call = tape->count++;
-
-	if (call >= YT_ARRAY_LEN(tape->records))
-		return false;
-	tape->records[call] = player_record;
-	if ((int)call == tape->fail_call) {
-		if (error != NULL) {
-			error->status = YT_IO_ERROR;
-			(void)snprintf(error->operation,
-			    sizeof(error->operation), "%s", "friendship GET");
-		}
-		return false;
-	}
-	memset(player, 0, sizeof(*player));
-	player->team = tape->teams[call];
-	return true;
-}
-
-static bool
-check_friendship_model(void)
-{
-	struct friendship_reader_tape tape;
-	struct yt_error error;
-	bool friendly;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_call = -1;
-	if (!yt_friendship_resolve(1.0f, 2.0f, 51.0f,
-	    friendship_reader, &tape, &friendly, &error)
-	    || friendly || tape.count != 0U
-	    || !yt_friendship_resolve(52.0f, 2.0f, 51.0f,
-	    friendship_reader, &tape, &friendly, &error)
-	    || friendly || tape.count != 0U
-	    || !yt_friendship_resolve(2.0f, 52.0f, 51.0f,
-	    friendship_reader, &tape, &friendly, &error)
-	    || friendly || tape.count != 0U
-	    || !yt_friendship_resolve(2.0f, 2.0f, 51.0f,
-	    friendship_reader, &tape, &friendly, &error)
-	    || !friendly || tape.count != 0U)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_call = -1;
-	tape.teams[0] = 0.0f;
-	if (!yt_friendship_resolve(3.0f, 2.0f, 51.0f,
-	    friendship_reader, &tape, &friendly, &error)
-	    || friendly || tape.count != 1U || tape.records[0] != 2)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_call = -1;
-	tape.teams[0] = 7.0f;
-	tape.teams[1] = 7.0f;
-	if (!yt_friendship_resolve(3.75f, 2.25f, 51.0f,
-	    friendship_reader, &tape, &friendly, &error)
-	    || !friendly || tape.count != 2U
-	    || tape.records[0] != 2 || tape.records[1] != 3)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_call = -1;
-	tape.teams[0] = -3.0f;
-	tape.teams[1] = -3.0f;
-	if (!yt_friendship_resolve(51.0f, 2.0f, 51.0f,
-	    friendship_reader, &tape, &friendly, &error)
-	    || !friendly || tape.count != 2U
-	    || tape.records[0] != 2 || tape.records[1] != 51)
-		return false;
-	tape.count = 0U;
-	tape.teams[1] = 4.0f;
-	if (!yt_friendship_resolve(3.0f, 2.0f, 51.0f,
-	    friendship_reader, &tape, &friendly, &error)
-	    || friendly || tape.count != 2U)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_call = 0;
-	yt_error_clear(&error);
-	if (yt_friendship_resolve(3.0f, 2.0f, 51.0f,
-	    friendship_reader, &tape, &friendly, &error)
-	    || friendly || tape.count != 1U || tape.records[0] != 2
-	    || error.status != YT_IO_ERROR)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_call = 1;
-	tape.teams[0] = 1.0f;
-	yt_error_clear(&error);
-	if (yt_friendship_resolve(3.0f, 2.0f, 51.0f,
-	    friendship_reader, &tape, &friendly, &error)
-	    || friendly || tape.count != 2U
-	    || tape.records[0] != 2 || tape.records[1] != 3
-	    || error.status != YT_IO_ERROR)
-		return false;
-	return true;
-}
-
 static bool
 check_team_audit_messages(void)
 {
@@ -17114,8 +17005,6 @@ main(void)
 		return fail("startup configuration transaction differs");
 	if (!check_current_player_cache_model())
 		return fail("current-player cache model differs");
-	if (!check_friendship_model())
-		return fail("friendship model differs");
 	if (!check_team_audit_messages())
 		return fail("team-audit messages differ");
 	if (!check_info_team_rows())

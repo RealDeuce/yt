@@ -342,6 +342,80 @@ test_computer_port_visibility(void)
 	CHECK(remove(path) == 0);
 }
 
+static void
+test_player_friendship(void)
+{
+	static const char path[] = "SESSION-FRIENDSHIP.DAT";
+	struct yt_door door;
+	struct yt_session session;
+	struct yt_player current;
+	struct yt_player candidate;
+	struct yt_error error;
+	bool friendly;
+
+	(void)remove(path);
+	memset(&door, 0, sizeof(door));
+	memset(&session, 0, sizeof(session));
+	memset(&current, 0, sizeof(current));
+	memset(&candidate, 0, sizeof(candidate));
+	session.door = &door;
+	session.player_record_carrier = 2;
+	door.game.config.sector_offset = 51.0f;
+	yt_record_blank(&current.record);
+	current.team = 7.0f;
+	yt_player_encode(&current);
+	yt_record_blank(&candidate.record);
+	candidate.team = 7.0f;
+	yt_player_encode(&candidate);
+	yt_error_clear(&error);
+	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
+	    &error));
+	CHECK(yt_database_write(&door.game.database, 2U, &current.record,
+	    &error));
+	CHECK(yt_database_write_durable(&door.game.database, 3U,
+	    &candidate.record, &error));
+
+	CHECK(yt_session_players_are_friendly(&session, 3, &friendly,
+	    &error));
+	CHECK(friendly);
+	candidate.team = 8.0f;
+	yt_player_encode(&candidate);
+	CHECK(yt_database_write_durable(&door.game.database, 3U,
+	    &candidate.record, &error));
+	CHECK(yt_session_players_are_friendly(&session, 3, &friendly,
+	    &error));
+	CHECK(!friendly);
+	CHECK(yt_session_players_are_friendly(&session, 2, &friendly,
+	    &error));
+	CHECK(friendly);
+	CHECK(yt_session_players_are_friendly(&session, 1, &friendly,
+	    &error));
+	CHECK(!friendly);
+	CHECK(yt_session_players_are_friendly(&session, 52, &friendly,
+	    &error));
+	CHECK(!friendly);
+
+	current.team = 0.0f;
+	yt_player_encode(&current);
+	CHECK(yt_database_write_durable(&door.game.database, 2U,
+	    &current.record, &error));
+	CHECK(yt_session_players_are_friendly(&session, 4, &friendly,
+	    &error));
+	CHECK(!friendly);
+	current.team = 7.0f;
+	yt_player_encode(&current);
+	CHECK(yt_database_write_durable(&door.game.database, 2U,
+	    &current.record, &error));
+	yt_error_clear(&error);
+	CHECK(!yt_session_players_are_friendly(&session, 4, &friendly,
+	    &error));
+	CHECK(!friendly);
+	CHECK(error.status != YT_OK);
+
+	yt_database_close(&door.game.database);
+	CHECK(remove(path) == 0);
+}
+
 int
 main(void)
 {
@@ -350,5 +424,6 @@ main(void)
 	test_no_port_purchase();
 	test_owned_port_purchase();
 	test_computer_port_visibility();
+	test_player_friendship();
 	return failures == 0 ? 0 : 1;
 }
