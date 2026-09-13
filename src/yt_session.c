@@ -13125,77 +13125,70 @@ deploy_victim_mines(struct yt_session *session, int sector_number,
 }
 
 static bool
-plasma_fighter_owner(void *context, float owner, uint8_t *label,
-    size_t *label_length, struct yt_error *error)
+plasma_fighter_damage_row(double destroyed, uint8_t *row, size_t capacity,
+    size_t *length)
 {
-	struct yt_session *session = context;
-	struct yt_player defender;
-	bool overflow;
-	int owner_record = (int)qb_cint((double)owner, &overflow);
+	static const uint8_t prefix[] = "The plasma bolts destroyed";
+	static const uint8_t suffix[] = " fighters!";
+	char number[64];
+	int number_length;
+	size_t row_length;
 
-	if (overflow) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			snprintf(error->operation, sizeof(error->operation), "%s",
-			    "plasma fighter owner CINT");
-		}
+	if (row == NULL || length == NULL)
 		return false;
+	number_length = qb_str_double(number, sizeof(number), destroyed);
+	if (number_length < 0 || sizeof(prefix) - 1U + (size_t)number_length
+	    + sizeof(suffix) - 1U > capacity)
+		return false;
+	memcpy(row, prefix, sizeof(prefix) - 1U);
+	memcpy(row + sizeof(prefix) - 1U, number, (size_t)number_length);
+	row_length = sizeof(prefix) - 1U + (size_t)number_length;
+	memcpy(row + row_length, suffix, sizeof(suffix) - 1U);
+	row_length += sizeof(suffix) - 1U;
+	*length = row_length;
+	return true;
+}
+
+static bool
+plasma_fighter_news_row(const uint8_t *attacker, size_t attacker_length,
+    double destroyed, int sector, uint8_t *row, size_t capacity,
+    size_t *length)
+{
+	static const uint8_t infix[] = "'s plasma bolts destroyed";
+	static const uint8_t suffix[] = " fighters in sector";
+	char destroyed_text[64];
+	char sector_text[64];
+	int destroyed_length;
+	int sector_length;
+	size_t row_length = 0U;
+
+	if (row == NULL || length == NULL
+	    || (attacker == NULL && attacker_length != 0U))
+		return false;
+	destroyed_length = qb_str_double(destroyed_text,
+	    sizeof(destroyed_text), destroyed);
+	sector_length = qb_str_single(sector_text, sizeof(sector_text),
+	    (float)sector);
+	if (destroyed_length < 0 || sector_length < 0
+	    || attacker_length + sizeof(infix) - 1U
+	    + (size_t)destroyed_length + sizeof(suffix) - 1U
+	    + (size_t)sector_length + 1U > capacity)
+		return false;
+	if (attacker_length != 0U) {
+		memcpy(row, attacker, attacker_length);
+		row_length = attacker_length;
 	}
-	if (!yt_game_read_player(&session->door->game, owner_record, &defender,
-	    error))
-		return false;
-	return yt_player_stored_name(&defender, label, label_length, error);
-}
-
-static bool
-plasma_fighter_present(void *context, const uint8_t *text, size_t length,
-    enum yt_projectile_plasma_fighter_output_kind kind,
-    struct yt_error *error)
-{
-	return session_present_text(context, text, length,
-	    kind == YT_PROJECTILE_PLASMA_FIGHTER_ENCOUNTER
-	    ? SESSION_PRESENT_BOLD_LINE : SESSION_PRESENT_LINE,
-	    kind == YT_PROJECTILE_PLASMA_FIGHTER_ENCOUNTER
-	    ? "plasma defense report" : "plasma destroyed-defense row", error);
-}
-
-static bool
-plasma_fighter_sound(void *context, float selector, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	/* The fighter model assigns through its by-reference carrier first. */
-	yt_present_set_bold(&session->presentation,
-	    session->presentation.bold);
-	return session_sound(context, selector,
-	    "plasma fighter-defense sound", error);
-}
-
-static bool
-plasma_fighter_read_sector(void *context, float sector,
-    struct yt_sector *value, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_read_sector(session, (int)sector, value,
-	    error);
-}
-
-static bool
-plasma_fighter_write_sector(void *context, float sector,
-    const struct yt_sector *value, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database,
-	    (size_t)session_sector_basic_record(session, sector),
-	    &value->record, error);
-}
-
-static bool
-plasma_fighter_victory(void *context, struct yt_error *error)
-{
-	return xannor_victory(context, error);
+	memcpy(row + row_length, infix, sizeof(infix) - 1U);
+	row_length += sizeof(infix) - 1U;
+	memcpy(row + row_length, destroyed_text, (size_t)destroyed_length);
+	row_length += (size_t)destroyed_length;
+	memcpy(row + row_length, suffix, sizeof(suffix) - 1U);
+	row_length += sizeof(suffix) - 1U;
+	memcpy(row + row_length, sector_text, (size_t)sector_length);
+	row_length += (size_t)sector_length;
+	row[row_length++] = '!';
+	*length = row_length;
+	return true;
 }
 
 static bool
@@ -13899,16 +13892,6 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
     const struct yt_sector *initial, const uint8_t *attacker,
     size_t launch_attacker_length, double *energy, struct yt_error *error)
 {
-	static const struct yt_projectile_plasma_fighter_ops fighter_ops = {
-		plasma_fighter_owner,
-		plasma_fighter_present,
-		plasma_fighter_sound,
-		random_value,
-		session_append_news_bytes,
-		plasma_fighter_read_sector,
-		plasma_fighter_write_sector,
-		plasma_fighter_victory,
-	};
 	static const struct yt_projectile_plasma_player_ops player_ops = {
 		plasma_player_read,
 		plasma_player_write,
@@ -13931,7 +13914,6 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_killed_salvage,
 	};
 	struct yt_sector sector;
-	struct yt_projectile_plasma_fighter_state fighter;
 	struct yt_projectile_plasma_player_state player;
 	struct yt_projectile_plasma_killed_state killed;
 	float planet_link;
@@ -13942,21 +13924,106 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 	else if (!session_read_sector(session, sector_number,
 	    &sector, error))
 		return false;
-	memset(&fighter, 0, sizeof(fighter));
-	fighter.sector = (float)sector_number;
-	fighter.fighters = (double)sector.fighters;
-	fighter.owner = sector.fighter_owner;
-	fighter.shooter = session_record(session);
-	fighter.headquarters = session->door->game.config.headquarters;
-	fighter.attacker = attacker;
-	fighter.attacker_length = launch_attacker_length;
-	fighter.energy = energy;
-	fighter.bold = &session->presentation.bold;
-	if (!yt_projectile_plasma_fighter_run(&fighter, &fighter_ops, session,
-	    error))
-		return false;
-	if (fighter.route == YT_PROJECTILE_PLASMA_FIGHTER_FOOTER)
-		return true;
+	if ((double)sector.fighters > 0.0) {
+		static const uint8_t xannor[] = "The Xannor";
+		static const uint8_t mercenaries[] = "Mercenaries";
+		static const uint8_t you[] = "YOU";
+		static const uint8_t dirty_zero[4] = {
+			0x00, 0x00, 0x10, 0x00
+		};
+		double original_fighters = (double)sector.fighters;
+		double destroyed = 0.0;
+		double remaining_fighters;
+		uint8_t owner_name[YT_TEXT_FIELD_SIZE];
+		uint8_t row[256];
+		const uint8_t *initial_owner = xannor;
+		size_t owner_length = sizeof(xannor) - 1U;
+		size_t row_length;
+
+		if (sector.fighter_owner == -2.0f) {
+			initial_owner = mercenaries;
+			owner_length = sizeof(mercenaries) - 1U;
+		}
+		memcpy(owner_name, initial_owner, owner_length);
+		if (sector.fighter_owner > 1.0f) {
+			struct yt_player defender;
+
+			if (!yt_game_read_player(&session->door->game,
+			    (int)sector.fighter_owner, &defender, error)
+			    || !yt_player_stored_name(&defender, owner_name,
+			    &owner_length, error)
+			    || owner_length > sizeof(owner_name))
+				return false;
+		}
+		if (sector.fighter_owner == (float)session_record(session)) {
+			memcpy(owner_name, you, sizeof(you) - 1U);
+			owner_length = sizeof(you) - 1U;
+		}
+		if (!yt_projectile_defense_row((float)sector_number, owner_name,
+		    owner_length, original_fighters, row, sizeof(row), &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_BOLD_LINE, "plasma defense report", error))
+			return false;
+		session->presentation.bold = 1.0f;
+		if (!session_sound(session, 2.0f, "plasma fighter-defense sound",
+		    error))
+			return false;
+		if (*energy > 0.0) {
+			while (*energy > 0.0 && destroyed < original_fighters) {
+				float draw;
+
+				destroyed += floor(*energy / 5000.0) + 1.0;
+				if (!random_value(session, &draw, error))
+					return false;
+				*energy -= (double)single_mul(draw, 25000.0f);
+			}
+			if (*energy < 0.0)
+				*energy = 0.0;
+			if (destroyed > original_fighters)
+				destroyed = original_fighters;
+			if (!plasma_fighter_damage_row(destroyed, row, sizeof(row),
+			    &row_length)
+			    || !session_present_text(session, row, row_length,
+			    SESSION_PRESENT_LINE, "plasma destroyed-defense row",
+			    error))
+				return false;
+			remaining_fighters = original_fighters - destroyed;
+			if (destroyed > 9.0
+			    && (!plasma_fighter_news_row(attacker,
+			    launch_attacker_length, destroyed, sector_number, row,
+			    sizeof(row), &row_length)
+			    || !session_append_news_bytes(session, row, row_length,
+			    error)))
+				return false;
+			if (!session_read_sector(session, sector_number, &sector,
+			    error))
+				return false;
+			sector.fighters = (float)remaining_fighters;
+			if (!yt_record_set_number(&sector.record, YT_F81,
+			    sector.fighters))
+				return false;
+			if (remaining_fighters == 0.0) {
+				sector.fighters = 0.0f;
+				sector.fighter_owner = 0.0f;
+				if (!yt_record_set_raw_number(&sector.record, YT_F81,
+				    dirty_zero)
+				    || !yt_record_set_raw_number(&sector.record, YT_F85,
+				    dirty_zero))
+					return false;
+			}
+			if (!yt_database_write(&session->door->game.database,
+			    (size_t)session_sector_basic_record(session,
+			    (float)sector_number), &sector.record, error))
+				return false;
+			if (remaining_fighters == 0.0
+			    && (float)sector_number
+			    == session->door->game.config.headquarters
+			    && !xannor_victory(session, error))
+				return false;
+			if (*energy < 1.0)
+				return true;
+		}
+	}
 plasma_reload_sector:
 	/* B099 performs a new sector GET before caching mines and planet link. */
 	if (!session_read_sector(session, sector_number, &sector,

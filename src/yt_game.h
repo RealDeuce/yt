@@ -638,6 +638,8 @@ typedef bool (*yt_projectile_output_fn)(void *context,
     const uint8_t *text, size_t length, struct yt_error *error);
 typedef bool (*yt_projectile_random_fn)(void *context, float *value,
     struct yt_error *error);
+typedef bool (*yt_projectile_sound_fn)(void *context,
+    float selector, struct yt_error *error);
 bool yt_projectile_is_black_hole(float hop, float first, float second);
 bool yt_projectile_cruise_reroute_row(float hop, uint8_t *row,
     size_t capacity, size_t *length);
@@ -650,64 +652,6 @@ bool yt_projectile_union_police_admitted(float hop, float destination,
 bool yt_projectile_sector_has_presence(const struct yt_sector *sector,
     int sector_number, int last_player,
     const struct yt_player_cache *player_cache, int xannor_provoker);
-
-enum yt_projectile_plasma_fighter_route {
-	YT_PROJECTILE_PLASMA_FIGHTER_CONTINUE_SECTOR,
-	YT_PROJECTILE_PLASMA_FIGHTER_FOOTER,
-};
-enum yt_projectile_plasma_fighter_output_kind {
-	YT_PROJECTILE_PLASMA_FIGHTER_ENCOUNTER,
-	YT_PROJECTILE_PLASMA_FIGHTER_DAMAGE,
-};
-struct yt_projectile_plasma_fighter_state {
-	float sector;
-	double fighters;
-	float owner;
-	int shooter;
-	float headquarters;
-	const uint8_t *attacker;
-	size_t attacker_length;
-	double *energy;
-	float *bold;
-	double destroyed;
-	double remaining_fighters;
-	struct yt_sector persistence;
-	bool victory_called;
-	enum yt_projectile_plasma_fighter_route route;
-};
-typedef bool (*yt_projectile_plasma_fighter_owner_fn)(void *context,
-    float owner, uint8_t *name, size_t *name_length,
-    struct yt_error *error);
-typedef bool (*yt_projectile_plasma_fighter_present_fn)(void *context,
-    const uint8_t *text, size_t length,
-    enum yt_projectile_plasma_fighter_output_kind kind,
-    struct yt_error *error);
-typedef bool (*yt_projectile_sound_fn)(void *context,
-    float selector, struct yt_error *error);
-typedef bool (*yt_projectile_plasma_fighter_random_fn)(void *context,
-    float *value, struct yt_error *error);
-typedef bool (*yt_projectile_plasma_fighter_news_fn)(void *context,
-    const uint8_t *text, size_t length, struct yt_error *error);
-typedef bool (*yt_projectile_plasma_fighter_read_fn)(void *context,
-    float sector, struct yt_sector *value, struct yt_error *error);
-typedef bool (*yt_projectile_plasma_fighter_write_fn)(void *context,
-    float sector, const struct yt_sector *value, struct yt_error *error);
-typedef bool (*yt_projectile_plasma_fighter_victory_fn)(void *context,
-    struct yt_error *error);
-struct yt_projectile_plasma_fighter_ops {
-	yt_projectile_plasma_fighter_owner_fn owner;
-	yt_projectile_plasma_fighter_present_fn present;
-	yt_projectile_sound_fn sound;
-	yt_projectile_plasma_fighter_random_fn random;
-	yt_projectile_plasma_fighter_news_fn news;
-	yt_projectile_plasma_fighter_read_fn read_sector;
-	yt_projectile_plasma_fighter_write_fn write_sector;
-	yt_projectile_plasma_fighter_victory_fn victory;
-};
-bool yt_projectile_plasma_fighter_run(
-    struct yt_projectile_plasma_fighter_state *state,
-    const struct yt_projectile_plasma_fighter_ops *ops, void *context,
-    struct yt_error *error);
 
 enum yt_projectile_plasma_player_route {
 	YT_PROJECTILE_PLASMA_PLAYER_KILLED,
@@ -756,8 +700,8 @@ struct yt_projectile_plasma_player_ops {
 	yt_projectile_plasma_player_save_foreground_fn save_foreground;
 	yt_projectile_plasma_player_color_fn color;
 	yt_projectile_sound_fn sound;
-	yt_projectile_plasma_fighter_random_fn random;
-	yt_projectile_plasma_fighter_news_fn news;
+	yt_projectile_random_fn random;
+	yt_projectile_output_fn news;
 	yt_projectile_plasma_player_present_fn present;
 	yt_projectile_plasma_player_restore_foreground_fn restore_foreground;
 };
@@ -861,9 +805,9 @@ struct yt_projectile_plasma_planet_ops {
 	yt_projectile_plasma_killed_read_sector_fn read_sector;
 	yt_projectile_plasma_killed_write_sector_fn write_sector;
 	yt_projectile_plasma_planet_present_fn present;
-	yt_projectile_plasma_fighter_news_fn news;
+	yt_projectile_output_fn news;
 	yt_projectile_sound_fn sound;
-	yt_projectile_plasma_fighter_random_fn random;
+	yt_projectile_random_fn random;
 };
 bool yt_projectile_plasma_planet_run(
     struct yt_projectile_plasma_planet_state *state,
