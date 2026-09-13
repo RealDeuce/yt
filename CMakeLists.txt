@@ -181,6 +181,7 @@ if(BUILD_TESTING)
         target_compile_definitions(test_input_model PRIVATE _XOPEN_SOURCE=700)
     endif()
     yt_add_test(test_presentation tests/test_presentation.c yt_game)
+    target_sources(test_presentation PRIVATE tests/info_panel_model.c)
     target_compile_definitions(test_presentation PRIVATE
         YT_DATA_DIR="${YT_GENERATED_DATA_DIR}/")
     add_dependencies(test_presentation yt-data)

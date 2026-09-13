@@ -5,6 +5,7 @@
 #include "yt_text.h"
 #include "yt_team.h"
 #include "qb.h"
+#include "info_panel_model.h"
 
 #include <math.h>
 #include <stdio.h>

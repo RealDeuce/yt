@@ -10920,87 +10920,202 @@ info_team_lines(struct yt_session *session, struct yt_team *resolved_team,
 }
 
 static bool
-info_panel_refresh(void *context, uint8_t *text, size_t capacity,
-    size_t *length, struct yt_error *error)
+info_panel_append(uint8_t *row, size_t capacity, size_t *length,
+    const void *text, size_t text_length)
 {
-	struct yt_session *session = context;
-
-	if (length == NULL || !info_refresh_time(session, error))
+	if (row == NULL || length == NULL || *length > capacity
+	    || text_length > capacity - *length
+	    || (text == NULL && text_length != 0U))
 		return false;
-	if (session->time.text_length > capacity)
-		return info_failure(error, "Info time text capacity");
-	if (session->time.text_length != 0U)
-		memcpy(text, session->time.text, session->time.text_length);
-	*length = session->time.text_length;
+	if (text_length != 0U)
+		memcpy(row + *length, text, text_length);
+	*length += text_length;
 	return true;
 }
 
 static bool
-info_panel_team(void *context, struct yt_error *error)
+info_panel_cell(uint8_t *cell, size_t capacity, size_t *length,
+    const char *label, const char *value)
 {
-	return info_team_lines(context, NULL, NULL, error);
+	static const uint8_t bar = 0xba;
+
+	*length = 0U;
+	return info_panel_append(cell, capacity, length, &bar, 1U)
+	    && info_panel_append(cell, capacity, length, label, strlen(label))
+	    && info_panel_append(cell, capacity, length, value, strlen(value));
 }
 
 static bool
-info_panel_read_player(void *context, struct yt_player *player,
+info_panel_fixed(struct yt_session *session, const uint8_t *text,
+    size_t length, float width, struct yt_error *error)
+{
+	return session_fixed_width_bytes(session, text, length, width,
+	    "Info fixed-width presentation", error);
+}
+
+static bool
+info_panel_ordinary(struct yt_session *session,
+    const char *left_label, const char *left_value,
+    const char *right_label, const char *right_value,
     struct yt_error *error)
 {
-	struct yt_session *session = context;
+	static const uint8_t bar = 0xba;
+	uint8_t left[160];
+	uint8_t right[160];
+	size_t left_length;
+	size_t right_length;
 
-	if (!session_reload_player(session, error))
-		return false;
-	*player = session->player;
-	return true;
+	return info_panel_cell(left, sizeof(left), &left_length, left_label,
+	    left_value)
+	    && info_panel_cell(right, sizeof(right), &right_length, right_label,
+	    right_value)
+	    && info_panel_fixed(session, left, left_length, 26.0f, error)
+	    && info_panel_fixed(session, right, right_length, 23.0f, error)
+	    && info_line(session, &bar, 1U, error);
 }
 
 static bool
-info_panel_present(void *context, const uint8_t *text, size_t length,
-    enum yt_info_panel_output_kind kind, float width,
-    struct yt_info_panel_state *state, struct yt_error *error)
+info_panel_commodity(struct yt_session *session,
+    const char *left_label, const char *left_value,
+    const char *right_label, float right_value, struct yt_error *error)
 {
-	struct yt_session *session = context;
-	bool result;
+	static const uint8_t bar = 0xba;
+	uint8_t left[160];
+	uint8_t right[160];
+	char number[64];
+	size_t left_length;
+	size_t right_length;
+	int number_length;
 
-	session_set_foreground(session, state->foreground);
-	yt_present_set_background(&session->presentation, state->background);
-	yt_present_set_bold(&session->presentation, state->bold);
-	if (kind == YT_INFO_PANEL_LINE)
-		result = info_line(session, text, length, error);
-	else if (kind == YT_INFO_PANEL_FIXED)
-		result = session_fixed_width_bytes(session, text, length, width,
-		    "Info fixed-width presentation", error);
-	else
-		return info_failure(error, "Info presentation kind");
-	state->foreground = session_foreground(session);
-	state->background = yt_present_background(&session->presentation);
-	state->bold = yt_present_bold(&session->presentation);
-	return result;
+	number_length = qb_str_single(number, sizeof(number), right_value);
+	if (number_length < 0
+	    || !info_panel_cell(left, sizeof(left), &left_length, left_label,
+	    left_value)
+	    || !info_panel_cell(right, sizeof(right), &right_length,
+	    right_label, "")
+	    || !info_panel_fixed(session, left, left_length, 26.0f, error)
+	    || !info_panel_fixed(session, right, right_length, 17.0f, error))
+		return false;
+	if (right_value != 0.0f) {
+		yt_present_set_bold(&session->presentation, 1.0f);
+		session_set_foreground(session, 7.0f);
+		yt_present_set_background(&session->presentation, 4.0f);
+	}
+	if (!info_panel_fixed(session, (const uint8_t *)number,
+	    (size_t)number_length, 6.0f, error))
+		return false;
+	session_set_foreground(session, 2.0f);
+	yt_present_set_background(&session->presentation, 0.0f);
+	return info_line(session, &bar, 1U, error);
 }
 
 static bool
 show_ship(struct yt_session *session, struct yt_error *error)
 {
-	static const struct yt_info_panel_ops ops = {
-		info_panel_refresh,
-		info_panel_team,
-		info_panel_read_player,
-		info_panel_present,
+	static const uint8_t top[50] = {
+		0xc9, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcb, 0xcd, 0xcd, 0xcd,
+		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xbb
 	};
-	struct yt_info_panel_state state;
-	bool result;
+	static const uint8_t bottom[50] = {
+		0xc8, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xca, 0xcd, 0xcd, 0xcd,
+		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xbc
+	};
+	static const uint8_t title[] = "[ Info ]";
+	uint8_t row[256];
+	char left[64];
+	char right[64];
+	size_t row_length;
+	size_t cached_name_length = session->cached_player_name_length;
+	float saved_foreground = session_foreground(session);
+	float cloak_percent;
+	bool anti_cloak = session_anti_cloak_enabled(session);
+	int length;
 
-	memset(&state, 0, sizeof(state));
-	state.cached_name = session->cached_player_name;
-	state.cached_name_length = session->cached_player_name_length;
-	state.anti_cloak = session_anti_cloak_enabled(session) ? -1.0f : 0.0f;
-	state.foreground = session_foreground(session);
-	state.background = yt_present_background(&session->presentation);
-	state.bold = yt_present_bold(&session->presentation);
-	result = yt_info_panel_run(&state, &ops, session, error);
-	session_set_foreground(session, state.foreground);
-	yt_present_set_background(&session->presentation, state.background);
-	yt_present_set_bold(&session->presentation, state.bold);
-	return result;
+	if (!info_refresh_time(session, error))
+		return false;
+	session_set_foreground(session, 2.0f);
+	if (!info_line(session, NULL, 0U, error)
+	    || !info_panel_fixed(session, NULL, 0U, 20.0f, error)
+	    || !info_line(session, title, sizeof(title) - 1U, error)
+	    || !info_line(session, NULL, 0U, error))
+		return false;
+	row_length = 0U;
+	if (!info_panel_append(row, sizeof(row), &row_length, "Name  : ", 8U)
+	    || !info_panel_append(row, sizeof(row), &row_length,
+	    session->cached_player_name, cached_name_length)
+	    || !info_line(session, row, row_length, error))
+		return false;
+	row_length = 0U;
+	if (!info_panel_append(row, sizeof(row), &row_length, "Time  :", 7U)
+	    || !info_panel_append(row, sizeof(row), &row_length,
+	    session->time.text, session->time.text_length)
+	    || !info_line(session, row, row_length, error)
+	    || !info_team_lines(session, NULL, NULL, error)
+	    || !session_reload_player(session, error)
+	    || !info_line(session, top, sizeof(top), error))
+		return false;
+	length = qb_str_double(left, sizeof(left),
+	    (double)session->player.credits);
+	if (length < 0)
+		return false;
+	length = qb_str_single(right, sizeof(right), session->player.sector);
+	if (length < 0 || !info_panel_ordinary(session,
+	    " Credits.. :", left, " Sector....... :", right, error))
+		return false;
+	if (qb_str_single(left, sizeof(left), session->player.turns) < 0
+	    || qb_str_single(right, sizeof(right), session->player.holds) < 0
+	    || !info_panel_ordinary(session, " Turns.... :", left,
+	    " Holds........ :", right, error))
+		return false;
+	if (qb_str_double(left, sizeof(left),
+	    (double)session->player.fighters) < 0
+	    || !info_panel_commodity(session, " Fighters. :", left,
+	    " Ore.......... :", session->player.ore, error))
+		return false;
+	if (qb_str_single(left, sizeof(left), session->player.mines) < 0
+	    || !info_panel_commodity(session, " Mines.... :", left,
+	    " Organics..... :", session->player.organics, error))
+		return false;
+	if (qb_str_single(left, sizeof(left), session->player.missiles) < 0
+	    || !info_panel_commodity(session, " Missiles. :", left,
+	    " Equipment.... :", session->player.equipment, error))
+		return false;
+	(void)snprintf(left, sizeof(left), "%s",
+	    session->player.danger_scanner == 0.0f ? " NONE" : " Installed");
+	if (qb_str_single(right, sizeof(right),
+	    session->player.ports_owned) < 0
+	    || !info_panel_ordinary(session, " Scanner.. :", left,
+	    " Ports Owned.. :", right, error))
+		return false;
+	if (qb_str_double(left, sizeof(left),
+	    (double)session->player.shields) < 0)
+		return false;
+	if (anti_cloak)
+		(void)snprintf(right, sizeof(right), "%s", " FAIL");
+	else {
+		cloak_percent = floorf(single_mul(session->player.cloak, 100.0f));
+		if (qb_str_single(right, sizeof(right), cloak_percent) < 0
+		    || strlen(right) + 1U >= sizeof(right))
+			return false;
+		strcat(right, "%");
+	}
+	if (!info_panel_ordinary(session, " Shields.. :", left,
+	    " Cloak Energy. :", right, error)
+	    || qb_str_single(left, sizeof(left),
+	    session->player.ground_forces) < 0
+	    || qb_str_single(right, sizeof(right), session->player.plasma) < 0
+	    || !info_panel_ordinary(session, " Forces... :", left,
+	    " Plasma Bolts. :", right, error)
+	    || !info_line(session, bottom, sizeof(bottom), error))
+		return false;
+	session_set_foreground(session, saved_foreground);
+	return true;
 }
 
 static bool
