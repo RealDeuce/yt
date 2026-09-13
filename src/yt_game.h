@@ -782,48 +782,6 @@ struct yt_common_fatal_ops {
 bool yt_common_fatal_run(struct yt_common_fatal_state *state,
     const struct yt_common_fatal_ops *ops, void *context,
     struct yt_error *error);
-enum yt_direct_fighter_kill_route {
-	YT_DIRECT_FIGHTER_NO_KILL,
-	YT_DIRECT_FIGHTER_FRESH_PROMPT,
-	YT_DIRECT_FIGHTER_MINE_TERMINAL,
-	YT_DIRECT_FIGHTER_COMMON_FATAL,
-};
-struct yt_direct_fighter_kill_state {
-	float target_shields;
-	int target_record;
-	int current_player_record;
-	float current_sector;
-	float saved_mines;
-	uint8_t saved_name[YT_TEXT_FIELD_SIZE];
-	size_t saved_name_length;
-	bool destroyed;
-	enum yt_direct_fighter_kill_route route;
-};
-struct yt_direct_fighter_kill_ops {
-	bool (*sound)(void *context, struct yt_error *error);
-	bool (*read_player)(void *context, int player_record,
-	    struct yt_player *player, struct yt_error *error);
-	bool (*name_length)(void *context, float raw_length, size_t *length,
-	    struct yt_error *error);
-	bool (*death)(void *context, int victim_record, float killer,
-	    struct yt_error *error);
-	bool (*salvage)(void *context, int victim_record, int killer,
-	    struct yt_error *error);
-	bool (*read_sector)(void *context, float logical_sector,
-	    struct yt_sector *sector, struct yt_error *error);
-	bool (*write_sector)(void *context, float logical_sector,
-	    struct yt_sector *sector, struct yt_error *error);
-	bool (*present)(void *context, const uint8_t *text, size_t length,
-	    struct yt_error *error);
-	bool (*news)(void *context, const uint8_t *text, size_t length,
-	    struct yt_error *error);
-	bool (*mine)(void *context, bool *terminal, bool *destroyed,
-	    struct yt_error *error);
-	bool (*fatal)(void *context, struct yt_error *error);
-};
-bool yt_direct_fighter_kill_run(struct yt_direct_fighter_kill_state *state,
-    const struct yt_direct_fighter_kill_ops *ops, void *context,
-    struct yt_error *error);
 float yt_emergency_warp_duration(float first, float second);
 float yt_emergency_warp_destination(float draw, float sector_count);
 float yt_emergency_warp_cost(float heat, float draw, float turns,
