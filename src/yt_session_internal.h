@@ -111,6 +111,10 @@ bool session_present_paged_fragment(struct yt_session *session,
 bool session_present_timed_paged_row(struct yt_session *session,
     const uint8_t *text, size_t length, const char *operation,
     struct yt_error *error);
+bool session_wait(struct yt_session *session, double seconds,
+    const char *operation, struct yt_error *error);
+bool session_append_news_bytes(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error);
 void session_set_pager_line_count_raw(struct yt_session *session,
     const uint8_t raw[4]);
 void session_compat_upper_n(struct yt_session *session, uint8_t *text,
@@ -123,6 +127,8 @@ bool session_reload_player(struct yt_session *session,
     struct yt_error *error);
 bool session_mutate_player_credits(struct yt_session *session, float argument,
     bool *hydrated, struct yt_error *error);
+bool yt_session_salvage_player(struct yt_session *session, int victim_record,
+    int killer_record, struct yt_error *error);
 bool session_fixed_width_bytes(struct yt_session *session,
     const uint8_t *text, size_t text_length, float width,
     const char *operation, struct yt_error *error);

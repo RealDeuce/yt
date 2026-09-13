@@ -306,7 +306,7 @@ session_timed_wait(struct yt_session *session, double seconds)
 	    (uint16_t)(deadline_milliseconds % 1000U), &selected, &timed_out);
 }
 
-static bool
+bool
 session_wait(struct yt_session *session, double seconds,
     const char *operation, struct yt_error *error)
 {
@@ -801,8 +801,8 @@ append_news(struct yt_session *session, const char *text,
 	return session_close_file5(error) && yt_news_append(text, error);
 }
 
-static bool
-append_news_bytes(void *context, const uint8_t *text,
+bool
+session_append_news_bytes(void *context, const uint8_t *text,
     size_t length, struct yt_error *error)
 {
 	(void)context;
@@ -1364,12 +1364,12 @@ session_commit_shared_terminal(struct yt_session *session,
 			if (!session_present_text(session, event->data,
 			    event->length, SESSION_PRESENT_LINE,
 			    "shared error session row", error)
-			    || !append_news_bytes(session, event->data,
+			    || !session_append_news_bytes(session, event->data,
 			    event->length, error))
 				return false;
 			break;
 		case YT_SHARED_ERROR_NEWS:
-			if (!append_news_bytes(session, event->data,
+			if (!session_append_news_bytes(session, event->data,
 			    event->length, error))
 				return false;
 			break;
@@ -1777,7 +1777,8 @@ session_display_game_file(struct yt_session *session, const char *path,
 		    &row_length)
 		    && session_present_paged_line(session, row, row_length,
 		    "file viewer missing row", active_error)
-		    && append_news_bytes(session, row, row_length, active_error);
+		    && session_append_news_bytes(session, row, row_length,
+		    active_error);
 	}
 	return ok;
 }
@@ -5117,7 +5118,7 @@ kill_player_run(struct yt_session *session, int victim_record,
 		player_death_read_port,
 		player_death_write_port,
 		player_death_present,
-		append_news_bytes,
+		session_append_news_bytes,
 		player_death_set_current,
 		player_death_flush,
 	};
@@ -5228,216 +5229,6 @@ common_fatal_self(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-salvage_load_player(struct yt_session *session, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	if (player_record == session_record(session)) {
-		if (!session_reload_player(session, error))
-			return false;
-		*player = session->player;
-		return true;
-	}
-	return yt_game_read_player(&session->door->game, player_record, player,
-	    error);
-}
-
-static bool
-salvage_save_player(struct yt_session *session, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	if (!yt_game_write_player(&session->door->game, player_record, player,
-	    error)
-	    || !yt_database_flush(&session->door->game.database, error))
-		return false;
-	if (player_record == session_record(session))
-		session->player = *player;
-	return true;
-}
-
-static bool
-salvage_player(struct yt_session *session, int victim_record,
-    int killer_record, struct yt_error *error)
-{
-	static const uint8_t title[] =
-	    "You destroyed the ship and salvaged the following:";
-	static const uint8_t nothing[] = "  -  NOTHING!";
-	static const enum yt_salvage_cargo_kind cargo_kind[4] = {
-		YT_SALVAGE_EMPTY_HOLDS, YT_SALVAGE_ORE,
-		YT_SALVAGE_ORGANICS, YT_SALVAGE_EQUIPMENT
-	};
-	static const size_t cargo_order[4] = {3U, 0U, 1U, 2U};
-	struct yt_player victim;
-	struct yt_player killer;
-	float awards[6] = {0};
-	float cargo_stock[3];
-	float cargo_awards[4] = {0};
-	float cargo_remaining;
-	float requested_holds;
-	float *simple_fields[5];
-	uint8_t victim_name[YT_TEXT_FIELD_SIZE];
-	uint8_t row[300];
-	size_t victim_name_length;
-	size_t row_length;
-	size_t index;
-	bool emitted = false;
-
-	/*
-	 * The victim GET precedes the killer-range gate.  Player record
-	 * identities are integers because every caller and every persisted
-	 * producer writes an integer player record.
-	 */
-	if (!yt_game_read_player(&session->door->game, victim_record, &victim,
-	    error))
-		return false;
-	if (killer_record < YT_PLAYER_FIRST
-	    || (float)killer_record > session->door->game.config.sector_offset)
-		return true;
-	if (!yt_player_stored_name(&victim, victim_name, &victim_name_length,
-	    error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "salvage result row", error)
-	    || !session_present_text(session, title, sizeof(title) - 1U,
-	    SESSION_PRESENT_BOLD_LINE, "salvage title", error)
-	    || !yt_salvage_header_row((const uint8_t *)session->player.name,
-	    strlen(session->player.name), victim_name, victim_name_length,
-	    row, sizeof(row), &row_length)
-	    || !append_news_bytes(session, row, row_length, error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "salvage result row", error))
-		return false;
-
-	for (index = 0U; index < YT_ARRAY_LEN(awards); ++index) {
-		float stock;
-		float draw;
-
-		if (!random_value(session, &draw, error))
-			return false;
-		switch (index) {
-		case 0U: stock = victim.holds; break;
-		case 1U: stock = victim.credits; break;
-		case 2U: stock = victim.missiles; break;
-		case 3U: stock = victim.plasma; break;
-		case 4U: stock = victim.ground_forces; break;
-		default: stock = victim.mines; break;
-		}
-		awards[index] = floorf(single_mul(draw, stock));
-	}
-	if (!session_wait(session, 1.0, "ship salvage wait", error)
-	    || !salvage_load_player(session, killer_record, &killer, error))
-		return false;
-
-	simple_fields[0] = &killer.credits;
-	simple_fields[1] = &killer.missiles;
-	simple_fields[2] = &killer.plasma;
-	simple_fields[3] = &killer.ground_forces;
-	simple_fields[4] = &killer.mines;
-	for (index = 1U; index < YT_ARRAY_LEN(awards); ++index) {
-		if (awards[index] == 0.0f)
-			continue;
-		if (!session_wait(session, 0.5, "ship salvage wait", error))
-			return false;
-		emitted = true;
-		if (!yt_salvage_simple_row(
-		    (enum yt_salvage_simple_kind)(index - 1U), awards[index],
-		    row, sizeof(row), &row_length)
-		    || !append_news_bytes(session, row, row_length, error)
-		    || !session_present_text(session, row, row_length,
-		    SESSION_PRESENT_LINE, "salvage result row", error))
-			return false;
-		*simple_fields[index - 1U] = single_add(
-		    *simple_fields[index - 1U], awards[index]);
-	}
-	if (!salvage_save_player(session, killer_record, &killer, error))
-		return false;
-
-	requested_holds = awards[0];
-	if (single_add(killer.holds, requested_holds)
-	    > session->door->game.config.maximum_holds)
-		requested_holds = single_sub(
-		    session->door->game.config.maximum_holds, killer.holds);
-	if (requested_holds > 0.0f) {
-		float counter;
-
-		emitted = true;
-		if (!yt_game_read_player(&session->door->game, victim_record,
-		    &victim, error))
-			return false;
-		cargo_stock[0] = victim.ore;
-		cargo_stock[1] = victim.organics;
-		cargo_stock[2] = victim.equipment;
-		cargo_remaining = victim.holds;
-		for (counter = 1.0f; counter <= requested_holds;
-		    counter = single_add(counter, 1.0f)) {
-			float one_based;
-			float pick;
-			float boundary;
-			int selected;
-
-			if (!yt_random_one_based_single(
-			    &session->door->game.random, cargo_remaining,
-			    &one_based, error))
-				return false;
-			pick = single_sub(one_based, 1.0f);
-			if (pick < cargo_stock[0])
-				selected = 0;
-			else {
-				boundary = single_add(cargo_stock[0],
-				    cargo_stock[1]);
-				if (pick < boundary)
-					selected = 1;
-				else {
-					boundary = single_add(boundary,
-					    cargo_stock[2]);
-					selected = pick < boundary ? 2 : 3;
-				}
-			}
-			cargo_awards[selected] = single_add(
-			    cargo_awards[selected], 1.0f);
-			if (selected < 3)
-				cargo_stock[selected] = single_sub(
-				    cargo_stock[selected], 1.0f);
-			cargo_remaining = single_sub(cargo_remaining, 1.0f);
-		}
-		if (!salvage_load_player(session, killer_record, &killer, error))
-			return false;
-		for (index = 0U; index < YT_ARRAY_LEN(cargo_awards); ++index)
-			killer.holds = single_add(killer.holds,
-			    cargo_awards[index]);
-		killer.ore = single_add(killer.ore, cargo_awards[0]);
-		killer.organics = single_add(killer.organics, cargo_awards[1]);
-		killer.equipment = single_add(killer.equipment,
-		    cargo_awards[2]);
-		if (!salvage_save_player(session, killer_record, &killer, error)
-		    || !session_wait(session, 0.5, "ship salvage wait", error))
-			return false;
-		for (index = 0U; index < YT_ARRAY_LEN(cargo_order); ++index) {
-			size_t award = cargo_order[index];
-
-			if ((award == 3U && cargo_awards[award] <= 0.0f)
-			    || (award != 3U && cargo_awards[award] == 0.0f))
-				continue;
-			if (!session_wait(session, 0.5, "ship salvage wait", error)
-			    || !yt_salvage_cargo_row(cargo_kind[index],
-			    cargo_awards[award], row, sizeof(row), &row_length)
-			    || !append_news_bytes(session, row, row_length, error)
-			    || !session_present_text(session, row, row_length,
-			    SESSION_PRESENT_LINE, "salvage result row", error))
-				return false;
-		}
-	}
-	if (!emitted) {
-		if (!session_wait(session, 0.5, "ship salvage wait", error)
-		    || !append_news_bytes(session, nothing,
-		    sizeof(nothing) - 1U, error)
-		    || !session_present_text(session, nothing,
-		    sizeof(nothing) - 1U, SESSION_PRESENT_LINE,
-		    "salvage result row", error))
-			return false;
-	}
-	return session_wait(session, 4.0, "ship salvage wait", error);
-}
-
-static bool
 xannor_victory_play_file(void *context, const char *path,
     struct yt_error *error)
 {
@@ -5545,7 +5336,7 @@ xannor_victory(struct yt_session *session, struct yt_error *error)
 		xannor_victory_clear_queue,
 		apply_player_credit_mutation,
 		xannor_victory_sound,
-		append_news_bytes,
+		session_append_news_bytes,
 		xannor_victory_radio,
 		xannor_victory_read_sector,
 		xannor_victory_write_sector,
@@ -5595,7 +5386,7 @@ static bool
 direct_fighter_kill_salvage(void *context, int victim_record, int killer,
     struct yt_error *error)
 {
-	return salvage_player(context, victim_record, killer, error);
+	return yt_session_salvage_player(context, victim_record, killer, error);
 }
 
 static bool
@@ -5757,7 +5548,7 @@ direct_attack_combat_kill(void *context, int target_record,
 		direct_fighter_kill_read_sector,
 		direct_fighter_kill_write_sector,
 		direct_fighter_kill_present,
-		append_news_bytes,
+		session_append_news_bytes,
 		direct_fighter_kill_mine,
 		direct_fighter_kill_fatal,
 	};
@@ -6125,7 +5916,7 @@ hostile_attack_tail_news(void *context, const uint8_t *text, size_t length,
 {
 	struct hostile_attack_tail_context *tail = context;
 
-	return append_news_bytes(tail->session, text, length, error);
+	return session_append_news_bytes(tail->session, text, length, error);
 }
 
 static bool
@@ -6225,7 +6016,7 @@ hostile_attack_combat_surrender(void *context,
 		hostile_surrender_present,
 		hostile_surrender_sound,
 		hostile_surrender_prompt,
-		append_news_bytes,
+		session_append_news_bytes,
 		hostile_surrender_cache_forces,
 		hostile_surrender_mark_checked,
 	};
@@ -6310,7 +6101,7 @@ hostile_attack_combat_persistence(void *context,
 		hostile_attack_persistence_read_sector,
 		hostile_attack_persistence_write_sector,
 		hostile_attack_persistence_blank,
-		append_news_bytes,
+		session_append_news_bytes,
 		hostile_attack_persistence_fatal,
 	};
 	struct hostile_attack_combat_context *combat = context;
@@ -6808,7 +6599,7 @@ mine_encounter(struct yt_session *session, bool *terminal,
 		mine_write_sector,
 		mine_present,
 		mine_sound,
-		append_news_bytes,
+		session_append_news_bytes,
 		random_value,
 		mine_shrink,
 		mine_warp,
@@ -9854,7 +9645,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 	    || !yt_planet_assault_attack_news(player_name, player_name_length,
 	    planet_name, planet_name_length, commitment, row, sizeof(row),
 	    &row_length)
-	    || !append_news_bytes(session, row, row_length, error))
+	    || !session_append_news_bytes(session, row, row_length, error))
 		return false;
 	yt_present_set_blink(&session->presentation, 1.0f);
 	if (!session_present_text(session, engaging, sizeof(engaging) - 1U,
@@ -9898,7 +9689,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 		if (!session_present_text(session, defenses,
 		    sizeof(defenses) - 1U, SESSION_PRESENT_BOLD_LINE,
 		    "planet assault defenses-destroyed row", error)
-		    || !append_news_bytes(session, defenses_news,
+		    || !session_append_news_bytes(session, defenses_news,
 		    sizeof(defenses_news) - 1U, error)
 		    || !session_sound(session, 1.0f,
 		    "planet defenses destroyed sound", error))
@@ -9915,7 +9706,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 			    || !yt_planet_assault_capture_news(player_name,
 			    player_name_length, planet_name, planet_name_length,
 			    row, sizeof(row), &row_length)
-			    || !append_news_bytes(session, row, row_length, error)
+			    || !session_append_news_bytes(session, row, row_length, error)
 			    || !session_sound(session, 1.0f,
 			    "planet capture sound", error))
 				return false;
@@ -9938,7 +9729,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 	yt_present_set_blink(&session->presentation, 1.0f);
 	if (!yt_planet_assault_failure_row(defenders, true, row, sizeof(row),
 	    &row_length)
-	    || !append_news_bytes(session, row, row_length, error)
+	    || !session_append_news_bytes(session, row, row_length, error)
 	    || !yt_planet_assault_failure_row(defenders, false, row,
 	    sizeof(row), &row_length)
 	    || !session_present_text(session, row, row_length,
@@ -10199,7 +9990,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 		    || !yt_planet_move_explosion_news(planet_name,
 		    planet_name_length, player_name, player_name_length,
 		    row, sizeof(row), &row_length)
-		    || !append_news_bytes(session, row, row_length, error)
+		    || !session_append_news_bytes(session, row, row_length, error)
 		    || !session_sound(session, 3.0f,
 		    "planet move explosion sound", error)
 		    || !session_reload_player(session, error))
@@ -10225,7 +10016,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 			    SESSION_PRESENT_LINE, "planet move fighter loss row", error)
 			    || !yt_planet_move_loss_row(player_name,
 			    player_name_length, loss, row, sizeof(row), &row_length)
-			    || !append_news_bytes(session, row, row_length, error))
+			    || !session_append_news_bytes(session, row, row_length, error))
 				return false;
 			*stop = true;
 		}
@@ -10842,7 +10633,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	    || !yt_planet_creation_news(cached_trader, cached_trader_length,
 	    (const uint8_t *)session->planet_name, strlen(session->planet_name),
 	    row, sizeof(row), &row_length)
-	    || !append_news_bytes(session, row, row_length, error)
+	    || !session_append_news_bytes(session, row, row_length, error)
 	    || !yt_planet_creation_success_row(
 	    (const uint8_t *)session->planet_name, strlen(session->planet_name),
 	    row, sizeof(row), &row_length)
@@ -13251,7 +13042,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		projectile_sector_read,
 		projectile_sector_write,
 		projectile_planet_present,
-		append_news_bytes,
+		session_append_news_bytes,
 		projectile_planet_sound,
 	};
 	struct yt_planet planet;
@@ -13336,7 +13127,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	    &direct_length, news_row, sizeof(news_row), &news_length)
 	    || !session_present_text(session, direct_row, direct_length,
 	    SESSION_PRESENT_LINE, "cruise missile planet-attack row", error)
-	    || !append_news_bytes(session, news_row, news_length, error))
+	    || !session_append_news_bytes(session, news_row, news_length, error))
 		return false;
 	if (!session_sound(session, 2.0f,
 	    "cruise missile planet attack sound", error))
@@ -13578,7 +13369,7 @@ static bool
 plasma_killed_salvage(void *context, int victim, int shooter,
     struct yt_error *error)
 {
-	return salvage_player(context, victim, shooter, error);
+	return yt_session_salvage_player(context, victim, shooter, error);
 }
 
 static bool
@@ -13790,7 +13581,7 @@ missile_sector(struct yt_session *session, int sector_number,
 	static const struct yt_projectile_defense_combat_ops combat_ops = {
 		random_value,
 		cruise_defense_damage_present,
-		append_news_bytes,
+		session_append_news_bytes,
 		cruise_defense_read_sector,
 		cruise_defense_write_sector,
 		cruise_defense_victory,
@@ -13799,7 +13590,7 @@ missile_sector(struct yt_session *session, int sector_number,
 		cruise_mine_read_sector,
 		cruise_mine_present,
 		cruise_mine_sound,
-		append_news_bytes,
+		session_append_news_bytes,
 		cruise_mine_write_sector,
 	};
 	struct yt_sector sector;
@@ -13931,7 +13722,7 @@ missile_mines:
 		    (float)sector_number, first_news, sizeof(first_news),
 		    &first_news_length, first_direct, sizeof(first_direct),
 		    &first_direct_length)
-		    || !append_news_bytes(session, first_news, first_news_length,
+		    || !session_append_news_bytes(session, first_news, first_news_length,
 		    error)
 		    || !session_present_text(session, first_direct,
 		    first_direct_length, SESSION_PRESENT_BOLD_LINE,
@@ -13993,7 +13784,7 @@ missile_mines:
 			    *xannor_provoker)) {
 				if (!session_sound(session, 3.0f,
 				    "cruise missile salvage sound", error)
-				    || !salvage_player(session, basic,
+				    || !yt_session_salvage_player(session, basic,
 				    session_record(session), error))
 					return false;
 			}
@@ -14059,7 +13850,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		plasma_killed_read_sector,
 		plasma_killed_write_sector,
 		plasma_planet_present,
-		append_news_bytes,
+		session_append_news_bytes,
 		plasma_planet_sound,
 		random_value,
 	};
@@ -14100,14 +13891,14 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_fighter_present,
 		plasma_fighter_sound,
 		random_value,
-		append_news_bytes,
+		session_append_news_bytes,
 		plasma_fighter_read_sector,
 		plasma_fighter_write_sector,
 		plasma_fighter_victory,
 	};
 	static const struct yt_projectile_plasma_mine_ops mine_ops = {
 		plasma_mine_sound,
-		append_news_bytes,
+		session_append_news_bytes,
 		random_value,
 		plasma_mine_present,
 		plasma_fighter_read_sector,
@@ -14120,7 +13911,7 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_player_color,
 		plasma_player_sound,
 		random_value,
-		append_news_bytes,
+		session_append_news_bytes,
 		plasma_player_present,
 		plasma_player_restore_foreground,
 	};
@@ -14953,7 +14744,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		random_value,
 		session_counterlaunch_write_player,
 		session_counterlaunch_present,
-		append_news_bytes,
+		session_append_news_bytes,
 		session_counterlaunch_projectile,
 		session_counterlaunch_wait,
 	};
@@ -15621,7 +15412,7 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 		memcpy(news + sizeof(prefix) - 1U,
 		    session->cached_player_name,
 		    session->cached_player_name_length);
-		if (!append_news_bytes(session, news, length, error))
+		if (!session_append_news_bytes(session, news, length, error))
 			return false;
 	}
 	for (index = 0; index < recipient_count; ++index) {
@@ -15639,7 +15430,7 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 				memcpy(news, prefix, sizeof(prefix) - 1U);
 				memcpy(news + sizeof(prefix) - 1U, lines[body],
 				    length);
-				if (!append_news_bytes(session, news,
+				if (!session_append_news_bytes(session, news,
 				    sizeof(prefix) - 1U + length, error))
 					return false;
 			}
