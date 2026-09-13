@@ -177,8 +177,6 @@ static bool clearance(struct yt_session *session, bool create,
     struct yt_error *error);
 static bool command_team(struct yt_session *session,
     struct yt_error *error);
-static bool command_move(struct yt_session *session, bool *moved,
-    struct yt_error *error);
 static bool command_land(struct yt_session *session, bool *enter_sector,
     struct yt_error *error);
 static bool quit_session(struct yt_session *session,
@@ -223,12 +221,6 @@ static void
 session_set_relationship(struct yt_session *session, float value)
 {
 	session->shared_status = value;
-}
-
-static void
-session_set_self_mine_suppression(struct yt_session *session, bool enabled)
-{
-	session->self_mine_suppressed = enabled;
 }
 
 static void
@@ -3650,185 +3642,6 @@ direct_emergency_warp(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-movement_turn_gate(void *context, int player_record, struct yt_player *player,
-    bool *denied, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (player_record != session_record(session) || player == NULL
-	    || !yt_session_fresh_no_turn_gate(session, denied, error))
-		return false;
-	*player = session->player;
-	return true;
-}
-
-static bool
-movement_present(void *context, const uint8_t *text, size_t length,
-    enum yt_movement_output_kind kind, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	switch (kind) {
-	case YT_MOVEMENT_WARP_ROW:
-		return session_present_paged_line(session, text, length, "movement warp row",
-		    error);
-	case YT_MOVEMENT_POST_WARP_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "movement post-warp blank", error);
-	case YT_MOVEMENT_DESTINATION_PROMPT:
-		return session_present_timed_paged_row(session, text, length,
-		    "movement destination prompt", error);
-	case YT_MOVEMENT_SAME_SECTOR:
-		return session_present_alert(session, text, length,
-		    "movement same-sector row", error);
-	case YT_MOVEMENT_NOT_ADJACENT:
-		return session_present_alert(session, text, length,
-		    "movement not-adjacent row", error);
-	case YT_MOVEMENT_ACCEPTED_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "movement accepted blank", error);
-	case YT_MOVEMENT_CONFIRMATION_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "danger confirmation blank", error);
-	default:
-		return false;
-	}
-}
-
-static bool
-movement_input(void *context, char *response, size_t capacity,
-    struct yt_error *error)
-{
-	(void)error;
-	return session_read_number_command(context, response, capacity);
-}
-
-static bool
-movement_danger(void *context, float target, bool *dangerous,
-    struct yt_error *error)
-{
-	return yt_session_destination_is_dangerous(context, target, dangerous,
-	    error);
-}
-
-static void
-movement_clear_queue(void *context)
-{
-	session_clear_queue(context);
-}
-
-static bool
-movement_confirm(void *context, const uint8_t *prompt, size_t length,
-    bool *accepted, struct yt_error *error)
-{
-	enum yt_yes_no_answer answer;
-
-	if (accepted == NULL
-	    || !session_confirm(context, prompt, length, &answer, error))
-		return false;
-	*accepted = answer == YT_YES_NO_YES;
-	return true;
-}
-
-static bool
-movement_finalize(void *context, struct yt_error *error)
-{
-	return yt_session_finalize_action(context, 1.0f, error);
-}
-
-static void
-movement_clear_self_mines(void *context)
-{
-	struct yt_session *session = context;
-
-	session_set_self_mine_suppression(session, false);
-}
-
-static bool
-movement_hydrate(void *context, int player_record, struct yt_player *player,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (player_record != session_record(session)
-	    || !session_reload_player(session, error))
-		return false;
-	*player = session->player;
-	return true;
-}
-
-static bool
-movement_write_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (player_record != session_record(session))
-		return false;
-	session->player = *player;
-	return yt_database_write(&session->door->game.database,
-	    (size_t)player_record, &session->player.record, error);
-}
-
-static bool
-movement_flush_player(void *context, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_flush(&session->door->game.database, error);
-}
-
-static bool
-movement_update_cache(void *context, int player_record, const uint8_t raw[4],
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	(void)error;
-	if (player_record < 0
-	    || (size_t)player_record >= (YT_PLAYER_LAST + 1U))
-		return false;
-	session_set_player_cache_raw(session, player_record,
-	    YT_PLAYER_CACHE_SECTOR, raw);
-	return true;
-}
-
-static bool
-command_move(struct yt_session *session, bool *moved,
-    struct yt_error *error)
-{
-	static const struct yt_movement_ops ops = {
-		movement_turn_gate,
-		movement_present,
-		movement_input,
-		movement_danger,
-		movement_clear_queue,
-		movement_confirm,
-		movement_finalize,
-		movement_clear_self_mines,
-		movement_hydrate,
-		movement_write_player,
-		movement_flush_player,
-		movement_update_cache,
-	};
-	struct yt_movement_state state;
-
-	if (moved == NULL)
-		return false;
-	*moved = false;
-	state = (struct yt_movement_state){
-		.current_player_record = session_record(session),
-		.port_offset = session_port_offset(session),
-		.sector_offset = session_sector_offset(session),
-	};
-	session_current_warps(session, state.warps);
-	if (!yt_movement_run(&state, &ops, session, error))
-		return false;
-	*moved = state.route == YT_MOVEMENT_MOVED;
-	return true;
-}
-
-static bool
 session_load_team_cache(struct yt_session *session, int team_id,
     int current_player_record, struct yt_record *overlay,
     bool *overlay_loaded, bool *live,
@@ -6824,7 +6637,7 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 			case 2: {
 				bool moved;
 
-				if (!command_move(session, &moved, error))
+				if (!yt_session_command_move(session, &moved, error))
 					return false;
 				if (enter_sector != NULL)
 					*enter_sector = moved;
@@ -8584,7 +8397,7 @@ planet_menu(struct yt_session *session, int logical_planet,
 		{
 			bool moved;
 
-			if (!command_move(session, &moved, error))
+			if (!yt_session_command_move(session, &moved, error))
 				return false;
 			if (enter_sector != NULL)
 				*enter_sector = moved;
@@ -14130,7 +13943,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			case 3: {
 				bool moved;
 
-				if (!command_move(session, &moved, error))
+				if (!yt_session_command_move(session, &moved, error))
 					return false;
 				if (enter_sector != NULL)
 					*enter_sector = moved;
@@ -14485,7 +14298,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			break;
 		case YT_MAIN_SHELL_MOVE:
-			if (!command_move(session, &enter_sector, error))
+			if (!yt_session_command_move(session, &enter_sector, error))
 				return false;
 			break;
 		case YT_MAIN_SHELL_TRADE:

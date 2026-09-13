@@ -106,9 +106,58 @@ test_destination_danger(void)
 	CHECK(remove(path) == 0);
 }
 
+static void
+test_move_storage(void)
+{
+	static const char path[] = "SESSION-MOVE.DAT";
+	struct yt_door door;
+	struct yt_session session;
+	struct yt_player player;
+	struct yt_record persisted;
+	struct yt_error error;
+	uint8_t initial_sector[4];
+
+	(void)remove(path);
+	memset(&door, 0, sizeof(door));
+	memset(&session, 0, sizeof(session));
+	memset(&player, 0, sizeof(player));
+	session.door = &door;
+	session.player_record_carrier = 2;
+	session.self_mine_suppressed = true;
+	door.game.config.sector_offset = 51.0f;
+	yt_record_blank(&player.record);
+	player.turns = 99.0f;
+	player.sector = 7.0f;
+	player.credits = 1234.0f;
+	yt_player_encode(&player);
+	CHECK(qb_mbf32_encode(7.0f, initial_sector) == QB_MBF_OK);
+	CHECK(yt_player_cache_set_raw(&session.player_cache, 2,
+	    YT_PLAYER_CACHE_SECTOR, initial_sector));
+	yt_error_clear(&error);
+	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
+	    &error));
+	CHECK(yt_database_write_durable(&door.game.database, 2U,
+	    &player.record, &error));
+	CHECK(yt_session_store_move(&session, 42.0f, &error));
+	CHECK(!session.self_mine_suppressed);
+	CHECK(session.player.sector == 42.0f);
+	CHECK(session.player.turns == 99.0f);
+	CHECK(session.player.credits == 1234.0f);
+	CHECK(yt_player_cache_value(&session.player_cache, 2,
+	    YT_PLAYER_CACHE_SECTOR) == 42.0f);
+	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
+	yt_player_decode(&player, &persisted);
+	CHECK(player.sector == 42.0f);
+	CHECK(player.turns == 99.0f);
+	CHECK(player.credits == 1234.0f);
+	yt_database_close(&door.game.database);
+	CHECK(remove(path) == 0);
+}
+
 int
 main(void)
 {
 	test_destination_danger();
+	test_move_storage();
 	return failures == 0 ? 0 : 1;
 }

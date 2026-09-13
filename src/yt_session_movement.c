@@ -3,8 +3,16 @@
 #include <stdio.h>
 #include <string.h>
 
+static float
+movement_single_sub(float left, float right)
+{
+	volatile float result = left - right;
+
+	return result;
+}
+
 static bool
-danger_error(struct yt_error *error, const char *operation)
+movement_range_error(struct yt_error *error, const char *operation)
 {
 	if (error != NULL) {
 		error->status = YT_RANGE;
@@ -54,7 +62,7 @@ danger_first_warning(struct yt_session *session, float target, bool finding,
 	    (size_t)number_length)
 	    || !danger_append(row, sizeof(row), &length, suffix,
 	    sizeof(suffix) - 1U))
-		return danger_error(error, "danger warning target row");
+		return movement_range_error(error, "danger warning target row");
 	return session_present_text(session, row, length,
 	    SESSION_PRESENT_BOLD_LINE, "danger warning target", error)
 	    && session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
@@ -118,7 +126,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 		    (size_t)number_length)
 		    || !danger_append(row, sizeof(row), &row_length, mine_suffix,
 		    sizeof(mine_suffix) - 1U))
-			return danger_error(error, "danger mines row");
+			return movement_range_error(error, "danger mines row");
 		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_LINE, "danger mines row", error))
 			return false;
@@ -138,16 +146,16 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 		    (size_t)number_length)
 		    || !danger_append(row, sizeof(row), &row_length,
 		    fighter_middle, sizeof(fighter_middle) - 1U))
-			return danger_error(error, "danger fighters row");
+			return movement_range_error(error, "danger fighters row");
 		if (owner == -1.0f) {
 			if (!danger_append(row, sizeof(row), &row_length, xannor,
 			    sizeof(xannor) - 1U))
-				return danger_error(error, "danger fighters row");
+				return movement_range_error(error, "danger fighters row");
 		}
 		else if (owner == -2.0f) {
 			if (!danger_append(row, sizeof(row), &row_length,
 			    mercenaries, sizeof(mercenaries) - 1U))
-				return danger_error(error, "danger fighters row");
+				return movement_range_error(error, "danger fighters row");
 		}
 		else {
 			struct yt_player owner_player;
@@ -159,13 +167,13 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 			name_length = qb_cint_mbf32(
 			    owner_player.record.bytes + YT_F85, 0U, &overflow);
 			if (overflow || name_length < 0)
-				return danger_error(error,
+				return movement_range_error(error,
 				    "danger owner name length");
 			if ((size_t)name_length > YT_TEXT_FIELD_SIZE)
 				name_length = (int)YT_TEXT_FIELD_SIZE;
 			if (!danger_append(row, sizeof(row), &row_length,
 			    owner_player.record.bytes, (size_t)name_length))
-				return danger_error(error, "danger owner name row");
+				return movement_range_error(error, "danger owner name row");
 			if (owner_player.team != 0.0f) {
 				struct yt_sector team;
 				bool friendly;
@@ -185,7 +193,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 				    number + 1, (size_t)number_length - 1U)
 				    || !danger_append(row, sizeof(row), &row_length,
 				    closing_bracket, sizeof(closing_bracket) - 1U))
-					return danger_error(error,
+					return movement_range_error(error,
 					    "danger team number row");
 				if (!session_read_sector(session, (int)owner_player.team,
 				    &team, error))
@@ -193,7 +201,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 				team_name_length = qb_cint_mbf32(
 				    team.record.bytes + YT_F73, 0U, &overflow);
 				if (overflow || team_name_length < 0)
-					return danger_error(error,
+					return movement_range_error(error,
 					    "danger team name length");
 				if (team_name_length > 0) {
 					size_t amount = (size_t)team_name_length;
@@ -208,7 +216,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 					    || !danger_append(row, sizeof(row), &row_length,
 					    closing_bracket,
 					    sizeof(closing_bracket) - 1U))
-						return danger_error(error,
+						return movement_range_error(error,
 						    "danger team name row");
 				}
 			}
@@ -242,5 +250,135 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 	session_set_foreground(session, saved_foreground);
 	yt_present_set_background(&session->presentation, 0.0f);
 	*dangerous = finding;
+	return true;
+}
+
+bool
+yt_session_store_move(struct yt_session *session, float target,
+    struct yt_error *error)
+{
+	uint8_t target_raw[4];
+	int player_record;
+
+	if (session == NULL
+	    || qb_mbf32_encode(target, target_raw) != QB_MBF_OK)
+		return false;
+	player_record = session_record(session);
+	session->self_mine_suppressed = false;
+	if (!session_reload_player(session, error))
+		return false;
+	yt_movement_player_overlay(&session->player, target);
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)player_record, &session->player.record, error)
+	    || !yt_database_flush(&session->door->game.database, error))
+		return false;
+	return yt_player_cache_set_raw(&session->player_cache, player_record,
+	    YT_PLAYER_CACHE_SECTOR, target_raw);
+}
+
+bool
+yt_session_command_move(struct yt_session *session, bool *moved,
+    struct yt_error *error)
+{
+	static const uint8_t prompt[] = "Move to which sector? ";
+	static const uint8_t same_sector[] =
+	    "That was quick! Felt like we didn't even move!";
+	static const uint8_t not_adjacent[] =
+	    "You can't get there from here.";
+	uint8_t row[256];
+	char response[YT_COMMAND_SIZE];
+	struct qb_val_result parsed;
+	float maximum;
+	float target;
+	uint8_t target_raw[4];
+	size_t row_length;
+	size_t slot;
+	bool denied;
+	bool adjacent = false;
+
+	if (session == NULL || moved == NULL)
+		return false;
+	*moved = false;
+	if (!yt_session_fresh_no_turn_gate(session, &denied, error))
+		return false;
+	if (denied)
+		return true;
+	if (!yt_movement_warp_row(session->current_warps, row, sizeof(row),
+	    &row_length))
+		return movement_range_error(error, "movement warp row");
+	if (!session_present_paged_line(session, row, row_length,
+	    "movement warp row", error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "movement post-warp blank", error))
+		return false;
+	for (;;) {
+		if (!session_present_timed_paged_row(session, prompt,
+		    sizeof(prompt) - 1U, "movement destination prompt", error))
+			return false;
+		memset(response, 0, sizeof(response));
+		if (!session_read_number_command(session, response,
+		    sizeof(response)))
+			return false;
+		if (strcmp(response, "M") != 0)
+			break;
+	}
+	parsed = qb_val(response);
+	if (parsed.overflow)
+		return movement_range_error(error, "movement destination VAL");
+	target = (float)(parsed.valid ? parsed.value : 0.0);
+	if (qb_mbf32_encode(target, target_raw) == QB_MBF_OVERFLOW)
+		return movement_range_error(error, "movement destination CSNG");
+	target = qb_mbf32_decode(target_raw);
+	maximum = movement_single_sub(session_port_offset(session),
+	    session_sector_offset(session));
+	if (target < 1.0f || target > maximum)
+		return true;
+	if (target == session->player.sector)
+		return session_present_alert(session, same_sector,
+		    sizeof(same_sector) - 1U, "movement same-sector row", error);
+	for (slot = 0U; slot < YT_ARRAY_LEN(session->current_warps); ++slot) {
+		if (session->current_warps[slot] == target) {
+			adjacent = true;
+			break;
+		}
+	}
+	if (!adjacent)
+		return session_present_alert(session, not_adjacent,
+		    sizeof(not_adjacent) - 1U, "movement not-adjacent row", error);
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "movement accepted blank", error))
+		return false;
+	if (session->player.danger_scanner != 0.0f) {
+		bool dangerous;
+
+		if (!yt_session_destination_is_dangerous(session, target,
+		    &dangerous, error))
+			return false;
+		if (dangerous) {
+			enum yt_yes_no_answer answer;
+
+			if (!session_present_text(session, NULL, 0U,
+			    SESSION_PRESENT_LINE, "danger confirmation blank", error))
+				return false;
+			session_clear_queue(session);
+			if (!yt_movement_confirmation_prompt(target, row,
+			    sizeof(row), &row_length))
+				return movement_range_error(error,
+				    "movement confirmation prompt");
+			if (!session_confirm(session, row, row_length, &answer,
+			    error))
+				return false;
+			if (answer != YT_YES_NO_YES)
+				return true;
+		}
+	}
+	if (!yt_session_finalize_action(session, 1.0f, error)) {
+		if (error != NULL && error->status != YT_OK)
+			return false;
+		return true;
+	}
+	if (!yt_session_store_move(session, target, error))
+		return false;
+	*moved = true;
 	return true;
 }
