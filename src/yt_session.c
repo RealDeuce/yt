@@ -15521,31 +15521,30 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 		all = true;
 	}
 	else if (strcmp(target, "Team") == 0) {
-		struct yt_radio_team_target_state team_target;
+		struct yt_team_loader_state loader;
 		static const uint8_t teamless[] =
 		    "You Don't belong to a team!";
 
 		if (!reload_player(session, error))
 			return false;
-		team_target = (struct yt_radio_team_target_state){
-			.raw_team_id = session->player.team,
+		if (session->player.team == 0.0f) {
+			return session_present_alert(session, teamless,
+			    sizeof(teamless) - 1U, "radio teamless row", error);
+		}
+		loader = (struct yt_team_loader_state){
+			.team_id = session->player.team,
 			.current_player_record = (float)session_record(session),
-			.sector_record_offset =
-			    session_sector_offset(session),
+			.sector_record_offset = session_sector_offset(session),
 			.conversion_mode =
 			    session->presentation.sound.conversion_mode,
 			.cache = &session->team_cache,
 		};
-		if (!yt_radio_team_target_run(&team_target,
+		if (!yt_team_loader_run(&loader,
 		    session_read_physical_record, session, error))
 			return false;
-		if (team_target.teamless) {
-			return session_present_alert(session, teamless,
-			    sizeof(teamless) - 1U, "radio teamless row", error);
-		}
 		for (index = 0; index < 4; ++index)
-			recipients[index] = team_target.recipients[index];
-		recipient_count = (int)team_target.recipient_count;
+			recipients[index] = session->team_cache.roster[index];
+		recipient_count = 4;
 	}
 	else {
 		int selected;

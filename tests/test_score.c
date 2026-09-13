@@ -886,71 +886,6 @@ check_team_audit_transaction(void)
 	return true;
 }
 
-static bool
-check_radio_team_target_transaction(void)
-{
-	struct team_loader_read_tape tape;
-	struct yt_team_loader_cache cache;
-	struct yt_radio_team_target_state state;
-	struct yt_error error;
-
-	memset(&tape, 0, sizeof(tape));
-	yt_record_blank(&tape.record);
-	(void)yt_record_set_number(&tape.record, YT_F109, 2.0f);
-	(void)yt_record_set_number(&tape.record, YT_F117, 0.0f);
-	(void)yt_record_set_number(&tape.record, YT_F121, 4.0f);
-	(void)yt_record_set_number(&tape.record, YT_F125, 2.0f);
-	memset(&cache, 0, sizeof(cache));
-	state = (struct yt_radio_team_target_state){
-		.raw_team_id = 1.75f,
-		.current_player_record = 7.0f,
-		.sector_record_offset = 51.0f,
-		.cache = &cache,
-	};
-	if (!yt_radio_team_target_run(&state, team_loader_read_test, &tape,
-	    NULL) || tape.calls != 1U || tape.physical_record != 52U
-	    || state.physical_record != 52U || state.teamless
-	    || !state.overlay_loaded || !state.complete
-	    || state.loader_route != YT_TEAM_LOADER_LIVE
-	    || state.recipient_count != YT_RADIO_SEND_RECIPIENTS
-	    || state.recipients[0] != 2.0f || state.recipients[1] != 0.0f
-	    || state.recipients[2] != 4.0f || state.recipients[3] != 2.0f)
-		return false;
-
-	state.raw_team_id = 0.0f;
-	state.recipient_count = YT_RADIO_SEND_RECIPIENTS;
-	state.recipients[0] = 99.0f;
-	if (!yt_radio_team_target_run(&state, team_loader_read_test, &tape,
-	    NULL) || tape.calls != 1U || !state.teamless || !state.complete
-	    || state.overlay_loaded || state.recipient_count != 0U
-	    || state.recipients[0] != 0.0f)
-		return false;
-
-	state.raw_team_id = 50.0001f;
-	if (!yt_radio_team_target_run(&state, team_loader_read_test, &tape,
-	    NULL) || tape.calls != 1U || state.teamless || !state.complete
-	    || state.overlay_loaded
-	    || state.loader_route != YT_TEAM_LOADER_OUT_OF_RANGE
-	    || state.recipient_count != YT_RADIO_SEND_RECIPIENTS
-	    || state.recipients[0] != 0.0f)
-		return false;
-
-	memset(&cache, 0, sizeof(cache));
-	tape.fail = true;
-	state = (struct yt_radio_team_target_state){
-		.raw_team_id = 1.75f,
-		.current_player_record = 7.0f,
-		.sector_record_offset = 51.0f,
-		.cache = &cache,
-	};
-	yt_error_clear(&error);
-	return !yt_radio_team_target_run(&state, team_loader_read_test, &tape,
-	    &error) && tape.calls == 2U && tape.physical_record == 52U
-	    && state.physical_record == 52U && !state.teamless
-	    && !state.overlay_loaded && !state.complete
-	    && state.recipient_count == 0U && error.status == YT_IO_ERROR;
-}
-
 enum death_team_event {
 	DEATH_TEAM_READ_PLAYER = 1,
 	DEATH_TEAM_READ_LOADER,
@@ -30174,8 +30109,6 @@ main(void)
 		return fail("team-loader transaction differs");
 	if (!check_team_audit_transaction())
 		return fail("team-audit transaction differs");
-	if (!check_radio_team_target_transaction())
-		return fail("radio Team-target transaction differs");
 	if (!check_death_team_remove_transaction())
 		return fail("death team-removal transaction differs");
 	if (!check_info_team_resolver_transaction())

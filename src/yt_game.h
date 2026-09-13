@@ -517,21 +517,6 @@ enum yt_computer_newspaper_choice yt_computer_newspaper_select(
 
 #define YT_RADIO_SEND_RECIPIENTS 4U
 
-struct yt_radio_team_target_state {
-	float raw_team_id;
-	float current_player_record;
-	float sector_record_offset;
-	uint8_t conversion_mode;
-	struct yt_team_loader_cache *cache;
-	float recipients[YT_RADIO_SEND_RECIPIENTS];
-	size_t recipient_count;
-	uint32_t physical_record;
-	enum yt_team_loader_route loader_route;
-	bool teamless;
-	bool overlay_loaded;
-	bool complete;
-};
-
 enum yt_hostile_attack_admission {
 	YT_HOSTILE_ATTACK_NO_FIGHTERS,
 	YT_HOSTILE_ATTACK_TOO_MANY,
@@ -1569,9 +1554,6 @@ bool yt_main_prompt_row(const uint8_t *time_text, size_t time_text_length,
 bool yt_computer_prompt_row(const uint8_t *time_text,
 	size_t time_text_length, uint8_t *row, size_t capacity,
 	size_t *length);
-bool yt_radio_team_target_run(struct yt_radio_team_target_state *state,
-	yt_team_loader_read_record_fn read_record, void *context,
-	struct yt_error *error);
 enum yt_hostile_attack_admission yt_hostile_attack_admit(
     float ship_fighters, float commitment);
 float yt_hostile_attack_quantum(double remaining_attacker,
