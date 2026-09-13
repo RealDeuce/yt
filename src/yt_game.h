@@ -670,27 +670,15 @@ bool yt_projectile_route_entry_run(
     yt_projectile_route_entry_read_player_fn read_player, void *context,
     struct yt_error *error);
 
-typedef bool (*yt_projectile_cruise_reroute_output_fn)(void *context,
+typedef bool (*yt_projectile_output_fn)(void *context,
     const uint8_t *text, size_t length, struct yt_error *error);
-typedef bool (*yt_projectile_cruise_reroute_random_fn)(void *context,
-    float *value, struct yt_error *error);
-struct yt_projectile_cruise_reroute_ops {
-	yt_projectile_cruise_reroute_output_fn line;
-	yt_projectile_cruise_reroute_output_fn attention;
-	yt_projectile_cruise_reroute_random_fn random;
-};
-struct yt_projectile_cruise_reroute_state {
-	float hop;
-	float sector_record_offset;
-	float port_record_offset;
-	float *origin;
-	float *destination;
-};
-bool yt_projectile_is_black_hole(float hop, float first, float second);
-bool yt_projectile_cruise_reroute_run(
-    struct yt_projectile_cruise_reroute_state *state,
-    const struct yt_projectile_cruise_reroute_ops *ops, void *context,
+typedef bool (*yt_projectile_random_fn)(void *context, float *value,
     struct yt_error *error);
+bool yt_projectile_is_black_hole(float hop, float first, float second);
+bool yt_projectile_cruise_reroute_row(float hop, uint8_t *row,
+    size_t capacity, size_t *length);
+float yt_projectile_cruise_reroute_destination(float draw,
+    float sector_record_offset, float port_record_offset);
 
 bool yt_projectile_union_police_admitted(float hop, float destination,
     int counterattack, int xannor_provoker);
@@ -786,7 +774,7 @@ struct yt_projectile_plasma_mine_ops {
 	yt_projectile_plasma_fighter_sound_fn sound;
 	yt_projectile_plasma_fighter_news_fn news;
 	yt_projectile_plasma_fighter_random_fn random;
-	yt_projectile_cruise_reroute_output_fn present;
+	yt_projectile_output_fn present;
 	yt_projectile_plasma_fighter_read_fn read_sector;
 	yt_projectile_plasma_fighter_write_fn write_sector;
 };
@@ -1000,7 +988,7 @@ typedef bool (*yt_projectile_defense_sound_fn)(void *context, float selector,
 struct yt_projectile_defense_front_ops {
 	yt_projectile_defense_owner_fn owner;
 	yt_projectile_defense_friendship_fn friendship;
-	yt_projectile_cruise_reroute_output_fn present;
+	yt_projectile_output_fn present;
 	yt_projectile_defense_sound_fn sound;
 };
 bool yt_projectile_defense_front_run(
@@ -1037,9 +1025,9 @@ typedef bool (*yt_projectile_defense_sector_write_fn)(void *context,
 typedef bool (*yt_projectile_defense_victory_fn)(void *context,
     struct yt_error *error);
 struct yt_projectile_defense_combat_ops {
-	yt_projectile_cruise_reroute_random_fn random;
-	yt_projectile_cruise_reroute_output_fn present;
-	yt_projectile_cruise_reroute_output_fn news;
+	yt_projectile_random_fn random;
+	yt_projectile_output_fn present;
+	yt_projectile_output_fn news;
 	yt_projectile_defense_sector_read_fn read_sector;
 	yt_projectile_defense_sector_write_fn write_sector;
 	yt_projectile_defense_victory_fn victory;
@@ -1066,9 +1054,9 @@ struct yt_projectile_sector_mine_state {
 };
 struct yt_projectile_sector_mine_ops {
 	yt_projectile_defense_sector_read_fn read_sector;
-	yt_projectile_cruise_reroute_output_fn present;
+	yt_projectile_output_fn present;
 	yt_projectile_defense_sound_fn sound;
-	yt_projectile_cruise_reroute_output_fn news;
+	yt_projectile_output_fn news;
 	yt_projectile_defense_sector_write_fn write_sector;
 };
 bool yt_projectile_sector_mine_run(

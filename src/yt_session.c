@@ -14159,22 +14159,6 @@ cruise_route_entry_read_player(void *context, int player_record,
 	    error);
 }
 
-static bool
-cruise_reroute_line(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
-	    "cruise black-hole blank", error);
-}
-
-static bool
-cruise_reroute_attention(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return session_attention_bytes(context, text, length,
-	    "cruise black-hole attention", error);
-}
-
 struct plasma_route_context {
 	struct yt_session *session;
 	struct projectile_route_state *route;
@@ -14441,34 +14425,32 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 			if (!yt_projectile_route_has_next((int16_t)next))
 				break;
 			if (session_is_disruption_sector(session, (float)next)) {
-				float local_origin = (float)start;
-				float local_destination = destination;
-				static const struct yt_projectile_cruise_reroute_ops
-				    cruise_ops = {
-					cruise_reroute_line,
-					cruise_reroute_attention,
-					random_value,
-				};
-				struct yt_projectile_cruise_reroute_state state = {
-					(float)next,
-					session_sector_offset(session),
-					session_port_offset(session),
-					origin_alias != NULL ? origin_alias : &local_origin,
-					&local_destination,
-				};
+				uint8_t row[160];
+				size_t row_length;
+				float draw;
 
-				bool reroute_success =
-				    yt_projectile_cruise_reroute_run(&state,
-				    &cruise_ops, session, error);
-
-				*origin_alias = *state.origin;
-				*target = *state.destination;
-				projectile_route_store(route,
-				    *origin_alias, *target, *missiles);
-				if (!reroute_success)
+				if (!session_present_text(session, NULL, 0U,
+				    SESSION_PRESENT_LINE, "cruise black-hole blank", error)
+				    || !yt_projectile_cruise_reroute_row((float)next, row,
+				    sizeof(row), &row_length)
+				    || !session_attention_bytes(session, row, row_length,
+				    "cruise black-hole attention", error)) {
+					projectile_route_store(route, *origin_alias,
+					    *target, *missiles);
 					return false;
-				start = (int)*state.origin;
-				destination = *state.destination;
+				}
+				*origin_alias = (float)next;
+				projectile_route_store(route, *origin_alias, *target,
+				    *missiles);
+				if (!random_value(session, &draw, error))
+					return false;
+				*target = yt_projectile_cruise_reroute_destination(draw,
+				    session_sector_offset(session),
+				    session_port_offset(session));
+				projectile_route_store(route, *origin_alias, *target,
+				    *missiles);
+				start = next;
+				destination = *target;
 				rerouted = true;
 				break;
 			}
