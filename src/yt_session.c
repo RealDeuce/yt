@@ -17404,57 +17404,35 @@ computer_newspaper(struct yt_session *session, struct yt_error *error)
 	return yt_computer_newspaper_run(&state, &ops, session, error);
 }
 
-static void
-computer_menu_prompt_effect(void *context,
-    enum yt_computer_prompt_effect effect)
-{
-	struct yt_session *session = context;
-
-	if (effect == YT_COMPUTER_PROMPT_RESET_SCANNER)
-		session->shared_status = 0.0f;
-	else if (effect == YT_COMPUTER_PROMPT_SET_FOREGROUND) {
-		session_set_foreground(session, 1.0f);
-	}
-}
-
 static bool
-computer_menu_prompt_hydrate(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
+computer_menu_prompt(struct yt_session *session, char *command,
+    size_t capacity, struct yt_error *error)
 {
-	struct yt_session *session = context;
+	uint8_t prompt[512];
+	size_t prompt_length;
+	size_t response_length;
 
-	if (player_record != session_record(session)
+	if (command == NULL || capacity < 3U
 	    || !computer_prompt_hydrate(session, error))
 		return false;
-	*player = session->player;
-	return true;
-}
-
-static bool
-computer_menu_prompt_present(void *context, const uint8_t *text,
-    size_t length, enum yt_computer_prompt_output_kind kind,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (kind == YT_COMPUTER_PROMPT_LEADING_BLANK)
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "computer prompt leading blank", error);
-	if (kind == YT_COMPUTER_PROMPT_TEXT)
-		return session_present_timed_paged_row(session, text, length, "computer prompt",
-		    error);
-	return false;
-}
-
-static bool
-computer_menu_prompt_edit(void *context, char *response, size_t capacity,
-    size_t *length, bool *available, struct yt_error *error)
-{
-	(void)error;
-	if (length == NULL || available == NULL)
+	session->shared_status = 0.0f;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "computer prompt leading blank", error))
 		return false;
-	*available = session_read_upper_command(context, response, capacity);
-	*length = *available ? strlen(response) : 0U;
+	session_set_foreground(session, 1.0f);
+	if (!yt_computer_prompt_row((const uint8_t *)session->time.text,
+	    session->time.text_length, prompt, sizeof(prompt), &prompt_length)
+	    || !session_present_timed_paged_row(session, prompt, prompt_length,
+	    "computer prompt", error)
+	    || !session_read_upper_command(session, command, capacity))
+		return false;
+	response_length = strlen(command);
+	if (response_length == 0U) {
+		command[0] = '?';
+		command[1] = '\0';
+	}
+	else if (response_length > 2U)
+		command[2] = '\0';
 	return true;
 }
 
@@ -17462,32 +17440,15 @@ static bool
 computer_menu(struct yt_session *session, bool *enter_sector,
     struct yt_error *error)
 {
-	static const struct yt_computer_prompt_ops prompt_ops = {
-		computer_menu_prompt_effect,
-		computer_menu_prompt_hydrate,
-		computer_menu_prompt_present,
-		computer_menu_prompt_edit,
-	};
-
 	if (enter_sector != NULL)
 		*enter_sector = false;
 	if (!computer_activate(session, error))
 		return false;
 	for (;;) {
 		char command[80];
-		struct yt_computer_prompt_state prompt = {
-			.current_player_record = session_record(session),
-			.time_text = (const uint8_t *)session->time.text,
-			.time_text_length = session->time.text_length,
-			.time_text_capacity = sizeof(session->time.text),
-			.response = command,
-			.response_capacity = sizeof(command),
-		};
 		int position;
 
-		if (!yt_computer_prompt_run(&prompt, &prompt_ops, session, error))
-			return false;
-		if (!prompt.input_available)
+		if (!computer_menu_prompt(session, command, sizeof(command), error))
 			return false;
 
 		if (strcmp(command, "I") == 0) {

@@ -4734,76 +4734,23 @@ yt_main_prompt_run(struct yt_main_prompt_state *state,
 }
 
 bool
-yt_computer_prompt_run(struct yt_computer_prompt_state *state,
-    const struct yt_computer_prompt_ops *ops, void *context,
-    struct yt_error *error)
+yt_computer_prompt_row(const uint8_t *time_text, size_t time_text_length,
+    uint8_t *row, size_t capacity, size_t *length)
 {
 	static const uint8_t prefix[] = "Time:";
 	static const uint8_t suffix[] = "Computer command (?=help)? ";
-	uint8_t prompt[512];
-	size_t prompt_length;
+	size_t needed = sizeof(prefix) - 1U + time_text_length
+	    + sizeof(suffix) - 1U;
 
-	if (state == NULL || ops == NULL || state->current_player_record < 1
-	    || state->response == NULL || state->response_capacity < 3U
-	    || (state->time_text_length != 0U && state->time_text == NULL)
-	    || ops->effect == NULL || ops->hydrate == NULL
-	    || ops->present == NULL || ops->edit == NULL)
+	if (length == NULL || (time_text == NULL && time_text_length != 0U)
+	    || (row == NULL && needed != 0U) || needed > capacity)
 		return false;
-	memset(&state->player, 0, sizeof(state->player));
-	state->response[0] = '\0';
-	state->response_length = 0U;
-	state->player_hydrated = false;
-	state->prompt_presented = false;
-	state->input_available = false;
-	state->complete = false;
-
-	if (!ops->hydrate(context, state->current_player_record,
-	    &state->player, error))
-		return false;
-	state->player_hydrated = true;
-	ops->effect(context, YT_COMPUTER_PROMPT_RESET_SCANNER);
-	if (!ops->present(context, NULL, 0U,
-	    YT_COMPUTER_PROMPT_LEADING_BLANK, error))
-		return false;
-	ops->effect(context, YT_COMPUTER_PROMPT_SET_FOREGROUND);
-	if (state->time_text_length > state->time_text_capacity
-	    || state->time_text_length > sizeof(prompt) - (sizeof(prefix) - 1U)
-	    - (sizeof(suffix) - 1U))
-		return startup_configuration_error(error, YT_RANGE,
-		    "computer prompt time capacity");
-	prompt_length = 0U;
-	memcpy(prompt + prompt_length, prefix, sizeof(prefix) - 1U);
-	prompt_length += sizeof(prefix) - 1U;
-	if (state->time_text_length != 0U) {
-		memcpy(prompt + prompt_length, state->time_text,
-		    state->time_text_length);
-		prompt_length += state->time_text_length;
-	}
-	memcpy(prompt + prompt_length, suffix, sizeof(suffix) - 1U);
-	prompt_length += sizeof(suffix) - 1U;
-	if (!ops->present(context, prompt, prompt_length,
-	    YT_COMPUTER_PROMPT_TEXT, error))
-		return false;
-	state->prompt_presented = true;
-	if (!ops->edit(context, state->response, state->response_capacity,
-	    &state->response_length, &state->input_available, error))
-		return false;
-	if (state->response_length >= state->response_capacity)
-		return startup_configuration_error(error, YT_RANGE,
-		    "computer prompt response capacity");
-	state->response[state->response_length] = '\0';
-	if (state->input_available) {
-		if (state->response_length == 0U) {
-			state->response[0] = '?';
-			state->response[1] = '\0';
-			state->response_length = 1U;
-		}
-		if (state->response_length > 2U) {
-			state->response[2] = '\0';
-			state->response_length = 2U;
-		}
-	}
-	state->complete = true;
+	memcpy(row, prefix, sizeof(prefix) - 1U);
+	if (time_text_length != 0U)
+		memcpy(row + sizeof(prefix) - 1U, time_text, time_text_length);
+	memcpy(row + sizeof(prefix) - 1U + time_text_length, suffix,
+	    sizeof(suffix) - 1U);
+	*length = needed;
 	return true;
 }
 
