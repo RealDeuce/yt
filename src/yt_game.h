@@ -737,29 +737,6 @@ bool yt_projectile_plasma_mine_run(
     const struct yt_projectile_plasma_mine_ops *ops, void *context,
     struct yt_error *error);
 
-enum yt_projectile_plasma_dispatch_route {
-	YT_PROJECTILE_PLASMA_DISPATCH_PLAYER,
-	YT_PROJECTILE_PLASMA_DISPATCH_PLANET,
-	YT_PROJECTILE_PLASMA_DISPATCH_NEXT_HOP,
-	YT_PROJECTILE_PLASMA_DISPATCH_FOOTER,
-};
-struct yt_projectile_plasma_dispatch_state {
-	double energy;
-	float sector;
-	float planet_link;
-	uint8_t planet_link_raw[4];
-	uint8_t conversion_mode;
-	float player_terminal;
-	const struct yt_player_cache *player_cache;
-	bool resume_after_player;
-	float counter;
-	int selected_player;
-	enum yt_projectile_plasma_dispatch_route route;
-};
-bool yt_projectile_plasma_dispatch_run(
-    struct yt_projectile_plasma_dispatch_state *state,
-    struct yt_error *error);
-
 enum yt_projectile_plasma_player_route {
 	YT_PROJECTILE_PLASMA_PLAYER_KILLED,
 	YT_PROJECTILE_PLASMA_PLAYER_CONTINUE_DISPATCH,

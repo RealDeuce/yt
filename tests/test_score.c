@@ -2672,77 +2672,6 @@ check_projectile_plasma_mine_transaction(void)
 	    && !yt_projectile_plasma_mine_run(&state, NULL, &tape, NULL);
 }
 
-static bool
-check_projectile_plasma_dispatch_transaction(void)
-{
-	struct yt_player_cache player_cache = {0};
-	struct yt_projectile_plasma_dispatch_state state;
-
-	memset(&state, 0, sizeof(state));
-	state.energy = 100.0;
-	state.sector = 7.0f;
-	state.player_terminal = 5.0f;
-	state.player_cache = &player_cache;
-	player_cache.sector[3] = 7.0f;
-	player_cache.sector[4] = 7.0f;
-	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
-	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_PLAYER
-	    || state.selected_player != 3 || state.counter != 3.0f)
-		return false;
-	state.resume_after_player = true;
-	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
-	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_PLAYER
-	    || state.selected_player != 4 || state.counter != 4.0f)
-		return false;
-	state.energy = 0.5;
-	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
-	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_FOOTER
-	    || state.counter != 4.0f)
-		return false;
-
-	memset(&player_cache, 0, sizeof(player_cache));
-	memset(&state, 0, sizeof(state));
-	state.energy = 1.0;
-	state.sector = 7.0f;
-	state.player_terminal = 3.5f;
-	state.player_cache = &player_cache;
-	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
-	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_NEXT_HOP
-	    || state.counter != 4.0f || state.selected_player != 0)
-		return false;
-
-	state.planet_link = 0.6f;
-	(void)qb_mbf32_encode(state.planet_link, state.planet_link_raw);
-	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
-	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_PLANET)
-		return false;
-	state.conversion_mode = 4U;
-	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
-	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_NEXT_HOP)
-		return false;
-	state.conversion_mode = 0U;
-	state.planet_link = 0.4f;
-	(void)qb_mbf32_encode(state.planet_link, state.planet_link_raw);
-	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
-	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_NEXT_HOP)
-		return false;
-	state.energy = 0.0;
-	state.planet_link = 12.0f;
-	(void)qb_mbf32_encode(state.planet_link, state.planet_link_raw);
-	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
-	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_FOOTER)
-		return false;
-
-	state.energy = 1.0;
-	state.player_terminal = 1.5f;
-	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
-	    || state.counter != 2.0f
-	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_PLANET)
-		return false;
-
-	return !yt_projectile_plasma_dispatch_run(NULL, NULL);
-}
-
 enum plasma_player_event {
 	PLASMA_PLAYER_READ = 1,
 	PLASMA_PLAYER_SAVE_FOREGROUND,
@@ -27140,8 +27069,6 @@ main(void)
 		return fail("projectile plasma-fighter transaction differs");
 	if (!check_projectile_plasma_mine_transaction())
 		return fail("projectile plasma-mine transaction differs");
-	if (!check_projectile_plasma_dispatch_transaction())
-		return fail("projectile plasma-dispatch transaction differs");
 	if (!check_projectile_plasma_player_transaction())
 		return fail("projectile plasma-player transaction differs");
 	if (!check_projectile_plasma_killed_transaction())

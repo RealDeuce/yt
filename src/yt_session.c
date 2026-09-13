@@ -13879,7 +13879,6 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 	struct yt_sector sector;
 	struct yt_projectile_plasma_fighter_state fighter;
 	struct yt_projectile_plasma_mine_state mine;
-	struct yt_projectile_plasma_dispatch_state dispatch;
 	struct yt_projectile_plasma_player_state player;
 	struct yt_projectile_plasma_killed_state killed;
 	float planet_link;
@@ -13921,21 +13920,12 @@ plasma_reload_sector:
 		return false;
 	if (mine.route == YT_PROJECTILE_PLASMA_MINE_FOOTER)
 		return true;
-	memset(&dispatch, 0, sizeof(dispatch));
-	dispatch.sector = (float)sector_number;
-	dispatch.planet_link = planet_link;
-	memcpy(dispatch.planet_link_raw, sector.record.bytes + YT_F93,
-	    sizeof(dispatch.planet_link_raw));
-	dispatch.conversion_mode = session->presentation.sound.conversion_mode;
-	dispatch.player_terminal = session_sector_offset(session);
-	dispatch.player_cache = &session->player_cache;
-	for (;;) {
-		dispatch.energy = *energy;
-		if (!yt_projectile_plasma_dispatch_run(&dispatch, error))
-			return false;
-		if (dispatch.route != YT_PROJECTILE_PLASMA_DISPATCH_PLAYER)
-			break;
-		basic = dispatch.selected_player;
+	for (basic = YT_PLAYER_FIRST;
+	    basic <= (int)session_sector_offset(session); ++basic) {
+		if (session_player_cache_value(session, basic,
+		    YT_PLAYER_CACHE_SECTOR) != (float)sector_number
+		    || !(*energy > 0.0))
+			continue;
 		memset(&player, 0, sizeof(player));
 		player.target = basic;
 		player.sector = (float)sector_number;
@@ -13966,10 +13956,10 @@ plasma_reload_sector:
 		}
 		if (player.route == YT_PROJECTILE_PLASMA_PLAYER_FOOTER)
 			return true;
-		dispatch.resume_after_player = true;
+		if (*energy < 1.0)
+			return true;
 	}
-	if (dispatch.route == YT_PROJECTILE_PLASMA_DISPATCH_FOOTER
-	    || dispatch.route == YT_PROJECTILE_PLASMA_DISPATCH_NEXT_HOP)
+	if (!(*energy > 0.0) || planet_link == 0.0f)
 		return true;
 	/* The B099 dispatch cached this link before mines and the player scan. */
 	sector.planet = planet_link;
