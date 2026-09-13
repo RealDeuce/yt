@@ -13312,38 +13312,66 @@ plasma_ground_force_row(float original, float remaining, uint8_t *row,
 }
 
 static bool
-cruise_defense_damage_present(void *context, const uint8_t *text,
-    size_t length, struct yt_error *error)
+cruise_defense_damage_row(float destroyed, uint8_t *row, size_t capacity,
+    size_t *length)
 {
-	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
-	    "cruise missile destroyed-defense row", error);
+	static const uint8_t prefix[] = "The Missiles destroyed";
+	static const uint8_t suffix[] = " fighters!";
+	char number[64];
+	int number_length;
+
+	if (row == NULL || length == NULL)
+		return false;
+	number_length = qb_str_single(number, sizeof(number), destroyed);
+	if (number_length < 0 || sizeof(prefix) - 1U + (size_t)number_length
+	    + sizeof(suffix) - 1U > capacity)
+		return false;
+	memcpy(row, prefix, sizeof(prefix) - 1U);
+	memcpy(row + sizeof(prefix) - 1U, number, (size_t)number_length);
+	*length = sizeof(prefix) - 1U + (size_t)number_length;
+	memcpy(row + *length, suffix, sizeof(suffix) - 1U);
+	*length += sizeof(suffix) - 1U;
+	return true;
 }
 
 static bool
-cruise_defense_read_sector(void *context, float sector,
-    struct yt_sector *value, struct yt_error *error)
+cruise_defense_news_row(const uint8_t *shooter, size_t shooter_length,
+    float destroyed, float sector, uint8_t *row, size_t capacity,
+    size_t *length)
 {
-	struct yt_session *session = context;
+	static const uint8_t damage[] = "'s Missiles destroyed";
+	static const uint8_t location[] = " fighters in sector";
+	char destroyed_text[64];
+	char sector_text[64];
+	int destroyed_length;
+	int sector_length;
+	size_t row_length;
 
-	return session_read_sector(session, (int)sector, value,
-	    error);
-}
-
-static bool
-cruise_defense_write_sector(void *context, float sector,
-    const struct yt_sector *value, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database,
-	    (size_t)session_sector_basic_record(session, sector),
-	    &value->record, error);
-}
-
-static bool
-cruise_defense_victory(void *context, struct yt_error *error)
-{
-	return xannor_victory(context, error);
+	if (row == NULL || length == NULL
+	    || (shooter == NULL && shooter_length != 0U))
+		return false;
+	destroyed_length = qb_str_single(destroyed_text,
+	    sizeof(destroyed_text), destroyed);
+	sector_length = qb_str_single(sector_text, sizeof(sector_text), sector);
+	if (destroyed_length < 0 || sector_length < 0
+	    || shooter_length + sizeof(damage) - 1U
+	    + (size_t)destroyed_length + sizeof(location) - 1U
+	    + (size_t)sector_length + 1U > capacity)
+		return false;
+	if (shooter_length != 0U)
+		memcpy(row, shooter, shooter_length);
+	row_length = shooter_length;
+	memcpy(row + row_length, damage, sizeof(damage) - 1U);
+	row_length += sizeof(damage) - 1U;
+	memcpy(row + row_length, destroyed_text, (size_t)destroyed_length);
+	row_length += (size_t)destroyed_length;
+	memcpy(row + row_length, location, sizeof(location) - 1U);
+	row_length += sizeof(location) - 1U;
+	memcpy(row + row_length, sector_text, (size_t)sector_length);
+	row_length += (size_t)sector_length;
+	row[row_length++] = '!';
+	*length = row_length;
+	return true;
 }
 
 enum missile_sector_route {
@@ -13357,16 +13385,7 @@ missile_sector(struct yt_session *session, int sector_number,
 	float *last_mine_news_sector, enum missile_sector_route *route,
 	struct yt_error *error)
 {
-	static const struct yt_projectile_defense_combat_ops combat_ops = {
-		random_value,
-		cruise_defense_damage_present,
-		session_append_news_bytes,
-		cruise_defense_read_sector,
-		cruise_defense_write_sector,
-		cruise_defense_victory,
-	};
 	struct yt_sector sector;
-	struct yt_projectile_defense_combat_state combat;
 	int basic;
 
 	if (route == NULL)
@@ -13434,20 +13453,83 @@ missile_sector(struct yt_session *session, int sector_number,
 		    "cruise missile fighter-defense sound", error))
 			return false;
 	}
-	combat.sector = (float)sector_number;
-	combat.fighters = (double)sector.fighters;
-	combat.owner = sector.fighter_owner;
-	combat.shooter = session_record(session);
-	combat.headquarters = session->door->game.config.headquarters;
-	combat.shooter_name = (const uint8_t *)session->player.name;
-	combat.shooter_name_length = strlen(session->player.name);
-	combat.missiles = remaining;
-	combat.xannor_provoker = xannor_provoker;
-	if (!yt_projectile_defense_combat_run(&combat, &combat_ops, session,
-	    error))
-		return false;
-	if (combat.route == YT_PROJECTILE_DEFENSE_RETURN)
-		return true;
+	if (!(*remaining > 0.0f))
+		goto missile_mines;
+	{
+		static const uint8_t dirty_zero[4] = {
+			0x00, 0x00, 0x10, 0x00
+		};
+		struct yt_sector persistence;
+		double original_fighters = (double)sector.fighters;
+		double remaining_fighters;
+		float owner = sector.fighter_owner;
+		float saved_missiles = *remaining;
+		float destroyed = 0.0f;
+		float counter = 1.0f;
+		uint8_t row[256];
+		size_t row_length;
+
+		while (counter <= saved_missiles
+		    && (double)destroyed < original_fighters) {
+			float draw;
+
+			if (!random_value(session, &draw, error))
+				return false;
+			destroyed = floorf(single_add(single_mul(draw, 5000.0f),
+			    destroyed));
+			*remaining = single_sub(*remaining, 1.0f);
+			if ((double)destroyed >= original_fighters) {
+				destroyed = (float)original_fighters;
+				break;
+			}
+			counter = single_add(counter, 1.0f);
+		}
+		if (!cruise_defense_damage_row(destroyed, row, sizeof(row),
+		    &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "cruise missile destroyed-defense row",
+		    error))
+			return false;
+		remaining_fighters = original_fighters - (double)destroyed;
+		if (destroyed > 9.0f
+		    && (!cruise_defense_news_row(
+		    (const uint8_t *)session->player.name,
+		    strlen(session->player.name), destroyed, (float)sector_number,
+		    row, sizeof(row), &row_length)
+		    || !session_append_news_bytes(session, row, row_length, error)))
+			return false;
+		if (!session_read_sector(session, sector_number, &persistence,
+		    error))
+			return false;
+		persistence.fighters = (float)remaining_fighters;
+		if (!yt_record_set_number(&persistence.record, YT_F81,
+		    persistence.fighters))
+			return false;
+		if (remaining_fighters == 0.0) {
+			persistence.fighters = 0.0f;
+			persistence.fighter_owner = 0.0f;
+			if (!yt_record_set_raw_number(&persistence.record, YT_F81,
+			    dirty_zero)
+			    || !yt_record_set_raw_number(&persistence.record, YT_F85,
+			    dirty_zero))
+				return false;
+		}
+		else if (owner == -1.0f) {
+			*xannor_provoker = session_record(session);
+		}
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)session_sector_basic_record(session,
+		    (float)sector_number), &persistence.record, error))
+			return false;
+		if (remaining_fighters == 0.0
+		    && (float)sector_number
+		    == session->door->game.config.headquarters
+		    && owner == -1.0f
+		    && !xannor_victory(session, error))
+			return false;
+		if (*remaining < 1.0f)
+			return true;
+	}
 
 missile_mines:
 	for (;;) {

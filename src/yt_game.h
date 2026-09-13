@@ -653,47 +653,6 @@ bool yt_projectile_sector_has_presence(const struct yt_sector *sector,
     int sector_number, int last_player,
     const struct yt_player_cache *player_cache, int xannor_provoker);
 
-enum yt_projectile_defense_combat_route {
-	YT_PROJECTILE_DEFENSE_CONTINUE_MINES,
-	YT_PROJECTILE_DEFENSE_RETURN,
-};
-struct yt_projectile_defense_combat_state {
-	float sector;
-	double fighters;
-	float owner;
-	int shooter;
-	float headquarters;
-	const uint8_t *shooter_name;
-	size_t shooter_name_length;
-	float *missiles;
-	int *xannor_provoker;
-	float saved_missiles;
-	float destroyed;
-	float counter;
-	double remaining_fighters;
-	struct yt_sector persistence;
-	bool victory_called;
-	enum yt_projectile_defense_combat_route route;
-};
-typedef bool (*yt_projectile_defense_sector_read_fn)(void *context,
-    float sector, struct yt_sector *value, struct yt_error *error);
-typedef bool (*yt_projectile_defense_sector_write_fn)(void *context,
-    float sector, const struct yt_sector *value, struct yt_error *error);
-typedef bool (*yt_projectile_defense_victory_fn)(void *context,
-    struct yt_error *error);
-struct yt_projectile_defense_combat_ops {
-	yt_projectile_random_fn random;
-	yt_projectile_output_fn present;
-	yt_projectile_output_fn news;
-	yt_projectile_defense_sector_read_fn read_sector;
-	yt_projectile_defense_sector_write_fn write_sector;
-	yt_projectile_defense_victory_fn victory;
-};
-bool yt_projectile_defense_combat_run(
-    struct yt_projectile_defense_combat_state *state,
-    const struct yt_projectile_defense_combat_ops *ops, void *context,
-    struct yt_error *error);
-
 bool yt_projectile_sector_mine_hit_row(double mines, float sector,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_projectile_sector_mine_news_row(const uint8_t *shooter,
