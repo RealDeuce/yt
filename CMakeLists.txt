@@ -112,6 +112,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_info.c
     src/yt_session_lockout.c
     src/yt_session_mines.c
+    src/yt_session_movement.c
     src/yt_session_planets.c
     src/yt_session_ports.c
     src/yt_session_registration.c
@@ -214,6 +215,7 @@ if(BUILD_TESTING)
     yt_add_test(test_route tests/test_route.c yt_core)
 
     yt_add_test(test_session_credit tests/test_session_credit.c yt_runtime)
+    yt_add_test(test_session_movement tests/test_session_movement.c yt_runtime)
     yt_add_test(test_session_planets tests/test_session_planets.c yt_runtime)
     yt_add_test(test_session_ports tests/test_session_ports.c yt_runtime)
     yt_add_test(test_planet_updater tests/test_planet_updater.c yt_game)

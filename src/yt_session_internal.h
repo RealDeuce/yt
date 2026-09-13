@@ -100,6 +100,8 @@ uint32_t session_port_basic_record(const struct yt_session *session,
 int session_sector_count(const struct yt_session *session);
 bool yt_session_players_are_friendly(struct yt_session *session,
     int candidate_record, bool *friendly, struct yt_error *error);
+bool yt_session_destination_is_dangerous(struct yt_session *session,
+    float target, bool *dangerous, struct yt_error *error);
 uint32_t session_planet_basic_record(const struct yt_session *session,
     float logical_planet);
 bool session_read_sector(struct yt_session *session, int logical_sector,
