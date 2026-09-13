@@ -564,63 +564,6 @@ struct yt_radio_team_target_state {
 	bool complete;
 };
 
-enum yt_radio_read_output_kind {
-	YT_RADIO_READ_OPENING_BLANK,
-	YT_RADIO_READ_HEADING,
-	YT_RADIO_READ_PAIR_BLANK,
-	YT_RADIO_READ_PAIR_HEADER,
-	YT_RADIO_READ_BODY,
-	YT_RADIO_READ_PAUSE,
-	YT_RADIO_READ_PAUSE_BLANK,
-	YT_RADIO_READ_NONE,
-};
-
-enum yt_radio_read_name_role {
-	YT_RADIO_READ_NAME_NONE,
-	YT_RADIO_READ_NAME_RECIPIENT,
-	YT_RADIO_READ_NAME_SENDER,
-};
-
-struct yt_radio_read_state {
-	float reader_mode;
-	float current_player;
-	uint64_t byte_length;
-	uint64_t probe_count;
-	uint32_t record_number;
-	struct yt_radio_record radio_field;
-	float previous_recipient;
-	float previous_sender;
-	float player_field_record;
-	float private_line_count;
-	size_t visible_records;
-	size_t name_accesses;
-	size_t positive_name_gets;
-	size_t writes;
-	size_t waits;
-	enum yt_radio_read_name_role player_field_role;
-	bool radio_field_valid;
-	bool player_field_valid;
-	bool file_open;
-	bool close_attempted;
-	bool visible;
-	bool complete;
-};
-
-struct yt_radio_read_ops {
-	bool (*open)(void *context, struct yt_error *error);
-	bool (*size)(void *context, uint64_t *length, struct yt_error *error);
-	bool (*get)(void *context, uint32_t record,
-	    struct yt_radio_record *value, struct yt_error *error);
-	bool (*name)(void *context, float record, bool sender, uint8_t *dest,
-	    size_t capacity, size_t *length, struct yt_error *error);
-	bool (*present)(void *context, const uint8_t *text, size_t length,
-	    enum yt_radio_read_output_kind kind, struct yt_error *error);
-	bool (*wait)(void *context, double seconds, struct yt_error *error);
-	bool (*put)(void *context, uint32_t record,
-	    const struct yt_radio_record *value, struct yt_error *error);
-	bool (*close)(void *context, struct yt_error *error);
-};
-
 enum yt_hostile_attack_admission {
 	YT_HOSTILE_ATTACK_NO_FIGHTERS,
 	YT_HOSTILE_ATTACK_TOO_MANY,
@@ -1658,9 +1601,6 @@ bool yt_main_prompt_row(const uint8_t *time_text, size_t time_text_length,
 bool yt_computer_prompt_row(const uint8_t *time_text,
 	size_t time_text_length, uint8_t *row, size_t capacity,
 	size_t *length);
-bool yt_radio_read_run(struct yt_radio_read_state *state,
-	const struct yt_radio_read_ops *ops, void *context,
-	struct yt_error *error);
 bool yt_radio_send_run(struct yt_radio_send_state *state,
 	const struct yt_radio_send_ops *ops, void *context,
 	struct yt_error *error);
