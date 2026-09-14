@@ -116,7 +116,7 @@ session_set_foreground(struct yt_session *session, float value)
 	session->pager.foreground = (int)value;
 }
 
-static bool
+bool
 session_current_date_serial(struct yt_session *session, int *serial,
     int *adjusted_year, struct yt_error *error)
 {
@@ -163,11 +163,7 @@ static bool random_value(void *context, float *value,
     struct yt_error *error);
 static bool computer_spies(struct yt_session *session,
     struct yt_error *error);
-static bool command_land(struct yt_session *session, bool *enter_sector,
-    struct yt_error *error);
-static bool quit_session(struct yt_session *session,
-    struct yt_error *error);
-static bool build_route(struct yt_session *session, float start,
+static bool session_build_route(struct yt_session *session, float start,
     float destination, int16_t *next_hop, bool use_avoid, bool *found,
     enum yt_route_outcome *route_outcome, float *returned_status,
     struct yt_error *error);
@@ -179,8 +175,6 @@ bool session_present_paged_line(struct yt_session *session, const uint8_t *text,
     size_t length, const char *operation, struct yt_error *error);
 static bool computer_port_friendship(struct yt_session *session, float owner,
     bool *friendly, struct yt_error *error);
-static bool computer_menu(struct yt_session *session, bool *enter_sector,
-    struct yt_error *error);
 static bool port_report_length(struct yt_session *session, float raw,
     size_t maximum, size_t *length, const char *operation,
     struct yt_error *error);
@@ -680,12 +674,6 @@ session_mutate_player_credits(struct yt_session *session, float argument,
 	}
 	return yt_database_write_durable(&session->door->game.database,
 	    (size_t)session_record(session), &session->player.record, error);
-}
-
-static bool
-computer_prompt_hydrate(struct yt_session *session, struct yt_error *error)
-{
-	return session_reload_player(session, error);
 }
 
 static bool
@@ -1764,7 +1752,7 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 	uint16_t opening_basic_error;
 	bool found;
 
-	if (!build_route(session, 1, 2, NULL, false, &found, NULL, NULL,
+	if (!session_build_route(session, 1, 2, NULL, false, &found, NULL, NULL,
 	    error))
 		return false;
 	if (!found) {
@@ -3195,8 +3183,8 @@ display_sector_one(struct yt_session *session, float logical_sector,
 	return true;
 }
 
-static bool
-display_sector(struct yt_session *session, bool adjacent,
+bool
+yt_session_display_sector(struct yt_session *session, bool adjacent,
     struct yt_error *error)
 {
 	float current;
@@ -3787,7 +3775,7 @@ hostile_menu_help(struct yt_session *session, struct yt_error *error)
 	return true;
 }
 
-static bool
+bool
 session_quit_confirm(struct yt_session *session, bool *confirmed,
     struct yt_error *error)
 {
@@ -3835,7 +3823,7 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 		bool friendly;
 
 		session->shared_status = 0.0f;
-		if (!display_sector(session, false, error)
+		if (!yt_session_display_sector(session, false, error)
 		    || !session_reload_player(session, error))
 			return false;
 		if (session_is_disruption_sector(session,
@@ -3950,7 +3938,7 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 					if (session->hostile_deployed_fighters
 					    <= 0.0) {
 						session_set_foreground(session, 1.0f);
-						if (!display_sector(session, false, error))
+						if (!yt_session_display_sector(session, false, error))
 							return false;
 						return true;
 					}
@@ -3967,7 +3955,7 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 						fresh_menu = false;
 						break;
 					}
-					if (!quit_session(session, error))
+					if (!yt_session_quit(session, error))
 						return false;
 					session->running = false;
 					session->terminated = true;
@@ -3991,7 +3979,7 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 						if (session->hostile_deployed_fighters
 						    <= 0.0) {
 							session_set_foreground(session, 1.0f);
-							if (!display_sector(session, false, error))
+							if (!yt_session_display_sector(session, false, error))
 								return false;
 							return true;
 						}
@@ -5151,7 +5139,7 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 				    "Earth menu CINT");
 		}
 		if (strcmp(line, "S") == 0) {
-			if (!display_sector(session, true, error)
+			if (!yt_session_display_sector(session, true, error)
 			    || !session_wait(session, 9.0,
 			    "Earth Sensors wait", error))
 				return false;
@@ -5180,7 +5168,7 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 			case 1: {
 				bool selected = false;
 
-				if (!command_land(session, &selected, error))
+				if (!yt_session_command_land(session, &selected, error))
 					return false;
 				if (enter_sector != NULL)
 					*enter_sector = selected;
@@ -5202,7 +5190,7 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 			case 4: {
 				bool selected = false;
 
-				if (!computer_menu(session, &selected, error))
+				if (!yt_session_computer_menu(session, &selected, error))
 					return false;
 				if (enter_sector != NULL)
 					*enter_sector = selected;
@@ -5307,7 +5295,7 @@ route_require_returned(enum yt_route_outcome outcome)
 }
 
 static bool
-build_route(struct yt_session *session, float start, float destination,
+session_build_route(struct yt_session *session, float start, float destination,
     int16_t *next_hop, bool use_avoid, bool *found,
     enum yt_route_outcome *route_outcome, float *returned_status,
     struct yt_error *error)
@@ -5677,7 +5665,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 		*enter_sector = false;
 	if (!session_present_paged_line(session, cost_notice, sizeof(cost_notice) - 1U,
 	    "planet Thrusters cost notice", error)
-	    || !display_sector(session, false, error)
+	    || !yt_session_display_sector(session, false, error)
 	    || !session_present_timed_paged_row(session, destination_prompt,
 	    sizeof(destination_prompt) - 1U,
 	    "planet Thrusters destination prompt", error)
@@ -5727,7 +5715,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 		}
 		return false;
 	}
-	if (!build_route(session, start, destination, NULL, true,
+	if (!session_build_route(session, start, destination, NULL, true,
 	    &found, NULL, NULL, error))
 		return false;
 	if (!found) {
@@ -5784,7 +5772,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 	    || !yt_planet_move_summary(cost, row, sizeof(row), &row_length)
 	    || !session_present_paged_line(session, row, row_length,
 	    "planet Thrusters distance summary", error)
-	    || !computer_prompt_hydrate(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	if (cost > session->player.turns) {
 		return session_present_alert(session, insufficient,
@@ -5829,7 +5817,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 		if (stop)
 			break;
 	}
-	if (!stop && !computer_prompt_hydrate(session, error))
+	if (!stop && !session_reload_player(session, error))
 		return false;
 	if (enter_sector != NULL)
 		*enter_sector = true;
@@ -5911,7 +5899,7 @@ planet_menu(struct yt_session *session, int logical_planet,
 			continue;
 		}
 		if (strcmp(upper, "S") == 0) {
-			if (!display_sector(session, true, error))
+			if (!yt_session_display_sector(session, true, error))
 				return false;
 			continue;
 		}
@@ -5922,7 +5910,7 @@ planet_menu(struct yt_session *session, int logical_planet,
 				return false;
 			if (!confirmed)
 				continue;
-			if (!quit_session(session, error))
+			if (!yt_session_quit(session, error))
 				return false;
 			session->running = false;
 			session->terminated = true;
@@ -6012,7 +6000,7 @@ planet_menu(struct yt_session *session, int logical_planet,
 			break;
 		}
 		case 4:
-			return computer_menu(session, enter_sector, error);
+			return yt_session_computer_menu(session, enter_sector, error);
 		case 5: case 6: case 7: case 8: case 9: case 10:
 			if (!yt_session_planet_take_one(session, logical_planet,
 			    position - 5, error))
@@ -6192,8 +6180,8 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	return true;
 }
 
-static bool
-command_land(struct yt_session *session, bool *enter_sector,
+bool
+yt_session_command_land(struct yt_session *session, bool *enter_sector,
     struct yt_error *error)
 {
 	static const uint8_t title[] = "<Land/Create planet>";
@@ -9918,7 +9906,7 @@ computer_menu_prompt(struct yt_session *session, char *command,
 	size_t response_length;
 
 	if (command == NULL || capacity < 3U
-	    || !computer_prompt_hydrate(session, error))
+	    || !session_reload_player(session, error))
 		return false;
 	session->shared_status = 0.0f;
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
@@ -9941,8 +9929,8 @@ computer_menu_prompt(struct yt_session *session, char *command,
 	return true;
 }
 
-static bool
-computer_menu(struct yt_session *session, bool *enter_sector,
+bool
+yt_session_computer_menu(struct yt_session *session, bool *enter_sector,
     struct yt_error *error)
 {
 	if (enter_sector != NULL)
@@ -9972,7 +9960,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (strcmp(command, "S") == 0) {
-			if (!display_sector(session, true, error))
+			if (!yt_session_display_sector(session, true, error))
 				return false;
 			continue;
 		}
@@ -9983,7 +9971,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 				return false;
 			if (!confirmed)
 				continue;
-			if (!quit_session(session, error))
+			if (!yt_session_quit(session, error))
 				return false;
 			session->running = false;
 			session->terminated = true;
@@ -10046,7 +10034,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 					*enter_sector = true;
 				return true;
 			case 2:
-				return command_land(session, enter_sector, error);
+				return yt_session_command_land(session, enter_sector, error);
 			case 3: {
 				bool moved;
 
@@ -10211,8 +10199,8 @@ show_help(struct yt_session *session, struct yt_error *error)
 	return true;
 }
 
-static bool
-quit_session(struct yt_session *session, struct yt_error *error)
+bool
+yt_session_quit(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t generating[] = "Generating ScoreBoard";
 	static const char reminder[] =
@@ -10308,7 +10296,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 			    (const uint8_t *)"<Display>",
 			    strlen("<Display>"), "main display heading", error))
 				return false;
-			if (!display_sector(session, false, error))
+			if (!yt_session_display_sector(session, false, error))
 				return false;
 			continue;
 		case YT_MAIN_SHELL_SOUND:
@@ -10328,12 +10316,12 @@ command_shell(struct yt_session *session, struct yt_error *error)
 				}
 				return false;
 			}
-			if (!display_sector(session, false, error))
+			if (!yt_session_display_sector(session, false, error))
 				return false;
 			continue;
 		}
 		case YT_MAIN_SHELL_SENSORS:
-			if (!display_sector(session, true, error))
+			if (!yt_session_display_sector(session, true, error))
 				return false;
 			continue;
 		case YT_MAIN_SHELL_VERSION:
@@ -10374,14 +10362,14 @@ command_shell(struct yt_session *session, struct yt_error *error)
 			if (!yt_session_command_projectile(session, false, error))
 				return false;
 			if (!session_is_destroyed(session)
-			    && !display_sector(session, false, error))
+			    && !yt_session_display_sector(session, false, error))
 				return false;
 			break;
 		case YT_MAIN_SHELL_PLASMA:
 			if (!yt_session_command_projectile(session, true, error))
 				return false;
 			if (!session_is_destroyed(session)
-			    && !display_sector(session, false, error))
+			    && !yt_session_display_sector(session, false, error))
 				return false;
 			break;
 		case YT_MAIN_SHELL_ATTACK:
@@ -10393,7 +10381,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			break;
 		case YT_MAIN_SHELL_COMPUTER:
-			if (!computer_menu(session, &enter_sector, error))
+			if (!yt_session_computer_menu(session, &enter_sector, error))
 				return false;
 			break;
 		case YT_MAIN_SHELL_FIGHTERS:
@@ -10401,7 +10389,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			break;
 		case YT_MAIN_SHELL_LAND:
-			if (!command_land(session, &enter_sector, error))
+			if (!yt_session_command_land(session, &enter_sector, error))
 				return false;
 			break;
 		case YT_MAIN_SHELL_MOVE:
@@ -10420,7 +10408,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			if (!confirmed)
 				break;
-			if (!quit_session(session, error))
+			if (!yt_session_quit(session, error))
 				return false;
 			session->running = false;
 			session->terminated = true;
@@ -10435,7 +10423,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 			if (!yt_session_command_mines(session, error))
 				return false;
 			session_set_foreground(session, 1.0f);
-			if (!display_sector(session, false, error))
+			if (!yt_session_display_sector(session, false, error))
 				return false;
 			break;
 		case YT_MAIN_SHELL_COLLECT:
@@ -10557,5 +10545,5 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 			return false;
 		session.fatal_wait_complete = true;
 	}
-	return quit_session(&session, error);
+	return yt_session_quit(&session, error);
 }

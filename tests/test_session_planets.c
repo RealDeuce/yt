@@ -73,11 +73,82 @@ test_self_owned_planet(void)
 	CHECK(remove(path) == 0);
 }
 
+static void
+test_land_and_leave_owned_planet(void)
+{
+	static const char path[] = "SESSION-LAND.DAT";
+	static const uint8_t answer[] = "L\r";
+	struct yt_door door;
+	struct yt_session session;
+	struct yt_player player;
+	struct yt_sector sector;
+	struct yt_planet planet;
+	struct yt_error error;
+	int today;
+	int adjusted_year;
+	bool enter_sector = false;
+
+	(void)remove(path);
+	memset(&door, 0, sizeof(door));
+	memset(&session, 0, sizeof(session));
+	memset(&player, 0, sizeof(player));
+	memset(&sector, 0, sizeof(sector));
+	memset(&planet, 0, sizeof(planet));
+	session.door = &door;
+	session.player_record_carrier = 2;
+	session.pager.nonstop = -1.0f;
+	session.running = true;
+	memcpy(session.queue, answer, sizeof(answer) - 1U);
+	session.queue_length = sizeof(answer) - 1U;
+	door.game.config.epoch_year = 26.0f;
+	door.game.config.sector_offset = 3.0f;
+	door.game.config.port_offset = 5.0f;
+	door.game.config.planet_offset = 6.0f;
+	door.game.config.total_records = 7.0f;
+	yt_error_clear(&error);
+	CHECK(yt_current_date_serial(door.game.config.epoch_year, &today,
+	    &adjusted_year, &error));
+
+	yt_record_blank(&player.record);
+	(void)snprintf(player.name, sizeof(player.name), "%s", "Owner");
+	player.name_length = 5.0f;
+	player.sector = 1.0f;
+	player.holds = 20.0f;
+	player.credits = 1000.0f;
+	yt_player_encode(&player);
+	yt_record_blank(&sector.record);
+	sector.planet = 1.0f;
+	yt_sector_encode(&sector);
+	yt_record_blank(&planet.record);
+	(void)snprintf(planet.name, sizeof(planet.name), "%s", "Home");
+	planet.name_length = 4.0f;
+	planet.last_day = (float)today;
+	planet.owner = 2.0f;
+	planet.ground_forces = 5.0f;
+	yt_planet_encode(&planet);
+
+	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
+	    &error));
+	CHECK(yt_database_write(&door.game.database, 2U, &player.record,
+	    &error));
+	CHECK(yt_database_write(&door.game.database, 4U, &sector.record,
+	    &error));
+	CHECK(yt_database_write(&door.game.database, 7U, &planet.record,
+	    &error));
+	CHECK(yt_session_command_land(&session, &enter_sector, &error));
+	CHECK(enter_sector);
+	CHECK(session.queue_position == session.queue_length);
+	CHECK(session.player.sector == 1.0f);
+	yt_database_close(&door.game.database);
+	CHECK(remove(path) == 0);
+}
+
 int
 main(void)
 {
 	session_test_runtime_start();
 	test_self_owned_planet();
+	test_land_and_leave_owned_planet();
 	session_test_runtime_stop();
 	return failures == 0 ? 0 : 1;
 }

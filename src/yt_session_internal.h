@@ -92,6 +92,8 @@ struct yt_session {
 };
 
 int session_record(const struct yt_session *session);
+bool session_current_date_serial(struct yt_session *session, int *serial,
+    int *adjusted_year, struct yt_error *error);
 float session_sector_offset(const struct yt_session *session);
 float session_port_offset(const struct yt_session *session);
 float session_planet_offset(const struct yt_session *session);
@@ -168,6 +170,11 @@ bool session_press_any_key(struct yt_session *session, bool drain,
     struct yt_error *error);
 bool session_sound(struct yt_session *session, float selector,
     const char *operation, struct yt_error *error);
+bool yt_session_display_sector(struct yt_session *session, bool adjacent,
+    struct yt_error *error);
+bool session_quit_confirm(struct yt_session *session, bool *confirmed,
+    struct yt_error *error);
+bool yt_session_quit(struct yt_session *session, struct yt_error *error);
 bool session_display_game_file(struct yt_session *session, const char *path,
     struct yt_error *error);
 bool session_reload_player(struct yt_session *session,
@@ -309,6 +316,8 @@ bool yt_session_planet_transfer(struct yt_session *session,
     int logical_planet, struct yt_error *error);
 bool yt_session_planet_productivity(struct yt_session *session,
     int logical_planet, struct yt_error *error);
+bool yt_session_command_land(struct yt_session *session, bool *enter_sector,
+    struct yt_error *error);
 bool session_fixed_width_bytes(struct yt_session *session,
     const uint8_t *text, size_t text_length, float width,
     const char *operation, struct yt_error *error);
@@ -331,6 +340,8 @@ bool yt_session_generate_scoreboard(struct yt_session *session,
 bool yt_session_computer_scoreboard(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_computer_newspaper(struct yt_session *session,
+    struct yt_error *error);
+bool yt_session_computer_menu(struct yt_session *session, bool *enter_sector,
     struct yt_error *error);
 
 #endif
