@@ -195,12 +195,6 @@ session_is_disruption_sector(const struct yt_session *session, float sector)
 }
 
 static void
-session_set_relationship(struct yt_session *session, float value)
-{
-	session->shared_status = value;
-}
-
-static void
 session_set_current_sector_record(struct yt_session *session, float value)
 {
 	session->current_sector_record = value;
@@ -5368,19 +5362,19 @@ planet_move_friendship(struct yt_session *session, float owner,
 {
 	struct yt_player current;
 	struct yt_player other;
-	uint32_t owner_record;
+	int owner_record;
 	int last_player = (int)session_sector_offset(session);
 
 	if (friendly == NULL)
 		return false;
 	*friendly = false;
-	session_set_relationship(session, 0.0f);
+	session->shared_status = 0.0f;
 	if (owner < 2.0f || owner > (float)last_player
 	    || session_record(session) < 2 || session_record(session) > last_player)
 		return true;
 	if (owner == (float)session_record(session)) {
 		*friendly = true;
-		session_set_relationship(session, -1.0f);
+		session->shared_status = -1.0f;
 		return true;
 	}
 	if (!yt_game_read_player(&session->door->game, session_record(session),
@@ -5388,14 +5382,13 @@ planet_move_friendship(struct yt_session *session, float owner,
 		return false;
 	if (current.team == 0.0f)
 		return true;
-	owner_record = qb_brun_random_record_number(owner);
-	if (owner_record > (uint32_t)INT_MAX
-	    || !yt_game_read_player(&session->door->game, (int)owner_record,
+	owner_record = (int)owner;
+	if (!yt_game_read_player(&session->door->game, owner_record,
 	    &other, error))
 		return false;
 	*friendly = other.team == current.team;
 	if (*friendly)
-		session_set_relationship(session, -1.0f);
+		session->shared_status = -1.0f;
 	return true;
 }
 
@@ -5488,7 +5481,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	    || !read_planet_physical(session, moving_record, &planet, error)
 	    || !yt_planet_stored_name(&planet, planet_name,
 	    &planet_name_length, error)
-	    || !random_value(session, &draw, error))
+	    || !yt_random_next(&session->door->game.random, &draw, error))
 		return false;
 	if (draw > 0.9950000047683716f || *stop) {
 		float loss = 0.0f;
@@ -5556,7 +5549,8 @@ planet_move_hop(struct yt_session *session, int source_number,
 			return false;
 		*stop = true;
 		for (;;) {
-			if (!random_value(session, &draw, error))
+			if (!yt_random_next(&session->door->game.random, &draw,
+			    error))
 				return false;
 			actual_destination = floorf(single_mul(draw, maximum)) + 1.0f;
 			if (!session_read_sector(session,
@@ -9804,7 +9798,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 		if (!session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "main prompt leading blank", error))
 			return false;
-		session_set_relationship(session, 0.0f);
+		session->shared_status = 0.0f;
 		if (!yt_main_prompt_row((const uint8_t *)session->time.text,
 		    session->time.text_length, prompt, sizeof(prompt),
 		    &prompt_length))

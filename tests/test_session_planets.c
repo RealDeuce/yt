@@ -78,6 +78,7 @@ test_land_and_leave_owned_planet(void)
 {
 	static const char path[] = "SESSION-LAND.DAT";
 	static const uint8_t answer[] = "L\r";
+	static const uint8_t same_sector[] = "1\r";
 	struct yt_door door;
 	struct yt_session session;
 	struct yt_player player;
@@ -139,6 +140,14 @@ test_land_and_leave_owned_planet(void)
 	CHECK(enter_sector);
 	CHECK(session.queue_position == session.queue_length);
 	CHECK(session.player.sector == 1.0f);
+	memcpy(session.queue, same_sector, sizeof(same_sector) - 1U);
+	session.queue_length = sizeof(same_sector) - 1U;
+	session.queue_position = 0U;
+	enter_sector = false;
+	CHECK(yt_session_planet_move(&session, &enter_sector, &error));
+	CHECK(!enter_sector);
+	CHECK(session.queue_length == 0U);
+	CHECK(door.game.random.draws == 0U);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);
 }
