@@ -1048,45 +1048,6 @@ int yt_nearest_filter_selector(const uint8_t *response, size_t length);
 bool yt_nearest_direction_prompt(int selector, uint8_t *prompt,
     size_t capacity, size_t *length);
 
-enum yt_nearest_field_kind {
-	YT_NEAREST_FIELD_NONE,
-	YT_NEAREST_FIELD_PLAYER,
-	YT_NEAREST_FIELD_SECTOR,
-	YT_NEAREST_FIELD_PORT,
-	YT_NEAREST_FIELD_OWNER,
-};
-
-enum yt_nearest_present_mode {
-	YT_NEAREST_PRESENT_LINE,
-	YT_NEAREST_PRESENT_RAW,
-	YT_NEAREST_PRESENT_BOLD_LINE,
-	YT_NEAREST_PRESENT_BOLD_RAW,
-};
-
-enum yt_nearest_output_kind {
-	YT_NEAREST_ENTRY_BLANK,
-	YT_NEAREST_SCANNING,
-	YT_NEAREST_SCAN_BLANK,
-	YT_NEAREST_OWNER_INSTRUCTION,
-	YT_NEAREST_OWNER_BLANK,
-	YT_NEAREST_DISTANCE,
-	YT_NEAREST_SECTOR,
-	YT_NEAREST_ORE,
-	YT_NEAREST_ORGANICS,
-	YT_NEAREST_EQUIPMENT,
-	YT_NEAREST_STOCK,
-	YT_NEAREST_NAME,
-	YT_NEAREST_PAGER_PROMPT,
-	YT_NEAREST_PAGER_ECHO,
-	YT_NEAREST_FINAL_BLANK,
-};
-
-enum yt_nearest_result {
-	YT_NEAREST_INCOMPLETE,
-	YT_NEAREST_COMPLETE,
-	YT_NEAREST_PAGE_STOP,
-};
-
 struct yt_nearest_style {
 	float foreground;
 	float bold;
@@ -1104,70 +1065,9 @@ struct yt_nearest_market {
 	float price[3];
 };
 
-struct yt_nearest_state {
-	int selector;
-	uint8_t direction;
-	uint8_t conversion_mode;
-	float actor_number;
-	float sector_record_offset;
-	float port_record_offset;
-	float base_price[3];
-	float cached_roster[4];
-	struct yt_nearest_style style;
-	struct yt_player player;
-	struct yt_sector sector;
-	struct yt_port port;
-	struct yt_player owner;
-	struct yt_nearest_market market;
-	struct yt_record field;
-	enum yt_nearest_field_kind field_kind;
-	uint32_t field_record;
-	float current_record_expression;
-	float current_team;
-	float start_sector_raw;
-	float display_sector;
-	float current_day;
-	float timer_seconds;
-	float page_count;
-	uint8_t page_count_raw[4];
-	int current_sector;
-	int distance;
-	size_t rows;
-	size_t outputs;
-	size_t reads;
-	size_t day_observations;
-	size_t timer_observations;
-	size_t roster_comparisons;
-	bool field_valid;
-	bool continuous;
-	bool stopped;
-	bool complete;
-	enum yt_nearest_result result;
-};
-
-struct yt_nearest_ops {
-	bool (*read_record)(void *context, enum yt_nearest_field_kind kind,
-	    float expression, uint32_t physical_record,
-	    struct yt_record *record, struct yt_error *error);
-	bool (*observe_day)(void *context, float *day,
-	    struct yt_error *error);
-	bool (*observe_timer)(void *context, float *seconds,
-	    struct yt_error *error);
-	bool (*present)(void *context, enum yt_nearest_output_kind kind,
-	    enum yt_nearest_present_mode mode, const uint8_t *text,
-	    size_t length, struct yt_nearest_style *style,
-	    struct yt_error *error);
-	bool (*input)(void *context, uint8_t *key, bool *available,
-	    struct yt_error *error);
-	void (*uppercase)(void *context, uint8_t *text, size_t length);
-};
-
 bool yt_nearest_market_project(struct yt_nearest_market *market,
 	const struct yt_port *port, const float base_price[3],
 	float current_day, float timer_seconds, struct yt_error *error);
-bool yt_nearest_run(struct yt_nearest_state *state,
-	const struct yt_nearest_ops *ops, void *context,
-	struct yt_error *error);
 
 enum yt_profit_field_kind {
 	YT_PROFIT_FIELD_NONE,

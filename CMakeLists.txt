@@ -115,6 +115,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_lockout.c
     src/yt_session_mines.c
     src/yt_session_movement.c
+    src/yt_session_nearest.c
     src/yt_session_planets.c
     src/yt_session_ports.c
     src/yt_session_registration.c
@@ -217,7 +218,6 @@ if(BUILD_TESTING)
     target_link_libraries(test_input_adapter PRIVATE yt_game)
     add_test(NAME test_input_adapter COMMAND test_input_adapter)
     yt_add_test(test_ytconfig_output tests/test_ytconfig_output.c yt_game)
-    yt_add_test(test_nearest tests/test_nearest.c yt_game)
     yt_add_test(test_profit tests/test_profit.c yt_game)
     yt_add_test(test_score tests/test_score.c yt_game)
     target_sources(test_score PRIVATE
@@ -235,6 +235,7 @@ if(BUILD_TESTING)
     yt_add_test(test_session_death tests/test_session_death.c yt_runtime)
     yt_add_test(test_session_mines tests/test_session_mines.c yt_runtime)
     yt_add_test(test_session_movement tests/test_session_movement.c yt_runtime)
+    yt_add_test(test_session_nearest tests/test_session_nearest.c yt_runtime)
     yt_add_test(test_session_planets tests/test_session_planets.c yt_runtime)
     yt_add_test(test_session_ports tests/test_session_ports.c yt_runtime)
     yt_add_test(test_session_projectile tests/test_session_projectile.c
@@ -245,6 +246,7 @@ if(BUILD_TESTING)
         test_session_death
         test_session_mines
         test_session_movement
+        test_session_nearest
         test_session_planets
         test_session_ports
         test_session_projectile)
