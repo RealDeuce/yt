@@ -3716,56 +3716,10 @@ direct_attack_combat_write(void *context, int player_record,
 }
 
 static bool
-direct_attack_combat_present(void *context, const uint8_t *text,
-    size_t length, enum yt_direct_attack_combat_output_kind kind,
-    struct yt_error *error)
-{
-	switch (kind) {
-	case YT_DIRECT_ATTACK_COMBAT_TOO_MANY_ROW:
-		return session_present_alert(context, text, length,
-		    "direct Attack too-many row", error);
-	case YT_DIRECT_ATTACK_COMBAT_ATTACKER_ROW:
-		return session_present_paged_line(context, text, length,
-		    "direct Attack attacker result", error);
-	case YT_DIRECT_ATTACK_COMBAT_DEFENDER_ROW:
-		return session_present_paged_fragment(context, text, length);
-	case YT_DIRECT_ATTACK_COMBAT_ELIMINATED_ROW:
-		return session_present_paged_line(context, text, length,
-		    "direct Attack eliminated row", error);
-	default:
-		return false;
-	}
-}
-
-static bool
-direct_attack_combat_sound(void *context, float selector,
-    struct yt_error *error)
-{
-	return session_sound(context, selector, "player attack opening sound",
-	    error);
-}
-
-static bool
-direct_attack_combat_radio(void *context, const uint8_t *text,
-    size_t length, float recipient, struct yt_error *error)
-{
-	(void)context;
-	return session_append_radio_bytes(text, length, -2.0f, recipient, error);
-}
-
-static bool
-direct_attack_combat_spill(void *context, double *fighters,
-    float *shields, struct yt_error *error)
-{
-	return fighter_shield_spill(context, fighters, shields, false, error);
-}
-
-static bool
-direct_attack_combat_kill(void *context, int target_record,
+direct_attack_finish_kill(struct yt_session *session, int target_record,
     int current_player_record, float current_sector, float target_shields,
     struct yt_error *error)
 {
-	struct yt_session *session = context;
 	struct yt_player target;
 	struct yt_sector sector;
 	uint8_t saved_name[YT_TEXT_FIELD_SIZE];
@@ -3816,26 +3770,145 @@ direct_attack_combat_kill(void *context, int target_record,
 }
 
 static bool
-attack_player(struct yt_session *session, int target_record,
+direct_attack_attrition(struct yt_session *session, double committed,
+    double defenders, float cloak, double *attacker_loss,
+    double *defender_loss, struct yt_error *error)
+{
+	*attacker_loss = 0.0;
+	*defender_loss = 0.0;
+	while (*attacker_loss < committed && *defender_loss < defenders) {
+		double remaining_attacker = committed - *attacker_loss;
+		double remaining_defender = defenders - *defender_loss;
+		double minimum = remaining_attacker < remaining_defender
+		    ? remaining_attacker : remaining_defender;
+		volatile double integral = floor(minimum / 20.0);
+		float quantum = (float)integral;
+		float sampled;
+
+		if (quantum < 1.0f)
+			quantum = 1.0f;
+		if (!random_value(session, &sampled, error))
+			return false;
+		if (single_add(single_div(cloak, 10.0f), sampled)
+		    < 0.44999998807907104f)
+			*attacker_loss = double_add(*attacker_loss,
+			    (double)quantum);
+		else
+			*defender_loss = double_add(*defender_loss,
+			    (double)quantum);
+	}
+	return true;
+}
+
+bool
+yt_session_attack_player(struct yt_session *session, int target_record,
     double committed, struct yt_error *error)
 {
-	static const struct yt_direct_attack_combat_ops ops = {
-		direct_attack_combat_read,
-		direct_attack_combat_write,
-		direct_attack_combat_present,
-		direct_attack_combat_sound,
-		direct_attack_combat_radio,
-		random_value,
-		direct_attack_combat_spill,
-		direct_attack_combat_kill,
-	};
-	struct yt_direct_attack_combat_state state = {
-		.current_player_record = session_record(session),
-		.target_record = target_record,
-		.committed = committed,
-	};
+	static const uint8_t eliminated[] =
+	    "Fighters eliminated! Attacking the ship!";
+	struct yt_player current;
+	struct yt_player target;
+	uint8_t row[300];
+	uint8_t second[300];
+	uint8_t stored_name[YT_TEXT_FIELD_SIZE];
+	uint8_t radio[160];
+	size_t row_length;
+	size_t second_length;
+	size_t name_length;
+	size_t radio_length;
+	double defenders;
+	double cached_reserve;
+	double attacking;
+	double attacker_loss;
+	double defender_loss;
+	float target_shields;
+	float current_sector;
+	float remaining_shields;
+	int current_player_record = session_record(session);
 
-	return yt_direct_attack_combat_run(&state, &ops, session, error);
+	if (!direct_attack_combat_read(session, target_record, &target, error))
+		return false;
+	defenders = (double)target.fighters;
+	if (!direct_attack_combat_read(session, current_player_record,
+	    &current, error))
+		return false;
+	if (committed > (double)current.fighters) {
+		return yt_direct_attack_too_many_row((double)current.fighters,
+		    row, sizeof(row), &row_length)
+		    && session_present_alert(session, row, row_length,
+		    "direct Attack too-many row", error);
+	}
+
+	cached_reserve = double_sub((double)current.fighters, committed);
+	yt_direct_attack_fighter_overlay(&current, (float)cached_reserve);
+	if (!direct_attack_combat_write(session, current_player_record,
+	    &current, error)
+	    || !session_sound(session, 2.0f, "player attack opening sound",
+	    error)
+	    || !direct_attack_attrition(session, committed, defenders,
+	    current.cloak, &attacker_loss, &defender_loss, error))
+		return false;
+	if (defender_loss > 0.0) {
+		if (!yt_player_stored_name(&current, stored_name, &name_length,
+		    error)
+		    || !yt_direct_attack_radio_text(stored_name, name_length,
+		    defender_loss, radio, sizeof(radio), &radio_length)
+		    || !session_append_radio_bytes(radio, radio_length, -2.0f,
+		    (float)target_record, error))
+			return false;
+	}
+
+	if (!direct_attack_combat_read(session, current_player_record,
+	    &current, error))
+		return false;
+	cached_reserve = (double)current.fighters;
+	attacking = double_sub(committed, attacker_loss);
+	defenders = double_sub(defenders, defender_loss);
+	yt_direct_attack_fighter_overlay(&current,
+	    (float)double_add(cached_reserve, attacking));
+	if (!direct_attack_combat_write(session, current_player_record,
+	    &current, error)
+	    || !direct_attack_combat_read(session, target_record, &target,
+	    error))
+		return false;
+	current_sector = current.sector;
+	target_shields = target.shields;
+	yt_direct_attack_fighter_overlay(&target, (float)defenders);
+	if (!direct_attack_combat_write(session, target_record, &target, error)
+	    || !yt_direct_attack_result_rows(attacker_loss, cached_reserve,
+	    defender_loss, defenders, row, sizeof(row), &row_length,
+	    second, sizeof(second), &second_length)
+	    || !session_present_paged_line(session, row, row_length,
+	    "direct Attack attacker result", error)
+	    || !session_present_paged_fragment(session, second, second_length))
+		return false;
+	if (defenders > 0.0 || attacking < 1.0)
+		return true;
+	if (!session_present_paged_line(session, eliminated,
+	    sizeof(eliminated) - 1U, "direct Attack eliminated row", error))
+		return false;
+	if (target_shields > 0.0f
+	    && !fighter_shield_spill(session, &attacking, &target_shields,
+	    false, error))
+		return false;
+
+	remaining_shields = target_shields;
+	if (!direct_attack_combat_read(session, target_record, &target, error))
+		return false;
+	yt_direct_attack_shield_overlay(&target, remaining_shields);
+	if (!direct_attack_combat_write(session, target_record, &target, error)
+	    || !direct_attack_combat_read(session, current_player_record,
+	    &current, error))
+		return false;
+	yt_direct_attack_fighter_overlay(&current,
+	    (float)double_add(cached_reserve, attacking));
+	if (!direct_attack_combat_write(session, current_player_record,
+	    &current, error))
+		return false;
+	if (target_shields > 0.0f)
+		return true;
+	return direct_attack_finish_kill(session, target_record,
+	    current_player_record, current_sector, target_shields, error);
 }
 
 static bool
@@ -3963,7 +4036,8 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		if ((parsed.valid ? parsed.value : 0.0) < 1.0
 		    || target_record_cell < 1.0f)
 			return true;
-		return attack_player(session, record, parsed.value, error);
+		return yt_session_attack_player(session, record, parsed.value,
+		    error);
 	}
 
 	if (encountered) {

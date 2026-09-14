@@ -230,6 +230,8 @@ bool yt_session_kill_player(struct yt_session *session, int victim_record,
     float killer, bool wait_for_current, struct yt_error *error);
 bool yt_session_command_attack(struct yt_session *session, bool *enter_sector,
     struct yt_error *error);
+bool yt_session_attack_player(struct yt_session *session, int target_record,
+    double committed, struct yt_error *error);
 bool yt_session_command_mines(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_mine_encounter(struct yt_session *session, bool *terminal,

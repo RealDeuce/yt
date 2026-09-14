@@ -11560,17 +11560,17 @@ static bool
 check_direct_attack_attrition_model(void)
 {
 	struct direct_attack_attrition_tape tape;
-	struct yt_direct_attack_attrition_state state;
+	struct test_direct_attack_attrition_state state;
 	struct yt_error error;
 
 	memset(&tape, 0, sizeof(tape));
 	tape.fail_at = (size_t)-1;
-	state = (struct yt_direct_attack_attrition_state){
+	state = (struct test_direct_attack_attrition_state){
 		.committed = 0.0,
 		.defenders = 4.0,
 		.cloak = 0.0f,
 	};
-	if (!yt_direct_attack_attrition_run(&state,
+	if (!test_direct_attack_attrition_run(&state,
 	    direct_attack_attrition_draw, &tape, NULL)
 	    || !state.complete || state.iterations != 0U || tape.calls != 0U
 	    || state.attacker_loss != 0.0 || state.defender_loss != 0.0
@@ -11580,12 +11580,12 @@ check_direct_attack_attrition_model(void)
 	memset(&tape, 0, sizeof(tape));
 	tape.fail_at = (size_t)-1;
 	tape.values[0] = 0.44999998807907104f;
-	state = (struct yt_direct_attack_attrition_state){
+	state = (struct test_direct_attack_attrition_state){
 		.committed = 1.0,
 		.defenders = 1.0,
 		.cloak = 0.0f,
 	};
-	if (!yt_direct_attack_attrition_run(&state,
+	if (!test_direct_attack_attrition_run(&state,
 	    direct_attack_attrition_draw, &tape, NULL)
 	    || state.attacker_loss != 0.0 || state.defender_loss != 1.0
 	    || state.quantum != 1.0f || state.iterations != 1U
@@ -11596,12 +11596,12 @@ check_direct_attack_attrition_model(void)
 	tape.fail_at = (size_t)-1;
 	tape.values[0] = 0.0f;
 	tape.values[1] = 0.0f;
-	state = (struct yt_direct_attack_attrition_state){
+	state = (struct test_direct_attack_attrition_state){
 		.committed = 1.5,
 		.defenders = 1.5,
 		.cloak = 0.0f,
 	};
-	if (!yt_direct_attack_attrition_run(&state,
+	if (!test_direct_attack_attrition_run(&state,
 	    direct_attack_attrition_draw, &tape, NULL)
 	    || state.attacker_loss != 2.0 || state.defender_loss != 0.0
 	    || state.iterations != 2U || tape.calls != 2U)
@@ -11610,13 +11610,13 @@ check_direct_attack_attrition_model(void)
 	memset(&tape, 0, sizeof(tape));
 	tape.values[0] = 0.0f;
 	tape.fail_at = 1U;
-	state = (struct yt_direct_attack_attrition_state){
+	state = (struct test_direct_attack_attrition_state){
 		.committed = 100.0,
 		.defenders = 40.0,
 		.cloak = 0.0f,
 	};
 	yt_error_clear(&error);
-	if (yt_direct_attack_attrition_run(&state,
+	if (test_direct_attack_attrition_run(&state,
 	    direct_attack_attrition_draw, &tape, &error)
 	    || state.complete || state.attacker_loss != 2.0
 	    || state.defender_loss != 0.0 || state.quantum != 2.0f
@@ -11633,19 +11633,19 @@ check_direct_attack_attrition_model(void)
 	tape.values[4] = 0.0f;
 	tape.values[5] = 1.0f;
 	tape.values[6] = 0.0f;
-	state = (struct yt_direct_attack_attrition_state){
+	state = (struct test_direct_attack_attrition_state){
 		.committed = 4.0,
 		.defenders = 4.0,
 		.cloak = 0.0f,
 	};
-	return yt_direct_attack_attrition_run(&state,
+	return test_direct_attack_attrition_run(&state,
 	    direct_attack_attrition_draw, &tape, NULL)
 	    && state.complete && state.attacker_loss == 4.0
 	    && state.defender_loss == 3.0 && state.quantum == 1.0f
 	    && state.iterations == 7U && tape.calls == 7U
-	    && !yt_direct_attack_attrition_run(NULL,
+	    && !test_direct_attack_attrition_run(NULL,
 	    direct_attack_attrition_draw, &tape, NULL)
-	    && !yt_direct_attack_attrition_run(&state, NULL, &tape, NULL);
+	    && !test_direct_attack_attrition_run(&state, NULL, &tape, NULL);
 }
 
 
@@ -11736,7 +11736,7 @@ direct_attack_combat_write(void *context, int player_record,
 
 static bool
 direct_attack_combat_present(void *context, const uint8_t *text,
-    size_t length, enum yt_direct_attack_combat_output_kind kind,
+    size_t length, enum test_direct_attack_combat_output_kind kind,
     struct yt_error *error)
 {
 	static const enum direct_attack_combat_event events[] = {
@@ -11821,7 +11821,7 @@ direct_attack_combat_kill(void *context, int target_record,
 	return true;
 }
 
-static const struct yt_direct_attack_combat_ops direct_combat_ops = {
+static const struct test_direct_attack_combat_ops direct_combat_ops = {
 	direct_attack_combat_read,
 	direct_attack_combat_write,
 	direct_attack_combat_present,
@@ -11834,7 +11834,7 @@ static const struct yt_direct_attack_combat_ops direct_combat_ops = {
 
 static void
 direct_attack_combat_fixture(struct direct_attack_combat_tape *tape,
-    struct yt_direct_attack_combat_state *state, float target_fighters,
+    struct test_direct_attack_combat_state *state, float target_fighters,
     float target_shields, double committed)
 {
 	struct yt_record current_record;
@@ -11869,7 +11869,7 @@ direct_attack_combat_fixture(struct direct_attack_combat_tape *tape,
 	(void)yt_record_set_number(&tape->world[3].record, YT_F85, 6.0f);
 	target_record = tape->world[3].record;
 	yt_player_decode(&tape->world[3], &target_record);
-	*state = (struct yt_direct_attack_combat_state){
+	*state = (struct test_direct_attack_combat_state){
 		.current_player_record = 2,
 		.target_record = 3,
 		.committed = committed,
@@ -11889,7 +11889,7 @@ check_direct_attack_combat_transaction(void)
 	    "Ada destroyed 0 of your fighters!";
 	static const uint8_t too_many[] = "You only have 5!";
 	struct direct_attack_combat_tape tape;
-	struct yt_direct_attack_combat_state state;
+	struct test_direct_attack_combat_state state;
 	enum direct_attack_combat_event expected[32];
 	struct yt_record current_before;
 	struct yt_record target_before;
@@ -11904,7 +11904,7 @@ check_direct_attack_combat_transaction(void)
 	tape.draws[0] = 1.0f;
 	tape.draws[1] = 1.0f;
 	tape.draw_count = 2U;
-	if (!yt_direct_attack_combat_run(&state, &direct_combat_ops, &tape,
+	if (!test_direct_attack_combat_run(&state, &direct_combat_ops, &tape,
 	    NULL) || !state.complete
 	    || state.route != YT_DIRECT_ATTACK_COMBAT_KILL_RETURN
 	    || state.defenders != 0.0 || state.attacking != 3.0
@@ -11952,7 +11952,7 @@ check_direct_attack_combat_transaction(void)
 		tape.draw_count = 2U;
 		tape.fail_at = failure;
 		yt_error_clear(&error);
-		if (yt_direct_attack_combat_run(&state, &direct_combat_ops,
+		if (test_direct_attack_combat_run(&state, &direct_combat_ops,
 		    &tape, &error) || state.complete
 		    || tape.event_count != failure + 1U
 		    || memcmp(tape.events, expected,
@@ -11971,7 +11971,7 @@ check_direct_attack_combat_transaction(void)
 	}
 
 	direct_attack_combat_fixture(&tape, &state, 2.0f, 0.0f, 6.0);
-	if (!yt_direct_attack_combat_run(&state, &direct_combat_ops, &tape,
+	if (!test_direct_attack_combat_run(&state, &direct_combat_ops, &tape,
 	    NULL) || state.route != YT_DIRECT_ATTACK_COMBAT_TOO_MANY
 	    || !state.complete || tape.event_count != 3U
 	    || tape.output_length[YT_DIRECT_ATTACK_COMBAT_TOO_MANY_ROW]
@@ -11983,7 +11983,7 @@ check_direct_attack_combat_transaction(void)
 	direct_attack_combat_fixture(&tape, &state, 4.0f, 0.0f, 1.0);
 	tape.draws[0] = 0.0f;
 	tape.draw_count = 1U;
-	if (!yt_direct_attack_combat_run(&state, &direct_combat_ops, &tape,
+	if (!test_direct_attack_combat_run(&state, &direct_combat_ops, &tape,
 	    NULL) || state.route != YT_DIRECT_ATTACK_COMBAT_CASUALTY_RETURN
 	    || !state.complete || state.defenders != 4.0
 	    || state.attacking != 0.0 || tape.kills != 0U)
@@ -11994,7 +11994,7 @@ check_direct_attack_combat_transaction(void)
 	tape.draw_count = 1U;
 	tape.spill_fighters = 1.0;
 	tape.spill_shields = 2.0f;
-	if (!yt_direct_attack_combat_run(&state, &direct_combat_ops, &tape,
+	if (!test_direct_attack_combat_run(&state, &direct_combat_ops, &tape,
 	    NULL) || state.route != YT_DIRECT_ATTACK_COMBAT_SHIELD_RETURN
 	    || !state.complete || state.attacking != 1.0
 	    || state.target_shields != 2.0f || tape.world[2].fighters != 3.0f
@@ -12006,10 +12006,10 @@ check_direct_attack_combat_transaction(void)
 	tape.draw_count = 1U;
 	tape.fail_at = 13U;
 	yt_error_clear(&error);
-	return !yt_direct_attack_combat_run(&state, &direct_combat_ops, &tape,
+	return !test_direct_attack_combat_run(&state, &direct_combat_ops, &tape,
 	    &error) && !state.complete && error.status == YT_IO_ERROR
-	    && !yt_direct_attack_combat_run(NULL, &direct_combat_ops, &tape,
-	    NULL) && !yt_direct_attack_combat_run(&state, NULL, &tape, NULL);
+	    && !test_direct_attack_combat_run(NULL, &direct_combat_ops, &tape,
+	    NULL) && !test_direct_attack_combat_run(&state, NULL, &tape, NULL);
 }
 
 enum direct_attack_event {
