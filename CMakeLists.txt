@@ -244,6 +244,7 @@ if(BUILD_TESTING)
     yt_add_test(test_session_profit tests/test_session_profit.c yt_runtime)
     yt_add_test(test_session_projectile tests/test_session_projectile.c
         yt_runtime)
+    yt_add_test(test_session_spies tests/test_session_spies.c yt_runtime)
     yt_add_test(test_session_team tests/test_session_team.c yt_runtime)
     foreach(session_test
         test_session_credit
@@ -256,6 +257,7 @@ if(BUILD_TESTING)
         test_session_ports
         test_session_profit
         test_session_projectile
+        test_session_spies
         test_session_team)
         target_sources(${session_test} PRIVATE tests/session_test_runtime.c)
     endforeach()

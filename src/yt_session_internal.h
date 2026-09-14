@@ -295,6 +295,8 @@ bool yt_session_info_team_lines(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_spy_sweep(struct yt_session *session,
     struct yt_error *error);
+bool yt_session_list_spies(struct yt_session *session,
+    struct yt_error *error);
 bool yt_session_registration(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_check_lockout(struct yt_session *session,
