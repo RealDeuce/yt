@@ -3839,99 +3839,143 @@ attack_player(struct yt_session *session, int target_record,
 }
 
 static bool
-direct_attack_present(void *context, const uint8_t *text, size_t length,
-    enum yt_direct_attack_output_kind kind, struct yt_error *error)
+direct_attack_candidate_record(struct yt_session *session, float candidate,
+    int *record, struct yt_error *error)
 {
-	switch (kind) {
-	case YT_DIRECT_ATTACK_TITLE_ROW:
-	case YT_DIRECT_ATTACK_TEAM_ROW:
-	case YT_DIRECT_ATTACK_NONE_SELECTED_ROW:
-		return session_present_paged_fragment(context, text, length);
-	case YT_DIRECT_ATTACK_NO_FIGHTERS_ROW:
-		return session_present_alert(context, text, length,
-		    "direct Attack no-fighters row", error);
-	case YT_DIRECT_ATTACK_COMMITMENT_PROMPT:
-		return session_present_timed_paged_row(context, text, length,
-		    "direct Attack commitment prompt", error);
-	case YT_DIRECT_ATTACK_NONE_VISIBLE_ROW:
-		return session_present_alert(context, text, length,
-		    "direct Attack no-visible-target row", error);
-	default:
-		return false;
+	bool overflow;
+	int32_t converted;
+
+	converted = qb_cint_mode((double)candidate,
+	    session->presentation.sound.conversion_mode, &overflow);
+	if (!overflow && yt_player_cache_contains((int)converted)) {
+		*record = (int)converted;
+		return true;
 	}
-}
-
-static bool
-direct_attack_confirm(void *context, const uint8_t *prompt, size_t length,
-    enum yt_direct_attack_confirmation *answer, struct yt_error *error)
-{
-	enum yt_yes_no_answer selected;
-
-	if (!session_confirm(context, prompt, length, &selected, error))
-		return false;
-	switch (selected) {
-	case YT_YES_NO_NO:
-		*answer = YT_DIRECT_ATTACK_CONFIRM_NO;
-		return true;
-	case YT_YES_NO_YES:
-		*answer = YT_DIRECT_ATTACK_CONFIRM_YES;
-		return true;
-	case YT_YES_NO_EMPTY:
-		*answer = YT_DIRECT_ATTACK_CONFIRM_EMPTY;
-		return true;
-	default:
-		return false;
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "direct Attack candidate cache CINT");
 	}
+	return false;
 }
 
-static bool
-direct_attack_amount(void *context, char *response, size_t capacity,
+bool
+yt_session_command_attack(struct yt_session *session, bool *enter_sector,
     struct yt_error *error)
 {
-	(void)error;
-	return session_read_number_command(context, response, capacity);
-}
-
-static void
-direct_attack_store_target(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	session->shared_target_record = qb_mbf32_decode(raw);
-}
-
-static bool
-direct_attack_combat(void *context, int target_record, double committed,
-    struct yt_error *error)
-{
-	return attack_player(context, target_record, committed, error);
-}
-
-static bool
-command_attack_player(struct yt_session *session, bool *enter_sector,
-    struct yt_error *error)
-{
-	static const struct yt_direct_attack_ops ops = {
-		direct_attack_combat_read,
-		direct_attack_store_target,
-		direct_attack_present,
-		direct_attack_confirm,
-		direct_attack_amount,
-		direct_attack_combat,
-	};
-	struct yt_direct_attack_state state = {
-		.current_player_record = session_record(session),
-		.last_player_record = session_sector_offset(session),
-		.conversion_mode = session->presentation.sound.conversion_mode,
-		.player_cache = &session->player_cache,
-	};
+	static const uint8_t title[] = "<Attack>";
+	static const uint8_t no_fighters[] =
+	    "You don't have any fighters.";
+	static const uint8_t none_visible[] = "There's no one here!";
+	static const uint8_t none_selected[] =
+	    "There are no other ships in this sector.";
+	struct yt_player current;
+	struct yt_player candidate_player;
+	uint8_t row[300];
+	uint8_t target_name[YT_TEXT_FIELD_SIZE];
+	char response[YT_COMMAND_SIZE];
+	size_t row_length;
+	size_t target_name_length;
+	float candidate = 2.0f;
+	float target_record_cell = 0.0f;
+	bool encountered = false;
 
 	if (enter_sector == NULL)
 		return false;
 	*enter_sector = false;
-	if (!yt_direct_attack_run(&state, &ops, session, error))
+	if (!session_present_paged_fragment(session, title, sizeof(title) - 1U)
+	    || !direct_attack_combat_read(session, session_record(session),
+	    &current, error))
 		return false;
-	*enter_sector = state.enter_sector;
+	if (current.fighters < 1.0f)
+		return session_present_alert(session, no_fighters,
+		    sizeof(no_fighters) - 1U, "direct Attack no-fighters row",
+		    error);
+
+	while (candidate <= session_sector_offset(session)) {
+		struct qb_val_result parsed;
+		enum yt_yes_no_answer answer;
+		uint8_t target_record_raw[4];
+		float cached_sector;
+		float cached_cloak;
+		bool sector_mismatch;
+		bool self;
+		bool cloaked;
+		bool positive_team;
+		bool same_team;
+		int record;
+
+		if (!direct_attack_candidate_record(session, candidate, &record,
+		    error))
+			return false;
+		cached_sector = yt_player_cache_value(&session->player_cache,
+		    record, YT_PLAYER_CACHE_SECTOR);
+		cached_cloak = yt_player_cache_value(&session->player_cache,
+		    record, YT_PLAYER_CACHE_CLOAK);
+		sector_mismatch = cached_sector != current.sector;
+		self = record == session_record(session);
+		cloaked = cached_cloak > 0.0f;
+		if (sector_mismatch || self || cloaked) {
+			candidate = single_add(candidate, 1.0f);
+			continue;
+		}
+
+		target_record_cell = candidate;
+		(void)qb_mbf32_encode(candidate, target_record_raw);
+		session->shared_target_record = qb_mbf32_decode(target_record_raw);
+		if (!direct_attack_combat_read(session, record,
+		    &candidate_player, error)
+		    || !yt_player_stored_name(&candidate_player, target_name,
+		    &target_name_length, error))
+			return false;
+		positive_team = candidate_player.team > 0.0f;
+		same_team = candidate_player.team == current.team;
+		if (positive_team && same_team) {
+			if (!yt_direct_attack_team_row(target_name,
+			    target_name_length, row, sizeof(row), &row_length)
+			    || !session_present_paged_fragment(session, row,
+			    row_length))
+				return false;
+			encountered = true;
+			candidate = single_add(candidate, 1.0f);
+			continue;
+		}
+
+		encountered = true;
+		if (!yt_direct_attack_candidate_prompt(target_name,
+		    target_name_length, row, sizeof(row), &row_length)
+		    || !session_confirm(session, row, row_length, &answer, error))
+			return false;
+		if (answer == YT_YES_NO_NO) {
+			candidate = single_add(candidate, 1.0f);
+			continue;
+		}
+		if (answer != YT_YES_NO_YES && answer != YT_YES_NO_EMPTY)
+			return false;
+		if (!yt_direct_attack_commitment_prompt((double)current.fighters,
+		    row, sizeof(row), &row_length)
+		    || !session_present_timed_paged_row(session, row, row_length,
+		    "direct Attack commitment prompt", error)
+		    || !session_read_number_command(session, response,
+		    sizeof(response)))
+			return false;
+		parsed = qb_val(response);
+		if ((parsed.valid ? parsed.value : 0.0) < 1.0
+		    || target_record_cell < 1.0f)
+			return true;
+		return attack_player(session, record, parsed.value, error);
+	}
+
+	if (encountered) {
+		if (!session_present_paged_fragment(session, none_selected,
+		    sizeof(none_selected) - 1U))
+			return false;
+	} else if (!session_present_alert(session, none_visible,
+	    sizeof(none_visible) - 1U, "direct Attack no-visible-target row",
+	    error)) {
+		return false;
+	}
+	*enter_sector = true;
 	return true;
 }
 
@@ -13774,7 +13818,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			break;
 		case YT_MAIN_SHELL_ATTACK:
-			if (!command_attack_player(session, &enter_sector, error))
+			if (!yt_session_command_attack(session, &enter_sector, error))
 				return false;
 			break;
 		case YT_MAIN_SHELL_BUY_PORT:

@@ -216,10 +216,13 @@ if(BUILD_TESTING)
     yt_add_test(test_nearest tests/test_nearest.c yt_game)
     yt_add_test(test_profit tests/test_profit.c yt_game)
     yt_add_test(test_score tests/test_score.c yt_game)
-    target_sources(test_score PRIVATE tests/player_death_model.c)
+    target_sources(test_score PRIVATE
+        tests/direct_attack_model.c
+        tests/player_death_model.c)
     yt_add_test(test_route tests/test_route.c yt_core)
 
     yt_add_test(test_session_credit tests/test_session_credit.c yt_runtime)
+    yt_add_test(test_session_attack tests/test_session_attack.c yt_runtime)
     yt_add_test(test_session_death tests/test_session_death.c yt_runtime)
     yt_add_test(test_session_mines tests/test_session_mines.c yt_runtime)
     yt_add_test(test_session_movement tests/test_session_movement.c yt_runtime)

@@ -1,5 +1,6 @@
 #include "qb.h"
 #include "yt_game.h"
+#include "direct_attack_model.h"
 #include "player_death_model.h"
 #include "yt_input_model.h"
 #include "yt_main_error.h"
@@ -12036,7 +12037,7 @@ struct direct_attack_tape {
 	uint8_t stored_target_raw[8][4];
 	size_t stored_target_at[8];
 	size_t stored_target_count;
-	enum yt_direct_attack_confirmation answers[4];
+	enum test_direct_attack_confirmation answers[4];
 	size_t answer_count;
 	size_t answer_position;
 	char amount[64];
@@ -12101,7 +12102,7 @@ direct_attack_read(void *context, int player_record,
 
 static bool
 direct_attack_present(void *context, const uint8_t *text, size_t length,
-    enum yt_direct_attack_output_kind kind, struct yt_error *error)
+    enum test_direct_attack_output_kind kind, struct yt_error *error)
 {
 	static const enum direct_attack_event events[] = {
 		DIRECT_ATTACK_PRESENT_TITLE,
@@ -12124,7 +12125,7 @@ direct_attack_present(void *context, const uint8_t *text, size_t length,
 
 static bool
 direct_attack_confirm(void *context, const uint8_t *prompt, size_t length,
-    enum yt_direct_attack_confirmation *answer, struct yt_error *error)
+    enum test_direct_attack_confirmation *answer, struct yt_error *error)
 {
 	struct direct_attack_tape *tape = context;
 
@@ -12166,7 +12167,7 @@ direct_attack_combat_child(void *context, int target_record,
 	return true;
 }
 
-static const struct yt_direct_attack_ops direct_attack_ops = {
+static const struct test_direct_attack_ops direct_attack_ops = {
 	direct_attack_read,
 	direct_attack_store_target,
 	direct_attack_present,
@@ -12195,7 +12196,7 @@ direct_attack_player_fixture(struct yt_player *player, const char *name,
 
 static void
 direct_attack_fixture(struct direct_attack_tape *tape,
-    struct yt_direct_attack_state *state)
+    struct test_direct_attack_state *state)
 {
 	size_t index;
 
@@ -12215,7 +12216,7 @@ direct_attack_fixture(struct direct_attack_tape *tape,
 	tape->answers[1] = YT_DIRECT_ATTACK_CONFIRM_YES;
 	tape->answer_count = 2U;
 	(void)snprintf(tape->amount, sizeof(tape->amount), "%s", "3");
-	*state = (struct yt_direct_attack_state){
+	*state = (struct test_direct_attack_state){
 		.current_player_record = 2,
 		.last_player_record = 5.0f,
 		.conversion_mode = 0,
@@ -12261,14 +12262,14 @@ check_direct_attack_transaction(void)
 	static const uint8_t none_selected[] =
 	    "There are no other ships in this sector.";
 	struct direct_attack_tape tape;
-	struct yt_direct_attack_state state;
+	struct test_direct_attack_state state;
 	enum direct_attack_event expected[20];
 	struct yt_error error;
 	size_t expected_count;
 	size_t failure;
 
 	direct_attack_fixture(&tape, &state);
-	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
+	if (!test_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || !state.complete || state.route != YT_DIRECT_ATTACK_COMBAT_RETURN
 	    || state.enter_sector || !state.encountered || state.candidate != 5.0f
 	    || state.target_record_cell != 5.0f || state.committed != 3.0
@@ -12305,7 +12306,7 @@ check_direct_attack_transaction(void)
 		direct_attack_fixture(&tape, &state);
 		tape.fail_at = failure;
 		yt_error_clear(&error);
-		if (yt_direct_attack_run(&state, &direct_attack_ops, &tape,
+		if (test_direct_attack_run(&state, &direct_attack_ops, &tape,
 		    &error) || state.complete
 		    || tape.event_count != failure + 1U
 		    || memcmp(tape.events, expected,
@@ -12323,7 +12324,7 @@ check_direct_attack_transaction(void)
 	direct_attack_fixture(&tape, &state);
 	tape.player[2].fighters = 0.5f;
 	(void)yt_record_set_number(&tape.player[2].record, YT_F61, 0.5f);
-	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
+	if (!test_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || state.route != YT_DIRECT_ATTACK_NO_FIGHTERS || !state.complete
 	    || !direct_attack_stored_targets(&tape, 0U)
 	    || tape.event_count != 3U
@@ -12337,7 +12338,7 @@ check_direct_attack_transaction(void)
 	tape.player_cache.sector[3] = 8.0f;
 	tape.player_cache.sector[4] = 8.0f;
 	tape.player_cache.sector[5] = 8.0f;
-	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
+	if (!test_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || state.route != YT_DIRECT_ATTACK_EXHAUSTED || !state.complete
 	    || !state.enter_sector || state.encountered
 	    || state.target_record_cell != 0.0f
@@ -12350,7 +12351,7 @@ check_direct_attack_transaction(void)
 
 	direct_attack_fixture(&tape, &state);
 	state.last_player_record = 3.0f;
-	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
+	if (!test_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || state.route != YT_DIRECT_ATTACK_EXHAUSTED || !state.complete
 	    || !state.enter_sector || !state.encountered
 	    || !direct_attack_stored_targets(&tape, 1U)
@@ -12366,15 +12367,15 @@ check_direct_attack_transaction(void)
 	tape.answers[0] = YT_DIRECT_ATTACK_CONFIRM_EMPTY;
 	tape.answer_count = 1U;
 	(void)snprintf(tape.amount, sizeof(tape.amount), "%s", "0");
-	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
+	if (!test_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || state.route != YT_DIRECT_ATTACK_CANCELLED || !state.complete
 	    || state.target_record_cell != 3.0f || state.committed != 0.0
 	    || !direct_attack_stored_targets(&tape, 1U)
 	    || tape.combat_target != 0)
 		return false;
 
-	return !yt_direct_attack_run(NULL, &direct_attack_ops, &tape, NULL)
-	    && !yt_direct_attack_run(&state, NULL, &tape, NULL);
+	return !test_direct_attack_run(NULL, &direct_attack_ops, &tape, NULL)
+	    && !test_direct_attack_run(&state, NULL, &tape, NULL);
 }
 
 static bool
