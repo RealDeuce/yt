@@ -10226,34 +10226,6 @@ session_launch_projectile(struct yt_session *session, float *origin,
 }
 
 static bool
-session_projectile_command_resolver(void *context, float *origin,
-    uint8_t origin_raw[4], float *target, uint8_t target_raw[4],
-    float *amount, uint8_t amount_raw[4], bool plasma, int *counterattack,
-    int *xannor_provoker, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	bool result;
-
-	session_load_counterattack_player(session, counterattack);
-	session_load_xannor_provoker(session, xannor_provoker);
-	result = launch_projectile(session, target, amount, plasma,
-	    &session->projectile_main_route, origin, origin_raw, target_raw,
-	    amount_raw,
-	    counterattack, xannor_provoker, error);
-
-	*origin = session->projectile_main_route.origin;
-	*target = session->projectile_main_route.destination;
-	*amount = session->projectile_main_route.amount;
-	(void)qb_mbf32_encode(*origin, origin_raw);
-	(void)qb_mbf32_encode(*target, target_raw);
-	(void)qb_mbf32_encode(*amount, amount_raw);
-	session_load_counterattack_player(session, counterattack);
-	session_load_xannor_provoker(session, xannor_provoker);
-	return result;
-}
-
-
-static bool
 session_counterlaunch_projectile(void *context, float *origin, float *target,
     float *amount, bool plasma, int *counterattack, int *xannor_provoker,
     struct yt_error *error)
@@ -10389,180 +10361,148 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 }
 
 static bool
-projectile_command_hydrate(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
+projectile_command_error(struct yt_error *error, enum yt_status status,
+    const char *operation)
 {
-	struct yt_session *session = context;
-
-	if (player_record != session_record(session)
-	    || !session_reload_player(session, error))
-		return false;
-	*player = session->player;
-	return true;
-}
-
-static bool
-projectile_command_present(void *context, const uint8_t *text,
-    size_t length, enum yt_projectile_command_output_kind kind,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	switch (kind) {
-	case YT_PROJECTILE_COMMAND_OPENING_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "projectile target opening blank", error);
-	case YT_PROJECTILE_COMMAND_NO_TURNS_ROW:
-		return session_present_alert(session, text, length, "no-turn gate notice",
-		    error);
-	case YT_PROJECTILE_COMMAND_NO_AMMUNITION_ROW:
-		return session_present_alert(session, text, length,
-		    "projectile ammunition refusal", error);
-	case YT_PROJECTILE_COMMAND_TARGET_PROMPT:
-		return session_present_timed_paged_row(session, text, length,
-		    "projectile target prompt", error);
-	case YT_PROJECTILE_COMMAND_INVALID_SECTOR_ROW:
-		return session_present_alert(session, text, length,
-		    "projectile invalid sector", error);
-	case YT_PROJECTILE_COMMAND_QUANTITY_PROMPT:
-		return session_present_timed_paged_row(session, text, length,
-		    "projectile quantity prompt", error);
-	case YT_PROJECTILE_COMMAND_TOO_MANY_ROW:
-		return session_present_paged_fragment(session, text, length);
-	case YT_PROJECTILE_COMMAND_ACCEPTED_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "projectile accepted blank", error);
-	default:
-		return false;
+	if (error != NULL) {
+		error->status = status;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
 	}
+	return false;
 }
 
-static bool
-projectile_command_input(void *context, char *response, size_t capacity,
+bool
+yt_session_command_projectile(struct yt_session *session, bool plasma,
     struct yt_error *error)
 {
-	(void)error;
-	return session_read_number_command(context, response, capacity);
-}
+	static const uint8_t no_turns[] =
+	    "Sorry but you have no turns left.";
+	static const uint8_t no_ammunition[] = "You dont have any!";
+	static const uint8_t invalid_sector[] = "Invalid Sector number!";
+	static const uint8_t quantity_prompt[] = "Send how many? [0] ?";
+	static const uint8_t too_many[] = "You dont have that many!";
+	uint8_t prompt[192];
+	char response[4096];
+	struct qb_val_result parsed;
+	enum qb_mbf_status conversion;
+	uint8_t target_raw[4];
+	uint8_t amount_raw[4];
+	uint8_t origin_raw[4];
+	size_t prompt_length;
+	double integral;
+	float displayed = plasma ? session->player.plasma
+	    : session->player.missiles;
+	float maximum_sector = (float)session_sector_count(session);
+	float available;
+	float target;
+	float amount;
+	float origin;
+	int counterattack;
+	int xannor_provoker;
 
-static bool
-projectile_command_finalize(void *context, struct yt_player *player,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
+	for (;;) {
+		if (!session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "projectile target opening blank", error)
+		    || !session_reload_player(session, error)
+		    || !session_reload_player(session, error))
+			return false;
+		yt_no_turn_gate_result_raw(false, target_raw);
+		session->shared_status = qb_mbf32_decode(target_raw);
+		if (session->player.turns <= 0.0f) {
+			yt_no_turn_gate_result_raw(true, target_raw);
+			session->shared_status = qb_mbf32_decode(target_raw);
+			return session_present_alert(session, no_turns,
+			    sizeof(no_turns) - 1U, "no-turn gate notice", error);
+		}
+		available = plasma ? session->player.plasma
+		    : session->player.missiles;
+		if (available < 1.0f)
+			return session_present_alert(session, no_ammunition,
+			    sizeof(no_ammunition) - 1U,
+			    "projectile ammunition refusal", error);
+		if (!yt_projectile_target_prompt(plasma, displayed,
+		    maximum_sector, prompt, sizeof(prompt), &prompt_length)
+		    || !session_present_timed_paged_row(session, prompt,
+		    prompt_length, "projectile target prompt", error)
+		    || !session_read_number_command(session, response,
+		    sizeof(response)))
+			return false;
+		if (response[0] == '\0')
+			return true;
+		parsed = qb_val(response);
+		if (parsed.overflow)
+			return projectile_command_error(error, YT_RANGE,
+			    "projectile target VAL");
+		target = (float)(parsed.valid ? parsed.value : 0.0);
+		conversion = qb_mbf32_encode(target, target_raw);
+		if (conversion == QB_MBF_OVERFLOW)
+			return projectile_command_error(error, YT_RANGE,
+			    "projectile target CSNG");
+		target = qb_mbf32_decode(target_raw);
+		if (target >= 1.0f && target <= maximum_sector)
+			break;
+		if (!session_present_alert(session, invalid_sector,
+		    sizeof(invalid_sector) - 1U, "projectile invalid sector",
+		    error))
+			return false;
+	}
 
-	if (!yt_session_finalize_action(session, 1.0f, error))
+	if (!session_present_timed_paged_row(session, quantity_prompt,
+	    sizeof(quantity_prompt) - 1U, "projectile quantity prompt", error)
+	    || !session_read_number_command(session, response, sizeof(response)))
 		return false;
-	*player = session->player;
+	parsed = qb_val(response);
+	if (parsed.overflow)
+		return projectile_command_error(error, YT_RANGE,
+		    "projectile quantity VAL");
+	integral = floor(parsed.valid ? parsed.value : 0.0);
+	amount = (float)integral;
+	conversion = qb_mbf32_encode(amount, amount_raw);
+	if (conversion == QB_MBF_OVERFLOW)
+		return projectile_command_error(error, YT_RANGE,
+		    "projectile quantity CSNG");
+	amount = qb_mbf32_decode(amount_raw);
+	if (amount < 1.0f)
+		return true;
+	if (amount > available)
+		return session_present_paged_fragment(session, too_many,
+		    sizeof(too_many) - 1U);
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "projectile accepted blank", error))
+		return false;
+	if (!yt_session_finalize_action(session, 1.0f, error))
+		return error == NULL || error->status == YT_OK;
+	origin = session->player.sector;
+	memcpy(origin_raw, session->player.record.bytes + YT_F57,
+	    sizeof(origin_raw));
+	yt_projectile_debit_overlay(&session->player, plasma, amount);
+	if (!yt_game_write_player(&session->door->game, session_record(session),
+	    &session->player, error)
+	    || !yt_database_flush(&session->door->game.database, error))
+		return false;
+	session->destroyed = false;
+	session_load_counterattack_player(session, &counterattack);
+	session_load_xannor_provoker(session, &xannor_provoker);
+	if (!launch_projectile(session, &target, &amount, plasma,
+	    &session->projectile_main_route, &origin, origin_raw, target_raw,
+	    amount_raw, &counterattack, &xannor_provoker, error))
+		return false;
+	session_load_counterattack_player(session, &counterattack);
+	session_load_xannor_provoker(session, &xannor_provoker);
+	if (session->counterattack_player != 0
+	    && !launch_player_counterattack(session, &counterattack,
+	    &xannor_provoker, error))
+		return false;
+	if (session->xannor_provoker != 0
+	    && !yt_session_launch_xannor_retaliation(session,
+	    &xannor_provoker, error))
+		return false;
+	if (session_is_destroyed(session))
+		return yt_session_common_fatal_self(session, error);
 	return true;
-}
-
-static bool
-projectile_command_write_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	/* The parent has already changed the live FIELD image before PUT. */
-	session->player = *player;
-	return yt_game_write_player(&session->door->game, player_record,
-	    &session->player, error);
-}
-
-static bool
-projectile_command_flush(void *context, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_flush(&session->door->game.database, error);
-}
-
-static bool
-projectile_command_counterlaunch(void *context, int *counterattack,
-    int *xannor_provoker, struct yt_error *error)
-{
-	return launch_player_counterattack(context, counterattack,
-	    xannor_provoker, error);
-}
-
-static bool
-projectile_command_xannor(void *context, int *xannor_provoker,
-    struct yt_error *error)
-{
-	return yt_session_launch_xannor_retaliation(context, xannor_provoker,
-	    error);
-}
-
-static bool
-projectile_command_fatal(void *context, struct yt_error *error)
-{
-	return yt_session_common_fatal_self(context, error);
-}
-
-static bool
-projectile_command_destroyed_truth(void *context)
-{
-	return session_is_destroyed(context);
-}
-
-static bool
-projectile_command_counterattack_truth(void *context)
-{
-	struct yt_session *session = context;
-
-	return session->counterattack_player != 0;
-}
-
-static bool
-projectile_command_xannor_truth(void *context)
-{
-	struct yt_session *session = context;
-
-	return session->xannor_provoker != 0;
-}
-
-static void
-projectile_command_store_turn_gate_result(void *context,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	session->shared_status = qb_mbf32_decode(raw);
-}
-
-static bool
-command_projectile(struct yt_session *session, bool plasma,
-    struct yt_error *error)
-{
-	static const struct yt_projectile_command_ops ops = {
-		projectile_command_hydrate,
-		projectile_command_present,
-		projectile_command_input,
-		projectile_command_finalize,
-		projectile_command_write_player,
-		projectile_command_flush,
-		session_projectile_command_resolver,
-		projectile_command_counterlaunch,
-		projectile_command_xannor,
-		projectile_command_fatal,
-		projectile_command_destroyed_truth,
-		projectile_command_counterattack_truth,
-		projectile_command_xannor_truth,
-		projectile_command_store_turn_gate_result,
-	};
-	struct yt_projectile_command_state state = {
-		.current_player_record = session_record(session),
-		.maximum_sector = (float)session_sector_count(session),
-		.plasma = plasma,
-		.displayed = plasma ? session->player.plasma
-		    : session->player.missiles,
-		.destroyed = &session->destroyed,
-	};
-
-	(void)qb_mbf32_encode(session->shared_status,
-	    state.turn_gate_result_raw);
-
-	return yt_projectile_command_run(&state, &ops, session, error);
 }
 
 static bool
@@ -12426,13 +12366,13 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 		if (position != 0) {
 			switch (position - 1) {
 			case 0:
-				if (!command_projectile(session, true, error))
+				if (!yt_session_command_projectile(session, true, error))
 					return false;
 				if (enter_sector != NULL)
 					*enter_sector = true;
 				return true;
 			case 1:
-				if (!command_projectile(session, false, error))
+				if (!yt_session_command_projectile(session, false, error))
 					return false;
 				if (enter_sector != NULL)
 					*enter_sector = true;
@@ -12763,14 +12703,14 @@ command_shell(struct yt_session *session, struct yt_error *error)
 			enter_sector = true;
 			break;
 		case YT_MAIN_SHELL_MISSILE:
-			if (!command_projectile(session, false, error))
+			if (!yt_session_command_projectile(session, false, error))
 				return false;
 			if (!session_is_destroyed(session)
 			    && !display_sector(session, false, error))
 				return false;
 			break;
 		case YT_MAIN_SHELL_PLASMA:
-			if (!command_projectile(session, true, error))
+			if (!yt_session_command_projectile(session, true, error))
 				return false;
 			if (!session_is_destroyed(session)
 			    && !display_sector(session, false, error))

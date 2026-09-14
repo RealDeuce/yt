@@ -226,6 +226,7 @@ if(BUILD_TESTING)
         tests/hostile_bribe_model.c
         tests/hostile_surrender_model.c
         tests/player_death_model.c
+        tests/projectile_command_model.c
         tests/projectile_plasma_route_model.c)
     yt_add_test(test_route tests/test_route.c yt_core)
 

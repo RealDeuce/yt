@@ -263,6 +263,8 @@ bool yt_session_launch_xannor_retaliation(struct yt_session *session,
 bool session_launch_projectile(struct yt_session *session, float *origin,
     float *target, float *amount, bool plasma, int *counterattack,
     int *xannor_provoker, struct yt_error *error);
+bool yt_session_command_projectile(struct yt_session *session, bool plasma,
+    struct yt_error *error);
 bool yt_session_show_ship(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_info_team_lines(struct yt_session *session,

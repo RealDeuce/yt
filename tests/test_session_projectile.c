@@ -6,6 +6,10 @@
 
 static int failures;
 
+struct zero_random {
+	size_t calls;
+};
+
 #define CHECK(expression) do { \
 	if (!(expression)) { \
 		fprintf(stderr, "check failed at %s:%d: %s\n", \
@@ -14,20 +18,29 @@ static int failures;
 	} \
 } while (0)
 
+static bool
+fill_zero(void *context, void *buffer, size_t length,
+    struct yt_error *error)
+{
+	struct zero_random *random = context;
+
+	(void)error;
+	memset(buffer, 0, length);
+	++random->calls;
+	return true;
+}
+
 static void
 test_same_sector_plasma_route(void)
 {
 	static const char path[] = "SESSION-PROJECTILE.DAT";
+	static const uint8_t answers[] = "1\r1\r";
+	struct zero_random random = {0};
 	struct yt_door door;
 	struct yt_session session;
 	struct yt_player player;
 	struct yt_sector sector;
 	struct yt_error error;
-	float origin = 1.0f;
-	float target = 1.0f;
-	float amount = 1.0f;
-	int counterattack = 0;
-	int xannor_provoker = 0;
 
 	(void)remove(path);
 	memset(&door, 0, sizeof(door));
@@ -37,16 +50,22 @@ test_same_sector_plasma_route(void)
 	session.door = &door;
 	session.player_record_carrier = 2;
 	session.pager.nonstop = -1.0f;
+	memcpy(session.queue, answers, sizeof(answers) - 1U);
+	session.queue_length = sizeof(answers) - 1U;
 	door.game.config.sector_offset = 3.0f;
+	door.game.config.port_offset = 4.0f;
 	yt_record_blank(&door.game.config.record);
 	(void)snprintf(door.identity.real_first,
 	    sizeof(door.identity.real_first), "%s", "Sysop");
 	yt_random_init(&door.game.random);
+	yt_random_set_provider(&door.game.random, fill_zero, &random);
 
 	yt_record_blank(&player.record);
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Launcher");
 	player.name_length = 8.0f;
 	player.sector = 1.0f;
+	player.turns = 10.0f;
+	player.plasma = 1.0f;
 	yt_player_encode(&player);
 	session.player = player;
 	yt_record_blank(&sector.record);
@@ -62,14 +81,17 @@ test_same_sector_plasma_route(void)
 	CHECK(yt_database_write_durable(&door.game.database, 4U,
 	    &sector.record, &error));
 
-	CHECK(session_launch_projectile(&session, &origin, &target, &amount,
-	    true, &counterattack, &xannor_provoker, &error));
-	CHECK(origin == 0.0f && target == 1.0f && amount == 1.0f);
+	CHECK(yt_session_command_projectile(&session, true, &error));
+	CHECK(session.queue_position == session.queue_length);
+	CHECK(random.calls == 1U && door.game.random.draws == 1U);
 	CHECK(session.projectile_main_route.origin == 0.0f);
 	CHECK(session.projectile_main_route.destination == 1.0f);
+	CHECK(session.projectile_main_route.amount == 1.0f);
 	CHECK(session.route_second[0] == 1);
 	CHECK(session.route_second[1] == 0);
-	CHECK(counterattack == 0 && xannor_provoker == 0);
+	CHECK(session.player.turns == 9.0f && session.player.plasma == 0.0f);
+	CHECK(yt_game_read_player(&door.game, 2, &player, &error));
+	CHECK(player.turns == 9.0f && player.plasma == 0.0f);
 
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);

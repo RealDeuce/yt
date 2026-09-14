@@ -5,6 +5,7 @@
 #include "hostile_bribe_model.h"
 #include "hostile_surrender_model.h"
 #include "player_death_model.h"
+#include "projectile_command_model.h"
 #include "projectile_plasma_route_model.h"
 #include "yt_input_model.h"
 #include "yt_main_error.h"
@@ -14719,7 +14720,7 @@ struct projectile_command_tape {
 	struct yt_player written_player;
 	uint8_t rows[12][192];
 	size_t row_lengths[12];
-	enum yt_projectile_command_output_kind kinds[12];
+	enum test_projectile_command_output_kind kinds[12];
 	size_t row_count;
 	bool finalizer_terminal;
 	bool destroy_after_xannor;
@@ -14773,7 +14774,7 @@ projectile_command_test_hydrate(void *context, int player_record,
 
 static bool
 projectile_command_test_present(void *context, const uint8_t *text,
-    size_t length, enum yt_projectile_command_output_kind kind,
+    size_t length, enum test_projectile_command_output_kind kind,
     struct yt_error *error)
 {
 	struct projectile_command_tape *tape = context;
@@ -14945,7 +14946,7 @@ projectile_command_store_turn_gate_result(void *context,
 	tape->turn_gate_result_positions[index] = tape->calls;
 }
 
-static const struct yt_projectile_command_ops projectile_command_ops = {
+static const struct test_projectile_command_ops projectile_command_ops = {
 	projectile_command_test_hydrate,
 	projectile_command_test_present,
 	projectile_command_test_input,
@@ -14964,7 +14965,7 @@ static const struct yt_projectile_command_ops projectile_command_ops = {
 
 static void
 projectile_command_fixture(struct projectile_command_tape *tape,
-    struct yt_projectile_command_state *state, bool *destroyed)
+    struct test_projectile_command_state *state, bool *destroyed)
 {
 	size_t index;
 
@@ -15024,7 +15025,7 @@ check_projectile_command_transaction(void)
 	    "You have 9. Send your cruise missile to what sector? "
 	    "[ 1 to 2004 ] ?";
 	struct projectile_command_tape tape;
-	struct yt_projectile_command_state state;
+	struct test_projectile_command_state state;
 	struct yt_record expected_record;
 	struct yt_error error;
 	uint8_t target_raw[4];
@@ -15044,7 +15045,7 @@ check_projectile_command_transaction(void)
 		return false;
 	expected_record = tape.finalizer_player.record;
 	(void)yt_record_set_number(&expected_record, YT_F97, 7.0f);
-	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	if (!test_projectile_command_run(&state, &projectile_command_ops, &tape,
 	    NULL) || !state.complete
 	    || state.route != YT_PROJECTILE_COMMAND_RETURNED
 	    || state.attempts != 1U || state.hydrations != 2U
@@ -15089,7 +15090,7 @@ check_projectile_command_transaction(void)
 	projectile_command_fixture(&tape, &state, &destroyed);
 	memcpy(tape.counterattack_raw,
 	    (const uint8_t[]){0x1f, 0x4e, 0x46, 0x00}, 4U);
-	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	if (!test_projectile_command_run(&state, &projectile_command_ops, &tape,
 	    NULL) || !state.complete
 	    || state.route != YT_PROJECTILE_COMMAND_RETURNED
 	    || state.counterattack != 3 || state.counterlaunch_called
@@ -15103,7 +15104,7 @@ check_projectile_command_transaction(void)
 	projectile_command_fixture(&tape, &state, &destroyed);
 	memcpy(tape.xannor_raw,
 	    (const uint8_t[]){0xa5, 0x5a, 0x33, 0x00}, 4U);
-	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	if (!test_projectile_command_run(&state, &projectile_command_ops, &tape,
 	    NULL) || !state.complete
 	    || state.route != YT_PROJECTILE_COMMAND_RETURNED
 	    || state.xannor_provoker != 4 || !state.counterlaunch_called
@@ -15117,7 +15118,7 @@ check_projectile_command_transaction(void)
 		projectile_command_fixture(&tape, &state, &destroyed);
 		tape.fail_at = failure;
 		yt_error_clear(&error);
-		if (yt_projectile_command_run(&state, &projectile_command_ops,
+		if (test_projectile_command_run(&state, &projectile_command_ops,
 		    &tape, &error) || error.status != YT_IO_ERROR
 		    || state.complete || tape.calls != failure + 1U
 		    || memcmp(tape.events, expected,
@@ -15145,7 +15146,7 @@ check_projectile_command_transaction(void)
 	tape.responses[1] = "42";
 	tape.responses[2] = "4";
 	tape.hydrations[3].missiles = 3.0f;
-	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	if (!test_projectile_command_run(&state, &projectile_command_ops, &tape,
 	    NULL) || state.route != YT_PROJECTILE_COMMAND_TOO_MANY
 	    || state.attempts != 2U || state.hydrations != 4U
 	    || state.turn_gate_result_stores != 2U
@@ -15160,7 +15161,7 @@ check_projectile_command_transaction(void)
 
 	projectile_command_fixture(&tape, &state, &destroyed);
 	tape.hydrations[1].turns = 0.0f;
-	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	if (!test_projectile_command_run(&state, &projectile_command_ops, &tape,
 	    NULL) || state.route != YT_PROJECTILE_COMMAND_NO_TURNS
 	    || tape.calls != 4U || state.turn_gate_result_stores != 2U
 	    || memcmp(state.turn_gate_result_raw,
@@ -15175,19 +15176,19 @@ check_projectile_command_transaction(void)
 		return false;
 	projectile_command_fixture(&tape, &state, &destroyed);
 	tape.hydrations[1].missiles = 0.0f;
-	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	if (!test_projectile_command_run(&state, &projectile_command_ops, &tape,
 	    NULL) || state.route != YT_PROJECTILE_COMMAND_NO_AMMUNITION
 	    || tape.calls != 4U)
 		return false;
 	projectile_command_fixture(&tape, &state, &destroyed);
 	tape.responses[0] = "";
-	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	if (!test_projectile_command_run(&state, &projectile_command_ops, &tape,
 	    NULL) || state.route != YT_PROJECTILE_COMMAND_TARGET_CANCELLED
 	    || tape.calls != 5U)
 		return false;
 	projectile_command_fixture(&tape, &state, &destroyed);
 	tape.responses[1] = ".9";
-	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	if (!test_projectile_command_run(&state, &projectile_command_ops, &tape,
 	    NULL) || state.route != YT_PROJECTILE_COMMAND_QUANTITY_CANCELLED
 	    || state.amount != 0.0f)
 		return false;
@@ -15195,14 +15196,14 @@ check_projectile_command_transaction(void)
 	projectile_command_fixture(&tape, &state, &destroyed);
 	tape.finalizer_terminal = true;
 	yt_error_clear(&error);
-	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	if (!test_projectile_command_run(&state, &projectile_command_ops, &tape,
 	    &error)
 	    || state.route != YT_PROJECTILE_COMMAND_FINALIZER_TERMINAL
 	    || !state.complete || state.player_written)
 		return false;
 	projectile_command_fixture(&tape, &state, &destroyed);
 	tape.destroy_after_xannor = true;
-	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	if (!test_projectile_command_run(&state, &projectile_command_ops, &tape,
 	    NULL) || state.route != YT_PROJECTILE_COMMAND_FATAL
 	    || !state.fatal_called || tape.calls != YT_ARRAY_LEN(expected) + 1U)
 		return false;
@@ -15210,14 +15211,14 @@ check_projectile_command_transaction(void)
 	projectile_command_fixture(&tape, &state, &destroyed);
 	tape.responses[0] = "1E400";
 	yt_error_clear(&error);
-	if (yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	if (test_projectile_command_run(&state, &projectile_command_ops, &tape,
 	    &error) || error.status != YT_RANGE || state.target_stored)
 		return false;
 
 	projectile_command_fixture(&tape, &state, &destroyed);
-	return !yt_projectile_command_run(NULL, &projectile_command_ops, &tape,
+	return !test_projectile_command_run(NULL, &projectile_command_ops, &tape,
 	    NULL)
-	    && !yt_projectile_command_run(&state, NULL, &tape, NULL);
+	    && !test_projectile_command_run(&state, NULL, &tape, NULL);
 }
 
 int
