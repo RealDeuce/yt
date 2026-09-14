@@ -340,6 +340,18 @@ bool yt_session_computer_nearest_ports(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_computer_profit(struct yt_session *session, bool global,
     struct yt_error *error);
+bool yt_session_computer_route(struct yt_session *session, bool autopilot,
+    struct yt_error *error);
+bool yt_session_computer_planet_report(struct yt_session *session,
+    struct yt_error *error);
+bool yt_session_computer_port_report(struct yt_session *session,
+    bool *enter_sector, struct yt_error *error);
+bool yt_session_computer_avoid(struct yt_session *session,
+    struct yt_error *error);
+bool yt_session_radio_compose(struct yt_session *session,
+    struct yt_error *error);
+bool yt_session_radio_read(struct yt_session *session, bool log_mode,
+    struct yt_error *error);
 bool yt_session_command_team(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_computer_check_port_visibility(struct yt_session *session,

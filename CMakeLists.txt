@@ -110,6 +110,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session.c
     src/yt_session_attack.c
     src/yt_session_computer.c
+    src/yt_session_computer_menu.c
     src/yt_session_death.c
     src/yt_session_info.c
     src/yt_session_lockout.c
@@ -234,6 +235,7 @@ if(BUILD_TESTING)
     yt_add_test(test_route tests/test_route.c yt_core)
 
     yt_add_test(test_session_credit tests/test_session_credit.c yt_runtime)
+    yt_add_test(test_session_computer tests/test_session_computer.c yt_runtime)
     yt_add_test(test_session_attack tests/test_session_attack.c yt_runtime)
     yt_add_test(test_session_death tests/test_session_death.c yt_runtime)
     yt_add_test(test_session_mines tests/test_session_mines.c yt_runtime)
@@ -248,6 +250,7 @@ if(BUILD_TESTING)
     yt_add_test(test_session_team tests/test_session_team.c yt_runtime)
     foreach(session_test
         test_session_credit
+        test_session_computer
         test_session_attack
         test_session_death
         test_session_mines
