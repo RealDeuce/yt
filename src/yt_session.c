@@ -228,12 +228,6 @@ session_enable_anti_cloak(struct yt_session *session)
 	session->anti_cloak_enabled = true;
 }
 
-static double
-session_hostile_deployed_fighters(const struct yt_session *session)
-{
-	return session->hostile_deployed_fighters;
-}
-
 static int
 session_radio_body_key(struct yt_session *session)
 {
@@ -3916,7 +3910,7 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 				return false;
 			session_set_foreground(session, 3.0f);
 			if (!yt_hostile_menu_row(session->combat_ship_fighters,
-			    session_hostile_deployed_fighters(session), row,
+			    session->hostile_deployed_fighters, row,
 			    sizeof(row), &row_length)) {
 				if (error != NULL) {
 					error->status = YT_RANGE;
@@ -3970,7 +3964,7 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 						return false;
 					if (session_is_destroyed(session))
 						return true;
-					if (session_hostile_deployed_fighters(session)
+					if (session->hostile_deployed_fighters
 					    <= 0.0) {
 						session_set_foreground(session, 1.0f);
 						if (!display_sector(session, false, error))
@@ -4011,7 +4005,7 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 						break;
 					}
 					if (forced_attack) {
-						if (session_hostile_deployed_fighters(session)
+						if (session->hostile_deployed_fighters
 						    <= 0.0) {
 							session_set_foreground(session, 1.0f);
 							if (!display_sector(session, false, error))
@@ -12139,24 +12133,12 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 	return nearest_session_body(session, selector, direction, error);
 }
 
-struct profit_session_context {
-	struct yt_session *session;
-};
-
-static struct yt_session *
-profit_context_session(void *context)
-{
-	struct profit_session_context *profit = context;
-
-	return profit->session;
-}
-
 static bool
 profit_session_read(void *context, enum yt_profit_field_kind kind,
     float expression, uint32_t physical_record, struct yt_record *record,
     struct yt_error *error)
 {
-	struct yt_session *session = profit_context_session(context);
+	struct yt_session *session = context;
 
 	(void)kind;
 	(void)expression;
@@ -12167,7 +12149,7 @@ profit_session_read(void *context, enum yt_profit_field_kind kind,
 static bool
 profit_session_day(void *context, float *day, struct yt_error *error)
 {
-	struct yt_session *session = profit_context_session(context);
+	struct yt_session *session = context;
 	int today;
 	int adjusted_year;
 
@@ -12216,7 +12198,7 @@ profit_session_present(void *context, enum yt_profit_output_kind kind,
     enum yt_profit_present_mode mode, const uint8_t *text, size_t length,
     struct yt_nearest_style *style, struct yt_error *error)
 {
-	struct yt_session *session = profit_context_session(context);
+	struct yt_session *session = context;
 	enum session_present_text_kind present_kind;
 	bool ok;
 
@@ -12253,7 +12235,7 @@ static bool
 profit_session_input(void *context, uint8_t *text, size_t capacity,
     size_t *length, bool *available, struct yt_error *error)
 {
-	struct yt_session *session = profit_context_session(context);
+	struct yt_session *session = context;
 	struct yt_input_value selected;
 
 	(void)error;
@@ -12274,7 +12256,7 @@ profit_session_input(void *context, uint8_t *text, size_t capacity,
 static void
 profit_session_uppercase(void *context, uint8_t *text, size_t length)
 {
-	session_compat_upper_n(profit_context_session(context), text, length);
+	session_compat_upper_n(context, text, length);
 }
 
 static bool
@@ -12301,7 +12283,6 @@ computer_profit_exact(struct yt_session *session, bool all,
 		profit_session_checkpoint,
 	};
 	struct yt_profit_state state;
-	struct profit_session_context context = {session};
 	bool ok;
 
 	memset(&state, 0, sizeof(state));
@@ -12321,7 +12302,7 @@ computer_profit_exact(struct yt_session *session, bool all,
 	state.field_kind = YT_PROFIT_FIELD_PLAYER;
 	state.field_valid = true;
 
-	ok = yt_profit_run(&state, &ops, &context, error);
+	ok = yt_profit_run(&state, &ops, session, error);
 	session_set_foreground(session, state.style.foreground);
 	return ok;
 }
