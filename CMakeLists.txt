@@ -108,6 +108,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_input.c
     src/yt_output.c
     src/yt_session.c
+    src/yt_session_attack.c
     src/yt_session_computer.c
     src/yt_session_death.c
     src/yt_session_info.c

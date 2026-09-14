@@ -12,6 +12,31 @@ death_single_add(float left, float right)
 	return result;
 }
 
+bool
+yt_session_common_fatal_self(struct yt_session *session, struct yt_error *error)
+{
+	static const uint8_t notice[] = "Your ship has been destroyed!";
+	char cached_name[sizeof(session->player.name)];
+	int current_player_record;
+
+	current_player_record = session_record(session);
+	session_set_foreground(session, 3.0f);
+	if (!session_present_alert(session, notice, sizeof(notice) - 1U,
+	    "common fatal notice", error))
+		return false;
+	memcpy(cached_name, session->player.name, sizeof(cached_name));
+	if (!session_reload_player(session, error))
+		return false;
+	memcpy(session->player.name, cached_name, sizeof(cached_name));
+	if (!session_sound(session, 3.0f, "fatal destruction sound", error)
+	    || !yt_session_kill_player(session, current_player_record,
+	    (float)current_player_record, false, error)
+	    || !session_wait(session, 5.0, "common fatal wait", error))
+		return false;
+	session->fatal_wait_complete = true;
+	return true;
+}
+
 static int
 death_port_count(const struct yt_session *session)
 {

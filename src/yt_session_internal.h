@@ -160,6 +160,16 @@ bool session_display_game_file(struct yt_session *session, const char *path,
     struct yt_error *error);
 bool session_reload_player(struct yt_session *session,
     struct yt_error *error);
+bool session_read_combat_player(struct yt_session *session, int player_record,
+    struct yt_player *player, struct yt_error *error);
+bool session_write_combat_player(struct yt_session *session,
+    int player_record, const struct yt_player *player,
+    struct yt_error *error);
+bool yt_session_fighter_shield_spill(struct yt_session *session,
+    double *fighters, float *shields, bool bind_hostile_cells,
+    struct yt_error *error);
+bool yt_session_common_fatal_self(struct yt_session *session,
+    struct yt_error *error);
 bool session_mutate_player_credits(struct yt_session *session, float argument,
     bool *hydrated, struct yt_error *error);
 bool read_database_record_at_fault(struct yt_session *session,
