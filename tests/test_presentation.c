@@ -6,6 +6,7 @@
 #include "yt_team.h"
 #include "qb.h"
 #include "info_panel_model.h"
+#include "hostile_surrender_model.h"
 #include "player_death_model.h"
 #include "sector_mine_model.h"
 
@@ -22917,20 +22918,20 @@ direct_warp_attack_combat_store_ship(void *context, double fighters)
 
 static bool direct_warp_attack_news(void *context, const uint8_t *text,
     size_t length, struct yt_error *error);
-static const struct yt_hostile_surrender_ops
+static const struct test_hostile_surrender_ops
 direct_warp_attack_surrender_ops;
 
 static bool
 direct_warp_attack_combat_surrender(void *context,
     struct yt_hostile_surrender_state *state, struct yt_error *error)
 {
-	return yt_hostile_attack_surrender_run(state,
+	return test_hostile_attack_surrender_run(state,
 	    &direct_warp_attack_surrender_ops, context, error);
 }
 
 static bool
 direct_warp_attack_surrender_present(void *context, const uint8_t *text,
-    size_t length, enum yt_hostile_surrender_output_kind kind,
+    size_t length, enum test_hostile_surrender_output_kind kind,
     struct yt_error *error)
 {
 	struct direct_warp_attack_combat_join *join = context;
@@ -22965,7 +22966,7 @@ direct_warp_attack_surrender_present(void *context, const uint8_t *text,
 
 static bool
 direct_warp_attack_surrender_sound(void *context,
-    enum yt_hostile_surrender_sound_kind kind, float selector,
+    enum test_hostile_surrender_sound_kind kind, float selector,
     struct yt_error *error)
 {
 	struct direct_warp_attack_combat_join *join = context;
@@ -23036,7 +23037,7 @@ direct_warp_attack_surrender_mark(void *context)
 	++join->surrender_latch_stores;
 }
 
-static const struct yt_hostile_surrender_ops
+static const struct test_hostile_surrender_ops
 direct_warp_attack_surrender_ops = {
 	direct_warp_attack_combat_read_player,
 	direct_warp_attack_surrender_present,

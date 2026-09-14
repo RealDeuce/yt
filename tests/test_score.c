@@ -1,6 +1,7 @@
 #include "qb.h"
 #include "yt_game.h"
 #include "direct_attack_model.h"
+#include "hostile_surrender_model.h"
 #include "player_death_model.h"
 #include "yt_input_model.h"
 #include "yt_main_error.h"
@@ -9579,7 +9580,7 @@ hostile_surrender_read(void *context, int player_record,
 
 static bool
 hostile_surrender_present(void *context, const uint8_t *text, size_t length,
-    enum yt_hostile_surrender_output_kind kind, struct yt_error *error)
+    enum test_hostile_surrender_output_kind kind, struct yt_error *error)
 {
 	static const enum hostile_surrender_event events[] = {
 		HOSTILE_SURRENDER_RADIO,
@@ -9605,7 +9606,7 @@ hostile_surrender_present(void *context, const uint8_t *text, size_t length,
 
 static bool
 hostile_surrender_sound(void *context,
-    enum yt_hostile_surrender_sound_kind kind, float selector,
+    enum test_hostile_surrender_sound_kind kind, float selector,
     struct yt_error *error)
 {
 	struct hostile_surrender_tape *tape = context;
@@ -9681,7 +9682,7 @@ hostile_surrender_cache_forces(void *context, double ship_fighters,
 	++tape->force_store_count;
 }
 
-static const struct yt_hostile_surrender_ops hostile_surrender_ops = {
+static const struct test_hostile_surrender_ops hostile_surrender_ops = {
 	hostile_surrender_read,
 	hostile_surrender_present,
 	hostile_surrender_sound,
@@ -9762,7 +9763,7 @@ check_hostile_surrender_transaction(void)
 
 	hostile_surrender_fixture(&tape, &state, 2.0f,
 	    YT_HOSTILE_SURRENDER_ANSWER_EMPTY);
-	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
+	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL)
 	    || !state.checked || !state.accepted || !state.complete
 	    || state.owner_route != YT_HOSTILE_SURRENDER_PLAYER
@@ -9805,7 +9806,7 @@ check_hostile_surrender_transaction(void)
 		    YT_HOSTILE_SURRENDER_ANSWER_YES);
 		tape.fail_at = position;
 		yt_error_clear(&error);
-		if (yt_hostile_attack_surrender_run(&state,
+		if (test_hostile_attack_surrender_run(&state,
 		    &hostile_surrender_ops, &tape, &error)
 		    || error.status != YT_IO_ERROR || tape.calls != position + 1U
 		    || memcmp(tape.events, accepted_events,
@@ -9824,7 +9825,7 @@ check_hostile_surrender_transaction(void)
 
 	hostile_surrender_fixture(&tape, &state, 2.0f,
 	    YT_HOSTILE_SURRENDER_ANSWER_NO);
-	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
+	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || !state.checked || state.accepted || !state.complete
 	    || tape.calls != 8U || tape.news_length != 0U
 	    || tape.latch_store_count != 1U
@@ -9834,7 +9835,7 @@ check_hostile_surrender_transaction(void)
 
 	hostile_surrender_fixture(&tape, &state, -1.0f,
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
-	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
+	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_XANNOR
 	    || state.accepted || tape.calls != 7U
 	    || tape.events[4] != HOSTILE_SURRENDER_XANNOR
@@ -9850,7 +9851,7 @@ check_hostile_surrender_transaction(void)
 
 	hostile_surrender_fixture(&tape, &state, -2.0f,
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
-	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
+	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_MERCENARY
 	    || state.accepted || tape.calls != 7U
 	    || tape.events[4] != HOSTILE_SURRENDER_MERCENARY
@@ -9866,7 +9867,7 @@ check_hostile_surrender_transaction(void)
 
 	hostile_surrender_fixture(&tape, &state, 1.0f,
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
-	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
+	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_QUIET
 	    || state.accepted || !state.complete || tape.calls != 5U
 	    || tape.events[4] != HOSTILE_SURRENDER_STORE_LATCH)
@@ -9874,9 +9875,9 @@ check_hostile_surrender_transaction(void)
 
 	hostile_surrender_fixture(&tape, &state, 2.0f,
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
-	return !yt_hostile_attack_surrender_run(NULL, &hostile_surrender_ops,
+	return !test_hostile_attack_surrender_run(NULL, &hostile_surrender_ops,
 	    &tape, NULL)
-	    && !yt_hostile_attack_surrender_run(&state, NULL, &tape, NULL);
+	    && !test_hostile_attack_surrender_run(&state, NULL, &tape, NULL);
 }
 
 enum hostile_persistence_event {
@@ -10564,7 +10565,7 @@ hostile_combat_surrender(void *context,
 	if (!hostile_combat_event(tape, HOSTILE_COMBAT_SURRENDER, error))
 		return false;
 	if (tape->real_children)
-		return yt_hostile_attack_surrender_run(state,
+		return test_hostile_attack_surrender_run(state,
 		    &hostile_surrender_ops, &tape->surrender_tape, error);
 	state->checked = true;
 	state->accepted = tape->surrender_accept;

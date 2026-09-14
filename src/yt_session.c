@@ -3715,95 +3715,164 @@ yt_session_fighter_shield_spill(struct yt_session *session, double *fighters,
 }
 
 static bool
-hostile_surrender_read(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
+hostile_surrender_append(uint8_t *output, size_t capacity, size_t *position,
+    const uint8_t *text, size_t length)
 {
-	return session_read_combat_player(context, player_record, player, error);
+	if ((text == NULL && length != 0U) || *position > capacity
+	    || length > capacity - *position)
+		return false;
+	if (length != 0U)
+		memcpy(output + *position, text, length);
+	*position += length;
+	return true;
 }
 
 static bool
-hostile_surrender_present(void *context, const uint8_t *text, size_t length,
-    enum yt_hostile_surrender_output_kind kind, struct yt_error *error)
+hostile_surrender_run(struct yt_session *session,
+    struct yt_hostile_surrender_state *state, struct yt_error *error)
 {
-	switch (kind) {
-	case YT_HOSTILE_SURRENDER_RADIO_ROW:
-		return session_present_paged_line(context, text, length,
-		    "surrender radio row", error);
-	case YT_HOSTILE_SURRENDER_CAPTAIN_ROW:
-		return session_present_paged_line(context, text, length,
-		    "surrender captain row", error);
-	case YT_HOSTILE_SURRENDER_WISH_ROW:
-		return session_present_alert(context, text, length,
-		    "surrender wish row", error);
-	case YT_HOSTILE_SURRENDER_PROMPT_BLANK:
-		return session_present_text(context, NULL, 0,
-		    SESSION_PRESENT_LINE, "surrender prompt blank", error);
-	case YT_HOSTILE_SURRENDER_JOINED_ROW:
-		return session_present_paged_line(context, text, length,
-		    "surrender joined row", error);
-	case YT_HOSTILE_SURRENDER_COUNT_ROW:
-		return session_present_paged_fragment(context, text, length);
-	case YT_HOSTILE_SURRENDER_XANNOR_REFUSAL_ROW:
-		return session_present_paged_fragment(context, text, length);
-	case YT_HOSTILE_SURRENDER_MERCENARY_REFUSAL_ROW:
-		return session_present_paged_fragment(context, text, length);
-	default:
+	static const uint8_t radio[] = "RADIO MESSAGE COMING IN!";
+	static const uint8_t captain_prefix[] =
+	    "This is the captain of the fighter group in sector";
+	static const uint8_t wish[] = "WE WISH TO SURRENDER!!!";
+	static const uint8_t prompt[] =
+	    "Will you accept our surrender? [Y]/N -=>";
+	static const uint8_t joined[] = " We join your forces!";
+	static const uint8_t xannor_refusal[] =
+	    "Whee fyte to the deeth hoo-man slyme!";
+	static const uint8_t mercenary_prefix[] =
+	    "We'll DIE before joining with a slyme like you ";
+	static const uint8_t mercenary_suffix[] = "!";
+	static const uint8_t news_middle_one[] = " fighters in sector";
+	static const uint8_t news_middle_two[] = " surrendered to ";
+	static const uint8_t count_suffix[] = " fighters surrendered!";
+	uint8_t captain[160];
+	uint8_t refusal[256];
+	uint8_t news[320];
+	uint8_t count[128];
+	char sector_number[64];
+	char surrendered_number[64];
+	size_t position;
+	size_t sector_length;
+	size_t surrendered_length;
+	enum yt_yes_no_answer answer;
+	bool accepted = false;
+
+	state->fighter_owner = state->old_owner;
+	state->deployed_remaining = state->deployed_fighters;
+	state->checked = false;
+	state->accepted = false;
+	state->complete = false;
+	if (!session_read_combat_player(session, state->current_player_record,
+	    &state->current, error))
 		return false;
+	state->ship_fighters = (double)state->current.fighters;
+	state->owner_route = yt_hostile_surrender_route(state->old_owner);
+	if (!session_present_paged_line(session, radio, sizeof(radio) - 1U,
+	    "surrender radio row", error)
+	    || !session_sound(session, 4.0f, "hostile surrender sound", error))
+		return false;
+	if (qb_str_single(sector_number, sizeof(sector_number),
+	    state->current.sector) < 0)
+		return false;
+	sector_length = strlen(sector_number);
+	position = 0U;
+	if (!hostile_surrender_append(captain, sizeof(captain), &position,
+	    captain_prefix, sizeof(captain_prefix) - 1U)
+	    || !hostile_surrender_append(captain, sizeof(captain), &position,
+	    (const uint8_t *)sector_number, sector_length)
+	    || !session_present_paged_line(session, captain, position,
+	    "surrender captain row", error))
+		return false;
+
+	switch (state->owner_route) {
+	case YT_HOSTILE_SURRENDER_PLAYER:
+		if (!session_present_alert(session, wish, sizeof(wish) - 1U,
+		    "surrender wish row", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "surrender prompt blank", error)
+		    || !session_confirm(session, prompt, sizeof(prompt) - 1U,
+		    &answer, error))
+			return false;
+		if (answer != YT_YES_NO_NO && answer != YT_YES_NO_YES
+		    && answer != YT_YES_NO_EMPTY)
+			return false;
+		accepted = answer == YT_YES_NO_YES
+		    || answer == YT_YES_NO_EMPTY;
+		break;
+	case YT_HOSTILE_SURRENDER_XANNOR:
+		if (!session_present_paged_fragment(session, xannor_refusal,
+		    sizeof(xannor_refusal) - 1U)
+		    || !session_sound(session, 5.0f,
+		    "hostile surrender sound", error))
+			return false;
+		break;
+	case YT_HOSTILE_SURRENDER_MERCENARY:
+		position = 0U;
+		if (!hostile_surrender_append(refusal, sizeof(refusal),
+		    &position, mercenary_prefix, sizeof(mercenary_prefix) - 1U)
+		    || !hostile_surrender_append(refusal, sizeof(refusal),
+		    &position, state->real_first_name,
+		    state->real_first_name_length)
+		    || !hostile_surrender_append(refusal, sizeof(refusal),
+		    &position, mercenary_suffix,
+		    sizeof(mercenary_suffix) - 1U)
+		    || !session_present_paged_fragment(session, refusal, position)
+		    || !session_sound(session, 5.0f,
+		    "hostile surrender sound", error))
+			return false;
+		break;
+	case YT_HOSTILE_SURRENDER_QUIET:
+		break;
 	}
-}
-
-static bool
-hostile_surrender_sound(void *context,
-    enum yt_hostile_surrender_sound_kind kind, float selector,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	(void)kind;
-	return session_sound(session, selector, "hostile surrender sound", error);
-}
-
-static bool
-hostile_surrender_prompt(void *context, const uint8_t *prompt, size_t length,
-    enum yt_hostile_surrender_answer *answer, struct yt_error *error)
-{
-	enum yt_yes_no_answer selected;
-
-	if (!session_confirm(context, prompt, length, &selected, error))
-		return false;
-	switch (selected) {
-	case YT_YES_NO_NO:
-		*answer = YT_HOSTILE_SURRENDER_ANSWER_NO;
-		return true;
-	case YT_YES_NO_YES:
-		*answer = YT_HOSTILE_SURRENDER_ANSWER_YES;
-		return true;
-	case YT_YES_NO_EMPTY:
-		*answer = YT_HOSTILE_SURRENDER_ANSWER_EMPTY;
-		return true;
-	default:
-		return false;
-	}
-}
-
-static void
-hostile_surrender_cache_forces(void *context, double ship_fighters,
-    double deployed_fighters)
-{
-	struct yt_session *session = context;
-
-	session->combat_ship_fighters = ship_fighters;
-	session->hostile_deployed_fighters = deployed_fighters;
-}
-
-static void
-hostile_surrender_mark_checked(void *context)
-{
-	struct yt_session *session = context;
-
 	session->shared_status = 1.0f;
+	state->checked = true;
+	state->accepted = accepted;
+	if (!accepted) {
+		state->complete = true;
+		return true;
+	}
+	if (!session_present_paged_line(session, joined, sizeof(joined) - 1U,
+	    "surrender joined row", error)
+	    || !session_sound(session, 1.0f, "hostile surrender sound", error))
+		return false;
+	state->surrendered_fighters = double_sub(state->deployed_fighters,
+	    state->defender_loss);
+	if (qb_str_double(surrendered_number, sizeof(surrendered_number),
+	    state->surrendered_fighters) < 0)
+		return false;
+	surrendered_length = strlen(surrendered_number);
+	position = 0U;
+	if (!hostile_surrender_append(news, sizeof(news), &position,
+	    (const uint8_t *)surrendered_number, surrendered_length)
+	    || !hostile_surrender_append(news, sizeof(news), &position,
+	    news_middle_one, sizeof(news_middle_one) - 1U)
+	    || !hostile_surrender_append(news, sizeof(news), &position,
+	    (const uint8_t *)sector_number, sector_length)
+	    || !hostile_surrender_append(news, sizeof(news), &position,
+	    news_middle_two, sizeof(news_middle_two) - 1U)
+	    || !hostile_surrender_append(news, sizeof(news), &position,
+	    state->cached_player_name, state->cached_player_name_length)
+	    || !session_append_news_bytes(session, news, position, error))
+		return false;
+	state->ship_fighters = double_add(double_sub(double_sub(
+	    (double)state->current.fighters, state->attacker_loss),
+	    state->defender_loss), state->deployed_fighters);
+	state->current.fighters = (float)state->ship_fighters;
+	state->deployed_remaining = 0.0;
+	state->fighter_owner = 0.0f;
+	session->combat_ship_fighters = state->ship_fighters;
+	session->hostile_deployed_fighters = state->deployed_remaining;
+	position = 0U;
+	if (!hostile_surrender_append(count, sizeof(count), &position,
+	    (const uint8_t *)surrendered_number, surrendered_length)
+	    || !hostile_surrender_append(count, sizeof(count), &position,
+	    count_suffix, sizeof(count_suffix) - 1U)
+	    || !session_present_paged_fragment(session, count, position))
+		return false;
+	state->complete = true;
+	return true;
 }
-
 static bool
 hostile_attack_persistence_read_player(void *context, int player_record,
     struct yt_player *player, struct yt_error *error)
@@ -3999,18 +4068,8 @@ static bool
 hostile_attack_combat_surrender(void *context,
     struct yt_hostile_surrender_state *state, struct yt_error *error)
 {
-	static const struct yt_hostile_surrender_ops ops = {
-		hostile_surrender_read,
-		hostile_surrender_present,
-		hostile_surrender_sound,
-		hostile_surrender_prompt,
-		session_append_news_bytes,
-		hostile_surrender_cache_forces,
-		hostile_surrender_mark_checked,
-	};
 	struct hostile_attack_combat_context *combat = context;
-	bool result = yt_hostile_attack_surrender_run(state, &ops,
-	    combat->session, error);
+	bool result = hostile_surrender_run(combat->session, state, error);
 
 	combat->session->player = state->current;
 	(void)snprintf(combat->session->player.name,
@@ -4131,8 +4190,8 @@ hostile_attack_combat_tail(void *context,
 	return yt_hostile_attack_tail_run(state, &ops, &tail, error);
 }
 
-static bool
-attack_deployed_committed(struct yt_session *session,
+bool
+yt_session_attack_deployed(struct yt_session *session,
     struct yt_sector *sector, double commitment, bool allow_surrender,
     struct yt_error *error)
 {
@@ -4255,7 +4314,7 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 	}
 	if (admission == YT_HOSTILE_ATTACK_LESS_THAN_ONE)
 		return true;
-	return attack_deployed_committed(session, sector,
+	return yt_session_attack_deployed(session, sector,
 	    (double)commitment, true, error);
 }
 
@@ -4396,7 +4455,7 @@ hostile_bribe_combat(void *context, double commitment,
 {
 	struct hostile_bribe_context *bribe = context;
 
-	return attack_deployed_committed(bribe->session, bribe->sector,
+	return yt_session_attack_deployed(bribe->session, bribe->sector,
 	    commitment, true, error);
 }
 

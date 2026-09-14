@@ -29,6 +29,18 @@ fill_zero(void *context, void *buffer, size_t length,
 	return true;
 }
 
+static bool
+fill_max(void *context, void *buffer, size_t length,
+    struct yt_error *error)
+{
+	struct zero_random *random = context;
+
+	(void)error;
+	memset(buffer, 0xff, length);
+	++random->calls;
+	return true;
+}
+
 static void
 write_player(struct yt_game *game, int record, const char *name,
     float fighters, float shields, struct yt_error *error)
@@ -141,10 +153,105 @@ test_combat_attrition(void)
 	CHECK(remove(path) == 0);
 }
 
+static void
+test_deployed_surrender(void)
+{
+	static const char database_path[] = "SESSION-ATTACK-SURRENDER.DAT";
+	static const char news_path[] = "YTNEWS.DAT";
+	static const uint8_t expected_news[] =
+	    "Attacker destroyed 10 fighters belonging to Mercenaries\r\n\x1a";
+	struct zero_random random = {0};
+	struct yt_door door;
+	struct yt_session session;
+	struct yt_player player;
+	struct yt_sector sector;
+	struct yt_error error;
+	uint8_t news[sizeof(expected_news)];
+	FILE *file;
+
+	(void)remove(database_path);
+	(void)remove(news_path);
+	memset(&door, 0, sizeof(door));
+	memset(&session, 0, sizeof(session));
+	session.door = &door;
+	session.player_record_carrier = 2;
+	session.pager.nonstop = -1.0f;
+	session.hostile_deployed_fighters = 10.0;
+	session.combat_ship_fighters = 11.0;
+	session.combat_ship_shields = 7.0f;
+	memcpy(session.hostile_owner_label, "Mercenaries", 11U);
+	session.hostile_owner_label_length = 11U;
+	door.game.config.sector_offset = 3.0f;
+	door.game.config.turns_per_day = 100.0f;
+	door.game.config.headquarters = 7.0f;
+	(void)snprintf(door.identity.real_first,
+	    sizeof(door.identity.real_first), "%s", "Sysop");
+	yt_random_init(&door.game.random);
+	yt_random_set_provider(&door.game.random, fill_max, &random);
+
+	yt_error_clear(&error);
+	CHECK(yt_database_open(&door.game.database, database_path,
+	    YT_OPEN_CREATE, &error));
+	write_player(&door.game, 2, "Attacker", 11.0f, 7.0f, &error);
+	CHECK(yt_game_read_player(&door.game, 2, &session.player, &error));
+	memset(&sector, 0, sizeof(sector));
+	yt_record_blank(&sector.record);
+	sector.fighters = 10.0f;
+	sector.fighter_owner = -2.0f;
+	yt_sector_encode(&sector);
+	CHECK(yt_database_write_durable(&door.game.database, 4U,
+	    &sector.record, &error));
+
+	CHECK(yt_session_attack_deployed(&session, &sector, 120.0, true,
+	    &error));
+	CHECK(random.calls == 11U && door.game.random.draws == 11U);
+	CHECK(session.shared_status == 1.0f);
+	CHECK(session.combat_ship_fighters == 11.0);
+	CHECK(session.hostile_deployed_fighters == 0.0);
+	CHECK(session.player.fighters == 11.0f);
+	CHECK(session.mercenaries_hurt);
+	CHECK(sector.fighters == 0.0f && sector.fighter_owner == 0.0f);
+	CHECK(yt_game_read_player(&door.game, 2, &player, &error));
+	CHECK(player.fighters == 11.0f && player.shields == 7.0f);
+	CHECK(session_read_sector(&session, 1, &sector, &error));
+	CHECK(sector.fighters == 0.0f && sector.fighter_owner == 0.0f);
+	CHECK(yt_database_flush(&door.game.database, &error));
+	yt_database_close(&door.game.database);
+
+	CHECK(yt_database_open(&door.game.database, database_path,
+	    YT_OPEN_READ, &error));
+	CHECK(yt_game_read_player(&door.game, 2, &player, &error));
+	CHECK(player.fighters == 11.0f && player.shields == 7.0f);
+	CHECK(session_read_sector(&session, 1, &sector, &error));
+	CHECK(sector.fighters == 0.0f && sector.fighter_owner == 0.0f);
+	yt_database_close(&door.game.database);
+
+	file = fopen(news_path, "rb");
+	CHECK(file != NULL);
+	if (file != NULL) {
+		CHECK(fread(news, 1U, sizeof(expected_news) - 1U, file)
+		    == sizeof(expected_news) - 1U);
+		CHECK(fgetc(file) == EOF);
+		CHECK(memcmp(news, expected_news,
+		    sizeof(expected_news) - 1U) == 0);
+		CHECK(fclose(file) == 0);
+	}
+	CHECK(remove(database_path) == 0);
+	CHECK(remove(news_path) == 0);
+}
+
 int
 main(void)
 {
+	od_control.od_force_local = TRUE;
+	od_control.od_nocopyright = TRUE;
+	od_init();
+	od_control.od_always_clear = FALSE;
+	od_control.od_status_on = FALSE;
 	test_no_fighters();
 	test_combat_attrition();
+	test_deployed_surrender();
+	od_control.od_noexit = TRUE;
+	od_exit(0, FALSE);
 	return failures == 0 ? 0 : 1;
 }

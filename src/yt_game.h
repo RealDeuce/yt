@@ -215,17 +215,6 @@ enum yt_hostile_surrender_answer {
 	YT_HOSTILE_SURRENDER_ANSWER_EMPTY,
 };
 
-enum yt_hostile_surrender_output_kind {
-	YT_HOSTILE_SURRENDER_RADIO_ROW,
-	YT_HOSTILE_SURRENDER_CAPTAIN_ROW,
-	YT_HOSTILE_SURRENDER_WISH_ROW,
-	YT_HOSTILE_SURRENDER_PROMPT_BLANK,
-	YT_HOSTILE_SURRENDER_JOINED_ROW,
-	YT_HOSTILE_SURRENDER_COUNT_ROW,
-	YT_HOSTILE_SURRENDER_XANNOR_REFUSAL_ROW,
-	YT_HOSTILE_SURRENDER_MERCENARY_REFUSAL_ROW,
-};
-
 enum yt_bribe_forced_admission {
 	YT_BRIBE_FORCED_FATAL,
 	YT_BRIBE_FORCED_LESS_THAN_ONE,
@@ -993,44 +982,6 @@ struct yt_hostile_surrender_state {
 	bool accepted;
 	bool complete;
 };
-
-typedef bool (*yt_hostile_surrender_read_fn)(void *context,
-    int player_record, struct yt_player *player, struct yt_error *error);
-typedef bool (*yt_hostile_surrender_present_fn)(void *context,
-    const uint8_t *text, size_t length,
-    enum yt_hostile_surrender_output_kind kind, struct yt_error *error);
-enum yt_hostile_surrender_sound_kind {
-	YT_HOSTILE_SURRENDER_RADIO_SOUND,
-	YT_HOSTILE_SURRENDER_XANNOR_SOUND,
-	YT_HOSTILE_SURRENDER_MERCENARY_SOUND,
-	YT_HOSTILE_SURRENDER_JOINED_SOUND,
-};
-typedef bool (*yt_hostile_surrender_sound_fn)(void *context,
-    enum yt_hostile_surrender_sound_kind kind, float selector,
-    struct yt_error *error);
-typedef bool (*yt_hostile_surrender_prompt_fn)(void *context,
-    const uint8_t *prompt, size_t length,
-    enum yt_hostile_surrender_answer *answer, struct yt_error *error);
-typedef bool (*yt_hostile_surrender_news_fn)(void *context,
-    const uint8_t *text, size_t length, struct yt_error *error);
-typedef void (*yt_hostile_surrender_cache_fn)(void *context,
-    double ship_fighters, double deployed_fighters);
-typedef void (*yt_hostile_surrender_mark_checked_fn)(void *context);
-
-struct yt_hostile_surrender_ops {
-	yt_hostile_surrender_read_fn read_player;
-	yt_hostile_surrender_present_fn present;
-	yt_hostile_surrender_sound_fn sound;
-	yt_hostile_surrender_prompt_fn prompt;
-	yt_hostile_surrender_news_fn append_news;
-	yt_hostile_surrender_cache_fn cache_forces;
-	yt_hostile_surrender_mark_checked_fn mark_checked;
-};
-
-bool yt_hostile_attack_surrender_run(
-    struct yt_hostile_surrender_state *state,
-    const struct yt_hostile_surrender_ops *ops, void *context,
-    struct yt_error *error);
 
 enum yt_hostile_attack_persistence_route {
 	YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL,
