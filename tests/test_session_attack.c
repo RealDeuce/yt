@@ -1,4 +1,5 @@
 #include "yt_session_internal.h"
+#include "session_test_runtime.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -243,15 +244,10 @@ test_deployed_surrender(void)
 int
 main(void)
 {
-	od_control.od_force_local = TRUE;
-	od_control.od_nocopyright = TRUE;
-	od_init();
-	od_control.od_always_clear = FALSE;
-	od_control.od_status_on = FALSE;
+	session_test_runtime_start();
 	test_no_fighters();
 	test_combat_attrition();
 	test_deployed_surrender();
-	od_control.od_noexit = TRUE;
-	od_exit(0, FALSE);
+	session_test_runtime_stop();
 	return failures == 0 ? 0 : 1;
 }

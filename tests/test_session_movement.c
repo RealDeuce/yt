@@ -1,4 +1,5 @@
 #include "yt_session_internal.h"
+#include "session_test_runtime.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -157,7 +158,9 @@ test_move_storage(void)
 int
 main(void)
 {
+	session_test_runtime_start();
 	test_destination_danger();
 	test_move_storage();
+	session_test_runtime_stop();
 	return failures == 0 ? 0 : 1;
 }

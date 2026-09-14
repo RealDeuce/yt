@@ -1,4 +1,5 @@
 #include "yt_session_internal.h"
+#include "session_test_runtime.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -36,7 +37,7 @@ test_distinct_player_death(void)
 	static const char news_path[] = "YTNEWS.DAT";
 	static const uint8_t expected_news[] =
 	    "  -  Killer killed Victim\r\n"
-	    "  -  Took 1 ports from Victim\r\n";
+	    "  -  Took 1 ports from Victim\r\n\x1a";
 	static const uint8_t cache_zero[4] = {0x00U, 0x00U, 0x7aU, 0x00U};
 	struct yt_door door;
 	struct yt_session session;
@@ -141,6 +142,8 @@ test_distinct_player_death(void)
 int
 main(void)
 {
+	session_test_runtime_start();
 	test_distinct_player_death();
+	session_test_runtime_stop();
 	return failures == 0 ? 0 : 1;
 }

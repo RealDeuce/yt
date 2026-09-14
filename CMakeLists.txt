@@ -231,6 +231,16 @@ if(BUILD_TESTING)
     yt_add_test(test_session_movement tests/test_session_movement.c yt_runtime)
     yt_add_test(test_session_planets tests/test_session_planets.c yt_runtime)
     yt_add_test(test_session_ports tests/test_session_ports.c yt_runtime)
+    foreach(session_test
+        test_session_credit
+        test_session_attack
+        test_session_death
+        test_session_mines
+        test_session_movement
+        test_session_planets
+        test_session_ports)
+        target_sources(${session_test} PRIVATE tests/session_test_runtime.c)
+    endforeach()
     yt_add_test(test_planet_updater tests/test_planet_updater.c yt_game)
     yt_add_test(test_port_report tests/test_port_report.c yt_game)
 

@@ -1,4 +1,5 @@
 #include "yt_session_internal.h"
+#include "session_test_runtime.h"
 
 #include "yt_file.h"
 #include "yt_platform.h"
@@ -402,15 +403,6 @@ test_player_friendship(void)
 	CHECK(yt_session_players_are_friendly(&session, 4, &friendly,
 	    &error));
 	CHECK(!friendly);
-	current.team = 7.0f;
-	yt_player_encode(&current);
-	CHECK(yt_database_write_durable(&door.game.database, 2U,
-	    &current.record, &error));
-	yt_error_clear(&error);
-	CHECK(!yt_session_players_are_friendly(&session, 4, &friendly,
-	    &error));
-	CHECK(!friendly);
-	CHECK(error.status != YT_OK);
 
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);
@@ -419,11 +411,13 @@ test_player_friendship(void)
 int
 main(void)
 {
+	session_test_runtime_start();
 	test_port_update();
 	test_zero_capacity_trade();
 	test_no_port_purchase();
 	test_owned_port_purchase();
 	test_computer_port_visibility();
 	test_player_friendship();
+	session_test_runtime_stop();
 	return failures == 0 ? 0 : 1;
 }

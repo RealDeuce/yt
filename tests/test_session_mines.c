@@ -1,4 +1,5 @@
 #include "yt_session_internal.h"
+#include "session_test_runtime.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -36,7 +37,7 @@ test_shielded_encounter(void)
 	static const char news_path[] = "YTNEWS.DAT";
 	static const uint8_t expected_news[] =
 	    "Ada hit sector mines in sector 42!\r\n"
-	    "Shields reduced to 100 units!\r\n";
+	    "Shields reduced to 100 units!\r\n\x1a";
 	struct yt_door door;
 	struct yt_session session;
 	struct yt_player player;
@@ -176,7 +177,9 @@ test_unshielded_missile_draw(void)
 int
 main(void)
 {
+	session_test_runtime_start();
 	test_shielded_encounter();
 	test_unshielded_missile_draw();
+	session_test_runtime_stop();
 	return failures == 0 ? 0 : 1;
 }

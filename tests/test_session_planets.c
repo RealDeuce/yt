@@ -1,4 +1,5 @@
 #include "yt_session_internal.h"
+#include "session_test_runtime.h"
 
 #include "yt_file.h"
 
@@ -63,6 +64,8 @@ test_self_owned_planet(void)
 int
 main(void)
 {
+	session_test_runtime_start();
 	test_self_owned_planet();
+	session_test_runtime_stop();
 	return failures == 0 ? 0 : 1;
 }

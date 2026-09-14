@@ -1,4 +1,5 @@
 #include "yt_session_internal.h"
+#include "session_test_runtime.h"
 
 #include "yt_file.h"
 
@@ -87,6 +88,8 @@ test_credit_mutation(void)
 int
 main(void)
 {
+	session_test_runtime_start();
 	test_credit_mutation();
+	session_test_runtime_stop();
 	return failures == 0 ? 0 : 1;
 }
