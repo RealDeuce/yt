@@ -11773,180 +11773,6 @@ computer_spies(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-profit_session_read(void *context, enum yt_profit_field_kind kind,
-    float expression, uint32_t physical_record, struct yt_record *record,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	(void)kind;
-	(void)expression;
-	return yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, record, error);
-}
-
-static bool
-profit_session_day(void *context, float *day, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	int today;
-	int adjusted_year;
-
-	if (!session_current_date_serial(session, &today, &adjusted_year, error))
-		return false;
-	session->door->game.today = today;
-	session->door->game.adjusted_year = adjusted_year;
-	*day = (float)today;
-	return true;
-}
-
-static bool
-profit_session_timer(void *context, float *seconds, struct yt_error *error)
-{
-	(void)context;
-	(void)error;
-	*seconds = (float)yt_platform_timer();
-	return true;
-}
-
-static const char *
-profit_session_operation(enum yt_profit_output_kind kind)
-{
-	static const char *const operations[] = {
-		[YT_PROFIT_LEADING_BLANK] = "profit leading blank",
-		[YT_PROFIT_TITLE] = "adjacent profit title",
-		[YT_PROFIT_TITLE_BLANK] = "adjacent profit title blank",
-		[YT_PROFIT_NO_CURRENT_PORT] = "adjacent profit no-port row",
-		[YT_PROFIT_ROW] = "profit row",
-		[YT_PROFIT_COLUMN_SEPARATOR] = "global profit separator",
-		[YT_PROFIT_ROW_END] = "global profit row ending",
-		[YT_PROFIT_NO_RESULTS] = "adjacent profit empty row",
-		[YT_PROFIT_PAGER_PROMPT] = "profit pager prompt",
-		[YT_PROFIT_PAGER_ECHO] = "profit pager echo",
-		[YT_PROFIT_END_BANNER] = "global profit end row",
-	};
-
-	if ((size_t)kind >= YT_ARRAY_LEN(operations)
-	    || operations[kind] == NULL)
-		return "profit presentation";
-	return operations[kind];
-}
-
-static bool
-profit_session_present(void *context, enum yt_profit_output_kind kind,
-    enum yt_profit_present_mode mode, const uint8_t *text, size_t length,
-    struct yt_nearest_style *style, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	enum session_present_text_kind present_kind;
-	bool ok;
-
-	switch (mode) {
-	case YT_PROFIT_PRESENT_LINE:
-		present_kind = SESSION_PRESENT_LINE;
-		break;
-	case YT_PROFIT_PRESENT_RAW:
-		present_kind = SESSION_PRESENT_RAW;
-		break;
-	case YT_PROFIT_PRESENT_BOLD_LINE:
-		present_kind = SESSION_PRESENT_BOLD_LINE;
-		break;
-	case YT_PROFIT_PRESENT_BOLD_RAW:
-		present_kind = SESSION_PRESENT_BOLD_RAW;
-		break;
-	default:
-		if (error != NULL)
-			error->status = YT_INVALID;
-		return false;
-	}
-	session_set_foreground(session, style->foreground);
-	yt_present_set_bold(&session->presentation, style->bold);
-	yt_present_set_blink(&session->presentation, style->blink);
-	ok = session_present_text(session, text, length, present_kind,
-	    profit_session_operation(kind), error);
-	style->foreground = session_foreground(session);
-	style->bold = yt_present_bold(&session->presentation);
-	style->blink = yt_present_blink(&session->presentation);
-	return ok;
-}
-
-static bool
-profit_session_input(void *context, uint8_t *text, size_t capacity,
-    size_t *length, bool *available, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_input_value selected;
-
-	(void)error;
-	*length = 0U;
-	*available = false;
-	if (!yt_input_wait(&session->input, &selected))
-		return false;
-	if (selected.length == 0U)
-		return true;
-	if (selected.length > capacity)
-		return false;
-	memcpy(text, selected.bytes, selected.length);
-	*length = selected.length;
-	*available = true;
-	return true;
-}
-
-static void
-profit_session_uppercase(void *context, uint8_t *text, size_t length)
-{
-	session_compat_upper_n(context, text, length);
-}
-
-static bool
-profit_session_checkpoint(void *context,
-    enum yt_profit_checkpoint checkpoint, struct yt_error *error)
-{
-	(void)context;
-	(void)checkpoint;
-	(void)error;
-	return true;
-}
-
-static bool
-computer_profit_exact(struct yt_session *session, bool all,
-    struct yt_error *error)
-{
-	static const struct yt_profit_ops ops = {
-		profit_session_read,
-		profit_session_day,
-		profit_session_timer,
-		profit_session_present,
-		profit_session_input,
-		profit_session_uppercase,
-		profit_session_checkpoint,
-	};
-	struct yt_profit_state state;
-	bool ok;
-
-	memset(&state, 0, sizeof(state));
-	state.global = all;
-	state.conversion_mode = session->presentation.sound.conversion_mode;
-	state.current_sector_record = session->current_sector_record;
-	state.sector_record_offset = session_sector_offset(session);
-	state.port_record_offset = session_port_offset(session);
-	memcpy(state.base_price, session->market_bases, sizeof(state.base_price));
-	state.current_day = (float)session->door->game.today;
-	state.style.foreground = session_foreground(session);
-	state.style.bold = yt_present_bold(&session->presentation);
-	state.style.blink = yt_present_blink(&session->presentation);
-	/* The immediately preceding A41C prompt hydration owns the live FIELD. */
-	state.field = session->player.record;
-	state.field_record = (uint32_t)session_record(session);
-	state.field_kind = YT_PROFIT_FIELD_PLAYER;
-	state.field_valid = true;
-
-	ok = yt_profit_run(&state, &ops, session, error);
-	session_set_foreground(session, state.style.foreground);
-	return ok;
-}
-
-static bool
 computer_activate(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t notice[] = "<Computer activated>";
@@ -12051,7 +11877,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (strcmp(command, "17") == 0) {
-			if (!computer_profit_exact(session, false, error))
+			if (!yt_session_computer_profit(session, false, error))
 				return false;
 			continue;
 		}
@@ -12104,7 +11930,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (strcmp(command, "16") == 0) {
-			if (!computer_profit_exact(session, true, error))
+			if (!yt_session_computer_profit(session, true, error))
 				return false;
 			continue;
 		}

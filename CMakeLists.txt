@@ -118,6 +118,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_nearest.c
     src/yt_session_planets.c
     src/yt_session_ports.c
+    src/yt_session_profit.c
     src/yt_session_registration.c
     src/yt_session_salvage.c
     src/yt_session_spies.c
@@ -218,7 +219,6 @@ if(BUILD_TESTING)
     target_link_libraries(test_input_adapter PRIVATE yt_game)
     add_test(NAME test_input_adapter COMMAND test_input_adapter)
     yt_add_test(test_ytconfig_output tests/test_ytconfig_output.c yt_game)
-    yt_add_test(test_profit tests/test_profit.c yt_game)
     yt_add_test(test_score tests/test_score.c yt_game)
     target_sources(test_score PRIVATE
         tests/direct_attack_model.c
@@ -238,6 +238,7 @@ if(BUILD_TESTING)
     yt_add_test(test_session_nearest tests/test_session_nearest.c yt_runtime)
     yt_add_test(test_session_planets tests/test_session_planets.c yt_runtime)
     yt_add_test(test_session_ports tests/test_session_ports.c yt_runtime)
+    yt_add_test(test_session_profit tests/test_session_profit.c yt_runtime)
     yt_add_test(test_session_projectile tests/test_session_projectile.c
         yt_runtime)
     foreach(session_test
@@ -249,6 +250,7 @@ if(BUILD_TESTING)
         test_session_nearest
         test_session_planets
         test_session_ports
+        test_session_profit
         test_session_projectile)
         target_sources(${session_test} PRIVATE tests/session_test_runtime.c)
     endforeach()

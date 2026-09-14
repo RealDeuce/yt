@@ -288,6 +288,8 @@ bool yt_session_computer_owned_planets(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_computer_nearest_ports(struct yt_session *session,
     struct yt_error *error);
+bool yt_session_computer_profit(struct yt_session *session, bool global,
+    struct yt_error *error);
 bool yt_session_computer_check_port_visibility(struct yt_session *session,
     const struct yt_sector *sector, float cached_team, bool *unavailable,
     struct yt_error *error);
