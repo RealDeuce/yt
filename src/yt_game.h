@@ -1016,32 +1016,8 @@ typedef bool (*yt_hostile_attack_persistence_read_player_fn)(void *context,
 typedef bool (*yt_hostile_attack_persistence_write_player_fn)(void *context,
     int player_record, const struct yt_player *player,
     struct yt_error *error);
-typedef bool (*yt_hostile_attack_persistence_read_sector_fn)(void *context,
-    int sector_number, struct yt_sector *sector, struct yt_error *error);
-typedef bool (*yt_hostile_attack_persistence_write_sector_fn)(void *context,
-    int sector_number, const struct yt_sector *sector,
-    struct yt_error *error);
-typedef bool (*yt_hostile_attack_persistence_blank_fn)(void *context,
-    struct yt_error *error);
 typedef bool (*yt_hostile_attack_persistence_news_fn)(void *context,
     const uint8_t *text, size_t length, struct yt_error *error);
-typedef bool (*yt_hostile_attack_persistence_fatal_fn)(void *context,
-    struct yt_error *error);
-
-struct yt_hostile_attack_persistence_ops {
-	yt_hostile_attack_persistence_read_player_fn read_player;
-	yt_hostile_attack_persistence_write_player_fn write_player;
-	yt_hostile_attack_persistence_read_sector_fn read_sector;
-	yt_hostile_attack_persistence_write_sector_fn write_sector;
-	yt_hostile_attack_persistence_blank_fn present_blank;
-	yt_hostile_attack_persistence_news_fn append_news;
-	yt_hostile_attack_persistence_fatal_fn fatal;
-};
-
-bool yt_hostile_attack_persistence_run(
-    struct yt_hostile_attack_persistence_state *state,
-    const struct yt_hostile_attack_persistence_ops *ops, void *context,
-    struct yt_error *error);
 
 enum yt_hostile_attack_tail_output_kind {
 	YT_HOSTILE_ATTACK_TAIL_REWARD_ROW,

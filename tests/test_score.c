@@ -1,6 +1,7 @@
 #include "qb.h"
 #include "yt_game.h"
 #include "direct_attack_model.h"
+#include "hostile_attack_model.h"
 #include "hostile_surrender_model.h"
 #include "player_death_model.h"
 #include "yt_input_model.h"
@@ -10007,7 +10008,7 @@ hostile_persistence_fatal(void *context, struct yt_error *error)
 	    error);
 }
 
-static const struct yt_hostile_attack_persistence_ops
+static const struct test_hostile_attack_persistence_ops
 hostile_persistence_ops = {
 	hostile_persistence_read_player,
 	hostile_persistence_write_player,
@@ -10092,7 +10093,7 @@ check_hostile_attack_persistence_transaction(void)
 	expected_sector = tape.sector.record;
 	(void)yt_record_set_number(&expected_sector, YT_F81, 0.0f);
 	(void)yt_record_set_number(&expected_sector, YT_F85, 0.0f);
-	if (!yt_hostile_attack_persistence_run(&state,
+	if (!test_hostile_attack_persistence_run(&state,
 	    &hostile_persistence_ops, &tape, NULL)
 	    || !state.complete
 	    || state.route != YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL
@@ -10113,7 +10114,7 @@ check_hostile_attack_persistence_transaction(void)
 		hostile_persistence_fixture(&tape, &state);
 		tape.fail_at = failure;
 		yt_error_clear(&error);
-		if (yt_hostile_attack_persistence_run(&state,
+		if (test_hostile_attack_persistence_run(&state,
 		    &hostile_persistence_ops, &tape, &error)
 		    || error.status != YT_IO_ERROR || state.complete
 		    || tape.calls != failure + 1U
@@ -10126,7 +10127,7 @@ check_hostile_attack_persistence_transaction(void)
 	state.ship_fighters = 0.0;
 	state.shields = 0.0f;
 	state.defender_loss = 0.0;
-	if (!yt_hostile_attack_persistence_run(&state,
+	if (!test_hostile_attack_persistence_run(&state,
 	    &hostile_persistence_ops, &tape, NULL)
 	    || !state.complete
 	    || state.route != YT_HOSTILE_ATTACK_PERSISTENCE_FATAL
@@ -10137,16 +10138,16 @@ check_hostile_attack_persistence_transaction(void)
 
 	hostile_persistence_fixture(&tape, &state);
 	state.defender_loss = 0.0;
-	if (!yt_hostile_attack_persistence_run(&state,
+	if (!test_hostile_attack_persistence_run(&state,
 	    &hostile_persistence_ops, &tape, NULL)
 	    || tape.calls != 5U || state.post_loss_read || state.news_written
 	    || state.mercenaries_hurt || state.ship_fighters != 7.5)
 		return false;
 
 	hostile_persistence_fixture(&tape, &state);
-	return !yt_hostile_attack_persistence_run(NULL,
+	return !test_hostile_attack_persistence_run(NULL,
 	    &hostile_persistence_ops, &tape, NULL)
-	    && !yt_hostile_attack_persistence_run(&state, NULL, &tape, NULL);
+	    && !test_hostile_attack_persistence_run(&state, NULL, &tape, NULL);
 }
 
 enum hostile_tail_event {
@@ -10658,7 +10659,7 @@ hostile_combat_persistence(void *context,
 		return false;
 	tape->persistence_input = *state;
 	if (tape->real_children)
-		return yt_hostile_attack_persistence_run(state,
+		return test_hostile_attack_persistence_run(state,
 		    &hostile_persistence_ops, &tape->persistence_tape, error);
 	state->player_written = true;
 	state->sector_written = true;

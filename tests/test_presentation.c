@@ -6,6 +6,7 @@
 #include "yt_team.h"
 #include "qb.h"
 #include "info_panel_model.h"
+#include "hostile_attack_model.h"
 #include "hostile_surrender_model.h"
 #include "player_death_model.h"
 #include "sector_mine_model.h"
@@ -23297,7 +23298,7 @@ direct_warp_attack_unexpected_fatal(void *context, struct yt_error *error)
 	return false;
 }
 
-static const struct yt_hostile_attack_persistence_ops
+static const struct test_hostile_attack_persistence_ops
 direct_warp_attack_persistence_ops = {
 	direct_warp_attack_persistence_read_player,
 	direct_warp_attack_persistence_write_player,
@@ -23313,7 +23314,7 @@ direct_warp_attack_combat_persistence(void *context,
     struct yt_hostile_attack_persistence_state *state,
     struct yt_error *error)
 {
-	return yt_hostile_attack_persistence_run(state,
+	return test_hostile_attack_persistence_run(state,
 	    &direct_warp_attack_persistence_ops, context, error);
 }
 

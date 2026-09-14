@@ -3874,51 +3874,79 @@ hostile_surrender_run(struct yt_session *session,
 	return true;
 }
 static bool
-hostile_attack_persistence_read_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
+hostile_attack_persistence_run(struct yt_session *session,
+    struct yt_hostile_attack_persistence_state *state,
+    struct yt_error *error)
 {
-	return session_read_combat_player(context, player_record, player, error);
-}
+	static const uint8_t destroyed[] = " destroyed";
+	static const uint8_t belonging[] = " fighters belonging to ";
+	uint8_t news[320];
+	char loss_number[64];
+	size_t position = 0U;
+	int loss_length;
 
-static bool
-hostile_attack_persistence_write_player(void *context, int player_record,
-    const struct yt_player *player, struct yt_error *error)
-{
-	return session_write_combat_player(context, player_record, player, error);
-}
-
-static bool
-hostile_attack_persistence_read_sector(void *context, int sector_number,
-    struct yt_sector *sector, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_read_sector(session, sector_number, sector,
-	    error);
-}
-
-static bool
-hostile_attack_persistence_write_sector(void *context, int sector_number,
-    const struct yt_sector *sector, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database,
-	    (size_t)session_sector_basic_record(session, (float)sector_number),
-	    &sector->record, error);
-}
-
-static bool
-hostile_attack_persistence_blank(void *context, struct yt_error *error)
-{
-	return session_present_text(context, NULL, 0, SESSION_PRESENT_LINE,
-	    "deployed attack post-persist blank", error);
-}
-
-static bool
-hostile_attack_persistence_fatal(void *context, struct yt_error *error)
-{
-	return yt_session_common_fatal_self(context, error);
+	state->route = YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL;
+	state->player_written = false;
+	state->sector_written = false;
+	state->post_loss_read = false;
+	state->news_written = false;
+	state->mercenaries_hurt = false;
+	state->complete = false;
+	if (!session_read_combat_player(session, state->current_player_record,
+	    &state->current, error))
+		return false;
+	yt_deployed_attack_player_overlay(&state->current, state->shields,
+	    (float)state->ship_fighters);
+	if (!session_write_combat_player(session, state->current_player_record,
+	    &state->current, error))
+		return false;
+	state->player_written = true;
+	if (!session_read_sector(session, state->current_sector, &state->sector,
+	    error))
+		return false;
+	yt_deployed_attack_sector_overlay(&state->sector,
+	    (float)state->deployed_fighters);
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)session_sector_basic_record(session,
+	    (float)state->current_sector), &state->sector.record, error))
+		return false;
+	state->sector_written = true;
+	if (state->ship_fighters < 1.0 && state->shields < 1.0f) {
+		state->route = YT_HOSTILE_ATTACK_PERSISTENCE_FATAL;
+		if (!yt_session_common_fatal_self(session, error))
+			return false;
+		state->complete = true;
+		return true;
+	}
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "deployed attack post-persist blank", error))
+		return false;
+	if (state->defender_loss > 0.0) {
+		if (!session_read_combat_player(session,
+		    state->current_player_record, &state->current, error))
+			return false;
+		state->post_loss_read = true;
+		state->ship_fighters = (double)state->current.fighters;
+		loss_length = qb_str_double(loss_number, sizeof(loss_number),
+		    state->defender_loss);
+		if (loss_length < 0
+		    || !hostile_surrender_append(news, sizeof(news), &position,
+		    state->cached_player_name, state->cached_player_name_length)
+		    || !hostile_surrender_append(news, sizeof(news), &position,
+		    destroyed, sizeof(destroyed) - 1U)
+		    || !hostile_surrender_append(news, sizeof(news), &position,
+		    (const uint8_t *)loss_number, (size_t)loss_length)
+		    || !hostile_surrender_append(news, sizeof(news), &position,
+		    belonging, sizeof(belonging) - 1U)
+		    || !hostile_surrender_append(news, sizeof(news), &position,
+		    state->owner_label, state->owner_label_length)
+		    || !session_append_news_bytes(session, news, position, error))
+			return false;
+		state->news_written = true;
+		state->mercenaries_hurt = state->old_owner == -2.0f;
+	}
+	state->complete = true;
+	return true;
 }
 
 struct hostile_attack_tail_context {
@@ -4142,18 +4170,9 @@ hostile_attack_combat_persistence(void *context,
     struct yt_hostile_attack_persistence_state *state,
     struct yt_error *error)
 {
-	static const struct yt_hostile_attack_persistence_ops ops = {
-		hostile_attack_persistence_read_player,
-		hostile_attack_persistence_write_player,
-		hostile_attack_persistence_read_sector,
-		hostile_attack_persistence_write_sector,
-		hostile_attack_persistence_blank,
-		session_append_news_bytes,
-		hostile_attack_persistence_fatal,
-	};
 	struct hostile_attack_combat_context *combat = context;
-	bool result = yt_hostile_attack_persistence_run(state, &ops,
-	    combat->session, error);
+	bool result = hostile_attack_persistence_run(combat->session, state,
+	    error);
 
 	if (state->route != YT_HOSTILE_ATTACK_PERSISTENCE_FATAL) {
 		combat->session->player = state->current;
