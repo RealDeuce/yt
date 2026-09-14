@@ -22,6 +22,7 @@ test_self_owned_planet(void)
 	static const char path[] = "SESSION-PLANET.DAT";
 	struct yt_door door;
 	struct yt_session session;
+	struct yt_player player;
 	struct yt_planet planet;
 	struct yt_record persisted;
 	struct yt_error error;
@@ -32,9 +33,11 @@ test_self_owned_planet(void)
 	(void)remove(path);
 	memset(&door, 0, sizeof(door));
 	memset(&session, 0, sizeof(session));
+	memset(&player, 0, sizeof(player));
 	memset(&planet, 0, sizeof(planet));
 	session.door = &door;
 	session.player_record_carrier = 2;
+	session.pager.nonstop = -1.0f;
 	door.game.config.epoch_year = 26.0f;
 	door.game.config.planet_offset = 3.0f;
 	yt_error_clear(&error);
@@ -45,7 +48,14 @@ test_self_owned_planet(void)
 	planet.ground_forces = 5.0f;
 	yt_record_blank(&planet.record);
 	yt_planet_encode(&planet);
+	yt_record_blank(&player.record);
+	player.holds = 20.0f;
+	player.credits = 1000.0f;
+	player.sector = 1.0f;
+	yt_player_encode(&player);
 	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
+	    &error));
+	CHECK(yt_database_write(&door.game.database, 2U, &player.record,
 	    &error));
 	CHECK(yt_database_write(&door.game.database, 4U, &planet.record,
 	    &error));
@@ -57,6 +67,8 @@ test_self_owned_planet(void)
 	CHECK(yt_record_get_number(&persisted, YT_F41) == (float)today);
 	CHECK(yt_record_get_number(&persisted, YT_F73) == 2.0f);
 	CHECK(yt_record_get_number(&persisted, YT_F77) == 5.0f);
+	CHECK(yt_session_planet_inventory(&session, 1, &error));
+	CHECK(session.player.holds == 20.0f);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);
 }

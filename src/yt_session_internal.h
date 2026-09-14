@@ -116,6 +116,8 @@ bool session_write_sector(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, struct yt_error *error);
 bool session_read_planet(struct yt_session *session, int logical_planet,
     struct yt_planet *planet, struct yt_error *error);
+bool session_write_planet(struct yt_session *session, int logical_planet,
+    struct yt_planet *planet, struct yt_error *error);
 bool session_write_player(struct yt_session *session, struct yt_error *error);
 bool session_append_news(struct yt_session *session, const char *text,
     struct yt_error *error);
@@ -134,6 +136,8 @@ bool session_present_paged_line(struct yt_session *session,
 bool session_present_timed_paged_row(struct yt_session *session,
     const uint8_t *text, size_t length, const char *operation,
     struct yt_error *error);
+bool session_right_aligned(struct yt_session *session, const char *text,
+    float width, const char *operation, struct yt_error *error);
 bool session_wait(struct yt_session *session, double seconds,
     const char *operation, struct yt_error *error);
 void session_close_game(struct yt_session *session);
@@ -286,6 +290,25 @@ bool yt_session_check_lockout(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_planet_permission(struct yt_session *session,
     int logical_planet, bool *denied, struct yt_error *error);
+bool yt_session_planet_inventory(struct yt_session *session,
+    int logical_planet, struct yt_error *error);
+bool yt_session_planet_assault(struct yt_session *session,
+    uint32_t physical_planet, float commitment, bool *defeated,
+    struct yt_error *error);
+bool yt_session_planet_take_one(struct yt_session *session,
+    int logical_planet, int item, struct yt_error *error);
+bool yt_session_planet_take_all(struct yt_session *session,
+    int logical_planet, struct yt_error *error);
+bool yt_session_planet_garrison(struct yt_session *session,
+    int logical_planet, struct yt_error *error);
+bool yt_session_planet_bank(struct yt_session *session,
+    int logical_planet, struct yt_error *error);
+bool yt_session_planet_rename(struct yt_session *session,
+    int logical_planet, bool *renamed, struct yt_error *error);
+bool yt_session_planet_transfer(struct yt_session *session,
+    int logical_planet, struct yt_error *error);
+bool yt_session_planet_productivity(struct yt_session *session,
+    int logical_planet, struct yt_error *error);
 bool session_fixed_width_bytes(struct yt_session *session,
     const uint8_t *text, size_t text_length, float width,
     const char *operation, struct yt_error *error);
