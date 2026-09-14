@@ -104,6 +104,10 @@ bool yt_session_players_are_friendly(struct yt_session *session,
     int candidate_record, bool *friendly, struct yt_error *error);
 bool yt_session_destination_is_dangerous(struct yt_session *session,
     float target, bool *dangerous, struct yt_error *error);
+bool yt_session_build_route(struct yt_session *session, float start,
+    float destination, int16_t *next_hop, bool use_avoid, bool *found,
+    enum yt_route_outcome *route_outcome, float *returned_status,
+    struct yt_error *error);
 bool yt_session_store_move(struct yt_session *session, float target,
     struct yt_error *error);
 bool yt_session_command_move(struct yt_session *session, bool *moved,

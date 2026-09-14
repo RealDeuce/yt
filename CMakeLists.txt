@@ -117,6 +117,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_movement.c
     src/yt_session_nearest.c
     src/yt_session_planet_menu.c
+    src/yt_session_planet_move.c
     src/yt_session_planets.c
     src/yt_session_ports.c
     src/yt_session_profit.c
