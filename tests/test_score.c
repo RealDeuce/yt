@@ -5,6 +5,7 @@
 #include "hostile_bribe_model.h"
 #include "hostile_surrender_model.h"
 #include "player_death_model.h"
+#include "projectile_plasma_route_model.h"
 #include "yt_input_model.h"
 #include "yt_main_error.h"
 #include "yt_maint.h"
@@ -782,7 +783,7 @@ struct plasma_route_tape {
 	int16_t process_route[2048];
 	size_t route_reads;
 	size_t route_writes;
-	enum yt_projectile_plasma_argument_change argument_changes[4];
+	enum test_projectile_plasma_argument_change argument_changes[4];
 	size_t argument_change_count;
 };
 
@@ -855,7 +856,7 @@ plasma_route_write(void *context, int16_t index, int16_t value)
 
 static void
 plasma_route_arguments_changed(void *context, float origin,
-    float destination, enum yt_projectile_plasma_argument_change change)
+    float destination, enum test_projectile_plasma_argument_change change)
 {
 	struct plasma_route_tape *tape = context;
 
@@ -922,7 +923,7 @@ plasma_route_random(void *context, float *value, struct yt_error *error)
 
 static bool
 plasma_route_impact(void *context, int hop, double *energy,
-    enum yt_projectile_plasma_impact_route *route, struct yt_error *error)
+    enum test_projectile_plasma_impact_route *route, struct yt_error *error)
 {
 	struct plasma_route_tape *tape = context;
 
@@ -952,7 +953,7 @@ plasma_route_footer(void *context, const uint8_t *text, size_t length,
 }
 
 static void
-plasma_route_fixture(struct yt_projectile_plasma_route_state *state,
+plasma_route_fixture(struct test_projectile_plasma_route_state *state,
     struct plasma_route_tape *tape, int16_t *route, float *origin,
     float *destination, double *energy)
 {
@@ -980,7 +981,7 @@ plasma_route_fixture(struct yt_projectile_plasma_route_state *state,
 static bool
 check_projectile_plasma_route_transaction(void)
 {
-	static const struct yt_projectile_plasma_route_ops ops = {
+	static const struct test_projectile_plasma_route_ops ops = {
 		.build_route = plasma_route_build,
 		.line = plasma_route_line,
 		.attention = plasma_route_attention,
@@ -989,7 +990,7 @@ check_projectile_plasma_route_transaction(void)
 		.impact = plasma_route_impact,
 		.footer = plasma_route_footer,
 	};
-	static const struct yt_projectile_plasma_route_ops process_ops = {
+	static const struct test_projectile_plasma_route_ops process_ops = {
 		.build_route = plasma_route_build,
 		.line = plasma_route_line,
 		.attention = plasma_route_attention,
@@ -1021,7 +1022,7 @@ check_projectile_plasma_route_transaction(void)
 	static const uint8_t black_row[] =
 	    "The plasma bolt is deflected by a black hole in sector 7 to "
 	    "sector 1003!";
-	struct yt_projectile_plasma_route_state state;
+	struct test_projectile_plasma_route_state state;
 	struct plasma_route_tape tape;
 	int16_t route[2048];
 	float origin;
@@ -1031,7 +1032,7 @@ check_projectile_plasma_route_transaction(void)
 
 	plasma_route_fixture(&state, &tape, route, &origin, &destination,
 	    &energy);
-	if (!yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+	if (!test_projectile_plasma_route_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != YT_ARRAY_LEN(ordinary_events)
 	    || memcmp(tape.events, ordinary_events, sizeof(ordinary_events)) != 0
 	    || state.route_calls != 1U || state.hops != 1U
@@ -1046,7 +1047,7 @@ check_projectile_plasma_route_transaction(void)
 	    &energy);
 	state.route = NULL;
 	state.route_capacity = 0U;
-	if (!yt_projectile_plasma_route_run(&state, &process_ops, &tape, NULL)
+	if (!test_projectile_plasma_route_run(&state, &process_ops, &tape, NULL)
 	    || memcmp(tape.events, ordinary_events,
 	    sizeof(ordinary_events)) != 0 || tape.route_reads != 2U
 	    || tape.route_writes != 0U || tape.argument_change_count != 0U)
@@ -1057,7 +1058,7 @@ check_projectile_plasma_route_transaction(void)
 	destination = origin;
 	state.route = NULL;
 	state.route_capacity = 0U;
-	if (!yt_projectile_plasma_route_run(&state, &process_ops, &tape, NULL)
+	if (!test_projectile_plasma_route_run(&state, &process_ops, &tape, NULL)
 	    || origin != 0.0f || tape.route_writes != 2U
 	    || tape.argument_change_count != 1U
 	    || tape.argument_changes[0]
@@ -1067,7 +1068,7 @@ check_projectile_plasma_route_transaction(void)
 	plasma_route_fixture(&state, &tape, route, &origin, &destination,
 	    &energy);
 	destination = origin;
-	if (!yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+	if (!test_projectile_plasma_route_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != YT_ARRAY_LEN(same_events)
 	    || memcmp(tape.events, same_events, sizeof(same_events)) != 0
 	    || origin != 0.0f || route[0] != 7 || route[7] != 0
@@ -1079,7 +1080,7 @@ check_projectile_plasma_route_transaction(void)
 	plasma_route_fixture(&state, &tape, route, &origin, &destination,
 	    &energy);
 	tape.empty_route = true;
-	if (!yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+	if (!test_projectile_plasma_route_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != 2U || tape.events[0] != PLASMA_ROUTE_BUILD
 	    || tape.events[1] != PLASMA_ROUTE_FOOTER || state.hops != 0U
 	    || state.route_status != 1.0f || energy != 1000.0)
@@ -1089,7 +1090,7 @@ check_projectile_plasma_route_transaction(void)
 	    &energy);
 	destination = origin;
 	tape.impact_footer = true;
-	if (!yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+	if (!test_projectile_plasma_route_run(&state, &ops, &tape, NULL)
 	    || memcmp(tape.events, same_events, sizeof(same_events)) != 0
 	    || energy != 0.0)
 		return false;
@@ -1099,7 +1100,7 @@ check_projectile_plasma_route_transaction(void)
 	destination = origin;
 	state.black_hole[0] = origin;
 	tape.empty_route = true;
-	if (!yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+	if (!test_projectile_plasma_route_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != YT_ARRAY_LEN(black_events)
 	    || memcmp(tape.events, black_events, sizeof(black_events)) != 0
 	    || origin != 7.0f || destination != 1003.0f
@@ -1114,7 +1115,7 @@ check_projectile_plasma_route_transaction(void)
 		plasma_route_fixture(&state, &tape, route, &origin, &destination,
 		    &energy);
 		tape.fail_at = failure;
-		if (yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+		if (test_projectile_plasma_route_run(&state, &ops, &tape, NULL)
 		    || tape.event_count != failure
 		    || memcmp(tape.events, ordinary_events,
 		    failure * sizeof(ordinary_events[0])) != 0)
@@ -1127,7 +1128,7 @@ check_projectile_plasma_route_transaction(void)
 		state.black_hole[0] = origin;
 		tape.empty_route = true;
 		tape.fail_at = failure;
-		if (yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+		if (test_projectile_plasma_route_run(&state, &ops, &tape, NULL)
 		    || tape.event_count != failure
 		    || memcmp(tape.events, black_events,
 		    failure * sizeof(black_events[0])) != 0
@@ -1139,8 +1140,8 @@ check_projectile_plasma_route_transaction(void)
 	plasma_route_fixture(&state, &tape, route, &origin, &destination,
 	    &energy);
 	state.step_limit = 1U;
-	return !yt_projectile_plasma_route_run(NULL, &ops, &tape, NULL)
-	    && !yt_projectile_plasma_route_run(&state, &ops, &tape, NULL);
+	return !test_projectile_plasma_route_run(NULL, &ops, &tape, NULL)
+	    && !test_projectile_plasma_route_run(&state, &ops, &tape, NULL);
 }
 
 static bool

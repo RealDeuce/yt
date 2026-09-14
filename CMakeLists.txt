@@ -223,9 +223,10 @@ if(BUILD_TESTING)
     target_sources(test_score PRIVATE
         tests/direct_attack_model.c
 	    tests/hostile_attack_model.c
-	    tests/hostile_bribe_model.c
+        tests/hostile_bribe_model.c
         tests/hostile_surrender_model.c
-        tests/player_death_model.c)
+        tests/player_death_model.c
+        tests/projectile_plasma_route_model.c)
     yt_add_test(test_route tests/test_route.c yt_core)
 
     yt_add_test(test_session_credit tests/test_session_credit.c yt_runtime)
@@ -235,6 +236,8 @@ if(BUILD_TESTING)
     yt_add_test(test_session_movement tests/test_session_movement.c yt_runtime)
     yt_add_test(test_session_planets tests/test_session_planets.c yt_runtime)
     yt_add_test(test_session_ports tests/test_session_ports.c yt_runtime)
+    yt_add_test(test_session_projectile tests/test_session_projectile.c
+        yt_runtime)
     foreach(session_test
         test_session_credit
         test_session_attack
@@ -242,7 +245,8 @@ if(BUILD_TESTING)
         test_session_mines
         test_session_movement
         test_session_planets
-        test_session_ports)
+        test_session_ports
+        test_session_projectile)
         target_sources(${session_test} PRIVATE tests/session_test_runtime.c)
     endforeach()
     yt_add_test(test_planet_updater tests/test_planet_updater.c yt_game)

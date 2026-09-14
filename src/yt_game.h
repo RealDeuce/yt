@@ -263,8 +263,6 @@ enum yt_projectile_target_result {
 	YT_PROJECTILE_TARGET_ACCEPT,
 };
 
-typedef bool (*yt_projectile_wait_fn)(void *context, float duration,
-    struct yt_error *error);
 #define YT_PROJECTILE_ATTACKER_CAPACITY 64U
 void yt_projectile_plasma_opening_values(float bolts, double *energy,
     float *hop_loss);
@@ -273,65 +271,6 @@ bool yt_projectile_plasma_energy_row(double energy, uint8_t *row,
 bool yt_projectile_plasma_firing_row(float counter, uint8_t *row,
     size_t capacity, size_t *length);
 float yt_projectile_plasma_next_firing(float counter);
-
-enum yt_projectile_plasma_impact_route {
-	YT_PROJECTILE_PLASMA_NEXT_HOP,
-	YT_PROJECTILE_PLASMA_FOOTER,
-};
-typedef bool (*yt_projectile_plasma_route_build_fn)(void *context,
-    float *origin, float *destination, int16_t *route,
-    size_t route_capacity, float *status, struct yt_error *error);
-typedef bool (*yt_projectile_plasma_route_output_fn)(void *context,
-    const uint8_t *text, size_t length, struct yt_error *error);
-typedef bool (*yt_projectile_plasma_route_impact_fn)(void *context, int hop,
-    double *energy, enum yt_projectile_plasma_impact_route *route,
-    struct yt_error *error);
-typedef bool (*yt_projectile_plasma_route_random_fn)(void *context,
-    float *value, struct yt_error *error);
-typedef int16_t (*yt_projectile_plasma_route_read_fn)(void *context,
-    int16_t index);
-typedef void (*yt_projectile_plasma_route_write_fn)(void *context,
-    int16_t index, int16_t value);
-enum yt_projectile_plasma_argument_change {
-	YT_PROJECTILE_PLASMA_SAME_ORIGIN_ZERO,
-	YT_PROJECTILE_PLASMA_BLACK_HOLE_ORIGIN,
-	YT_PROJECTILE_PLASMA_BLACK_HOLE_DESTINATION,
-};
-typedef void (*yt_projectile_plasma_arguments_fn)(void *context,
-    float origin, float destination,
-    enum yt_projectile_plasma_argument_change change);
-struct yt_projectile_plasma_route_ops {
-	yt_projectile_plasma_route_build_fn build_route;
-	yt_projectile_plasma_route_output_fn line;
-	yt_projectile_plasma_route_output_fn attention;
-	yt_projectile_wait_fn wait;
-	yt_projectile_plasma_route_random_fn random;
-	yt_projectile_plasma_route_impact_fn impact;
-	yt_projectile_plasma_route_output_fn footer;
-	yt_projectile_plasma_route_read_fn read_route;
-	yt_projectile_plasma_route_write_fn write_route;
-	yt_projectile_plasma_arguments_fn arguments_changed;
-};
-struct yt_projectile_plasma_route_state {
-	float *origin;
-	float *destination;
-	double *energy;
-	float hop_loss;
-	float black_hole[2];
-	float sector_record_offset;
-	float port_record_offset;
-	int16_t *route;
-	size_t route_capacity;
-	size_t step_limit;
-	float route_status;
-	float current_hop;
-	size_t route_calls;
-	size_t hops;
-};
-bool yt_projectile_plasma_route_run(
-    struct yt_projectile_plasma_route_state *state,
-    const struct yt_projectile_plasma_route_ops *ops, void *context,
-    struct yt_error *error);
 
 typedef bool (*yt_projectile_output_fn)(void *context,
     const uint8_t *text, size_t length, struct yt_error *error);
