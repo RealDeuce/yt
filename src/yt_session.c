@@ -3949,84 +3949,90 @@ hostile_attack_persistence_run(struct yt_session *session,
 	return true;
 }
 
-struct hostile_attack_tail_context {
-	struct yt_session *session;
-	const char *cached_player_name;
-};
-
 static bool
-hostile_attack_tail_read_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
+hostile_attack_tail_run(struct yt_session *session,
+    struct yt_hostile_attack_tail_state *state,
+    const char *cached_player_name, struct yt_error *error)
 {
-	struct hostile_attack_tail_context *tail = context;
+	uint8_t display[240];
+	uint8_t news[300];
+	uint8_t defeated[160];
+	size_t display_length;
+	size_t news_length;
+	size_t defeated_length;
 
-	if (!session_read_combat_player(tail->session, player_record, player,
-	    error))
+	state->bonus = 0.0f;
+	state->player_read = false;
+	state->player_written = false;
+	state->reward_presented = false;
+	state->reward_news_written = false;
+	state->clearance_called = false;
+	state->draw_consumed = false;
+	state->defeated_presented = false;
+	state->victory_called = false;
+	state->complete = false;
+	if (state->old_owner == -1.0f && state->defender_loss > 0.0) {
+		if (!session_read_combat_player(session,
+		    state->current_player_record, &state->current, error))
+			return false;
+		(void)snprintf(session->player.name,
+		    sizeof(session->player.name), "%s", cached_player_name);
+		(void)snprintf(state->current.name,
+		    sizeof(state->current.name), "%s", cached_player_name);
+		state->player_read = true;
+		state->ship_fighters = (double)state->current.fighters;
+		state->bonus = yt_xannor_attack_bonus(state->defender_loss,
+		    state->current.turns, state->turns_per_day);
+		if (state->bonus >= 1.0f) {
+			state->current.turns = single_add(state->current.turns,
+			    state->bonus);
+			(void)yt_record_set_number(&state->current.record, YT_F49,
+			    state->current.turns);
+			if (!session_write_combat_player(session,
+			    state->current_player_record, &state->current, error))
+				return false;
+			state->player_written = true;
+			if (!yt_xannor_attack_reward_rows(
+			    state->cached_player_name,
+			    state->cached_player_name_length, state->bonus,
+			    state->defender_loss, display, sizeof(display),
+			    &display_length, news, sizeof(news), &news_length))
+				return false;
+			yt_present_set_bold(&session->presentation, 1.0f);
+			if (!session_present_paged_fragment(session, display,
+			    display_length))
+				return false;
+			state->reward_presented = true;
+			if (!session_append_news_bytes(session, news, news_length,
+			    error))
+				return false;
+			state->reward_news_written = true;
+			if (state->deployed_fighters < 1.0) {
+				if (!clearance(session, true, error))
+					return false;
+				state->clearance_called = true;
+			}
+		}
+	}
+	if (!random_value(session, &state->dominated_draw, error))
 		return false;
-	(void)snprintf(tail->session->player.name,
-	    sizeof(tail->session->player.name), "%s", tail->cached_player_name);
-	(void)snprintf(player->name, sizeof(player->name), "%s",
-	    tail->cached_player_name);
+	state->draw_consumed = true;
+	if (state->deployed_fighters <= 0.0) {
+		if (!yt_hostile_defeated_row(state->ship_fighters, defeated,
+		    sizeof(defeated), &defeated_length)
+		    || !session_present_paged_fragment(session, defeated,
+		    defeated_length))
+			return false;
+		state->defeated_presented = true;
+		if (state->old_owner == -1.0f
+		    && state->current.sector == state->headquarters) {
+			if (!yt_session_xannor_victory(session, error))
+				return false;
+			state->victory_called = true;
+		}
+	}
+	state->complete = true;
 	return true;
-}
-
-static bool
-hostile_attack_tail_write_player(void *context, int player_record,
-    const struct yt_player *player, struct yt_error *error)
-{
-	struct hostile_attack_tail_context *tail = context;
-
-	return session_write_combat_player(tail->session, player_record, player,
-	    error);
-}
-
-static bool
-hostile_attack_tail_present(void *context, const uint8_t *text, size_t length,
-    enum yt_hostile_attack_tail_output_kind kind, struct yt_error *error)
-{
-	struct hostile_attack_tail_context *tail = context;
-	struct yt_session *session = tail->session;
-
-	if (kind == YT_HOSTILE_ATTACK_TAIL_REWARD_ROW)
-		yt_present_set_bold(&session->presentation, 1.0f);
-	else if (kind != YT_HOSTILE_ATTACK_TAIL_DEFEATED_ROW)
-		return false;
-	(void)error;
-	return session_present_paged_fragment(session, text, length);
-}
-
-static bool
-hostile_attack_tail_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	struct hostile_attack_tail_context *tail = context;
-
-	return session_append_news_bytes(tail->session, text, length, error);
-}
-
-static bool
-hostile_attack_tail_clearance(void *context, struct yt_error *error)
-{
-	struct hostile_attack_tail_context *tail = context;
-
-	return clearance(tail->session, true, error);
-}
-
-static bool
-hostile_attack_tail_random(void *context, float *value,
-    struct yt_error *error)
-{
-	struct hostile_attack_tail_context *tail = context;
-
-	return random_value(tail->session, value, error);
-}
-
-static bool
-hostile_attack_tail_victory(void *context, struct yt_error *error)
-{
-	struct hostile_attack_tail_context *tail = context;
-
-	return yt_session_xannor_victory(tail->session, error);
 }
 
 struct hostile_attack_combat_context {
@@ -4191,22 +4197,10 @@ static bool
 hostile_attack_combat_tail(void *context,
     struct yt_hostile_attack_tail_state *state, struct yt_error *error)
 {
-	static const struct yt_hostile_attack_tail_ops ops = {
-		hostile_attack_tail_read_player,
-		hostile_attack_tail_write_player,
-		hostile_attack_tail_present,
-		hostile_attack_tail_news,
-		hostile_attack_tail_clearance,
-		hostile_attack_tail_random,
-		hostile_attack_tail_victory,
-	};
 	struct hostile_attack_combat_context *combat = context;
-	struct hostile_attack_tail_context tail = {
-		combat->session,
-		combat->cached_player_name,
-	};
 
-	return yt_hostile_attack_tail_run(state, &ops, &tail, error);
+	return hostile_attack_tail_run(combat->session, state,
+	    combat->cached_player_name, error);
 }
 
 bool

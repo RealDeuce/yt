@@ -23352,7 +23352,7 @@ direct_warp_attack_tail_write_player(void *context, int player_record,
 static bool
 direct_warp_attack_tail_present(void *context,
     const uint8_t *text, size_t length,
-    enum yt_hostile_attack_tail_output_kind kind, struct yt_error *error)
+    enum test_hostile_attack_tail_output_kind kind, struct yt_error *error)
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
@@ -23496,7 +23496,7 @@ direct_warp_attack_tail_victory(void *context, struct yt_error *error)
 	return false;
 }
 
-static const struct yt_hostile_attack_tail_ops direct_warp_attack_tail_ops = {
+static const struct test_hostile_attack_tail_ops direct_warp_attack_tail_ops = {
 	direct_warp_attack_tail_read_player,
 	direct_warp_attack_tail_write_player,
 	direct_warp_attack_tail_present,
@@ -23510,7 +23510,7 @@ static bool
 direct_warp_attack_combat_tail(void *context,
     struct yt_hostile_attack_tail_state *state, struct yt_error *error)
 {
-	return yt_hostile_attack_tail_run(state, &direct_warp_attack_tail_ops,
+	return test_hostile_attack_tail_run(state, &direct_warp_attack_tail_ops,
 	    context, error);
 }
 
@@ -29793,7 +29793,7 @@ test_xannor_attack_tail_clearance_join(void)
 			.current = join.attack_player,
 		};
 		yt_error_clear(&error);
-		CHECK(yt_hostile_attack_tail_run(&tail,
+		CHECK(test_hostile_attack_tail_run(&tail,
 		    &direct_warp_attack_tail_ops, &join, &error));
 		CHECK(viewer.join.remote_length == expected[pass].length
 		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)

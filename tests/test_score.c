@@ -10220,7 +10220,7 @@ hostile_tail_write(void *context, int player_record,
 
 static bool
 hostile_tail_present(void *context, const uint8_t *text, size_t length,
-    enum yt_hostile_attack_tail_output_kind kind, struct yt_error *error)
+    enum test_hostile_attack_tail_output_kind kind, struct yt_error *error)
 {
 	static const enum hostile_tail_event events[] = {
 		HOSTILE_TAIL_REWARD,
@@ -10276,7 +10276,7 @@ hostile_tail_victory(void *context, struct yt_error *error)
 	return hostile_tail_event(context, HOSTILE_TAIL_VICTORY, error);
 }
 
-static const struct yt_hostile_attack_tail_ops hostile_tail_ops = {
+static const struct test_hostile_attack_tail_ops hostile_tail_ops = {
 	hostile_tail_read,
 	hostile_tail_write,
 	hostile_tail_present,
@@ -10347,7 +10347,7 @@ check_hostile_attack_tail_transaction(void)
 	hostile_tail_fixture(&tape, &state);
 	expected_player = tape.player.record;
 	(void)yt_record_set_number(&expected_player, YT_F49, 100.0f);
-	if (!yt_hostile_attack_tail_run(&state, &hostile_tail_ops, &tape, NULL)
+	if (!test_hostile_attack_tail_run(&state, &hostile_tail_ops, &tape, NULL)
 	    || !state.complete || !state.player_read || !state.player_written
 	    || !state.reward_presented || !state.reward_news_written
 	    || !state.clearance_called || !state.draw_consumed
@@ -10374,7 +10374,7 @@ check_hostile_attack_tail_transaction(void)
 		hostile_tail_fixture(&tape, &state);
 		tape.fail_at = failure;
 		yt_error_clear(&error);
-		if (yt_hostile_attack_tail_run(&state, &hostile_tail_ops,
+		if (test_hostile_attack_tail_run(&state, &hostile_tail_ops,
 		    &tape, &error) || error.status != YT_IO_ERROR
 		    || state.complete || tape.calls != failure + 1U
 		    || memcmp(tape.events, expected_events,
@@ -10384,7 +10384,7 @@ check_hostile_attack_tail_transaction(void)
 
 	hostile_tail_fixture(&tape, &state);
 	state.deployed_fighters = 1.0;
-	if (!yt_hostile_attack_tail_run(&state, &hostile_tail_ops, &tape, NULL)
+	if (!test_hostile_attack_tail_run(&state, &hostile_tail_ops, &tape, NULL)
 	    || tape.calls != 5U || state.clearance_called
 	    || state.defeated_presented || state.victory_called
 	    || tape.events[4] != HOSTILE_TAIL_RANDOM)
@@ -10392,7 +10392,7 @@ check_hostile_attack_tail_transaction(void)
 
 	hostile_tail_fixture(&tape, &state);
 	state.defender_loss = 255999.0;
-	if (!yt_hostile_attack_tail_run(&state, &hostile_tail_ops, &tape, NULL)
+	if (!test_hostile_attack_tail_run(&state, &hostile_tail_ops, &tape, NULL)
 	    || tape.calls != 4U || state.bonus != 0.0f
 	    || state.player_written || state.reward_presented
 	    || tape.events[0] != HOSTILE_TAIL_PLAYER_READ
@@ -10404,14 +10404,14 @@ check_hostile_attack_tail_transaction(void)
 	hostile_tail_fixture(&tape, &state);
 	state.old_owner = -2.0f;
 	state.deployed_fighters = 1.0;
-	if (!yt_hostile_attack_tail_run(&state, &hostile_tail_ops, &tape, NULL)
+	if (!test_hostile_attack_tail_run(&state, &hostile_tail_ops, &tape, NULL)
 	    || tape.calls != 1U || tape.events[0] != HOSTILE_TAIL_RANDOM
 	    || state.player_read || state.defeated_presented)
 		return false;
 
 	hostile_tail_fixture(&tape, &state);
-	return !yt_hostile_attack_tail_run(NULL, &hostile_tail_ops, &tape, NULL)
-	    && !yt_hostile_attack_tail_run(&state, NULL, &tape, NULL);
+	return !test_hostile_attack_tail_run(NULL, &hostile_tail_ops, &tape, NULL)
+	    && !test_hostile_attack_tail_run(&state, NULL, &tape, NULL);
 }
 
 enum hostile_combat_event {
@@ -10685,7 +10685,7 @@ hostile_combat_tail(void *context,
 		return false;
 	tape->tail_input = *state;
 	if (tape->real_children)
-		return yt_hostile_attack_tail_run(state, &hostile_tail_ops,
+		return test_hostile_attack_tail_run(state, &hostile_tail_ops,
 		    &tape->tail_tape, error);
 	state->complete = !tape->tail_fail_after;
 	if (tape->tail_fail_after)

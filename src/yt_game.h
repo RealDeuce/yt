@@ -1011,19 +1011,6 @@ struct yt_hostile_attack_persistence_state {
 	bool complete;
 };
 
-typedef bool (*yt_hostile_attack_persistence_read_player_fn)(void *context,
-    int player_record, struct yt_player *player, struct yt_error *error);
-typedef bool (*yt_hostile_attack_persistence_write_player_fn)(void *context,
-    int player_record, const struct yt_player *player,
-    struct yt_error *error);
-typedef bool (*yt_hostile_attack_persistence_news_fn)(void *context,
-    const uint8_t *text, size_t length, struct yt_error *error);
-
-enum yt_hostile_attack_tail_output_kind {
-	YT_HOSTILE_ATTACK_TAIL_REWARD_ROW,
-	YT_HOSTILE_ATTACK_TAIL_DEFEATED_ROW,
-};
-
 struct yt_hostile_attack_tail_state {
 	int current_player_record;
 	float old_owner;
@@ -1047,30 +1034,6 @@ struct yt_hostile_attack_tail_state {
 	bool victory_called;
 	bool complete;
 };
-
-typedef bool (*yt_hostile_attack_tail_present_fn)(void *context,
-    const uint8_t *text, size_t length,
-    enum yt_hostile_attack_tail_output_kind kind, struct yt_error *error);
-typedef bool (*yt_hostile_attack_tail_clearance_fn)(void *context,
-    struct yt_error *error);
-typedef bool (*yt_hostile_attack_tail_random_fn)(void *context, float *value,
-    struct yt_error *error);
-typedef bool (*yt_hostile_attack_tail_victory_fn)(void *context,
-    struct yt_error *error);
-
-struct yt_hostile_attack_tail_ops {
-	yt_hostile_attack_persistence_read_player_fn read_player;
-	yt_hostile_attack_persistence_write_player_fn write_player;
-	yt_hostile_attack_tail_present_fn present;
-	yt_hostile_attack_persistence_news_fn append_news;
-	yt_hostile_attack_tail_clearance_fn clearance;
-	yt_hostile_attack_tail_random_fn random;
-	yt_hostile_attack_tail_victory_fn victory;
-};
-
-bool yt_hostile_attack_tail_run(struct yt_hostile_attack_tail_state *state,
-    const struct yt_hostile_attack_tail_ops *ops, void *context,
-    struct yt_error *error);
 
 enum yt_hostile_attack_combat_route {
 	YT_HOSTILE_ATTACK_COMBAT_NORMAL,
