@@ -108,10 +108,17 @@ bool yt_session_command_move(struct yt_session *session, bool *moved,
     struct yt_error *error);
 uint32_t session_planet_basic_record(const struct yt_session *session,
     float logical_planet);
+uint32_t session_sector_basic_record(const struct yt_session *session,
+    float logical_sector);
 bool session_read_sector(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, struct yt_error *error);
 bool session_write_sector(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, struct yt_error *error);
+bool session_read_planet(struct yt_session *session, int logical_planet,
+    struct yt_planet *planet, struct yt_error *error);
+bool session_write_player(struct yt_session *session, struct yt_error *error);
+bool session_append_news(struct yt_session *session, const char *text,
+    struct yt_error *error);
 void session_set_foreground(struct yt_session *session, float value);
 void session_set_color(struct yt_session *session, int logical);
 bool session_present_text(struct yt_session *session, const uint8_t *text,
@@ -136,6 +143,7 @@ bool session_append_news_bytes(void *context, const uint8_t *text,
     size_t length, struct yt_error *error);
 void session_set_pager_line_count_raw(struct yt_session *session,
     const uint8_t raw[4]);
+void session_set_pager_line_count(struct yt_session *session, float value);
 void session_compat_upper_n(struct yt_session *session, uint8_t *text,
     size_t length);
 bool session_read_command(struct yt_session *session, char *text,
@@ -289,6 +297,8 @@ bool yt_session_computer_owned_planets(struct yt_session *session,
 bool yt_session_computer_nearest_ports(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_computer_profit(struct yt_session *session, bool global,
+    struct yt_error *error);
+bool yt_session_command_team(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_computer_check_port_visibility(struct yt_session *session,
     const struct yt_sector *sector, float cached_team, bool *unavailable,

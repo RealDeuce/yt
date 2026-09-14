@@ -122,6 +122,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_registration.c
     src/yt_session_salvage.c
     src/yt_session_spies.c
+    src/yt_session_team.c
     src/yt_session_xannor.c)
 
 add_library(yt_runtime STATIC ${YT_RUNTIME_SOURCES})
@@ -241,6 +242,7 @@ if(BUILD_TESTING)
     yt_add_test(test_session_profit tests/test_session_profit.c yt_runtime)
     yt_add_test(test_session_projectile tests/test_session_projectile.c
         yt_runtime)
+    yt_add_test(test_session_team tests/test_session_team.c yt_runtime)
     foreach(session_test
         test_session_credit
         test_session_attack
@@ -251,7 +253,8 @@ if(BUILD_TESTING)
         test_session_planets
         test_session_ports
         test_session_profit
-        test_session_projectile)
+        test_session_projectile
+        test_session_team)
         target_sources(${session_test} PRIVATE tests/session_test_runtime.c)
     endforeach()
     yt_add_test(test_planet_updater tests/test_planet_updater.c yt_game)
