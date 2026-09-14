@@ -10591,7 +10591,7 @@ hostile_combat_surrender(void *context,
 
 static bool
 hostile_combat_present(void *context, const uint8_t *text, size_t length,
-    enum yt_hostile_attack_combat_output_kind kind,
+    enum test_hostile_attack_combat_output_kind kind,
     struct yt_error *error)
 {
 	static const enum hostile_combat_event events[] = {
@@ -10693,7 +10693,7 @@ hostile_combat_tail(void *context,
 	return true;
 }
 
-static const struct yt_hostile_attack_combat_ops hostile_combat_ops = {
+static const struct test_hostile_attack_combat_ops hostile_combat_ops = {
 	hostile_combat_read_sector,
 	hostile_combat_read_player,
 	hostile_combat_sound,
@@ -10710,7 +10710,7 @@ static const struct yt_hostile_attack_combat_ops hostile_combat_ops = {
 
 static void
 hostile_combat_fixture(struct hostile_combat_tape *tape,
-    struct yt_hostile_attack_combat_state *state)
+    struct test_hostile_attack_combat_state *state)
 {
 	static const uint8_t cached_name[] = {'A', 0, 'B'};
 	static const uint8_t owner_label[] = {'X', 0, 'Y'};
@@ -10739,7 +10739,7 @@ hostile_combat_fixture(struct hostile_combat_tape *tape,
 	    sizeof(tape->opened_sector.record.bytes));
 	tape->opened_sector.fighter_owner = 3.0f;
 	(void)yt_record_set_number(&tape->opened_sector.record, YT_F85, 3.0f);
-	*state = (struct yt_hostile_attack_combat_state){
+	*state = (struct test_hostile_attack_combat_state){
 		.current_player_record = 2,
 		.current_sector = 733,
 		.commitment = 3.0,
@@ -10792,14 +10792,14 @@ check_hostile_attack_combat_transaction(void)
 	    " You destroyed 2 enemy fighters.";
 	static const uint8_t selector_two[4] = {0, 0, 0, 0x82U};
 	struct hostile_combat_tape tape;
-	struct yt_hostile_attack_combat_state state;
+	struct test_hostile_attack_combat_state state;
 	struct yt_record joined_player;
 	struct yt_record joined_sector;
 	struct yt_error error;
 	size_t failure;
 
 	hostile_combat_fixture(&tape, &state);
-	if (!yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	if (!test_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, NULL) || !state.complete
 	    || state.route != YT_HOSTILE_ATTACK_COMBAT_NORMAL
 	    || state.attacker_loss != 1.0 || state.defender_loss != 2.0
@@ -10835,7 +10835,7 @@ check_hostile_attack_combat_transaction(void)
 		hostile_combat_fixture(&tape, &state);
 		tape.fail_at = failure;
 		yt_error_clear(&error);
-		if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+		if (test_hostile_attack_combat_run(&state, &hostile_combat_ops,
 		    &tape, &error) || error.status != YT_IO_ERROR
 		    || state.complete || tape.calls != failure + 1U
 		    || memcmp(tape.events, ordinary_events,
@@ -10852,7 +10852,7 @@ check_hostile_attack_combat_transaction(void)
 	state.sector.fighters = 0.5f;
 	tape.draws[0] = 1.0f;
 	tape.draw_count = 1U;
-	if (!yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	if (!test_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, NULL) || state.defender_loss != 0.5)
 		return false;
 
@@ -10862,7 +10862,7 @@ check_hostile_attack_combat_transaction(void)
 	state.sector.fighters = 2.0f;
 	tape.fail_at = 0U;
 	yt_error_clear(&error);
-	if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	if (test_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, &error) || state.old_count != 16777215.5
 	    || state.deployed_remaining != 16777215.5)
 		return false;
@@ -10875,7 +10875,7 @@ check_hostile_attack_combat_transaction(void)
 	state.commitment = 120.0;
 	state.cached_defenders = 10.0;
 	state.sector.fighters = 10.0f;
-	if (!yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	if (!test_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, NULL) || !state.surrendered || !state.surrender_checked
 	    || state.iterations != 0U || tape.draw_index != 0U
 	    || state.quantum != 1.0f || state.attacker_loss != 0.0
@@ -10907,7 +10907,7 @@ check_hostile_attack_combat_transaction(void)
 	state.commitment = 120.0;
 	state.cached_defenders = 10.0;
 	state.sector.fighters = 10.0f;
-	if (!yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	if (!test_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, NULL) || !state.complete || !state.surrendered
 	    || state.route != YT_HOSTILE_ATTACK_COMBAT_NORMAL
 	    || state.iterations != 0U || tape.draw_index != 0U
@@ -10936,7 +10936,7 @@ check_hostile_attack_combat_transaction(void)
 	state.commitment = 1.0;
 	state.cached_defenders = 2.0;
 	state.sector.fighters = 2.0f;
-	if (!yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	if (!test_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, NULL) || !state.complete
 	    || state.route != YT_HOSTILE_ATTACK_COMBAT_FATAL
 	    || !state.spill_called || state.current.shields != 0.0f
@@ -10954,7 +10954,7 @@ check_hostile_attack_combat_transaction(void)
 	state.cached_defenders = 10.0;
 	state.sector.fighters = 10.0f;
 	yt_error_clear(&error);
-	if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	if (test_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, &error) || error.status != YT_IO_ERROR
 	    || !state.surrender_checked || !state.surrendered
 	    || state.complete || tape.player_cache_calls != 1U)
@@ -10969,7 +10969,7 @@ check_hostile_attack_combat_transaction(void)
 	state.cached_defenders = 2.0;
 	state.sector.fighters = 2.0f;
 	yt_error_clear(&error);
-	if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	if (test_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, &error) || error.status != YT_IO_ERROR
 	    || state.complete || state.current.shields != 0.0f
 	    || state.deployed_remaining != 1.0)
@@ -10978,7 +10978,7 @@ check_hostile_attack_combat_transaction(void)
 	hostile_combat_fixture(&tape, &state);
 	tape.persistence_fail_after = true;
 	yt_error_clear(&error);
-	if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	if (test_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, &error) || error.status != YT_IO_ERROR || state.complete
 	    || !state.persistence.player_written
 	    || !state.persistence.sector_written
@@ -10989,16 +10989,16 @@ check_hostile_attack_combat_transaction(void)
 	hostile_combat_fixture(&tape, &state);
 	tape.tail_fail_after = true;
 	yt_error_clear(&error);
-	if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	if (test_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, &error) || error.status != YT_IO_ERROR || state.complete
 	    || state.tail.complete
 	    || tape.events[tape.calls - 1U] != HOSTILE_COMBAT_TAIL)
 		return false;
 
 	hostile_combat_fixture(&tape, &state);
-	return !yt_hostile_attack_combat_run(NULL, &hostile_combat_ops,
+	return !test_hostile_attack_combat_run(NULL, &hostile_combat_ops,
 	    &tape, NULL)
-	    && !yt_hostile_attack_combat_run(&state, NULL, &tape, NULL);
+	    && !test_hostile_attack_combat_run(&state, NULL, &tape, NULL);
 }
 
 enum hostile_bribe_accept_event {

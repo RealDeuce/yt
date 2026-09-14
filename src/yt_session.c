@@ -4035,233 +4035,254 @@ hostile_attack_tail_run(struct yt_session *session,
 	return true;
 }
 
-struct hostile_attack_combat_context {
-	struct yt_session *session;
-	struct yt_sector *sector;
-	const char *cached_player_name;
-};
-
-static bool
-hostile_attack_combat_read_sector(void *context, int sector_number,
-    struct yt_sector *sector, struct yt_error *error)
-{
-	struct hostile_attack_combat_context *combat = context;
-
-	return session_read_sector(combat->session, sector_number,
-	    sector, error);
-}
-
-static bool
-hostile_attack_combat_read_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct hostile_attack_combat_context *combat = context;
-
-	if (!session_read_combat_player(combat->session, player_record, player,
-	    error))
-		return false;
-	(void)snprintf(combat->session->player.name,
-	    sizeof(combat->session->player.name), "%s",
-	    combat->cached_player_name);
-	(void)snprintf(player->name, sizeof(player->name), "%s",
-	    combat->cached_player_name);
-	player->fighters = (float)combat->session->combat_ship_fighters;
-	player->cloak = combat->session->player.cloak;
-	player->shields = combat->session->combat_ship_shields;
-	return true;
-}
-
-static bool
-hostile_attack_combat_sound(void *context, float selector,
-    struct yt_error *error)
-{
-	struct hostile_attack_combat_context *combat = context;
-
-	return session_sound(combat->session, selector,
-	    "deployed attack opening sound", error);
-}
-
-static bool
-hostile_attack_combat_random(void *context, float *value,
-    struct yt_error *error)
-{
-	struct hostile_attack_combat_context *combat = context;
-
-	return random_value(combat->session, value, error);
-}
-
-static void
-hostile_attack_combat_store_ship(void *context, double ship_fighters)
-{
-	struct hostile_attack_combat_context *combat = context;
-
-	combat->session->combat_ship_fighters = ship_fighters;
-}
-
-static bool
-hostile_attack_combat_surrender(void *context,
-    struct yt_hostile_surrender_state *state, struct yt_error *error)
-{
-	struct hostile_attack_combat_context *combat = context;
-	bool result = hostile_surrender_run(combat->session, state, error);
-
-	combat->session->player = state->current;
-	(void)snprintf(combat->session->player.name,
-	    sizeof(combat->session->player.name), "%s",
-	    combat->cached_player_name);
-	return result;
-}
-
-static bool
-hostile_attack_combat_present(void *context, const uint8_t *text,
-    size_t length, enum yt_hostile_attack_combat_output_kind kind,
-    struct yt_error *error)
-{
-	struct hostile_attack_combat_context *combat = context;
-	struct yt_session *session = combat->session;
-
-	switch (kind) {
-	case YT_HOSTILE_ATTACK_COMBAT_RESULT_BLANK:
-		return session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "deployed attack result blank", error);
-	case YT_HOSTILE_ATTACK_COMBAT_LOSS_ROW:
-		return session_present_paged_fragment(session, text, length);
-	case YT_HOSTILE_ATTACK_COMBAT_DESTROYED_ROW:
-		return session_present_paged_fragment(session, text, length);
-	case YT_HOSTILE_ATTACK_COMBAT_EXPOSED_ROW:
-		return session_present_alert(session, text, length,
-		    "deployed attack ship exposed", error);
-	case YT_HOSTILE_ATTACK_COMBAT_SPILL_BLANK:
-		return session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "shield spill leading blank", error);
-	default:
-		return false;
-	}
-}
-
-static void
-hostile_attack_combat_cache_player(void *context,
-    const struct yt_player *player)
-{
-	struct hostile_attack_combat_context *combat = context;
-
-	combat->session->player = *player;
-	(void)snprintf(combat->session->player.name,
-	    sizeof(combat->session->player.name), "%s",
-	    combat->cached_player_name);
-}
-
-static void
-hostile_attack_combat_cache_sector(void *context,
-    const struct yt_sector *sector, double deployed_fighters)
-{
-	struct hostile_attack_combat_context *combat = context;
-
-	*combat->sector = *sector;
-	combat->session->hostile_deployed_fighters = deployed_fighters;
-}
-
-static bool
-hostile_attack_combat_spill(void *context, double *fighters,
-    float *shields, struct yt_error *error)
-{
-	struct hostile_attack_combat_context *combat = context;
-
-	return yt_session_fighter_shield_spill(combat->session, fighters,
-	    shields, true, error);
-}
-
-static bool
-hostile_attack_combat_persistence(void *context,
-    struct yt_hostile_attack_persistence_state *state,
-    struct yt_error *error)
-{
-	struct hostile_attack_combat_context *combat = context;
-	bool result = hostile_attack_persistence_run(combat->session, state,
-	    error);
-
-	if (state->route != YT_HOSTILE_ATTACK_PERSISTENCE_FATAL) {
-		combat->session->player = state->current;
-		(void)snprintf(combat->session->player.name,
-		    sizeof(combat->session->player.name), "%s",
-		    combat->cached_player_name);
-	}
-	if (state->sector_written)
-		*combat->sector = state->sector;
-	if (state->mercenaries_hurt)
-		combat->session->mercenaries_hurt = true;
-	return result;
-}
-
-static bool
-hostile_attack_combat_tail(void *context,
-    struct yt_hostile_attack_tail_state *state, struct yt_error *error)
-{
-	struct hostile_attack_combat_context *combat = context;
-
-	return hostile_attack_tail_run(combat->session, state,
-	    combat->cached_player_name, error);
-}
-
 bool
 yt_session_attack_deployed(struct yt_session *session,
     struct yt_sector *sector, double commitment, bool allow_surrender,
     struct yt_error *error)
 {
-	static const struct yt_hostile_attack_combat_ops ops = {
-		hostile_attack_combat_read_sector,
-		hostile_attack_combat_read_player,
-		hostile_attack_combat_sound,
-		hostile_attack_combat_random,
-		hostile_attack_combat_store_ship,
-		hostile_attack_combat_surrender,
-		hostile_attack_combat_present,
-		hostile_attack_combat_cache_player,
-		hostile_attack_combat_cache_sector,
-		hostile_attack_combat_spill,
-		hostile_attack_combat_persistence,
-		hostile_attack_combat_tail,
-	};
+	static const uint8_t lost_prefix[] = " You lost";
+	static const uint8_t lost_suffix[] = " fighter(s)";
+	static const uint8_t destroyed_prefix[] = " You destroyed";
+	static const uint8_t destroyed_suffix[] = " enemy fighters.";
+	static const uint8_t exposed[] =
+	    "Fighters gone! Enemy attacking your ship!";
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
-	size_t cached_player_name_length;
+	uint8_t lost_row[128];
+	uint8_t destroyed_row[128];
 	char cached_player_name_text[sizeof(session->player.name)];
-	struct hostile_attack_combat_context context;
-	struct yt_hostile_attack_combat_state state;
-	bool result;
+	char attacker_number[64];
+	char defender_number[64];
+	struct yt_sector opened_sector;
+	struct yt_player current;
+	struct yt_hostile_surrender_state surrender;
+	struct yt_hostile_attack_persistence_state persistence;
+	struct yt_hostile_attack_tail_state tail;
+	size_t cached_player_name_length;
+	size_t lost_length = 0U;
+	size_t destroyed_length = 0U;
+	double old_count = session_hostile_deployed_fighters(session);
+	double old_ship;
+	double attacker_loss = 0.0;
+	double defender_loss = 0.0;
+	double ship_fighters;
+	double deployed_remaining = old_count;
+	float old_owner;
+	float quantum;
+	float last_draw;
+	int current_player_record = session_record(session);
+	int current_sector = (int)session->player.sector;
+	int attacker_length;
+	int defender_length;
+	bool surrender_checked = false;
+	bool surrendered = false;
+	bool child_result;
 
 	if (!yt_player_stored_name(&session->player, cached_player_name,
 	    &cached_player_name_length, error))
 		return false;
 	(void)snprintf(cached_player_name_text,
 	    sizeof(cached_player_name_text), "%s", session->player.name);
-	context = (struct hostile_attack_combat_context){
-		session,
-		sector,
-		cached_player_name_text,
-	};
-	state = (struct yt_hostile_attack_combat_state){
-		.current_player_record = session_record(session),
-		.current_sector = (int)session->player.sector,
-		.commitment = commitment,
-		.allow_surrender = allow_surrender,
-		.cached_defenders = session_hostile_deployed_fighters(session),
-		.sector = *sector,
+	if (!session_read_sector(session, current_sector, &opened_sector, error))
+		return false;
+	old_owner = qb_mbf32_decode(&opened_sector.record.bytes[YT_F85]);
+	if (!session_read_combat_player(session, current_player_record,
+	    &current, error))
+		return false;
+	(void)snprintf(session->player.name, sizeof(session->player.name),
+	    "%s", cached_player_name_text);
+	(void)snprintf(current.name, sizeof(current.name), "%s",
+	    cached_player_name_text);
+	current.fighters = (float)session->combat_ship_fighters;
+	current.cloak = session->player.cloak;
+	current.shields = session->combat_ship_shields;
+	old_ship = (double)current.fighters;
+	if (!session_sound(session, 2.0f, "deployed attack opening sound",
+	    error))
+		return false;
+
+	do {
+		double remaining_attacker = double_sub(commitment, attacker_loss);
+		double remaining_defender = double_sub(old_count, defender_loss);
+		volatile double ratio;
+
+		quantum = yt_hostile_attack_quantum(remaining_attacker,
+		    remaining_defender);
+		if (remaining_defender == 0.0) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "attack:surrender-ratio-divide");
+			}
+			return false;
+		}
+		ratio = remaining_attacker / remaining_defender;
+		if (!surrender_checked && allow_surrender && ratio > 10.0) {
+			surrender = (struct yt_hostile_surrender_state){
+				.current_player_record = current_player_record,
+				.old_owner = old_owner,
+				.attacker_loss = attacker_loss,
+				.defender_loss = defender_loss,
+				.deployed_fighters = old_count,
+				.cached_player_name = cached_player_name,
+				.cached_player_name_length =
+				    cached_player_name_length,
+				.real_first_name =
+				    (const uint8_t *)session->door->identity.real_first,
+				.real_first_name_length =
+				    strlen(session->door->identity.real_first),
+				.current = current,
+			};
+			child_result = hostile_surrender_run(session, &surrender,
+			    error);
+			session->player = surrender.current;
+			(void)snprintf(session->player.name,
+			    sizeof(session->player.name), "%s",
+			    cached_player_name_text);
+			current = surrender.current;
+			old_ship = surrender.ship_fighters;
+			surrender_checked = surrender.checked;
+			surrendered = surrender.accepted;
+			session->player = current;
+			(void)snprintf(session->player.name,
+			    sizeof(session->player.name), "%s",
+			    cached_player_name_text);
+			if (!child_result)
+				return false;
+			if (surrendered) {
+				ship_fighters = surrender.ship_fighters;
+				deployed_remaining = surrender.deployed_remaining;
+				sector->fighter_owner = surrender.fighter_owner;
+				current.fighters = (float)ship_fighters;
+				session->player = current;
+				(void)snprintf(session->player.name,
+				    sizeof(session->player.name), "%s",
+				    cached_player_name_text);
+				session->hostile_deployed_fighters =
+				    deployed_remaining;
+				break;
+			}
+		}
+		if (!random_value(session, &last_draw, error))
+			return false;
+		if (yt_hostile_attack_loses_attacker(current.cloak, last_draw))
+			attacker_loss = double_add(attacker_loss, (double)quantum);
+		else
+			defender_loss = double_add(defender_loss, (double)quantum);
+	} while (attacker_loss < commitment && defender_loss < old_count);
+	if (attacker_loss > commitment)
+		attacker_loss = commitment;
+	if (defender_loss > old_count)
+		defender_loss = old_count;
+	if (!surrendered) {
+		ship_fighters = double_sub(old_ship, attacker_loss);
+		deployed_remaining = double_sub(old_count, defender_loss);
+		current.fighters = (float)ship_fighters;
+		session->combat_ship_fighters = ship_fighters;
+		session->player = current;
+		(void)snprintf(session->player.name,
+		    sizeof(session->player.name), "%s",
+		    cached_player_name_text);
+	}
+	attacker_length = qb_str_double(attacker_number,
+	    sizeof(attacker_number), attacker_loss);
+	defender_length = qb_str_double(defender_number,
+	    sizeof(defender_number), defender_loss);
+	if (attacker_length < 0 || defender_length < 0
+	    || !hostile_surrender_append(lost_row, sizeof(lost_row),
+	    &lost_length, lost_prefix, sizeof(lost_prefix) - 1U)
+	    || !hostile_surrender_append(lost_row, sizeof(lost_row),
+	    &lost_length, (const uint8_t *)attacker_number,
+	    (size_t)attacker_length)
+	    || !hostile_surrender_append(lost_row, sizeof(lost_row),
+	    &lost_length, lost_suffix, sizeof(lost_suffix) - 1U)
+	    || !hostile_surrender_append(destroyed_row,
+	    sizeof(destroyed_row), &destroyed_length, destroyed_prefix,
+	    sizeof(destroyed_prefix) - 1U)
+	    || !hostile_surrender_append(destroyed_row,
+	    sizeof(destroyed_row), &destroyed_length,
+	    (const uint8_t *)defender_number, (size_t)defender_length)
+	    || !hostile_surrender_append(destroyed_row,
+	    sizeof(destroyed_row), &destroyed_length, destroyed_suffix,
+	    sizeof(destroyed_suffix) - 1U)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "deployed attack result blank", error)
+	    || !session_present_paged_fragment(session, lost_row, lost_length)
+	    || !session_present_paged_fragment(session, destroyed_row,
+	    destroyed_length))
+		return false;
+	if (ship_fighters < 1.0 && deployed_remaining > 0.0) {
+		if (!session_present_alert(session, exposed, sizeof(exposed) - 1U,
+		    "deployed attack ship exposed", error)
+		    || !session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "shield spill leading blank", error))
+			return false;
+		if (!yt_session_fighter_shield_spill(session,
+		    &deployed_remaining, &current.shields, true, error)) {
+			session->player = current;
+			(void)snprintf(session->player.name,
+			    sizeof(session->player.name), "%s",
+			    cached_player_name_text);
+			return false;
+		}
+		session->player = current;
+		(void)snprintf(session->player.name,
+		    sizeof(session->player.name), "%s",
+		    cached_player_name_text);
+	}
+	sector->fighters = (float)deployed_remaining;
+	session->hostile_deployed_fighters = deployed_remaining;
+	persistence = (struct yt_hostile_attack_persistence_state){
+		.current_player_record = current_player_record,
+		.current_sector = current_sector,
+		.ship_fighters = ship_fighters,
+		.shields = current.shields,
+		.deployed_fighters = deployed_remaining,
+		.defender_loss = defender_loss,
+		.old_owner = old_owner,
 		.cached_player_name = cached_player_name,
 		.cached_player_name_length = cached_player_name_length,
-		.real_first_name =
-		    (const uint8_t *)session->door->identity.real_first,
-		.real_first_name_length =
-		    strlen(session->door->identity.real_first),
 		.owner_label = session->hostile_owner_label,
 		.owner_label_length = session->hostile_owner_label_length,
+		.current = current,
+		.sector = *sector,
+	};
+	child_result = hostile_attack_persistence_run(session, &persistence,
+	    error);
+	current = persistence.current;
+	ship_fighters = persistence.ship_fighters;
+	if (persistence.route != YT_HOSTILE_ATTACK_PERSISTENCE_FATAL) {
+		session->player = persistence.current;
+		(void)snprintf(session->player.name,
+		    sizeof(session->player.name), "%s",
+		    cached_player_name_text);
+	}
+	if (persistence.sector_written) {
+		*sector = persistence.sector;
+		session->hostile_deployed_fighters = deployed_remaining;
+	}
+	if (persistence.mercenaries_hurt)
+		session->mercenaries_hurt = true;
+	if (!child_result)
+		return false;
+	if (persistence.route == YT_HOSTILE_ATTACK_PERSISTENCE_FATAL)
+		return true;
+	tail = (struct yt_hostile_attack_tail_state){
+		.current_player_record = current_player_record,
+		.old_owner = old_owner,
+		.defender_loss = defender_loss,
+		.deployed_fighters = deployed_remaining,
+		.ship_fighters = ship_fighters,
 		.turns_per_day = session->door->game.config.turns_per_day,
 		.headquarters = session->door->game.config.headquarters,
+		.cached_player_name = cached_player_name,
+		.cached_player_name_length = cached_player_name_length,
+		.current = current,
 	};
-	result = yt_hostile_attack_combat_run(&state, &ops, &context, error);
-	*sector = state.sector;
-	return result;
+	child_result = hostile_attack_tail_run(session, &tail,
+	    cached_player_name_text, error);
+	return child_result;
 }
-
 static bool
 attack_deployed(struct yt_session *session, struct yt_sector *sector,
     struct yt_error *error)

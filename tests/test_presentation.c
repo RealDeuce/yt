@@ -23051,7 +23051,7 @@ direct_warp_attack_surrender_ops = {
 
 static bool
 direct_warp_attack_combat_present(void *context, const uint8_t *text,
-    size_t length, enum yt_hostile_attack_combat_output_kind kind,
+    size_t length, enum test_hostile_attack_combat_output_kind kind,
     struct yt_error *error)
 {
 	struct direct_warp_attack_combat_join *join = context;
@@ -23514,7 +23514,7 @@ direct_warp_attack_combat_tail(void *context,
 	    context, error);
 }
 
-static const struct yt_hostile_attack_combat_ops
+static const struct test_hostile_attack_combat_ops
 direct_warp_attack_combat_ops = {
 	direct_warp_attack_combat_read_sector,
 	direct_warp_attack_combat_read_player,
@@ -23582,7 +23582,7 @@ direct_warp_attack_cleared_join_run(
     struct hostile_mines_hazard_fixture *fixture,
     struct direct_warp_main_cycle_state *cycle,
     struct direct_warp_attack_combat_join *join,
-    struct yt_hostile_attack_combat_state *combat, struct yt_error *error)
+    struct test_hostile_attack_combat_state *combat, struct yt_error *error)
 {
 	struct yt_record record;
 
@@ -23623,7 +23623,7 @@ direct_warp_attack_cleared_join_run(
 	(void)yt_record_set_number(&record, YT_F81, 1.0f);
 	(void)yt_record_set_number(&record, YT_F85, 2.0f);
 	yt_sector_decode(&join->persistence_sector, &record);
-	*combat = (struct yt_hostile_attack_combat_state){
+	*combat = (struct test_hostile_attack_combat_state){
 		.current_player_record = 2,
 		.current_sector = 1003,
 		.commitment = 1.0,
@@ -23639,7 +23639,7 @@ direct_warp_attack_cleared_join_run(
 		.turns_per_day = 500.0f,
 		.headquarters = 1.0f,
 	};
-	return yt_hostile_attack_combat_run(combat,
+	return test_hostile_attack_combat_run(combat,
 	    &direct_warp_attack_combat_ops, join, error)
 	    && direct_emergency_warp_quiet_reentry(fixture, cycle, true);
 }
@@ -23649,7 +23649,7 @@ direct_warp_attack_surrender_join_run(
     struct hostile_mines_hazard_fixture *fixture,
     struct direct_warp_main_cycle_state *cycle,
     struct direct_warp_attack_combat_join *join,
-    struct yt_hostile_attack_combat_state *combat,
+    struct test_hostile_attack_combat_state *combat,
     enum yt_hostile_surrender_answer answer, float owner,
     const uint8_t *owner_label, size_t owner_label_length,
     struct yt_error *error)
@@ -23689,7 +23689,7 @@ direct_warp_attack_surrender_join_run(
 	(void)yt_record_set_number(&record, YT_F81, 1.0f);
 	(void)yt_record_set_number(&record, YT_F85, owner);
 	yt_sector_decode(&join->persistence_sector, &record);
-	*combat = (struct yt_hostile_attack_combat_state){
+	*combat = (struct test_hostile_attack_combat_state){
 		.current_player_record = 2,
 		.current_sector = 1003,
 		.commitment = 20.0,
@@ -23705,7 +23705,7 @@ direct_warp_attack_surrender_join_run(
 		.turns_per_day = 500.0f,
 		.headquarters = 1.0f,
 	};
-	return yt_hostile_attack_combat_run(combat,
+	return test_hostile_attack_combat_run(combat,
 	    &direct_warp_attack_combat_ops, join, error)
 	    && direct_emergency_warp_quiet_reentry(fixture, cycle, true);
 }
@@ -23714,7 +23714,7 @@ struct direct_warp_bribe_attack_join {
 	struct hostile_mines_hazard_fixture *fixture;
 	struct direct_warp_main_cycle_state *cycle;
 	struct direct_warp_attack_combat_join *attack;
-	struct yt_hostile_attack_combat_state *combat;
+	struct test_hostile_attack_combat_state *combat;
 	float owner;
 	const uint8_t *owner_label;
 	size_t owner_label_length;
@@ -27683,7 +27683,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
-	struct yt_hostile_attack_combat_state combat;
+	struct test_hostile_attack_combat_state combat;
 	struct direct_warp_main_cycle_state cycle_before_return;
 	struct direct_warp_attack_combat_join join_before_return;
 	struct yt_basic_fault_projection projection;
@@ -27791,7 +27791,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		(void)yt_record_set_number(&record, YT_F81, 1250.0f);
 		(void)yt_record_set_number(&record, YT_F85, 2.0f);
 		yt_sector_decode(&join.persistence_sector, &record);
-		combat = (struct yt_hostile_attack_combat_state){
+		combat = (struct test_hostile_attack_combat_state){
 			.current_player_record = 2,
 			.current_sector = 1003,
 			.commitment = 1.0,
@@ -27808,7 +27808,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 			.headquarters = 1.0f,
 		};
 		yt_error_clear(&error);
-		CHECK(yt_hostile_attack_combat_run(&combat,
+		CHECK(test_hostile_attack_combat_run(&combat,
 		    &direct_warp_attack_combat_ops, &join, &error));
 		CHECK(combat.complete
 		    && combat.route == YT_HOSTILE_ATTACK_COMBAT_NORMAL
@@ -27994,7 +27994,7 @@ test_direct_emergency_warp_hostile_attack_defenders_cleared(void)
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
-	struct yt_hostile_attack_combat_state combat;
+	struct test_hostile_attack_combat_state combat;
 	struct yt_player expected_player;
 	struct yt_sector expected_sector;
 	struct yt_record record;
@@ -28166,7 +28166,7 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
-	struct yt_hostile_attack_combat_state combat;
+	struct test_hostile_attack_combat_state combat;
 	struct yt_player expected_player;
 	struct yt_sector expected_sector;
 	struct yt_record record;
@@ -28280,7 +28280,7 @@ test_direct_emergency_warp_hostile_attack_surrender_refused(void)
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
-	struct yt_hostile_attack_combat_state combat;
+	struct test_hostile_attack_combat_state combat;
 	struct yt_player expected_player;
 	struct yt_sector expected_sector;
 	struct yt_record record;
@@ -28416,7 +28416,7 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join attack;
 	struct direct_warp_bribe_attack_join joined;
-	struct yt_hostile_attack_combat_state combat;
+	struct test_hostile_attack_combat_state combat;
 	struct yt_hostile_bribe_state bribe;
 	struct yt_player expected_player;
 	struct yt_sector expected_sector;
@@ -28600,7 +28600,7 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join attack;
 	struct direct_warp_bribe_attack_join joined;
-	struct yt_hostile_attack_combat_state combat;
+	struct test_hostile_attack_combat_state combat;
 	struct yt_hostile_bribe_state bribe;
 	struct yt_player expected_player;
 	struct yt_sector expected_sector;
@@ -29283,7 +29283,7 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 	struct direct_warp_attack_combat_join attack;
 	struct hostile_bribe_fatal_cycle_join fatal;
 	struct hostile_attack_fatal_cycle_join bridge;
-	struct yt_hostile_attack_combat_state combat;
+	struct test_hostile_attack_combat_state combat;
 	struct normal_exit_info_values info;
 	struct yt_record record;
 	struct yt_error error;
@@ -29375,7 +29375,7 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 		bridge = (struct hostile_attack_fatal_cycle_join){&attack, &fatal};
 		attack.fatal_handler = hostile_attack_fatal_cycle_run;
 		attack.fatal_handler_context = &bridge;
-		combat = (struct yt_hostile_attack_combat_state){
+		combat = (struct test_hostile_attack_combat_state){
 			.current_player_record = 2,
 			.current_sector = 1003,
 			.commitment = 1.0,
@@ -29392,7 +29392,7 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 			.headquarters = 1.0f,
 		};
 		yt_error_clear(&error);
-		CHECK(yt_hostile_attack_combat_run(&combat,
+		CHECK(test_hostile_attack_combat_run(&combat,
 		    &direct_warp_attack_combat_ops, &attack, &error));
 		memset(&info, 0, sizeof(info));
 		info.player = fatal.player;
@@ -29466,7 +29466,7 @@ direct_warp_attack_fatal_prefix_setup(struct physical_viewer_join *viewer,
     struct hostile_mines_hazard_fixture *fixture,
     struct direct_warp_main_cycle_state *cycle,
     struct direct_warp_attack_combat_join *attack,
-    struct yt_hostile_attack_combat_state *combat, bool main, bool ansi,
+    struct test_hostile_attack_combat_state *combat, bool main, bool ansi,
     const uint8_t *command, size_t command_length, uint8_t *remote,
     size_t remote_capacity, size_t ends[3])
 {
@@ -29538,7 +29538,7 @@ direct_warp_attack_fatal_prefix_setup(struct physical_viewer_join *viewer,
 	(void)yt_record_set_number(&record, YT_F81, 2.0f);
 	(void)yt_record_set_number(&record, YT_F85, 2.0f);
 	yt_sector_decode(&attack->persistence_sector, &record);
-	*combat = (struct yt_hostile_attack_combat_state){
+	*combat = (struct test_hostile_attack_combat_state){
 		.current_player_record = 2,
 		.current_sector = 1003,
 		.commitment = 1.0,
@@ -29600,7 +29600,7 @@ test_direct_emergency_warp_hostile_attack_fatal_prefixes(void)
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join attack;
-	struct yt_hostile_attack_combat_state combat;
+	struct test_hostile_attack_combat_state combat;
 	struct yt_error error;
 	uint8_t remote[1800];
 	size_t ends[3];
@@ -29642,7 +29642,7 @@ test_direct_emergency_warp_hostile_attack_fatal_prefixes(void)
 				break;
 			}
 			yt_error_clear(&error);
-			CHECK(!yt_hostile_attack_combat_run(&combat,
+			CHECK(!test_hostile_attack_combat_run(&combat,
 			    &direct_warp_attack_combat_ops, &attack, &error));
 			suffix_length = viewer.join.remote_length
 			    - callers[caller].prefix_length;
