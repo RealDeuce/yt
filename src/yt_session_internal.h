@@ -316,6 +316,8 @@ bool yt_session_planet_transfer(struct yt_session *session,
     int logical_planet, struct yt_error *error);
 bool yt_session_planet_productivity(struct yt_session *session,
     int logical_planet, struct yt_error *error);
+bool yt_session_planet_menu(struct yt_session *session, int logical_planet,
+    bool *enter_sector, struct yt_error *error);
 bool yt_session_command_land(struct yt_session *session, bool *enter_sector,
     struct yt_error *error);
 bool session_fixed_width_bytes(struct yt_session *session,
