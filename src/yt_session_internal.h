@@ -170,6 +170,9 @@ bool write_database_record_at_fault(struct yt_session *session,
     enum yt_basic_fault_site site, struct yt_error *error);
 bool session_load_team(struct yt_session *session, int id,
     struct yt_team *team, struct yt_error *error);
+bool yt_session_load_team_cache(struct yt_session *session, int team_id,
+    int current_player_record, struct yt_record *overlay,
+    bool *overlay_loaded, bool *live, struct yt_error *error);
 bool read_planet_physical(struct yt_session *session,
     uint32_t physical_record, struct yt_planet *planet,
     struct yt_error *error);
@@ -223,6 +226,8 @@ bool session_earth_report(struct yt_session *session, struct yt_port *earth,
     float price[4], struct yt_error *error);
 bool yt_session_salvage_player(struct yt_session *session, int victim_record,
     int killer_record, struct yt_error *error);
+bool yt_session_kill_player(struct yt_session *session, int victim_record,
+    float killer, bool wait_for_current, struct yt_error *error);
 bool yt_session_command_mines(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_mine_encounter(struct yt_session *session, bool *terminal,

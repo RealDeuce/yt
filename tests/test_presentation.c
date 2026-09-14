@@ -6,6 +6,7 @@
 #include "yt_team.h"
 #include "qb.h"
 #include "info_panel_model.h"
+#include "player_death_model.h"
 #include "sector_mine_model.h"
 
 #include <math.h>
@@ -23867,7 +23868,7 @@ struct hostile_bribe_fatal_cycle_join {
 	struct yt_player written_player;
 	struct yt_sector sector;
 	struct yt_sector written_sector;
-	struct yt_player_death_state death;
+	struct test_player_death_state death;
 	struct common_fatal_observation fatal;
 	struct normal_exit_body_observation normal_exit;
 	uint8_t active_cache_raw[4];
@@ -24072,7 +24073,7 @@ hostile_bribe_fatal_flush(void *context, struct yt_error *error)
 	return !join->fail_flush;
 }
 
-static const struct yt_player_death_ops hostile_bribe_fatal_death_ops = {
+static const struct test_player_death_ops hostile_bribe_fatal_death_ops = {
 	hostile_bribe_fatal_clear_cache,
 	hostile_bribe_fatal_read_player,
 	hostile_bribe_fatal_write_player,
@@ -24148,7 +24149,7 @@ hostile_bribe_fatal_death(void *context, int victim_record, float killer,
 	if (victim_record != 2 || killer != 2.0f)
 		return false;
 	++join->death_calls;
-	join->death = (struct yt_player_death_state){
+	join->death = (struct test_player_death_state){
 		.victim_record = 2,
 		.current_player_record = 2,
 		.killer = 2.0f,
@@ -24158,7 +24159,7 @@ hostile_bribe_fatal_death(void *context, int victim_record, float killer,
 		.current_name = current_name,
 		.current_name_length = current_name_length,
 	};
-	return yt_player_death_run(&join->death,
+	return test_player_death_run(&join->death,
 	    &hostile_bribe_fatal_death_ops, join, error);
 }
 

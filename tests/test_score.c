@@ -1,5 +1,6 @@
 #include "qb.h"
 #include "yt_game.h"
+#include "player_death_model.h"
 #include "yt_input_model.h"
 #include "yt_main_error.h"
 #include "yt_maint.h"
@@ -2745,7 +2746,7 @@ player_death_test_flush(void *context, struct yt_error *error)
 	return true;
 }
 
-static const struct yt_player_death_ops player_death_test_ops = {
+static const struct test_player_death_ops player_death_test_ops = {
 	player_death_test_clear_cache,
 	player_death_test_read_player,
 	player_death_test_write_player,
@@ -2785,7 +2786,7 @@ check_player_death_transaction(void)
 	static const uint8_t self_news[] = "  -  CURRENT was killed!";
 	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x7a, 0x00};
 	struct player_death_tape tape;
-	struct yt_player_death_state state;
+	struct test_player_death_state state;
 	struct yt_player players[4];
 	struct yt_sector sectors[3];
 	struct yt_port ports[3];
@@ -2828,7 +2829,7 @@ check_player_death_transaction(void)
 	}
 
 	player_death_test_reset(&tape, players, sectors, ports, false, 0U);
-	state = (struct yt_player_death_state){
+	state = (struct test_player_death_state){
 		.victim_record = 3,
 		.current_player_record = 2,
 		.killer = 2.0f,
@@ -2838,7 +2839,7 @@ check_player_death_transaction(void)
 		.current_name = (const uint8_t *)"CURRENT",
 		.current_name_length = 7U,
 	};
-	if (!yt_player_death_run(&state, &player_death_test_ops, &tape, NULL)
+	if (!test_player_death_run(&state, &player_death_test_ops, &tape, NULL)
 	    || tape.event_count != tape.expected_count || !tape.cache_cleared
 	    || memcmp(tape.cache_clear_raw, dirty_zero, 4U) != 0
 	    || !tape.player_written[3] || !tape.sector_written[1]
@@ -2867,7 +2868,7 @@ check_player_death_transaction(void)
 	    ++index) {
 		player_death_test_reset(&tape, players, sectors, ports, false,
 		    index);
-		state = (struct yt_player_death_state){
+		state = (struct test_player_death_state){
 			.victim_record = 3,
 			.current_player_record = 2,
 			.killer = 2.0f,
@@ -2878,7 +2879,7 @@ check_player_death_transaction(void)
 			.current_name_length = 7U,
 		};
 		yt_error_clear(&error);
-		if (yt_player_death_run(&state, &player_death_test_ops, &tape,
+		if (test_player_death_run(&state, &player_death_test_ops, &tape,
 		    &error) || tape.event_count != index
 		    || !tape.cache_cleared || error.status != YT_IO_ERROR
 		    || tape.rng_position != 23U || state.complete)
@@ -2886,7 +2887,7 @@ check_player_death_transaction(void)
 	}
 
 	player_death_test_reset(&tape, players, sectors, ports, true, 0U);
-	state = (struct yt_player_death_state){
+	state = (struct test_player_death_state){
 		.victim_record = 3,
 		.current_player_record = 3,
 		.killer = 3.0f,
@@ -2896,7 +2897,7 @@ check_player_death_transaction(void)
 		.current_name = (const uint8_t *)"CURRENT",
 		.current_name_length = 7U,
 	};
-	if (!yt_player_death_run(&state, &player_death_test_ops, &tape, NULL)
+	if (!test_player_death_run(&state, &player_death_test_ops, &tape, NULL)
 	    || tape.event_count != tape.expected_count || tape.title_visible
 	    || tape.news_count != 1U
 	    || tape.news_length[0] != sizeof(self_news) - 1U
@@ -2969,7 +2970,7 @@ check_player_death_model(void)
 	for (index = 0U; index < 4U; ++index)
 		(void)yt_record_set_number(&team, roster_offsets[index],
 		    index == 2U ? 9.0f : 2.0f);
-	yt_death_team_roster_overlay(&team, 2.0f);
+	test_death_team_roster_overlay(&team, 2.0f);
 	if (yt_record_get_number(&team, YT_F77) != 2.0f
 	    || yt_record_get_number(&team, YT_F109) != 0.0f
 	    || yt_record_get_number(&team, YT_F117) != 0.0f

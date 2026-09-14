@@ -514,13 +514,6 @@ session_sector_count(const struct yt_session *session)
 	    - session_sector_offset(session));
 }
 
-static int
-port_count(const struct yt_session *session)
-{
-	return (int)(session_planet_offset(session)
-	    - session_port_offset(session));
-}
-
 static bool
 write_player(struct yt_session *session, struct yt_error *error)
 {
@@ -3639,8 +3632,8 @@ direct_emergency_warp(struct yt_session *session, struct yt_error *error)
 	return true;
 }
 
-static bool
-session_load_team_cache(struct yt_session *session, int team_id,
+bool
+yt_session_load_team_cache(struct yt_session *session, int team_id,
     int current_player_record, struct yt_record *overlay,
     bool *overlay_loaded, bool *live,
     struct yt_error *error)
@@ -3671,203 +3664,6 @@ session_load_team_cache(struct yt_session *session, int team_id,
 }
 
 static bool
-team_remove_player(struct yt_session *session, int victim,
-    struct yt_error *error)
-{
-	static const size_t roster_offsets[4] = {
-		YT_F109, YT_F117, YT_F121, YT_F125
-	};
-	struct yt_player player;
-	struct yt_record overlay;
-	int team_id;
-	float expression;
-	uint32_t physical_record;
-	size_t index;
-
-	if (!yt_game_read_player(&session->door->game, victim, &player, error))
-		return false;
-	team_id = (int)player.team;
-	if (team_id == 0)
-		return true;
-
-	if (!session_load_team_cache(session, team_id, session_record(session),
-	    NULL, NULL, NULL, error))
-		return false;
-	for (index = 0U; index < YT_ARRAY_LEN(session->team_cache.roster);
-	    ++index) {
-		if (session->team_cache.roster[index] == victim)
-			session->team_cache.roster[index] = 0;
-	}
-
-	expression = single_add(session_sector_offset(session), (float)team_id);
-	physical_record = qb_brun_random_record_number(expression);
-	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &overlay, error))
-		return false;
-	for (index = 0U; index < YT_ARRAY_LEN(roster_offsets); ++index)
-		(void)yt_record_set_number(&overlay, roster_offsets[index],
-		    (float)session->team_cache.roster[index]);
-	if (!yt_database_write(&session->door->game.database,
-	    (size_t)physical_record, &overlay, error)
-	    || !yt_game_read_player(&session->door->game, victim, &player,
-	    error))
-		return false;
-	player.team = 0.0f;
-	(void)yt_record_set_number(&player.record, YT_F89, 0.0f);
-	return yt_game_write_player(&session->door->game, victim, &player,
-	    error);
-}
-
-static bool
-player_death_read_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_game_read_player(&session->door->game, player_record, player,
-	    error);
-}
-
-static bool
-player_death_write_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_game_write_player(&session->door->game, player_record, player,
-	    error);
-}
-
-static bool
-player_death_read_sector(void *context, int logical_sector,
-    struct yt_sector *sector, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_read_sector(session, logical_sector, sector,
-	    error);
-}
-
-static bool
-player_death_write_sector(void *context, int logical_sector,
-    struct yt_sector *sector, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_write_sector(session, logical_sector, sector,
-	    error);
-}
-
-static bool
-player_death_remove_team(void *context, int victim_record,
-    struct yt_error *error)
-{
-	return team_remove_player(context, victim_record, error);
-}
-
-static bool
-player_death_read_port(void *context, int logical_port, struct yt_port *port,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_read_port(session, logical_port, port, error);
-}
-
-static bool
-player_death_write_port(void *context, int logical_port,
-    struct yt_port *port, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_write_port(session, logical_port, port,
-	    error);
-}
-
-static bool
-player_death_present(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
-	    "death title row", error);
-}
-
-static void
-player_death_clear_active_cache(void *context, int victim_record,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	session_set_player_cache_raw(session, victim_record,
-	    YT_PLAYER_CACHE_SECTOR, raw);
-}
-
-static void
-player_death_set_current(void *context, const struct yt_player *player)
-{
-	struct yt_session *session = context;
-	char cached_name[sizeof(session->player.name)];
-
-	memcpy(cached_name, session->player.name, sizeof(cached_name));
-	session->player = *player;
-	memcpy(session->player.name, cached_name, sizeof(cached_name));
-}
-
-static bool
-player_death_flush(void *context, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_flush(&session->door->game.database, error);
-}
-
-static bool
-kill_player_run(struct yt_session *session, int victim_record,
-    float killer, bool wait_for_current, struct yt_error *error)
-{
-	static const struct yt_player_death_ops ops = {
-		player_death_clear_active_cache,
-		player_death_read_player,
-		player_death_write_player,
-		player_death_read_sector,
-		player_death_write_sector,
-		player_death_remove_team,
-		player_death_read_port,
-		player_death_write_port,
-		player_death_present,
-		session_append_news_bytes,
-		player_death_set_current,
-		player_death_flush,
-	};
-	struct yt_player_death_state state = {
-		.victim_record = victim_record,
-		.current_player_record = session_record(session),
-		.killer = killer,
-		.sector_count = session_sector_count(session),
-		.port_count = port_count(session),
-		.last_player_record = session_sector_offset(session),
-		.current_name = (const uint8_t *)session->player.name,
-		.current_name_length = strlen(session->player.name),
-	};
-
-	if (!yt_player_death_run(&state, &ops, session, error))
-		return false;
-	if (victim_record == session_record(session) && wait_for_current) {
-		if (!session_wait(session, 5.0, "common fatal wait", error))
-			return false;
-		session->fatal_wait_complete = true;
-	}
-	return true;
-}
-
-static bool
-kill_player(struct yt_session *session, int victim_record,
-    float killer, struct yt_error *error)
-{
-	return kill_player_run(session, victim_record, killer, true, error);
-}
-
-static bool
 common_fatal_self(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t notice[] = "Your ship has been destroyed!";
@@ -3884,7 +3680,7 @@ common_fatal_self(struct yt_session *session, struct yt_error *error)
 		return false;
 	memcpy(session->player.name, cached_name, sizeof(cached_name));
 	if (!session_sound(session, 3.0f, "fatal destruction sound", error)
-	    || !kill_player_run(session, current_player_record,
+	    || !yt_session_kill_player(session, current_player_record,
 	    (float)current_player_record, false, error)
 	    || !session_wait(session, 5.0, "common fatal wait", error))
 		return false;
@@ -3990,8 +3786,8 @@ direct_attack_combat_kill(void *context, int target_record,
 	saved_name_length = (size_t)target.name_length;
 	if (saved_name_length != 0U)
 		memcpy(saved_name, target.record.bytes, saved_name_length);
-	if (!kill_player(session, target_record, (float)current_player_record,
-	    error)
+	if (!yt_session_kill_player(session, target_record,
+	    (float)current_player_record, true, error)
 	    || !yt_session_salvage_player(session, target_record,
 	    current_player_record, error))
 		return false;
@@ -8409,7 +8205,7 @@ session_load_team(struct yt_session *session, int id, struct yt_team *team,
 		memset(team, 0, sizeof(*team));
 		team->id = id;
 	}
-	if (!session_load_team_cache(session, id, session_record(session),
+	if (!yt_session_load_team_cache(session, id, session_record(session),
 	    &overlay, &overlay_loaded, &live, error))
 		return false;
 	if (team == NULL)
@@ -8498,7 +8294,8 @@ team_audit(struct yt_session *session, int team_id,
 		}
 		return false;
 	}
-	if (!session_load_team_cache(session, team_id, session_record(session),
+	if (!yt_session_load_team_cache(session, team_id,
+	    session_record(session),
 	    NULL, NULL, NULL, error))
 		return false;
 	for (index = 0U; index < YT_ARRAY_LEN(session->team_cache.roster);
@@ -10341,8 +10138,8 @@ missile_mines:
 			    && !deploy_victim_mines(session, sector_number,
 			    mines, error))
 				return false;
-			if (!kill_player(session, basic,
-			    (float)session_record(session), error))
+			if (!yt_session_kill_player(session, basic,
+			    (float)session_record(session), true, error))
 				return false;
 			if (yt_projectile_salvage_admitted(*counterattack,
 			    *xannor_provoker)) {
@@ -10904,8 +10701,8 @@ plasma_reload_sector:
 				    YT_PLAYER_CACHE_SECTOR, cache_zero))
 					return false;
 			}
-			else if (!kill_player(session, basic,
-			    (float)session_record(session), error)
+			else if (!yt_session_kill_player(session, basic,
+			    (float)session_record(session), true, error)
 			    || !session_sound(session, 3.0f, "plasma salvage sound",
 			    error)
 			    || !yt_session_salvage_player(session, basic,
@@ -11981,7 +11778,7 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 			return session_present_alert(session, teamless,
 			    sizeof(teamless) - 1U, "radio teamless row", error);
 		}
-		if (!session_load_team_cache(session, (int)session->player.team,
+		if (!yt_session_load_team_cache(session, (int)session->player.team,
 		    session_record(session), NULL, NULL, NULL, error))
 			return false;
 		for (index = 0; index < 4; ++index)
