@@ -225,6 +225,10 @@ bool yt_session_salvage_player(struct yt_session *session, int victim_record,
     int killer_record, struct yt_error *error);
 bool yt_session_command_mines(struct yt_session *session,
     struct yt_error *error);
+bool yt_session_mine_encounter(struct yt_session *session, bool *terminal,
+    struct yt_error *error);
+bool yt_session_emergency_warp(struct yt_session *session,
+    struct yt_error *error);
 bool yt_session_xannor_victory(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_launch_xannor_retaliation(struct yt_session *session,

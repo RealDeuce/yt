@@ -262,57 +262,6 @@ enum yt_sector_mine_loss_kind {
 	YT_SECTOR_MINE_LOSS_EMPTY_HOLDS,
 };
 
-enum yt_sector_mine_output_kind {
-	YT_SECTOR_MINE_OUTPUT_LINE,
-	YT_SECTOR_MINE_OUTPUT_BOLD_LINE,
-	YT_SECTOR_MINE_OUTPUT_BOLD_RAW,
-};
-struct yt_sector_mine_state {
-	int current_player_record;
-	float current_sector;
-	uint8_t conversion_mode;
-	float foreground;
-	float background;
-	float blink;
-	int pager_foreground;
-	bool *destroyed;
-	struct yt_player player;
-	struct yt_sector sector;
-	float mines_before;
-	float batch;
-	unsigned touched;
-	size_t batches;
-	bool terminal;
-	bool complete;
-};
-struct yt_sector_mine_ops {
-	bool (*read_current)(void *context, struct yt_player *player,
-	    struct yt_error *error);
-	bool (*read_player)(void *context, int player_record,
-	    struct yt_player *player, struct yt_error *error);
-	bool (*write_player)(void *context, int player_record,
-	    struct yt_player *player, struct yt_error *error);
-	bool (*read_sector)(void *context, int logical_sector,
-	    struct yt_sector *sector, struct yt_error *error);
-	bool (*write_sector)(void *context, int logical_sector,
-	    struct yt_sector *sector, struct yt_error *error);
-	bool (*present)(void *context, const uint8_t *text, size_t length,
-	    enum yt_sector_mine_output_kind kind, struct yt_error *error);
-	bool (*sound)(void *context, float selector, struct yt_error *error);
-	bool (*news)(void *context, const uint8_t *text, size_t length,
-	    struct yt_error *error);
-	bool (*random)(void *context, float *value, struct yt_error *error);
-	bool (*shrink)(void *context, float range, float *result,
-	    struct yt_error *error);
-	bool (*emergency_warp)(void *context, struct yt_error *error);
-	void (*set_current)(void *context, const struct yt_player *player);
-	void (*style)(void *context, float foreground, float background,
-	    float blink, int pager_foreground);
-};
-bool yt_sector_mine_run(struct yt_sector_mine_state *state,
-    const struct yt_sector_mine_ops *ops, void *context,
-    struct yt_error *error);
-
 enum yt_planet_rename_name_result {
 	YT_PLANET_RENAME_EMPTY,
 	YT_PLANET_RENAME_RESERVED,
@@ -726,16 +675,6 @@ float yt_sector_mine_batch(float mines_before);
 float yt_sector_mine_shield_result(float shields, float batch, float draw);
 float yt_sector_mine_cloak_loss(float cloak, float batch, float draw);
 float yt_sector_mine_missile_loss(float missiles, float batch, float draw);
-typedef bool (*yt_sector_mine_draw_fn)(void *context, float *value,
-    struct yt_error *error);
-struct yt_sector_mine_missile_result {
-	float remaining;
-	float loss;
-	bool applied;
-};
-bool yt_sector_mine_missile_step(float missiles, float batch,
-    yt_sector_mine_draw_fn draw, void *context,
-    struct yt_sector_mine_missile_result *result, struct yt_error *error);
 float yt_sector_mine_empty_holds(const struct yt_player *player);
 void yt_sector_mine_sector_overlay(struct yt_sector *sector,
     float mines_after);

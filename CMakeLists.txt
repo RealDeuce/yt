@@ -189,7 +189,9 @@ if(BUILD_TESTING)
         target_compile_definitions(test_input_model PRIVATE _XOPEN_SOURCE=700)
     endif()
     yt_add_test(test_presentation tests/test_presentation.c yt_game)
-    target_sources(test_presentation PRIVATE tests/info_panel_model.c)
+    target_sources(test_presentation PRIVATE
+        tests/info_panel_model.c
+        tests/sector_mine_model.c)
     target_compile_definitions(test_presentation PRIVATE
         YT_DATA_DIR="${YT_GENERATED_DATA_DIR}/")
     add_dependencies(test_presentation yt-data)
@@ -215,6 +217,7 @@ if(BUILD_TESTING)
     yt_add_test(test_route tests/test_route.c yt_core)
 
     yt_add_test(test_session_credit tests/test_session_credit.c yt_runtime)
+    yt_add_test(test_session_mines tests/test_session_mines.c yt_runtime)
     yt_add_test(test_session_movement tests/test_session_movement.c yt_runtime)
     yt_add_test(test_session_planets tests/test_session_planets.c yt_runtime)
     yt_add_test(test_session_ports tests/test_session_ports.c yt_runtime)

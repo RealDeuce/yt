@@ -6,6 +6,7 @@
 #include "yt_team.h"
 #include "qb.h"
 #include "info_panel_model.h"
+#include "sector_mine_model.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -18743,7 +18744,7 @@ enum sector_mine_physical_failure {
 
 struct hostile_mines_hazard_fixture {
 	struct main_buy_cycle_fixture presentation;
-	struct yt_sector_mine_state hazard;
+	struct test_sector_mine_state hazard;
 	struct yt_player hazard_player;
 	struct yt_sector hazard_sector;
 	int hazard_logical_sector;
@@ -18916,7 +18917,7 @@ hostile_mine_hazard_write_sector(void *context, int logical_sector,
 
 static bool
 hostile_mine_hazard_present(void *context, const uint8_t *text,
-    size_t length, enum yt_sector_mine_output_kind kind,
+    size_t length, enum test_sector_mine_output_kind kind,
     struct yt_error *error)
 {
 	struct hostile_mines_hazard_fixture *fixture = context;
@@ -18929,14 +18930,14 @@ hostile_mine_hazard_present(void *context, const uint8_t *text,
 	if (join == NULL)
 		return false;
 	switch (kind) {
-	case YT_SECTOR_MINE_OUTPUT_LINE:
+	case TEST_SECTOR_MINE_OUTPUT_LINE:
 		status = yt_present_line(text, length, &join->presentation, &result);
 		break;
-	case YT_SECTOR_MINE_OUTPUT_BOLD_LINE:
+	case TEST_SECTOR_MINE_OUTPUT_BOLD_LINE:
 		status = yt_present_bold_line(text, length, &join->presentation,
 		    &result);
 		break;
-	case YT_SECTOR_MINE_OUTPUT_BOLD_RAW:
+	case TEST_SECTOR_MINE_OUTPUT_BOLD_RAW:
 		status = yt_present_bold_character(text, length, &join->presentation,
 		    &result);
 		break;
@@ -19070,26 +19071,26 @@ hostile_emergency_warp_present(struct hostile_mines_hazard_fixture *fixture)
 	size_t row_length;
 
 	if (!hostile_mine_hazard_present(fixture, NULL, 0U,
-	    YT_SECTOR_MINE_OUTPUT_LINE, NULL)
+	    TEST_SECTOR_MINE_OUTPUT_LINE, NULL)
 	    || !hostile_mine_emergency_attention(fixture, title,
 	    sizeof(title) - 1U)
 	    || !hostile_mine_hazard_present(fixture, NULL, 0U,
-	    YT_SECTOR_MINE_OUTPUT_LINE, NULL)
+	    TEST_SECTOR_MINE_OUTPUT_LINE, NULL)
 	    || !hostile_mine_hazard_present(fixture, wormhole,
-	    sizeof(wormhole) - 1U, YT_SECTOR_MINE_OUTPUT_BOLD_LINE, NULL)
+	    sizeof(wormhole) - 1U, TEST_SECTOR_MINE_OUTPUT_BOLD_LINE, NULL)
 	    || !hostile_mine_hazard_present(fixture, NULL, 0U,
-	    YT_SECTOR_MINE_OUTPUT_LINE, NULL)
+	    TEST_SECTOR_MINE_OUTPUT_LINE, NULL)
 	    || !hostile_mine_emergency_set_foreground(fixture, 6.0f)
 	    || !hostile_mine_hazard_present(fixture, temperature,
-	    sizeof(temperature) - 1U, YT_SECTOR_MINE_OUTPUT_BOLD_LINE, NULL)
+	    sizeof(temperature) - 1U, TEST_SECTOR_MINE_OUTPUT_BOLD_LINE, NULL)
 	    || !hostile_mine_hazard_present(fixture, scale,
-	    sizeof(scale) - 1U, YT_SECTOR_MINE_OUTPUT_BOLD_LINE, NULL)
+	    sizeof(scale) - 1U, TEST_SECTOR_MINE_OUTPUT_BOLD_LINE, NULL)
 	    || !hostile_mine_emergency_set_foreground(fixture, 2.0f)
 	    || !hostile_mine_hazard_present(fixture, ruler,
-	    sizeof(ruler) - 1U, YT_SECTOR_MINE_OUTPUT_BOLD_LINE, NULL)
+	    sizeof(ruler) - 1U, TEST_SECTOR_MINE_OUTPUT_BOLD_LINE, NULL)
 	    || !hostile_mine_emergency_set_foreground(fixture, 6.0f)
 	    || !hostile_mine_hazard_present(fixture, gauge_open,
-	    sizeof(gauge_open) - 1U, YT_SECTOR_MINE_OUTPUT_BOLD_RAW, NULL)
+	    sizeof(gauge_open) - 1U, TEST_SECTOR_MINE_OUTPUT_BOLD_RAW, NULL)
 	    || !hostile_mine_hazard_random(fixture, &first, NULL)
 	    || !hostile_mine_hazard_random(fixture, &second, NULL))
 		return false;
@@ -19103,15 +19104,15 @@ hostile_emergency_warp_present(struct hostile_mines_hazard_fixture *fixture)
 	    fixture->emergency_heat < 10.0f ? 2.0f
 	    : fixture->emergency_heat < 20.0f ? 3.0f : 1.0f)
 	    || !hostile_mine_hazard_present(fixture, gauge_tick,
-	    sizeof(gauge_tick) - 1U, YT_SECTOR_MINE_OUTPUT_BOLD_RAW, NULL))
+	    sizeof(gauge_tick) - 1U, TEST_SECTOR_MINE_OUTPUT_BOLD_RAW, NULL))
 		return false;
 	++fixture->emergency_ticks;
 	++fixture->emergency_waits;
 	if (!hostile_mine_emergency_set_foreground(fixture, 2.0f)
 	    || !hostile_mine_hazard_present(fixture, NULL, 0U,
-	    YT_SECTOR_MINE_OUTPUT_LINE, NULL)
+	    TEST_SECTOR_MINE_OUTPUT_LINE, NULL)
 	    || !hostile_mine_hazard_present(fixture, NULL, 0U,
-	    YT_SECTOR_MINE_OUTPUT_LINE, NULL))
+	    TEST_SECTOR_MINE_OUTPUT_LINE, NULL))
 		return false;
 	++fixture->emergency_player_reads;
 	if (fixture->emergency_failure == EMERGENCY_WARP_PHYSICAL_GET
@@ -19138,11 +19139,11 @@ hostile_emergency_warp_present(struct hostile_mines_hazard_fixture *fixture)
 		return false;
 	viewer_pager_capture_result(join, &result);
 	if (!hostile_mine_hazard_present(fixture, relief, sizeof(relief) - 1U,
-	    YT_SECTOR_MINE_OUTPUT_LINE, NULL)
+	    TEST_SECTOR_MINE_OUTPUT_LINE, NULL)
 	    || !yt_emergency_warp_result_row(fixture->emergency_destination,
 	    fixture->emergency_cost, row, sizeof(row), &row_length)
 	    || !hostile_mine_hazard_present(fixture, row, row_length,
-	    YT_SECTOR_MINE_OUTPUT_LINE, NULL))
+	    TEST_SECTOR_MINE_OUTPUT_LINE, NULL))
 		return false;
 	yt_emergency_warp_player_overlay(&fixture->emergency_player,
 	    fixture->emergency_destination, fixture->emergency_cost);
@@ -19206,7 +19207,7 @@ hostile_mine_hazard_style(void *context, float foreground, float background,
 	join->pager.foreground = pager_foreground;
 }
 
-static const struct yt_sector_mine_ops hostile_mine_hazard_ops = {
+static const struct test_sector_mine_ops hostile_mine_hazard_ops = {
 	hostile_mine_hazard_read_current,
 	hostile_mine_hazard_read_player,
 	hostile_mine_hazard_write_player,
@@ -30284,7 +30285,7 @@ direct_emergency_warp_main_mine_cycle_run(
 	fixture->hazard.pager_foreground = join->pager.foreground;
 	fixture->hazard.destroyed = &fixture->destroyed;
 	fixture->mine_start = join->remote_length;
-	if (!yt_sector_mine_run(&fixture->hazard, &hostile_mine_hazard_ops,
+	if (!test_sector_mine_run(&fixture->hazard, &hostile_mine_hazard_ops,
 	    fixture, NULL))
 		return false;
 	fixture->emergency_player = fixture->hazard_player;
@@ -30473,7 +30474,7 @@ direct_emergency_warp_hostile_mine_cycle_run(
 	fixture->hazard.pager_foreground = join->pager.foreground;
 	fixture->hazard.destroyed = &fixture->destroyed;
 	fixture->mine_start = join->remote_length;
-	if (!yt_sector_mine_run(&fixture->hazard, &hostile_mine_hazard_ops,
+	if (!test_sector_mine_run(&fixture->hazard, &hostile_mine_hazard_ops,
 	    fixture, NULL))
 		return false;
 	fixture->emergency_player = fixture->hazard_player;
@@ -30809,7 +30810,7 @@ test_destroyed_mine_fatal_projections(void)
 		fixture.hazard.pager_foreground = viewer.join.pager.foreground;
 		fixture.hazard.destroyed = &fixture.destroyed;
 		yt_error_clear(&error);
-		CHECK(yt_sector_mine_run(&fixture.hazard,
+		CHECK(test_sector_mine_run(&fixture.hazard,
 		    &hostile_mine_hazard_ops, &fixture, &error));
 		mine_end = viewer.join.remote_length;
 		fatal_entry_player = fixture.hazard_player;
@@ -31570,7 +31571,7 @@ direct_emergency_warp_main_black_hole_cycle_run(
 	join->presentation.foreground = 2.0f;
 	join->pager.foreground = 2;
 	if (!hostile_mine_hazard_present(fixture, NULL, 0U,
-	    YT_SECTOR_MINE_OUTPUT_LINE, NULL)
+	    TEST_SECTOR_MINE_OUTPUT_LINE, NULL)
 	    || !hostile_mine_emergency_attention(fixture, black_hole,
 	    sizeof(black_hole) - 1U))
 		return false;
@@ -31738,7 +31739,7 @@ direct_emergency_warp_hostile_black_hole_cycle_run(
 	join->presentation.foreground = 2.0f;
 	join->pager.foreground = 2;
 	if (!hostile_mine_hazard_present(fixture, NULL, 0U,
-	    YT_SECTOR_MINE_OUTPUT_LINE, NULL)
+	    TEST_SECTOR_MINE_OUTPUT_LINE, NULL)
 	    || !hostile_mine_emergency_attention(fixture, black_hole,
 	    sizeof(black_hole) - 1U))
 		return false;

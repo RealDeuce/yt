@@ -171,8 +171,6 @@ static bool random_value(void *context, float *value,
     struct yt_error *error);
 static bool computer_spies(struct yt_session *session,
     struct yt_error *error);
-static bool mine_encounter(struct yt_session *session, bool *terminal,
-    struct yt_error *error);
 static bool clearance(struct yt_session *session, bool create,
     struct yt_error *error);
 static bool command_team(struct yt_session *session,
@@ -3446,8 +3444,8 @@ random_value(void *context, float *value,
 	return yt_random_next(&session->door->game.random, value, error);
 }
 
-static bool
-emergency_warp(struct yt_session *session, struct yt_error *error)
+bool
+yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t wormhole[] =
 	    "You enter a wormhole as your engines build up to emergency power!";
@@ -3637,7 +3635,7 @@ direct_emergency_warp(struct yt_session *session, struct yt_error *error)
 	if (!session_confirm(session, prompt, sizeof(prompt) - 1U, &answer, error))
 		return false;
 	if (answer == YT_YES_NO_YES)
-		return emergency_warp(session, error);
+		return yt_session_emergency_warp(session, error);
 	return true;
 }
 
@@ -4014,7 +4012,7 @@ direct_attack_combat_kill(void *context, int target_record,
 	    error))
 		return false;
 	terminal = false;
-	if (!mine_encounter(session, &terminal, error))
+	if (!yt_session_mine_encounter(session, &terminal, error))
 		return false;
 	if (terminal || !session->destroyed)
 		return true;
@@ -4908,169 +4906,6 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 }
 
 static bool
-shrink_three(struct yt_session *session, float initial, float *result,
-    struct yt_error *error)
-{
-	float range = initial;
-
-	return yt_random_nested_single(&session->door->game.random, 3.0f,
-	    &range, result, error);
-}
-
-static bool
-mine_read_current(void *context, struct yt_player *player,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (!session_reload_player(session, error))
-		return false;
-	*player = session->player;
-	return true;
-}
-
-static bool
-mine_read_player(void *context, int player_record, struct yt_player *player,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_game_read_player(&session->door->game, player_record, player,
-	    error);
-}
-
-static bool
-mine_write_player(void *context, int player_record, struct yt_player *player,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database,
-	    (size_t)player_record, &player->record, error)
-	    && yt_database_flush(&session->door->game.database, error);
-}
-
-static bool
-mine_read_sector(void *context, int logical_sector, struct yt_sector *sector,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_read_sector(session, logical_sector, sector,
-	    error);
-}
-
-static bool
-mine_write_sector(void *context, int logical_sector,
-    struct yt_sector *sector, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database,
-	    (size_t)session_sector_basic_record(session, (float)logical_sector),
-	    &sector->record, error);
-}
-
-static bool
-mine_present(void *context, const uint8_t *text, size_t length,
-    enum yt_sector_mine_output_kind kind, struct yt_error *error)
-{
-	enum session_present_text_kind session_kind;
-
-	switch (kind) {
-	case YT_SECTOR_MINE_OUTPUT_LINE:
-		session_kind = SESSION_PRESENT_LINE;
-		break;
-	case YT_SECTOR_MINE_OUTPUT_BOLD_LINE:
-		session_kind = SESSION_PRESENT_BOLD_LINE;
-		break;
-	case YT_SECTOR_MINE_OUTPUT_BOLD_RAW:
-		session_kind = SESSION_PRESENT_BOLD_RAW;
-		break;
-	default:
-		return false;
-	}
-	return session_present_text(context, text, length, session_kind,
-	    "sector mine output", error);
-}
-
-static bool
-mine_sound(void *context, float selector, struct yt_error *error)
-{
-	return session_sound(context, selector, "sector mine sound", error);
-}
-
-static bool
-mine_shrink(void *context, float range, float *result,
-    struct yt_error *error)
-{
-	return shrink_three(context, range, result, error);
-}
-
-static bool
-mine_warp(void *context, struct yt_error *error)
-{
-	return emergency_warp(context, error);
-}
-
-static void
-mine_set_current(void *context, const struct yt_player *player)
-{
-	struct yt_session *session = context;
-
-	session->player = *player;
-}
-
-static void
-mine_style(void *context, float foreground, float background, float blink,
-    int pager_foreground)
-{
-	struct yt_session *session = context;
-
-	session_set_foreground(session, foreground);
-	yt_present_set_background(&session->presentation, background);
-	yt_present_set_blink(&session->presentation, blink);
-	(void)pager_foreground;
-}
-
-static bool
-mine_encounter(struct yt_session *session, bool *terminal,
-    struct yt_error *error)
-{
-	static const struct yt_sector_mine_ops ops = {
-		mine_read_current,
-		mine_read_player,
-		mine_write_player,
-		mine_read_sector,
-		mine_write_sector,
-		mine_present,
-		mine_sound,
-		session_append_news_bytes,
-		random_value,
-		mine_shrink,
-		mine_warp,
-		mine_set_current,
-		mine_style,
-	};
-	struct yt_sector_mine_state state = {
-		.current_player_record = session_record(session),
-		.current_sector = session->player.sector,
-		.conversion_mode = session->presentation.sound.conversion_mode,
-		.foreground = session_foreground(session),
-		.background = yt_present_background(&session->presentation),
-		.blink = yt_present_blink(&session->presentation),
-		.pager_foreground = session_pager_foreground(session),
-		.destroyed = &session->destroyed,
-	};
-
-	if (terminal == NULL)
-		return false;
-	if (!yt_sector_mine_run(&state, &ops, session, error))
-		return false;
-	*terminal = state.terminal;
-	return true;
-}
-static bool
 hostile_menu_help(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t heading[] = "<Help>";
@@ -5159,7 +4994,7 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 			    "black hole attention", error))
 				return false;
 			session_clear_queue(session);
-			if (!emergency_warp(session, error))
+			if (!yt_session_emergency_warp(session, error))
 				return false;
 			continue;
 		}
@@ -5171,7 +5006,8 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 			{
 				bool mine_terminal;
 
-				if (!mine_encounter(session, &mine_terminal, error))
+				if (!yt_session_mine_encounter(session, &mine_terminal,
+				    error))
 					return false;
 				/*
 				 * Both ordinary return and the zero-effect post-warp
