@@ -245,6 +245,9 @@ bool yt_session_attack_player(struct yt_session *session, int target_record,
 bool yt_session_attack_deployed(struct yt_session *session,
     struct yt_sector *sector, double commitment, bool allow_surrender,
     struct yt_error *error);
+bool yt_session_bribe_deployed(struct yt_session *session,
+    struct yt_sector *sector, bool *direct_hostile_menu,
+    bool *forced_attack, struct yt_error *error);
 bool yt_session_clearance(struct yt_session *session, bool create,
     struct yt_error *error);
 bool yt_session_command_mines(struct yt_session *session,
