@@ -193,6 +193,7 @@ if(BUILD_TESTING)
     yt_add_test(test_presentation tests/test_presentation.c yt_game)
     target_sources(test_presentation PRIVATE
 	    tests/hostile_attack_model.c
+	    tests/hostile_bribe_model.c
         tests/hostile_surrender_model.c
         tests/info_panel_model.c
         tests/player_death_model.c
@@ -222,6 +223,7 @@ if(BUILD_TESTING)
     target_sources(test_score PRIVATE
         tests/direct_attack_model.c
 	    tests/hostile_attack_model.c
+	    tests/hostile_bribe_model.c
         tests/hostile_surrender_model.c
         tests/player_death_model.c)
     yt_add_test(test_route tests/test_route.c yt_core)

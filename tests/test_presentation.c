@@ -7,6 +7,7 @@
 #include "qb.h"
 #include "info_panel_model.h"
 #include "hostile_attack_model.h"
+#include "hostile_bribe_model.h"
 #include "hostile_surrender_model.h"
 #include "player_death_model.h"
 #include "sector_mine_model.h"
@@ -23732,7 +23733,7 @@ struct direct_warp_bribe_attack_join {
 
 static bool
 direct_warp_bribe_attack_present(void *context, const uint8_t *text,
-    size_t length, enum yt_hostile_bribe_output_kind kind,
+    size_t length, enum test_hostile_bribe_output_kind kind,
     struct yt_error *error)
 {
 	struct direct_warp_bribe_attack_join *join = context;
@@ -23809,7 +23810,7 @@ direct_warp_bribe_attack_amount(void *context, char *response,
 
 static bool
 direct_warp_bribe_attack_accept(void *context,
-    struct yt_hostile_bribe_accept_state *state, struct yt_error *error)
+    struct test_hostile_bribe_accept_state *state, struct yt_error *error)
 {
 	struct direct_warp_bribe_attack_join *join = context;
 
@@ -23844,7 +23845,7 @@ direct_warp_bribe_attack_fatal(void *context, struct yt_error *error)
 	    && join->fatal_handler(join->fatal_handler_context, error);
 }
 
-static const struct yt_hostile_bribe_ops direct_warp_bribe_attack_ops = {
+static const struct test_hostile_bribe_ops direct_warp_bribe_attack_ops = {
 	direct_warp_bribe_attack_present,
 	direct_warp_bribe_attack_random,
 	direct_warp_bribe_attack_amount,
@@ -28417,7 +28418,7 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 	struct direct_warp_attack_combat_join attack;
 	struct direct_warp_bribe_attack_join joined;
 	struct test_hostile_attack_combat_state combat;
-	struct yt_hostile_bribe_state bribe;
+	struct test_hostile_bribe_state bribe;
 	struct yt_player expected_player;
 	struct yt_sector expected_sector;
 	struct yt_record record;
@@ -28491,7 +28492,7 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 		bribe.real_first_name_length = 5U;
 		bribe.mercenaries_hurt = true;
 		yt_error_clear(&error);
-		CHECK(yt_hostile_bribe_run(&bribe, &direct_warp_bribe_attack_ops,
+		CHECK(test_hostile_bribe_run(&bribe, &direct_warp_bribe_attack_ops,
 		    &joined, &error));
 		suffix_length = viewer.join.remote_length - joined_start;
 		CHECK(suffix_length == callers[caller].suffix_length
@@ -28576,7 +28577,7 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 		size_t owner_label_length;
 		const uint8_t *amount_response;
 		size_t amount_response_length;
-		enum yt_hostile_bribe_branch branch;
+		enum test_hostile_bribe_branch branch;
 		size_t bribe_draws;
 		const uint8_t *news;
 		size_t news_length;
@@ -28601,7 +28602,7 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 	struct direct_warp_attack_combat_join attack;
 	struct direct_warp_bribe_attack_join joined;
 	struct test_hostile_attack_combat_state combat;
-	struct yt_hostile_bribe_state bribe;
+	struct test_hostile_bribe_state bribe;
 	struct yt_player expected_player;
 	struct yt_sector expected_sector;
 	struct yt_record record;
@@ -28680,7 +28681,7 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 			bribe.real_first_name = (const uint8_t *)"Sysop";
 			bribe.real_first_name_length = 5U;
 			yt_error_clear(&error);
-			CHECK(yt_hostile_bribe_run(&bribe,
+			CHECK(test_hostile_bribe_run(&bribe,
 			    &direct_warp_bribe_attack_ops, &joined, &error));
 			suffix_length = viewer.join.remote_length - joined_start;
 			CHECK(suffix_length
@@ -28773,7 +28774,7 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 	static const struct {
 		const uint8_t *amount;
 		size_t amount_length;
-		enum yt_hostile_bribe_branch branch;
+		enum test_hostile_bribe_branch branch;
 		float draws[3];
 		size_t draw_count;
 		size_t body_length[3];
@@ -28834,7 +28835,7 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_bribe_attack_join joined;
 	struct hostile_bribe_fatal_cycle_join fatal;
-	struct yt_hostile_bribe_state bribe;
+	struct test_hostile_bribe_state bribe;
 	struct normal_exit_info_values info;
 	struct yt_player expected_player;
 	struct yt_sector expected_sector;
@@ -28919,7 +28920,7 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 				bribe.real_first_name = name;
 				bribe.real_first_name_length = sizeof(name) - 1U;
 				yt_error_clear(&error);
-				CHECK(yt_hostile_bribe_run(&bribe,
+				CHECK(test_hostile_bribe_run(&bribe,
 				    &direct_warp_bribe_attack_ops, &joined, &error));
 				CHECK(fatal.fatal_start == menu_end
 				    + origins[origin].body_length[endpoint]);
@@ -29055,7 +29056,7 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_bribe_attack_join joined;
 	struct hostile_bribe_fatal_cycle_join fatal;
-	struct yt_hostile_bribe_state bribe;
+	struct test_hostile_bribe_state bribe;
 	struct yt_record record;
 	struct yt_error error;
 	uint8_t expected_record[4];
@@ -29142,7 +29143,7 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 			bribe.real_first_name = name;
 			bribe.real_first_name_length = sizeof(name) - 1U;
 			yt_error_clear(&error);
-			CHECK(!yt_hostile_bribe_run(&bribe,
+			CHECK(!test_hostile_bribe_run(&bribe,
 			    &direct_warp_bribe_attack_ops, &joined, &error));
 
 			CHECK(bribe.route == YT_HOSTILE_BRIBE_FATAL

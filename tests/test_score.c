@@ -2,6 +2,7 @@
 #include "yt_game.h"
 #include "direct_attack_model.h"
 #include "hostile_attack_model.h"
+#include "hostile_bribe_model.h"
 #include "hostile_surrender_model.h"
 #include "player_death_model.h"
 #include "yt_input_model.h"
@@ -11120,7 +11121,7 @@ hostile_bribe_accept_write_player(void *context, int player_record,
 	return true;
 }
 
-static const struct yt_hostile_bribe_accept_ops hostile_bribe_accept_ops = {
+static const struct test_hostile_bribe_accept_ops hostile_bribe_accept_ops = {
 	hostile_bribe_accept_present,
 	hostile_bribe_accept_sound,
 	hostile_bribe_accept_read_sector,
@@ -11131,7 +11132,7 @@ static const struct yt_hostile_bribe_accept_ops hostile_bribe_accept_ops = {
 
 static void
 hostile_bribe_accept_fixture(struct hostile_bribe_accept_tape *tape,
-    struct yt_hostile_bribe_accept_state *state)
+    struct test_hostile_bribe_accept_state *state)
 {
 	memset(tape, 0, sizeof(*tape));
 	tape->fail_at = (size_t)-1;
@@ -11143,7 +11144,7 @@ hostile_bribe_accept_fixture(struct hostile_bribe_accept_tape *tape,
 	    sizeof(tape->player.record.bytes));
 	tape->player.fighters = 7.25f;
 	tape->player.credits = 100.5f;
-	*state = (struct yt_hostile_bribe_accept_state){
+	*state = (struct test_hostile_bribe_accept_state){
 		.current_player_record = 2,
 		.current_sector = 733,
 		.cached_defenders = 10.5f,
@@ -11165,7 +11166,7 @@ check_hostile_bribe_accept_transaction(void)
 	static const uint8_t expected_deal[] =
 	    "Good Deal! We join up with you!";
 	struct hostile_bribe_accept_tape tape;
-	struct yt_hostile_bribe_accept_state state;
+	struct test_hostile_bribe_accept_state state;
 	struct yt_record expected_sector;
 	struct yt_record expected_player;
 	struct yt_error error;
@@ -11178,7 +11179,7 @@ check_hostile_bribe_accept_transaction(void)
 	expected_player = tape.player.record;
 	(void)yt_record_set_number(&expected_player, YT_F61, 17.75f);
 	(void)yt_record_set_number(&expected_player, YT_F81, 70.25f);
-	if (!yt_hostile_bribe_accept_run(&state, &hostile_bribe_accept_ops,
+	if (!test_hostile_bribe_accept_run(&state, &hostile_bribe_accept_ops,
 	    &tape, NULL) || !state.complete || !state.deal_presented
 	    || !state.sound_played || !state.sector_read
 	    || !state.sector_written || !state.player_read
@@ -11199,7 +11200,7 @@ check_hostile_bribe_accept_transaction(void)
 		hostile_bribe_accept_fixture(&tape, &state);
 		tape.fail_at = failure;
 		yt_error_clear(&error);
-		if (yt_hostile_bribe_accept_run(&state,
+		if (test_hostile_bribe_accept_run(&state,
 		    &hostile_bribe_accept_ops, &tape, &error)
 		    || error.status != YT_IO_ERROR || state.complete
 		    || tape.calls != failure + 1U
@@ -11213,7 +11214,7 @@ check_hostile_bribe_accept_transaction(void)
 	hostile_bribe_accept_fixture(&tape, &state);
 	tape.fail_at = 3U;
 	yt_error_clear(&error);
-	if (yt_hostile_bribe_accept_run(&state, &hostile_bribe_accept_ops,
+	if (test_hostile_bribe_accept_run(&state, &hostile_bribe_accept_ops,
 	    &tape, &error) || error.status != YT_IO_ERROR
 	    || !state.sector_read || state.sector_written || state.player_read
 	    || memcmp(state.sector.record.bytes, expected_sector.bytes,
@@ -11221,9 +11222,9 @@ check_hostile_bribe_accept_transaction(void)
 		return false;
 
 	hostile_bribe_accept_fixture(&tape, &state);
-	return !yt_hostile_bribe_accept_run(NULL, &hostile_bribe_accept_ops,
+	return !test_hostile_bribe_accept_run(NULL, &hostile_bribe_accept_ops,
 	    &tape, NULL)
-	    && !yt_hostile_bribe_accept_run(&state, NULL, &tape, NULL);
+	    && !test_hostile_bribe_accept_run(&state, NULL, &tape, NULL);
 }
 
 enum hostile_bribe_event {
@@ -11272,7 +11273,7 @@ hostile_bribe_event(struct hostile_bribe_tape *tape,
 
 static bool
 hostile_bribe_present(void *context, const uint8_t *text, size_t length,
-    enum yt_hostile_bribe_output_kind kind, struct yt_error *error)
+    enum test_hostile_bribe_output_kind kind, struct yt_error *error)
 {
 	static const enum hostile_bribe_event events[] = {
 		HOSTILE_BRIBE_EVENT_ORDINARY,
@@ -11321,7 +11322,7 @@ hostile_bribe_amount(void *context, char *response, size_t capacity,
 
 static bool
 hostile_bribe_accept_child(void *context,
-    struct yt_hostile_bribe_accept_state *state, struct yt_error *error)
+    struct test_hostile_bribe_accept_state *state, struct yt_error *error)
 {
 	struct hostile_bribe_tape *tape = context;
 
@@ -11351,7 +11352,7 @@ hostile_bribe_fatal_child(void *context, struct yt_error *error)
 	return hostile_bribe_event(tape, HOSTILE_BRIBE_EVENT_FATAL, error);
 }
 
-static const struct yt_hostile_bribe_ops hostile_bribe_ops = {
+static const struct test_hostile_bribe_ops hostile_bribe_ops = {
 	hostile_bribe_present,
 	hostile_bribe_random,
 	hostile_bribe_amount,
@@ -11362,7 +11363,7 @@ static const struct yt_hostile_bribe_ops hostile_bribe_ops = {
 
 static void
 hostile_bribe_fixture(struct hostile_bribe_tape *tape,
-    struct yt_hostile_bribe_state *state)
+    struct test_hostile_bribe_state *state)
 {
 	static const uint8_t name[] = {'A', 0, 'B'};
 
@@ -11372,7 +11373,7 @@ hostile_bribe_fixture(struct hostile_bribe_tape *tape,
 	tape->draws[1] = 0.0f;
 	tape->draws[2] = 0.0f;
 	tape->response = "30";
-	*state = (struct yt_hostile_bribe_state){
+	*state = (struct test_hostile_bribe_state){
 		.current_player_record = 2,
 		.current_sector = 733,
 		.owner = -2.0f,
@@ -11405,12 +11406,12 @@ check_hostile_bribe_transaction(void)
 	static const uint8_t prompt[] =
 	    "You have 100 credits. How much do you offer? -+>";
 	struct hostile_bribe_tape tape;
-	struct yt_hostile_bribe_state state;
+	struct test_hostile_bribe_state state;
 	struct yt_error error;
 	size_t failure;
 
 	hostile_bribe_fixture(&tape, &state);
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	if (!test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || !state.complete || state.branch != YT_HOSTILE_BRIBE_ACCEPTED
 	    || state.route != YT_HOSTILE_BRIBE_SCANNER
 	    || state.draws_consumed != 3U || tape.draw_index != 3U
@@ -11433,7 +11434,7 @@ check_hostile_bribe_transaction(void)
 		hostile_bribe_fixture(&tape, &state);
 		tape.fail_at = failure;
 		yt_error_clear(&error);
-		if (yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape,
+		if (test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape,
 		    &error) || error.status != YT_IO_ERROR || state.complete
 		    || tape.calls != failure + 1U
 		    || memcmp(tape.events, accepted_events,
@@ -11444,20 +11445,20 @@ check_hostile_bribe_transaction(void)
 	/* Ordinary quiet, Xannor force and occupied-planet partitions. */
 	hostile_bribe_fixture(&tape, &state);
 	state.owner = 3.0f;
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	if (!test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.route != YT_HOSTILE_BRIBE_SCANNER
 	    || state.draws_consumed != 1U || tape.calls != 2U)
 		return false;
 	hostile_bribe_fixture(&tape, &state);
 	state.owner = -1.0f;
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	if (!test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.route != YT_HOSTILE_BRIBE_COMBAT
 	    || !state.forced_attack
 	    || tape.combat_commitment != 20.0 || tape.calls != 3U)
 		return false;
 	hostile_bribe_fixture(&tape, &state);
 	state.planet_link = 85.0f;
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	if (!test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.branch != YT_HOSTILE_BRIBE_PLANET_REFUSAL
 	    || state.draws_consumed != 0U || tape.calls != 1U)
 		return false;
@@ -11465,7 +11466,7 @@ check_hostile_bribe_transaction(void)
 	/* A previous mercenary injury remains sticky across the next Bribe. */
 	hostile_bribe_fixture(&tape, &state);
 	state.mercenaries_hurt = true;
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	if (!test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.branch != YT_HOSTILE_BRIBE_LIFE_DEMAND
 	    || state.draws_consumed != 2U)
 		return false;
@@ -11473,7 +11474,7 @@ check_hostile_bribe_transaction(void)
 	/* Life demand: combat, fatal and rounded sub-one menu return. */
 	hostile_bribe_fixture(&tape, &state);
 	tape.draws[0] = 0.01f;
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	if (!test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.branch != YT_HOSTILE_BRIBE_LIFE_DEMAND
 	    || state.route != YT_HOSTILE_BRIBE_COMBAT
 	    || state.draws_consumed != 2U || tape.calls != 4U)
@@ -11482,13 +11483,13 @@ check_hostile_bribe_transaction(void)
 	tape.draws[0] = 0.01f;
 	state.ship_fighters = 0.0;
 	state.shields = 0.0f;
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	if (!test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.route != YT_HOSTILE_BRIBE_FATAL || !state.fatal_called)
 		return false;
 	hostile_bribe_fixture(&tape, &state);
 	tape.draws[0] = 0.01f;
 	state.ship_fighters = 0.4;
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	if (!test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.route != YT_HOSTILE_BRIBE_HOSTILE_MENU
 	    || !state.direct_hostile_menu || state.combat_called)
 		return false;
@@ -11496,20 +11497,20 @@ check_hostile_bribe_transaction(void)
 	/* Empty and rejected offers preserve their distinct draw counts. */
 	hostile_bribe_fixture(&tape, &state);
 	tape.response = "";
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	if (!test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.branch != YT_HOSTILE_BRIBE_EMPTY_OFFER
 	    || state.draws_consumed != 2U)
 		return false;
 	hostile_bribe_fixture(&tape, &state);
 	tape.response = "5";
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	if (!test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.branch != YT_HOSTILE_BRIBE_REJECTED
 	    || state.route != YT_HOSTILE_BRIBE_COMBAT
 	    || state.draws_consumed != 3U)
 		return false;
 	hostile_bribe_fixture(&tape, &state);
 	tape.response = "101";
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	if (!test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || !state.above_credits || state.draws_consumed != 3U
 	    || state.branch != YT_HOSTILE_BRIBE_REJECTED)
 		return false;
@@ -11519,15 +11520,15 @@ check_hostile_bribe_transaction(void)
 	state.owner = -1.0f;
 	state.ship_fighters = HUGE_VAL;
 	yt_error_clear(&error);
-	if (yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, &error)
+	if (test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, &error)
 	    || error.status != YT_RANGE
 	    || !state.forced_attack
 	    || strcmp(error.operation, "bribe:commitment-csng") != 0)
 		return false;
 
 	hostile_bribe_fixture(&tape, &state);
-	return !yt_hostile_bribe_run(NULL, &hostile_bribe_ops, &tape, NULL)
-	    && !yt_hostile_bribe_run(&state, NULL, &tape, NULL);
+	return !test_hostile_bribe_run(NULL, &hostile_bribe_ops, &tape, NULL)
+	    && !test_hostile_bribe_run(&state, NULL, &tape, NULL);
 }
 
 struct direct_attack_attrition_tape {
