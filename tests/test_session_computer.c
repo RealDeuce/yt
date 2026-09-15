@@ -19,6 +19,7 @@ test_activate_and_deactivate(void)
 {
 	static const char path[] = "SESSION-COMPUTER.DAT";
 	static const uint8_t command[] = "1\r";
+	static const uint8_t avoid[] = "1\r7\r";
 	struct yt_door door;
 	struct yt_session session;
 	struct yt_player player;
@@ -47,6 +48,14 @@ test_activate_and_deactivate(void)
 	CHECK(enter_sector);
 	CHECK(session.queue_position == session.queue_length);
 	CHECK(session.shared_status == 0.0f);
+	door.game.config.sector_offset = 3.0f;
+	door.game.config.port_offset = 23.0f;
+	memcpy(session.queue, avoid, sizeof(avoid) - 1U);
+	session.queue_length = sizeof(avoid) - 1U;
+	session.queue_position = 0U;
+	CHECK(yt_session_computer_avoid(&session, &error));
+	CHECK(session.route_avoid[0] == 7.0f);
+	CHECK(session.queue_position == session.queue_length);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);
 }
