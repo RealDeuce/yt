@@ -19,19 +19,34 @@ xannor_victory_failure(struct yt_error *error, const char *operation)
 }
 
 static bool
-xannor_victory_file_present(void *context, const uint8_t *line,
-    size_t length, struct yt_error *error)
-{
-	return session_present_text(context, line, length,
-	    SESSION_PRESENT_LINE, "Xannor victory file row", error);
-}
-
-static bool
 xannor_victory_file(struct yt_session *session, const char *path,
     struct yt_error *error)
 {
-	return yt_text_sequential_play(path, xannor_victory_file_present,
-	    session, error);
+	struct yt_text_input input;
+	bool result = false;
+
+	yt_text_input_init(&input);
+	if (!yt_text_input_open(&input, path, error))
+		goto done;
+	for (;;) {
+		const uint8_t *line;
+		size_t length;
+		bool available;
+
+		if (!yt_text_input_read_line(&input, &line, &length, &available,
+		    error))
+			goto done;
+		if (!available)
+			break;
+		if (!session_present_text(session, line, length,
+		    SESSION_PRESENT_LINE, "Xannor victory file row", error))
+			goto done;
+	}
+	result = yt_text_input_close(&input, error);
+
+done:
+	yt_text_input_destroy(&input);
+	return result;
 }
 
 bool

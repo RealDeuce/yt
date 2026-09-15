@@ -52,10 +52,10 @@ struct xannor_file_capture {
 };
 
 static bool
-xannor_file_present(void *context, const uint8_t *line, size_t length,
+xannor_file_present(struct xannor_file_capture *capture,
+    const uint8_t *line, size_t length,
     struct yt_error *error)
 {
-	struct xannor_file_capture *capture = context;
 	struct yt_present_result result;
 	size_t index;
 
@@ -94,6 +94,36 @@ xannor_file_present(void *context, const uint8_t *line, size_t length,
 	return true;
 }
 
+static bool
+xannor_file_play(const char *path, struct xannor_file_capture *capture,
+    struct yt_error *error)
+{
+	struct yt_text_input input;
+	bool result = false;
+
+	yt_text_input_init(&input);
+	if (!yt_text_input_open(&input, path, error))
+		goto done;
+	for (;;) {
+		const uint8_t *line;
+		size_t length;
+		bool available;
+
+		if (!yt_text_input_read_line(&input, &line, &length, &available,
+		    error))
+			goto done;
+		if (!available)
+			break;
+		if (!xannor_file_present(capture, line, length, error))
+			goto done;
+	}
+	result = yt_text_input_close(&input, error);
+
+done:
+	yt_text_input_destroy(&input);
+	return result;
+}
+
 static void
 test_xannor_file_playback(void)
 {
@@ -123,8 +153,8 @@ test_xannor_file_playback(void)
 		capture.presentation = state(pass != 0U);
 		capture.presentation.foreground = 7.0f;
 		yt_error_clear(&error);
-		CHECK(yt_text_sequential_play(YT_DATA_DIR "XANNORHQ.TXT",
-		    xannor_file_present, &capture, &error));
+		CHECK(xannor_file_play(YT_DATA_DIR "XANNORHQ.TXT", &capture,
+		    &error));
 		CHECK(capture.presented == 5U);
 		CHECK(capture.remote_length == expected_length
 		    && memcmp(capture.remote, expected, expected_length) == 0);

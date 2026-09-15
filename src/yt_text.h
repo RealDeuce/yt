@@ -237,13 +237,6 @@ bool yt_text_output_close_all_method(void *context, int8_t file_class,
 	struct yt_error *error);
 void yt_text_output_destroy(struct yt_text_output *output);
 
-typedef bool (*yt_text_sequential_present_fn)(void *context,
-	const uint8_t *line, size_t length, struct yt_error *error);
-
-bool yt_text_sequential_play(const char *path,
-	yt_text_sequential_present_fn present, void *context,
-	struct yt_error *error);
-
 struct yt_file_viewer_state {
 	float *foreground;
 	int *pager_foreground;

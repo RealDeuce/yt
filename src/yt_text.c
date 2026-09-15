@@ -590,42 +590,6 @@ yt_text_input_destroy(struct yt_text_input *input)
 	memset(input, 0, sizeof(*input));
 }
 
-bool
-yt_text_sequential_play(const char *path,
-    yt_text_sequential_present_fn present, void *context,
-    struct yt_error *error)
-{
-	struct yt_text_input input;
-	bool result = false;
-
-	if (path == NULL || present == NULL) {
-		errno = 0;
-		set_error(error, YT_INVALID, "sequential text playback", NULL);
-		return false;
-	}
-	yt_text_input_init(&input);
-	if (!yt_text_input_open(&input, path, error))
-		goto done;
-	for (;;) {
-		const uint8_t *line;
-		size_t length;
-		bool available;
-
-		if (!yt_text_input_read_line(&input, &line, &length, &available,
-		    error))
-			goto done;
-		if (!available)
-			break;
-		if (!present(context, line, length, error))
-			goto done;
-	}
-	result = yt_text_input_close(&input, error);
-
-done:
-	yt_text_input_destroy(&input);
-	return result;
-}
-
 static int
 file_viewer_foreground(const uint8_t *line, size_t length)
 {
