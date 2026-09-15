@@ -20,6 +20,7 @@ test_activate_and_deactivate(void)
 	static const char path[] = "SESSION-COMPUTER.DAT";
 	static const uint8_t command[] = "1\r";
 	static const uint8_t avoid[] = "1\r7\r";
+	static const uint8_t route[] = "1\r2\r";
 	static const uint8_t planet_report[] = "7\r";
 	struct yt_door door;
 	struct yt_session session;
@@ -64,6 +65,21 @@ test_activate_and_deactivate(void)
 	CHECK(yt_session_computer_avoid(&session, &error));
 	CHECK(session.route_avoid[0] == 7.0f);
 	CHECK(session.queue_position == session.queue_length);
+	yt_record_blank(&sector.record);
+	sector.warps[0] = 2.0f;
+	yt_sector_encode(&sector);
+	CHECK(yt_database_write(&door.game.database, 4U, &sector.record,
+	    &error));
+	yt_record_blank(&sector.record);
+	yt_sector_encode(&sector);
+	CHECK(yt_database_write_durable(&door.game.database, 5U,
+	    &sector.record, &error));
+	memcpy(session.queue, route, sizeof(route) - 1U);
+	session.queue_length = sizeof(route) - 1U;
+	session.queue_position = 0U;
+	CHECK(yt_session_computer_route(&session, false, &error));
+	CHECK(session.queue_position == session.queue_length);
+	CHECK(session.path_marker == 0.0f);
 	yt_record_blank(&sector.record);
 	sector.planet = 1.0f;
 	yt_sector_encode(&sector);
