@@ -78,14 +78,14 @@ test_routes_from_database(void)
 
 	write_sector(&door.game, 1, sector_one, &error);
 	write_sector(&door.game, 2, sector_two, &error);
-	memset(session.route_avoid, 0, sizeof(session.route_avoid));
-	session.route_avoid[0] = 3.0f;
+	memset(session.navigation.avoided_sectors, 0, sizeof(session.navigation.avoided_sectors));
+	session.navigation.avoided_sectors[0] = 3.0f;
 	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, &route, true,
 	    &found, &outcome, &status, &error));
 	CHECK(found && outcome == YT_ROUTE_FOUND && status == 0.0f);
 	CHECK(route.next_hop[1] == 2 && route.next_hop[2] == 4);
 
-	session.route_avoid[0] = 1.0f;
+	session.navigation.avoided_sectors[0] = 1.0f;
 	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, &route, true,
 	    &found, &outcome, &status, &error));
 	CHECK(!found && outcome == YT_ROUTE_NOT_FOUND && status == 1.0f);

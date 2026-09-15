@@ -58,7 +58,7 @@ test_adjacent_and_global_reports(void)
 	memset(&target, 0, sizeof(target));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.current_sector_record = 4.0f;
+	session.navigation.current_sector_physical_record = 4.0f;
 	session.presentation.foreground = 1.0f;
 	session.market_bases[0] = 20.0f;
 	session.market_bases[1] = 30.0f;

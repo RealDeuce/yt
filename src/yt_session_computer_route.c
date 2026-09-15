@@ -52,7 +52,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	float hop_count;
 	uint8_t parsed_raw[4];
 	uint8_t hop_count_raw[4];
-	bool stale_marker = autopilot && session->path_marker == 9999.0f;
+	bool stale_marker = autopilot && session->navigation.route_marker == 9999.0f;
 	int start;
 	int destination;
 	int count = session_sector_count(session);
@@ -62,7 +62,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	enum yt_route_outcome route_outcome;
 
 	if (!autopilot) {
-		session->path_marker = 9999.0f;
+		session->navigation.route_marker = 9999.0f;
 		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "path start blank", error)
 		    || !session_present_timed_paged_row(session, start_prompt,
@@ -75,12 +75,12 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		if (!yt_computer_path_parse(response, &start_value, parsed_raw,
 		    error))
 			return false;
-		session->route_start = start_value;
+		session->navigation.route_start_sector = start_value;
 	}
 	else if (!stale_marker)
-		session->route_start = qb_mbf32_decode(
+		session->navigation.route_start_sector = qb_mbf32_decode(
 		    session->player.record.bytes + YT_F57);
-	start_value = session->route_start;
+	start_value = session->navigation.route_start_sector;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "path destination blank", error)
 	    || !session_present_timed_paged_row(session, destination_prompt,
@@ -226,7 +226,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		    "path course row", error))
 			return false;
 	}
-	session->path_marker = 0.0f;
+	session->navigation.route_marker = 0.0f;
 	if (!autopilot || stale_marker)
 		return true;
 	if (!session_reload_player(session, error))
@@ -272,7 +272,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		    YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET, error))
 			return false;
 		for (index = 0; index < 6U; ++index)
-			session->current_warps[index] = qb_mbf32_decode(
+			session->navigation.current_warps[index] = qb_mbf32_decode(
 			    current_sector.record.bytes + YT_F41 + index * 4U);
 	}
 	return true;

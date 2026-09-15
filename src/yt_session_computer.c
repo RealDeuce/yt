@@ -65,7 +65,7 @@ yt_session_computer_check_port_visibility(struct yt_session *session,
 
 	if (session == NULL || sector == NULL || unavailable == NULL)
 		return false;
-	session->path_marker = 0.0f;
+	session->navigation.route_marker = 0.0f;
 	if (!yt_session_computer_owner_is_friendly(session,
 	    sector->fighter_owner,
 	    &friendly, error))

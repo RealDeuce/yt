@@ -63,7 +63,7 @@ test_activate_and_deactivate(void)
 	session.queue_length = sizeof(avoid) - 1U;
 	session.queue_position = 0U;
 	CHECK(yt_session_computer_avoid(&session, &error));
-	CHECK(session.route_avoid[0] == 7.0f);
+	CHECK(session.navigation.avoided_sectors[0] == 7.0f);
 	CHECK(session.queue_position == session.queue_length);
 	yt_record_blank(&sector.record);
 	sector.warps[0] = 2.0f;
@@ -79,7 +79,7 @@ test_activate_and_deactivate(void)
 	session.queue_position = 0U;
 	CHECK(yt_session_computer_route(&session, false, &error));
 	CHECK(session.queue_position == session.queue_length);
-	CHECK(session.path_marker == 0.0f);
+	CHECK(session.navigation.route_marker == 0.0f);
 	yt_record_blank(&sector.record);
 	sector.planet = 1.0f;
 	yt_sector_encode(&sector);
@@ -153,7 +153,7 @@ test_port_visibility_through_report(void)
 	CHECK(!enter_sector);
 	CHECK(session.queue_position == session.queue_length);
 	CHECK(session.shared_status == -1.0f);
-	CHECK(session.path_marker == 0.0f);
+	CHECK(session.navigation.route_marker == 0.0f);
 	CHECK(session.planet_record_expression == 3107.0f);
 
 	owner.team = 8.0f;

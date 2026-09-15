@@ -274,7 +274,7 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 	if (yt_sector_mine_admit(carried, amount) != YT_SECTOR_MINE_ACCEPTED)
 		return true;
 
-	session->self_mine_suppressed = true;
+	session->navigation.self_mines_suppressed = true;
 	remaining = qb_single_subtract(carried, amount);
 	player.mines = remaining;
 	if (!yt_record_set_number(&player.record, YT_F129, remaining)

@@ -34,7 +34,7 @@ test_credit_mutation(void)
 	memset(&source, 0, sizeof(source));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.current_sector_record = -7.0f;
+	session.navigation.current_sector_physical_record = -7.0f;
 	yt_record_blank(&door.game.config.record);
 	CHECK(yt_record_set_number(&door.game.config.record, YT_F53, 100.0f));
 	door.game.config.sector_offset = 100.0f;
@@ -57,7 +57,7 @@ test_credit_mutation(void)
 	    &error));
 	CHECK(hydrated);
 	CHECK(session.player.credits == 99.0f);
-	CHECK(session.current_sector_record == 109.0f);
+	CHECK(session.navigation.current_sector_physical_record == 109.0f);
 	CHECK(session.combat.ship_fighters == 12.0);
 	CHECK(session.combat.ship_shields == 34.0f);
 	CHECK(session.player_cache.cloak[2] == 0.75f);

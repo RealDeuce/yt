@@ -257,7 +257,7 @@ yt_session_store_move(struct yt_session *session, float target,
 	    || qb_mbf32_encode(target, target_raw) != QB_MBF_OK)
 		return false;
 	player_record = session_record(session);
-	session->self_mine_suppressed = false;
+	session->navigation.self_mines_suppressed = false;
 	if (!session_reload_player(session, error))
 		return false;
 	yt_movement_player_overlay(&session->player, target);
@@ -296,7 +296,7 @@ yt_session_command_move(struct yt_session *session, bool *moved,
 		return false;
 	if (denied)
 		return true;
-	if (!yt_movement_warp_row(session->current_warps, row, sizeof(row),
+	if (!yt_movement_warp_row(session->navigation.current_warps, row, sizeof(row),
 	    &row_length))
 		return movement_range_error(error, "movement warp row");
 	if (!session_present_paged_line(session, row, row_length,
@@ -329,8 +329,8 @@ yt_session_command_move(struct yt_session *session, bool *moved,
 	if (target == session->player.sector)
 		return session_present_alert(session, same_sector,
 		    sizeof(same_sector) - 1U, "movement same-sector row", error);
-	for (slot = 0U; slot < YT_ARRAY_LEN(session->current_warps); ++slot) {
-		if (session->current_warps[slot] == target) {
+	for (slot = 0U; slot < YT_ARRAY_LEN(session->navigation.current_warps); ++slot) {
+		if (session->navigation.current_warps[slot] == target) {
 			adjacent = true;
 			break;
 		}

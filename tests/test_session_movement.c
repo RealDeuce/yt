@@ -124,7 +124,7 @@ test_move_storage(void)
 	memset(&player, 0, sizeof(player));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.self_mine_suppressed = true;
+	session.navigation.self_mines_suppressed = true;
 	door.game.config.sector_offset = 51.0f;
 	yt_record_blank(&player.record);
 	player.turns = 99.0f;
@@ -140,7 +140,7 @@ test_move_storage(void)
 	CHECK(yt_database_write_durable(&door.game.database, 2U,
 	    &player.record, &error));
 	CHECK(yt_session_store_move(&session, 42.0f, &error));
-	CHECK(!session.self_mine_suppressed);
+	CHECK(!session.navigation.self_mines_suppressed);
 	CHECK(session.player.sector == 42.0f);
 	CHECK(session.player.turns == 99.0f);
 	CHECK(session.player.credits == 1234.0f);

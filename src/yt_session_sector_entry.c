@@ -136,7 +136,7 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 		    (int)session->player.sector, &sector, error))
 			return false;
 		if (yt_sector_mines_admitted(sector.mines,
-		    session->self_mine_suppressed ? 1.0f : 0.0f)) {
+		    session->navigation.self_mines_suppressed ? 1.0f : 0.0f)) {
 			{
 				bool mine_terminal;
 

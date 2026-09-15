@@ -374,7 +374,7 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 	    SESSION_PRESENT_BOLD_LINE, "adjacent profit title", error)
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "adjacent profit title blank", error)
-	    || !profit_single(session->current_sector_record,
+	    || !profit_single(session->navigation.current_sector_physical_record,
 	    &current_sector_record, error, "profit current sector record")
 	    || !profit_read(session, current_sector_record, &raw, error))
 		return false;

@@ -174,7 +174,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 	bool first_visible = true;
 	bool first_warp = true;
 
-	session->current_sector_record = qb_single_add(
+	session->navigation.current_sector_physical_record = qb_single_add(
 	    session_sector_offset(session), logical_sector);
 	if (!scanner_read_sector(session, logical_sector, &sector, error))
 		return false;
@@ -468,8 +468,8 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 		session_set_foreground(session, saved_foreground);
 		return true;
 	}
-	memcpy(caller_warps, session->current_warps,
-	    sizeof(session->current_warps));
+	memcpy(caller_warps, session->navigation.current_warps,
+	    sizeof(session->navigation.current_warps));
 	target_count = yt_sector_sensor_targets(caller_warps, targets);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "adjacent-sector sensor leading blank", error))

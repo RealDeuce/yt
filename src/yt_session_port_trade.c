@@ -451,7 +451,7 @@ yt_session_command_trade(struct yt_session *session, bool *enter_sector,
 		return true;
 	}
 	sector_physical_record = qb_brun_random_record_number(
-	    session->current_sector_record);
+	    session->navigation.current_sector_physical_record);
 	if (sector_physical_record == 0U)
 		return session_range_error(error,
 		    "port docking sector record conversion");
@@ -500,7 +500,7 @@ yt_session_command_trade(struct yt_session *session, bool *enter_sector,
 	if (session->player.sector == 1.0f)
 		return yt_session_earth_store(session, enter_sector, error);
 	if (!yt_session_ordinary_commerce(session, (int)session->player.sector,
-	    session->current_sector_record, error))
+	    session->navigation.current_sector_physical_record, error))
 		return false;
 	if (enter_sector != NULL)
 		*enter_sector = true;

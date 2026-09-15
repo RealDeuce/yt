@@ -80,7 +80,7 @@ route_build(struct yt_session *session, float start_value,
     enum yt_route_outcome *outcome, struct yt_error *error)
 {
 	uint8_t seen[(YT_ROUTE_CAPACITY + CHAR_BIT - 1U) / CHAR_BIT];
-	const float *avoid = session->route_avoid;
+	const float *avoid = session->navigation.avoided_sectors;
 	uint8_t conversion_mode = session->presentation.sound.conversion_mode;
 	bool avoid_enabled;
 	int16_t start;

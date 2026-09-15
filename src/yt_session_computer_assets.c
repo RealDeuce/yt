@@ -48,14 +48,14 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 		char last[96];
 
 		if (!computer_avoid_cell(first, sizeof(first), row + 1,
-		    session->route_avoid[row])
+		    session->navigation.avoided_sectors[row])
 		    || !computer_avoid_cell(last, sizeof(last), row + 21,
-		    session->route_avoid[row + 20])
+		    session->navigation.avoided_sectors[row + 20])
 		    || !session_fixed_width_bytes(session,
 		    (const uint8_t *)first, strlen(first), 20.0f,
 		    "avoid first cell", error)
 		    || !computer_avoid_cell(middle, sizeof(middle), row + 11,
-		    session->route_avoid[row + 10])
+		    session->navigation.avoided_sectors[row + 10])
 		    || !session_fixed_width_bytes(session,
 		    (const uint8_t *)middle, strlen(middle), 20.0f,
 		    "avoid middle cell", error)
@@ -100,8 +100,8 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED)
 		return true;
-	old_value = session->route_avoid[slot - 1];
-	session->route_avoid[slot - 1] = new_value;
+	old_value = session->navigation.avoided_sectors[slot - 1];
+	session->navigation.avoided_sectors[slot - 1] = new_value;
 	yt_computer_avoid_transition(old_value, new_value, &locked, &available);
 	session_set_foreground(session, 2.0f);
 	if (locked) {

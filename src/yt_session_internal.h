@@ -44,15 +44,23 @@ struct session_combat_state {
 	bool mercenaries_hurt;
 };
 
+struct session_navigation_state {
+	float current_sector_physical_record;
+	float current_warps[6];
+	float route_marker;
+	float route_start_sector;
+	float avoided_sectors[YT_ROUTE_AVOID_COUNT];
+	bool self_mines_suppressed;
+};
+
 struct yt_session {
 	struct yt_door *door;
 	struct yt_error *error;
 	const char *executable_path;
 	int active_player_record;
 	struct session_projectile_state projectile;
+	struct session_navigation_state navigation;
 	bool destroyed;
-	float current_warps[6];
-	bool self_mine_suppressed;
 	bool earth_report_seen;
 	bool anti_cloak_enabled;
 	float low_time_remembered;
@@ -60,14 +68,11 @@ struct yt_session {
 	float planet_record_expression;
 	float shared_target_record;
 	float shared_status;
-	float path_marker;
-	float route_start;
 	int spy_count;
 	int spy_sectors[3];
 	int spy_markers[3];
 	bool spy_found;
 	struct yt_player player;
-	float current_sector_record;
 	struct session_combat_state combat;
 	float market_bases[3];
 	float clearance_discounts[4];
@@ -89,7 +94,6 @@ struct yt_session {
 	bool registered;
 	bool fatal_wait_complete;
 	struct yt_present_state presentation;
-	float route_avoid[YT_ROUTE_AVOID_COUNT];
 	char planet_name[42];
 	struct yt_present_time_state time;
 	struct yt_pager_state pager;
