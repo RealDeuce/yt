@@ -384,5 +384,9 @@ bool yt_session_command_genesis(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_command_fighters(struct yt_session *session,
     struct yt_error *error);
+bool yt_session_instruction_offer(struct yt_session *session,
+    struct yt_error *error);
+bool yt_session_command_shell(struct yt_session *session,
+    struct yt_error *error);
 
 #endif
