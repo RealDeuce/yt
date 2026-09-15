@@ -126,6 +126,9 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_mines.c
     src/yt_session_movement.c
     src/yt_session_nearest.c
+    src/yt_session_planet_inventory.c
+    src/yt_session_planet_landing.c
+    src/yt_session_planet_management.c
     src/yt_session_planet_menu.c
     src/yt_session_planet_move.c
     src/yt_session_planets.c
