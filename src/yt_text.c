@@ -2348,6 +2348,13 @@ yt_text_output_close(struct yt_text_output *output, struct yt_error *error)
 }
 
 bool
+yt_text_output_close_all(struct yt_text_output *output,
+    struct yt_error *error)
+{
+	return text_output_close_execute(output, true, error);
+}
+
+bool
 yt_text_output_close_all_method(void *context, int8_t file_class,
     struct yt_error *error)
 {

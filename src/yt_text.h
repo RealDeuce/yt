@@ -231,6 +231,8 @@ bool yt_text_output_write(struct yt_text_output *output,
 	const uint8_t *data, size_t length, struct yt_error *error);
 bool yt_text_output_close(struct yt_text_output *output,
 	struct yt_error *error);
+bool yt_text_output_close_all(struct yt_text_output *output,
+	struct yt_error *error);
 bool yt_text_output_close_all_method(void *context, int8_t file_class,
 	struct yt_error *error);
 void yt_text_output_destroy(struct yt_text_output *output);

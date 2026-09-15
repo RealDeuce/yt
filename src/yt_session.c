@@ -624,34 +624,12 @@ session_mutate_player_credits(struct yt_session *session, float argument,
 	    (size_t)session_record(session), &session->player.record, error);
 }
 
-static bool
-session_close_file5(struct yt_error *error)
-{
-	struct yt_database file = {0};
-
-	/* These callers have no live random file-5 owner at this boundary. */
-	return yt_database_random_close(&file, error);
-}
-
-static bool
-session_close_game_all(void *context, int8_t file_class,
-    struct yt_error *error)
-{
-	struct yt_door *door = context;
-	bool result = yt_database_close_all_method(&door->game.database,
-	    file_class, error);
-
-	if (door->game.database.file == NULL)
-		door->game_open = false;
-	return result;
-}
-
 bool
 session_append_news(struct yt_session *session, const char *text,
     struct yt_error *error)
 {
 	(void)session;
-	return session_close_file5(error) && yt_news_append(text, error);
+	return yt_news_append(text, error);
 }
 
 bool
@@ -659,8 +637,7 @@ session_append_news_bytes(void *context, const uint8_t *text,
     size_t length, struct yt_error *error)
 {
 	(void)context;
-	return session_close_file5(error)
-	    && yt_news_append_bytes(text, length, error);
+	return yt_news_append_bytes(text, length, error);
 }
 
 static bool
@@ -2078,8 +2055,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			if (!yt_platform_clock(&now, error))
 				return false;
 			yt_format_date(&now, date);
-			if (!session_close_file5(error)
-			    || !yt_news_append_game_full(date, full, error))
+			if (!yt_news_append_game_full(date, full, error))
 				return false;
 			session->running = false;
 			session->terminated = true;
@@ -2100,8 +2076,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			char date[11];
 
 			yt_format_date(&now, date);
-			if (!session_close_file5(error)
-			    || !yt_news_append_new_player(date, full, error))
+			if (!yt_news_append_new_player(date, full, error))
 				return false;
 		}
 		return instruction_offer(session, error);
@@ -2136,8 +2111,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			char time_text[9];
 
 			yt_format_time(&now, time_text);
-			if (!session_close_file5(error)
-			    || !yt_news_append_login_bytes(
+			if (!yt_news_append_login_bytes(
 			    (const uint8_t *)time_text, strlen(time_text),
 			    session->cached_player_name,
 			    session->cached_player_name_length, error))
@@ -2906,197 +2880,6 @@ build_projectile_route(struct yt_session *session,
 	if (returned_status != NULL)
 		*returned_status = status;
 	return true;
-}
-
-static bool
-genesis_handoff_open_output(struct yt_text_output *output,
-    struct yt_error *error)
-{
-	bool opened;
-
-	opened = yt_text_output_open(output, "RMTINIT.TMP", error);
-	if (!opened && output->last_output_open.basic_error != 0U)
-		(void)yt_error_attach_basic_fault_number(error,
-		    YT_BASIC_FAULT_GENESIS_OPEN_OUTPUT,
-		    output->last_output_open.basic_error);
-	return opened;
-}
-
-static bool
-genesis_handoff_print_command(struct yt_text_output *output,
-    const uint8_t *line, size_t line_length, struct yt_error *error)
-{
-	bool printed;
-
-	printed = yt_text_output_write(output, line, line_length, error);
-	if (!printed && output->last_write.basic_error != 0U)
-		(void)yt_error_attach_basic_fault_number(error,
-		    YT_BASIC_FAULT_GENESIS_PRINT_VALUE,
-		    output->last_write.basic_error);
-	return printed;
-}
-
-static bool
-genesis_handoff_close_all(struct yt_session *session,
-    struct yt_text_output *output, struct yt_error *error)
-{
-	struct yt_close_all_control controls[2];
-	struct yt_close_all_result close_all;
-	size_t control_count = 0U;
-	size_t game_index = SIZE_MAX;
-	size_t output_index;
-	uint16_t basic_error = 0U;
-	bool closed;
-
-	/*
-	 * The database file-1 control predates the new sequential file-5
-	 * control.  CLOSE with no file number therefore walks file 5 first,
-	 * appending its DOS EOF, and then closes file 1 before RUN.
-	 */
-	if (session->door->game_open) {
-		game_index = control_count;
-		controls[control_count++] = (struct yt_close_all_control){
-			YT_CLOSE_ALL_HEAP_FILE, 0,
-			session_close_game_all, session->door};
-	}
-	output_index = control_count;
-	controls[control_count++] = (struct yt_close_all_control){
-		YT_CLOSE_ALL_HEAP_FILE, 0,
-		yt_text_output_close_all_method, output};
-	closed = yt_close_all_run(controls, control_count, NULL, &close_all,
-	    error);
-	if (closed)
-		return true;
-	if (close_all.failed_index == output_index)
-		basic_error = output->last_close.basic_error;
-	else if (close_all.failed_index == game_index)
-		basic_error = session->door->game.database.last_close.basic_error;
-	if (basic_error != 0U)
-		(void)yt_error_attach_basic_fault_number(error,
-		    YT_BASIC_FAULT_GENESIS_CLOSE_ALL, basic_error);
-	return false;
-}
-
-static bool
-genesis_handoff_run_program(struct yt_session *session,
-    struct yt_error *error)
-{
-	char sibling[1024];
-	char *arguments[2];
-
-	if (!yt_platform_sibling_program(sibling, sizeof(sibling),
-	    session->executable_path, "rmt-init", error))
-		return false;
-	arguments[0] = sibling;
-	arguments[1] = NULL;
-	if (fflush(NULL) != 0) {
-		if (error != NULL) {
-			error->status = YT_IO_ERROR;
-			snprintf(error->operation, sizeof(error->operation),
-			    "flush before Genesis");
-		}
-		return false;
-	}
-	yt_door_shutdown_for_replace();
-	if (!yt_platform_spawn(sibling, arguments, YT_SPAWN_REPLACE, NULL,
-	    error))
-		return false;
-	return true; /* Unreachable after a successful RUN replacement. */
-}
-
-static bool
-genesis_handoff(void *context, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_text_output output;
-	uint8_t line[sizeof(session->door->command_line) + 2U];
-	size_t line_length;
-	bool result;
-
-	line_length = strlen(session->door->command_line) + 2U;
-	memcpy(line, session->door->command_line, line_length - 2U);
-	line[line_length - 2U] = '\r';
-	line[line_length - 1U] = '\n';
-	yt_text_output_init(&output);
-	result = session_close_file5(error)
-	    && genesis_handoff_open_output(&output, error)
-	    && genesis_handoff_print_command(&output, line, line_length, error)
-	    && genesis_handoff_close_all(session, &output, error)
-	    && genesis_handoff_run_program(session, error);
-	yt_text_output_destroy(&output);
-	return result;
-}
-
-static bool
-command_genesis(struct yt_session *session, struct yt_error *error)
-{
-	static const uint8_t prophecy_first[] =
-	    "It has been written that one day a Trader Baron will rise up";
-	static const uint8_t prophecy_second[] =
-	    "and wipe the universe clean of the evil that infests it.";
-	static const uint8_t disabled[] = "*FUNCTION DISABLED*";
-	static const uint8_t declined[] =
-	    "Alas, today is not the day that the prophesy will be fullfilled.";
-	static const uint8_t success_first[] =
-	    "...and so it was written, that one day a trader baron would emerge who";
-	static const uint8_t success_second[] =
-	    "would wipe away the all of the evil in the universe.....";
-	uint8_t cached_trader[sizeof(session->player.name) - 1U];
-	size_t cached_trader_length = strlen(session->player.name);
-	uint8_t prompt[512];
-	uint8_t first[256];
-	uint8_t second[256];
-	size_t prompt_length;
-	size_t first_length;
-	size_t second_length;
-	enum yt_yes_no_answer answer;
-	float required_ports = session->door->game.config.genesis_ports;
-
-	if (cached_trader_length > sizeof(cached_trader))
-		return session_range_error(error, "Genesis cached trader length");
-	memcpy(cached_trader, session->player.name, cached_trader_length);
-	if (!session_reload_player(session, error)
-	    || !session_present_paged_line(session, prophecy_first,
-	    sizeof(prophecy_first) - 1U, "Genesis prophecy first row", error)
-	    || !session_present_paged_fragment(session, prophecy_second,
-	    sizeof(prophecy_second) - 1U)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "Genesis prompt leading blank", error)
-	    || !yt_genesis_confirmation_prompt(cached_trader,
-	    cached_trader_length, prompt, sizeof(prompt), &prompt_length)
-	    || !session_confirm(session, prompt, prompt_length, &answer, error))
-		return false;
-	if (required_ports > 300.0f) {
-		if (!session_present_alert(session, disabled, sizeof(disabled) - 1U,
-		    "Genesis disabled row", error))
-			return false;
-		answer = YT_YES_NO_NO;
-	}
-	if (answer != YT_YES_NO_YES)
-		return session_present_paged_line(session, declined,
-		    sizeof(declined) - 1U, "Genesis declined row", error);
-	if (session->player.ports_owned < required_ports) {
-		if (!yt_genesis_insufficient_rows(required_ports,
-		    session->player.ports_owned, first, sizeof(first), &first_length,
-		    second, sizeof(second), &second_length))
-			return session_range_error(error,
-			    "Genesis insufficient row composition");
-		return session_present_paged_line(session, first, first_length,
-		    "Genesis insufficient first row", error)
-		    && session_present_paged_fragment(session, second,
-		    second_length);
-	}
-	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "Genesis success leading blank", error))
-		return false;
-	yt_present_set_bold(&session->presentation, 1.0f);
-	if (!session_present_paged_fragment(session, success_first,
-	    sizeof(success_first) - 1U))
-		return false;
-	yt_present_set_bold(&session->presentation, 1.0f);
-	return session_present_paged_fragment(session, success_second,
-	    sizeof(success_second) - 1U)
-	    && genesis_handoff(session, error);
 }
 
 static bool
@@ -5489,7 +5272,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 			enter_sector = true;
 			break;
 		case YT_MAIN_SHELL_GENESIS:
-			if (!command_genesis(session, error))
+			if (!yt_session_command_genesis(session, error))
 				return false;
 			break;
 		case YT_MAIN_SHELL_RENAME_PORT:

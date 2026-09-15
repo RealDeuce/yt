@@ -787,17 +787,7 @@ bool
 yt_database_close_all_single(struct yt_database *database,
     struct yt_error *error)
 {
-	struct yt_close_all_control control = {
-		.heap_type = YT_CLOSE_ALL_HEAP_FILE,
-		.file_class = 0,
-		.method = yt_database_close_all_method,
-		.context = database,
-	};
-
-	/* No allocated block exists for an unregistered file number. */
-	if (database != NULL && database->file == NULL)
-		return database_close_execute(database, true, error);
-	return yt_close_all_run(&control, 1U, NULL, NULL, error);
+	return database_close_execute(database, true, error);
 }
 
 static bool

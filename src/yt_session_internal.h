@@ -385,5 +385,7 @@ bool yt_session_computer_newspaper(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_computer_menu(struct yt_session *session, bool *enter_sector,
     struct yt_error *error);
+bool yt_session_command_genesis(struct yt_session *session,
+    struct yt_error *error);
 
 #endif
