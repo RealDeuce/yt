@@ -1,4 +1,5 @@
 #include "yt_game.h"
+#include "yt_game_internal.h"
 #include "yt_port_math.h"
 
 #include "qb.h"
@@ -11,21 +12,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-static bool
-startup_configuration_error(struct yt_error *error, enum yt_status status,
-    const char *operation)
-{
-	if (error != NULL) {
-		error->status = status;
-		error->system_error = 0;
-		(void)snprintf(error->operation, sizeof(error->operation), "%s",
-		    operation);
-		error->path[0] = '\0';
-	}
-	return false;
-}
-
 
 bool
 yt_xannor_victory_mks_internal_fatal_run(uint16_t module_segment,
@@ -76,7 +62,7 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 	path_count = qb_cint_mbf32(config->record.bytes + YT_F41, 0U,
 	    &overflow);
 	if (overflow || path_count < 0)
-		return startup_configuration_error(error, YT_RANGE,
+		return yt_game_error(error, YT_RANGE,
 		    "startup scoreboard LEFT$");
 	config->scoreboard_length = (float)path_count;
 	if (config->scoreboard_length > YT_TEXT_FIELD_SIZE)
@@ -134,7 +120,7 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 		int32_t basic = qb_cint(counter, &overflow);
 
 		if (overflow || !yt_player_cache_contains(basic))
-			return startup_configuration_error(error, YT_RANGE,
+			return yt_game_error(error, YT_RANGE,
 			    "startup player-cache index");
 		if (!yt_game_read_player(game, basic, &player, error))
 			return false;
@@ -181,7 +167,7 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 			memcpy(raw, dirty_zero, sizeof(raw));
 		} else if (qb_mbf32_encode(disruption_sectors[index], raw)
 		    != QB_MBF_OK) {
-			return startup_configuration_error(error, YT_RANGE,
+			return yt_game_error(error, YT_RANGE,
 			    "startup disruption result");
 		}
 		disruption_sectors[index] = qb_mbf32_decode(raw);
@@ -312,1924 +298,6 @@ yt_port_owner_compose(enum yt_port_owner_kind kind, float treasury,
 	return true;
 }
 
-bool
-yt_hostile_menu_row(double ship_fighters, double deployed_fighters,
-    uint8_t *row, size_t capacity, size_t *length)
-{
-	static const uint8_t prefix[] = "Fighters:";
-	static const uint8_t separator[] = " /";
-	char ship[64];
-	char deployed[64];
-	int ship_length;
-	int deployed_length;
-	size_t needed;
-	size_t position = 0;
-
-	if (length == NULL)
-		return false;
-	*length = 0;
-	ship_length = qb_str_double(ship, sizeof(ship), ship_fighters);
-	deployed_length = qb_str_double(deployed, sizeof(deployed),
-	    deployed_fighters);
-	if (ship_length < 0 || deployed_length < 0)
-		return false;
-	needed = sizeof(prefix) - 1U + (size_t)ship_length
-	    + sizeof(separator) - 1U + (size_t)deployed_length;
-	if (needed > capacity || (needed != 0 && row == NULL))
-		return false;
-	memcpy(row + position, prefix, sizeof(prefix) - 1U);
-	position += sizeof(prefix) - 1U;
-	memcpy(row + position, ship, (size_t)ship_length);
-	position += (size_t)ship_length;
-	memcpy(row + position, separator, sizeof(separator) - 1U);
-	position += sizeof(separator) - 1U;
-	memcpy(row + position, deployed, (size_t)deployed_length);
-	position += (size_t)deployed_length;
-	*length = position;
-	return true;
-}
-
-enum yt_hostile_menu_route
-yt_hostile_menu_dispatch(const char *response)
-{
-	static const char dispatch[] = "AQBDWT";
-	const char *position;
-
-	if (response == NULL || response[0] == '\0'
-	    || strcmp(response, "?") == 0)
-		return YT_HOSTILE_MENU_HELP;
-	if (strcmp(response, "S") == 0)
-		return YT_HOSTILE_MENU_SECTOR;
-	if (strcmp(response, "I") == 0)
-		return YT_HOSTILE_MENU_INFO;
-	position = strstr(dispatch, response);
-	if (position == NULL)
-		return YT_HOSTILE_MENU_INVALID;
-	switch (position - dispatch) {
-	case 0:
-		return YT_HOSTILE_MENU_ATTACK;
-	case 1:
-		return YT_HOSTILE_MENU_QUIT;
-	case 2:
-		return YT_HOSTILE_MENU_BRIBE;
-	case 3:
-		return YT_HOSTILE_MENU_MINE;
-	case 4:
-		return YT_HOSTILE_MENU_WARP;
-	case 5:
-		return YT_HOSTILE_MENU_TEAM;
-	default:
-		return YT_HOSTILE_MENU_INVALID;
-	}
-}
-
-enum yt_main_shell_route
-yt_main_shell_dispatch(const char *response)
-{
-	static const char dispatch[] = "W)+ABCFLMPQTD$GN";
-	static const enum yt_main_shell_route routes[] = {
-		YT_MAIN_SHELL_WARP,
-		YT_MAIN_SHELL_MISSILE,
-		YT_MAIN_SHELL_PLASMA,
-		YT_MAIN_SHELL_ATTACK,
-		YT_MAIN_SHELL_BUY_PORT,
-		YT_MAIN_SHELL_COMPUTER,
-		YT_MAIN_SHELL_FIGHTERS,
-		YT_MAIN_SHELL_LAND,
-		YT_MAIN_SHELL_MOVE,
-		YT_MAIN_SHELL_TRADE,
-		YT_MAIN_SHELL_QUIT,
-		YT_MAIN_SHELL_TEAM,
-		YT_MAIN_SHELL_MINES,
-		YT_MAIN_SHELL_COLLECT,
-		YT_MAIN_SHELL_GENESIS,
-		YT_MAIN_SHELL_RENAME_PORT,
-	};
-	const char *position;
-
-	if (response == NULL || response[0] == '\0')
-		return YT_MAIN_SHELL_DISPLAY;
-	if (strcmp(response, "X") == 0)
-		return YT_MAIN_SHELL_SOUND;
-	if (strcmp(response, "S") == 0)
-		return YT_MAIN_SHELL_SENSORS;
-	position = strchr(dispatch, response[0]);
-	if (position != NULL)
-		return routes[position - dispatch];
-	switch (response[0]) {
-	case 'V':
-		return YT_MAIN_SHELL_VERSION;
-	case 'I':
-		return YT_MAIN_SHELL_INFO;
-	case 'Z':
-		return YT_MAIN_SHELL_INSTRUCTIONS;
-	case '?':
-		return YT_MAIN_SHELL_HELP;
-	default:
-		return YT_MAIN_SHELL_INVALID;
-	}
-}
-
-bool
-yt_main_prompt_row(const uint8_t *time_text, size_t time_text_length,
-    uint8_t *row, size_t capacity, size_t *length)
-{
-	static const uint8_t prefix[] = "Time:";
-	static const uint8_t suffix[] = "Main Command (?=Help)? ";
-	size_t needed = sizeof(prefix) - 1U + time_text_length
-	    + sizeof(suffix) - 1U;
-
-	if (length == NULL || (time_text == NULL && time_text_length != 0U)
-	    || (row == NULL && needed != 0U) || needed > capacity)
-		return false;
-	memcpy(row, prefix, sizeof(prefix) - 1U);
-	if (time_text_length != 0U)
-		memcpy(row + sizeof(prefix) - 1U, time_text, time_text_length);
-	memcpy(row + sizeof(prefix) - 1U + time_text_length, suffix,
-	    sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-bool
-yt_computer_prompt_row(const uint8_t *time_text, size_t time_text_length,
-    uint8_t *row, size_t capacity, size_t *length)
-{
-	static const uint8_t prefix[] = "Time:";
-	static const uint8_t suffix[] = "Computer command (?=help)? ";
-	size_t needed = sizeof(prefix) - 1U + time_text_length
-	    + sizeof(suffix) - 1U;
-
-	if (length == NULL || (time_text == NULL && time_text_length != 0U)
-	    || (row == NULL && needed != 0U) || needed > capacity)
-		return false;
-	memcpy(row, prefix, sizeof(prefix) - 1U);
-	if (time_text_length != 0U)
-		memcpy(row + sizeof(prefix) - 1U, time_text, time_text_length);
-	memcpy(row + sizeof(prefix) - 1U + time_text_length, suffix,
-	    sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-enum yt_computer_newspaper_choice
-yt_computer_newspaper_select(const char *response)
-{
-	if (response == NULL || response[1] != '\0')
-		return YT_COMPUTER_NEWSPAPER_NONE;
-	if (response[0] == 'T')
-		return YT_COMPUTER_NEWSPAPER_TODAY;
-	if (response[0] == 'Y')
-		return YT_COMPUTER_NEWSPAPER_YESTERDAY;
-	return YT_COMPUTER_NEWSPAPER_NONE;
-}
-
-enum yt_hostile_attack_admission
-yt_hostile_attack_admit(float ship_fighters, float commitment)
-{
-	if (ship_fighters < 1.0f)
-		return YT_HOSTILE_ATTACK_NO_FIGHTERS;
-	if (commitment > ship_fighters)
-		return YT_HOSTILE_ATTACK_TOO_MANY;
-	if (commitment < 1.0f)
-		return YT_HOSTILE_ATTACK_LESS_THAN_ONE;
-	return YT_HOSTILE_ATTACK_ADMITTED;
-}
-
-float
-yt_hostile_attack_quantum(double remaining_attacker,
-    double remaining_defender)
-{
-	double minimum = remaining_attacker < remaining_defender
-	    ? remaining_attacker : remaining_defender;
-	volatile double divided = minimum / 20.0;
-	float quantum = (float)qb_int(divided);
-
-	return quantum < 1.0f ? 1.0f : quantum;
-}
-
-bool
-yt_hostile_attack_loses_attacker(float cloak, float draw)
-{
-	volatile float cloak_term = cloak / 10.0f;
-	volatile float total = cloak_term + draw;
-
-	return total < 0.44999998807907104f;
-}
-
-enum yt_hostile_surrender_route
-yt_hostile_surrender_route(float owner)
-{
-	if (owner > 1.0f)
-		return YT_HOSTILE_SURRENDER_PLAYER;
-	if (owner == -1.0f)
-		return YT_HOSTILE_SURRENDER_XANNOR;
-	if (owner == -2.0f)
-		return YT_HOSTILE_SURRENDER_MERCENARY;
-	return YT_HOSTILE_SURRENDER_QUIET;
-}
-
-bool
-yt_fighter_shield_spill_step(double *fighters, float *shields, float draw)
-{
-	float quantum;
-
-	if (fighters == NULL || shields == NULL
-	    || *fighters <= 0.0 || *shields <= 0.0f)
-		return false;
-	quantum = *fighters > 100.0 && *shields > 100.0f ? 100.0f : 1.0f;
-	if (draw >= 0.5f) {
-		volatile double reduced = *fighters - (double)quantum;
-
-		*fighters = reduced;
-	}
-	else {
-		volatile float reduced = *shields - quantum;
-
-		*shields = reduced;
-	}
-	return true;
-}
-
-bool
-yt_fighter_shield_spill_rows(double fighters, float shields,
-    uint8_t *fighter_row, size_t fighter_capacity, size_t *fighter_length,
-    uint8_t *shield_row, size_t shield_capacity, size_t *shield_length)
-{
-	static const char fighter_prefix[] = "Fighters remaining:";
-	static const char shield_prefix[] = "Shields reduced to:";
-	char fighter_number[64];
-	char shield_number[64];
-	int fighter_number_length;
-	int shield_number_length;
-	size_t first_needed;
-	size_t second_needed;
-
-	if (fighter_length == NULL || shield_length == NULL)
-		return false;
-	*fighter_length = 0;
-	*shield_length = 0;
-	fighter_number_length = qb_str_double(fighter_number,
-	    sizeof(fighter_number), fighters);
-	shield_number_length = qb_str_single(shield_number,
-	    sizeof(shield_number), shields);
-	if (fighter_number_length < 0 || shield_number_length < 0)
-		return false;
-	first_needed = sizeof(fighter_prefix) - 1U
-	    + (size_t)fighter_number_length;
-	second_needed = sizeof(shield_prefix) - 1U
-	    + (size_t)shield_number_length;
-	if (first_needed > fighter_capacity || second_needed > shield_capacity
-	    || (first_needed != 0 && fighter_row == NULL)
-	    || (second_needed != 0 && shield_row == NULL))
-		return false;
-	memcpy(fighter_row, fighter_prefix, sizeof(fighter_prefix) - 1U);
-	memcpy(fighter_row + sizeof(fighter_prefix) - 1U, fighter_number,
-	    (size_t)fighter_number_length);
-	memcpy(shield_row, shield_prefix, sizeof(shield_prefix) - 1U);
-	memcpy(shield_row + sizeof(shield_prefix) - 1U, shield_number,
-	    (size_t)shield_number_length);
-	*fighter_length = first_needed;
-	*shield_length = second_needed;
-	return true;
-}
-
-bool
-yt_hostile_defeated_row(double fighters, uint8_t *row,
-    size_t capacity, size_t *length)
-{
-	static const char prefix[] =
-	    "You defeated all the fighters and have";
-	static const char suffix[] = " left.";
-	char number[64];
-	int number_length;
-	size_t needed;
-
-	if (length == NULL)
-		return false;
-	*length = 0;
-	number_length = qb_str_double(number, sizeof(number), fighters);
-	if (number_length < 0)
-		return false;
-	needed = sizeof(prefix) - 1U + (size_t)number_length
-	    + sizeof(suffix) - 1U;
-	if (needed > capacity || (needed != 0 && row == NULL))
-		return false;
-	memcpy(row, prefix, sizeof(prefix) - 1U);
-	memcpy(row + sizeof(prefix) - 1U, number, (size_t)number_length);
-	memcpy(row + sizeof(prefix) - 1U + (size_t)number_length,
-	    suffix, sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-bool
-yt_xannor_attack_reward_rows(const uint8_t *name, size_t name_length,
-    float bonus, double defenders_destroyed,
-    uint8_t *display, size_t display_capacity, size_t *display_length,
-    uint8_t *news, size_t news_capacity, size_t *news_length)
-{
-	static const uint8_t collect[] = "Collect";
-	static const uint8_t collected[] = " collected";
-	static const uint8_t middle[] = " turns bonus for destroying";
-	static const uint8_t suffix[] = " Xannor!!";
-	char bonus_text[64];
-	char loss_text[64];
-	int bonus_length;
-	int loss_length;
-	size_t clause_length;
-	size_t display_needed;
-	size_t news_needed;
-
-	if (display_length == NULL || news_length == NULL
-	    || (name == NULL && name_length != 0U))
-		return false;
-	*display_length = 0U;
-	*news_length = 0U;
-	bonus_length = qb_str_single(bonus_text, sizeof(bonus_text), bonus);
-	loss_length = qb_str_double(loss_text, sizeof(loss_text),
-	    defenders_destroyed);
-	if (bonus_length < 0 || loss_length < 0)
-		return false;
-	clause_length = (size_t)bonus_length + sizeof(middle) - 1U
-	    + (size_t)loss_length + sizeof(suffix) - 1U;
-	display_needed = sizeof(collect) - 1U + clause_length;
-	news_needed = name_length + sizeof(collected) - 1U + clause_length;
-	if (display_needed > display_capacity || news_needed > news_capacity
-	    || (display_needed != 0U && display == NULL)
-	    || (news_needed != 0U && news == NULL))
-		return false;
-	memcpy(display, collect, sizeof(collect) - 1U);
-	memcpy(display + sizeof(collect) - 1U, bonus_text,
-	    (size_t)bonus_length);
-	memcpy(display + sizeof(collect) - 1U + (size_t)bonus_length,
-	    middle, sizeof(middle) - 1U);
-	memcpy(display + sizeof(collect) - 1U + (size_t)bonus_length
-	    + sizeof(middle) - 1U, loss_text, (size_t)loss_length);
-	memcpy(display + display_needed - (sizeof(suffix) - 1U), suffix,
-	    sizeof(suffix) - 1U);
-	if (name_length != 0U)
-		memcpy(news, name, name_length);
-	memcpy(news + name_length, collected, sizeof(collected) - 1U);
-	memcpy(news + name_length + sizeof(collected) - 1U,
-	    display + sizeof(collect) - 1U, clause_length);
-	*display_length = display_needed;
-	*news_length = news_needed;
-	return true;
-}
-
-float
-yt_xannor_attack_bonus(double defenders_destroyed, float turns,
-    float turns_per_day)
-{
-	volatile double quotient = defenders_destroyed / 256000.0;
-	float bonus = (float)qb_int(quotient);
-	volatile float sum = turns + bonus;
-
-	if (sum > turns_per_day) {
-		volatile float clamped = turns_per_day - turns;
-
-		bonus = clamped;
-	}
-	return bonus;
-}
-
-bool
-yt_bribe_ordinary_forces(float owner, double defenders,
-    double ship_fighters, float draw)
-{
-	return owner == -1.0f || (defenders > ship_fighters
-	    && draw < 0.33000001311302185f);
-}
-
-bool
-yt_bribe_mercenary_forces(double defenders, double ship_fighters,
-    float first, float second, bool sticky)
-{
-	return first < 0.05000000074505806f
-	    || (ship_fighters < defenders
-	    && second > 0.8999999761581421f) || sticky;
-}
-
-double
-yt_bribe_offer_threshold(double defenders, float draw)
-{
-	volatile double product = defenders * (double)draw;
-	volatile double doubled = product * 2.0;
-	volatile double threshold = doubled + defenders;
-
-	return threshold;
-}
-
-bool
-yt_bribe_offer_accepted(float offer, double credits, double threshold)
-{
-	return (double)offer <= credits && (double)offer >= threshold;
-}
-
-enum yt_bribe_forced_admission
-yt_bribe_forced_admit(double ship_fighters, float shields,
-    bool mercenary_fatal_gate, float commitment)
-{
-	if (mercenary_fatal_gate && ship_fighters < 1.0 && shields < 1.0f)
-		return YT_BRIBE_FORCED_FATAL;
-	if (commitment < 1.0f)
-		return YT_BRIBE_FORCED_LESS_THAN_ONE;
-	return YT_BRIBE_FORCED_ATTACK;
-}
-
-enum yt_sector_mine_admission
-yt_sector_mine_admit(float carried, float amount)
-{
-	if (amount < 1.0f)
-		return YT_SECTOR_MINE_BELOW_ONE;
-	if (amount > carried)
-		return YT_SECTOR_MINE_ABOVE_CARRIED;
-	return YT_SECTOR_MINE_ACCEPTED;
-}
-
-
-bool
-yt_no_turn_gate_denied(float turns)
-{
-	return turns <= 0.0f;
-}
-
-void
-yt_no_turn_gate_result_raw(bool denied, uint8_t raw[4])
-{
-	static const uint8_t false_value[4] = {0x00, 0x00, 0x7d, 0x00};
-	static const uint8_t true_value[4] = {0x00, 0x00, 0x00, 0x81};
-
-	if (raw != NULL)
-		memcpy(raw, denied ? true_value : false_value, 4U);
-}
-
-bool
-yt_action_finalizer_turn_raw(const uint8_t before[4], uint8_t after[4])
-{
-	volatile float updated;
-
-	if (before == NULL || after == NULL)
-		return false;
-	updated = qb_mbf32_decode(before) - 1.0f;
-	return qb_mbf32_encode(updated, after) != QB_MBF_OVERFLOW;
-}
-
-bool
-yt_action_finalizer_cloak_raw(const uint8_t before[4],
-    uint8_t arithmetic[4], uint8_t result[4], bool *clamped)
-{
-	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0xa3, 0x00};
-	volatile float updated;
-
-	if (before == NULL || arithmetic == NULL || result == NULL
-	    || clamped == NULL)
-		return false;
-	updated = qb_mbf32_decode(before) - 0.009999999776482582f;
-	if (qb_mbf32_encode(updated, arithmetic) == QB_MBF_OVERFLOW)
-		return false;
-	if (updated < 0.0f) {
-		memcpy(result, dirty_zero, sizeof(dirty_zero));
-		*clamped = true;
-	}
-	else {
-		memcpy(result, arithmetic, 4U);
-		*clamped = false;
-	}
-	return true;
-}
-
-bool
-yt_port_link_missing(float link)
-{
-	return link == 0.0f;
-}
-
-float
-yt_port_selected_expression(float port_offset, float logical_link)
-{
-	volatile float expression = port_offset + logical_link;
-
-	return expression;
-}
-
-bool
-yt_computer_port_maximum(float port_offset, float sector_offset,
-    float *maximum, struct yt_error *error)
-{
-	uint8_t raw[4];
-	volatile float difference = port_offset - sector_offset;
-	enum qb_mbf_status status;
-
-	if (maximum == NULL)
-		return startup_configuration_error(error, YT_INVALID,
-		    "computer port maximum arguments");
-	status = qb_mbf32_encode(difference, raw);
-	if (status == QB_MBF_OVERFLOW)
-		return startup_configuration_error(error, YT_RANGE,
-		    "computer port maximum subtraction");
-	*maximum = status == QB_MBF_UNDERFLOW ? 0.0f : qb_mbf32_decode(raw);
-	return true;
-}
-
-bool
-yt_computer_port_select(const char *response, float maximum,
-    float *selected, enum yt_computer_port_selection_route *route,
-    struct yt_error *error)
-{
-	struct qb_val_result parsed;
-	uint8_t raw[4];
-	volatile float candidate;
-	bool above;
-	bool below;
-	enum qb_mbf_status status;
-
-	if (response == NULL || selected == NULL || route == NULL)
-		return startup_configuration_error(error, YT_INVALID,
-		    "computer port selection arguments");
-	*selected = 0.0f;
-	if (response[0] == '\0') {
-		*route = YT_COMPUTER_PORT_SELECTION_EMPTY;
-		return true;
-	}
-	parsed = qb_val(response);
-	if (parsed.overflow)
-		return startup_configuration_error(error, YT_RANGE,
-		    "computer port sector VAL");
-	candidate = (float)qb_int(parsed.valid ? parsed.value : 0.0);
-	status = qb_mbf32_encode(candidate, raw);
-	if (status == QB_MBF_OVERFLOW)
-		return startup_configuration_error(error, YT_RANGE,
-		    "computer port sector CSNG");
-	*selected = status == QB_MBF_UNDERFLOW ? 0.0f
-	    : qb_mbf32_decode(raw);
-	above = *selected > maximum;
-	below = *selected < 1.0f;
-	*route = (above | below) ? YT_COMPUTER_PORT_SELECTION_INVALID
-	    : YT_COMPUTER_PORT_SELECTION_ACCEPTED;
-	return true;
-}
-
-bool
-yt_computer_path_maximum(float port_offset, float sector_offset,
-    float *maximum, struct yt_error *error)
-{
-	uint8_t raw[4];
-	volatile float difference = port_offset - sector_offset;
-	enum qb_mbf_status status;
-
-	if (maximum == NULL)
-		return startup_configuration_error(error, YT_INVALID,
-		    "computer path maximum arguments");
-	status = qb_mbf32_encode(difference, raw);
-	if (status == QB_MBF_OVERFLOW)
-		return startup_configuration_error(error, YT_RANGE,
-		    "computer path maximum subtraction");
-	*maximum = status == QB_MBF_UNDERFLOW ? 0.0f
-	    : qb_mbf32_decode(raw);
-	return true;
-}
-
-bool
-yt_computer_path_parse(const char *response, float *selected,
-    uint8_t selected_raw[4], struct yt_error *error)
-{
-	struct qb_val_result parsed;
-	uint8_t integer_raw[8];
-	enum qb_mbf_status status;
-
-	if (response == NULL || selected == NULL || selected_raw == NULL)
-		return startup_configuration_error(error, YT_INVALID,
-		    "computer path parse arguments");
-	parsed = qb_val(response);
-	if (parsed.overflow)
-		return startup_configuration_error(error, YT_RANGE,
-		    "computer path sector VAL");
-	status = qb_mbf64_floor_raw(parsed.mbf, integer_raw);
-	if (status != QB_MBF_OK)
-		return startup_configuration_error(error, YT_RANGE,
-		    "computer path sector INT");
-	status = qb_mbf32_from_mbf64_raw(integer_raw, selected_raw);
-	if (status == QB_MBF_OVERFLOW || status == QB_MBF_DOMAIN)
-		return startup_configuration_error(error, YT_RANGE,
-		    "computer path sector CSNG");
-	if (status == QB_MBF_UNDERFLOW)
-		memset(selected_raw, 0, 4U);
-	*selected = qb_mbf32_decode(selected_raw);
-	return true;
-}
-
-bool
-yt_computer_path_append_hop(char *scratch, size_t capacity,
-    size_t *length, float next_sector, float *hop_count,
-    uint8_t hop_count_raw[4], struct yt_error *error)
-{
-	char number[64];
-	int number_length;
-	volatile float incremented;
-	enum qb_mbf_status status;
-
-	if (scratch == NULL || capacity == 0U || length == NULL
-	    || *length >= capacity || scratch[*length] != '\0'
-	    || hop_count == NULL || hop_count_raw == NULL)
-		return startup_configuration_error(error, YT_INVALID,
-		    "computer path scratch arguments");
-	number_length = qb_str_single(number, sizeof(number), next_sector);
-	if (number_length < 0 || (size_t)number_length + 3U
-	    >= capacity - *length)
-		return startup_configuration_error(error, YT_RANGE,
-		    "computer path scratch append");
-	scratch[(*length)++] = '\r';
-	scratch[(*length)++] = 'M';
-	scratch[(*length)++] = '\r';
-	memcpy(scratch + *length, number, (size_t)number_length);
-	*length += (size_t)number_length;
-	scratch[*length] = '\0';
-	incremented = *hop_count + 1.0f;
-	status = qb_mbf32_encode(incremented, hop_count_raw);
-	if (status != QB_MBF_OK)
-		return startup_configuration_error(error, YT_RANGE,
-		    "computer path hop increment");
-	*hop_count = qb_mbf32_decode(hop_count_raw);
-	return true;
-}
-
-bool
-yt_computer_path_wrap_required(int local_column)
-{
-	return local_column > 74;
-}
-
-static bool
-computer_avoid_csng(const struct qb_val_result *parsed, float *selected,
-    struct yt_error *error, const char *operation)
-{
-	uint8_t raw[4];
-	enum qb_mbf_status status;
-
-	status = qb_mbf32_from_mbf64_raw(parsed->mbf, raw);
-	if (status == QB_MBF_OVERFLOW || status == QB_MBF_DOMAIN)
-		return startup_configuration_error(error, YT_RANGE, operation);
-	*selected = status == QB_MBF_UNDERFLOW ? 0.0f
-	    : qb_mbf32_decode(raw);
-	return true;
-}
-
-bool
-yt_computer_avoid_maximum(float port_offset, float sector_offset,
-    float *maximum, struct yt_error *error)
-{
-	uint8_t raw[4];
-	volatile float difference = port_offset - sector_offset;
-	enum qb_mbf_status status;
-
-	if (maximum == NULL)
-		return startup_configuration_error(error, YT_INVALID,
-		    "avoid maximum arguments");
-	status = qb_mbf32_encode(difference, raw);
-	if (status == QB_MBF_OVERFLOW)
-		return startup_configuration_error(error, YT_RANGE,
-		    "avoid maximum subtraction");
-	*maximum = status == QB_MBF_UNDERFLOW ? 0.0f
-	    : qb_mbf32_decode(raw);
-	return true;
-}
-
-bool
-yt_computer_avoid_select_slot(const char *response, uint8_t conversion_mode,
-    float *selected, int *index,
-    enum yt_computer_avoid_selection_route *route, struct yt_error *error)
-{
-	struct qb_val_result parsed;
-	bool overflow;
-
-	if (response == NULL || selected == NULL || index == NULL
-	    || route == NULL)
-		return startup_configuration_error(error, YT_INVALID,
-		    "avoid slot arguments");
-	*selected = 0.0f;
-	*index = 0;
-	*route = YT_COMPUTER_AVOID_SELECTION_INVALID;
-	parsed = qb_val(response);
-	if (parsed.overflow)
-		return startup_configuration_error(error, YT_RANGE,
-		    "avoid slot VAL");
-	if (!computer_avoid_csng(&parsed, selected, error,
-	    "avoid slot CSNG"))
-		return false;
-	if (*selected < 1.0f || *selected > 30.0f)
-		return true;
-	*index = (int)qb_cint_mode((double)*selected, conversion_mode,
-	    &overflow);
-	if (overflow || *index < 1 || *index > 30)
-		return startup_configuration_error(error, YT_RANGE,
-		    "avoid slot CINT");
-	*route = YT_COMPUTER_AVOID_SELECTION_ACCEPTED;
-	return true;
-}
-
-bool
-yt_computer_avoid_select_sector(const char *response, float maximum,
-    float *selected, enum yt_computer_avoid_selection_route *route,
-    struct yt_error *error)
-{
-	struct qb_val_result parsed;
-
-	if (response == NULL || selected == NULL || route == NULL)
-		return startup_configuration_error(error, YT_INVALID,
-		    "avoid sector arguments");
-	*selected = 0.0f;
-	*route = YT_COMPUTER_AVOID_SELECTION_INVALID;
-	parsed = qb_val(response);
-	if (parsed.overflow)
-		return startup_configuration_error(error, YT_RANGE,
-		    "avoid sector VAL");
-	if (!computer_avoid_csng(&parsed, selected, error,
-	    "avoid sector CSNG"))
-		return false;
-	if (*selected < 0.0f || *selected > maximum)
-		return true;
-	*route = YT_COMPUTER_AVOID_SELECTION_ACCEPTED;
-	return true;
-}
-
-void
-yt_computer_avoid_transition(float old_value, float new_value,
-    bool *locked, bool *available)
-{
-	if (locked != NULL)
-		*locked = new_value != 0.0f;
-	if (available != NULL)
-		*available = old_value != 0.0f && old_value != new_value;
-}
-
-bool
-yt_port_name_display_row(const uint8_t *cached, size_t cached_length,
-    uint8_t *row, size_t capacity, size_t *length)
-{
-	static const uint8_t prefix[] = "This port is called: \"";
-	static const uint8_t suffix[] = "\".";
-	size_t needed;
-
-	if (length == NULL || (cached == NULL && cached_length != 0U))
-		return false;
-	*length = 0U;
-	needed = sizeof(prefix) - 1U + cached_length + sizeof(suffix) - 1U;
-	if (needed > capacity || (needed != 0U && row == NULL))
-		return false;
-	memcpy(row, prefix, sizeof(prefix) - 1U);
-	if (cached_length != 0U)
-		memcpy(row + sizeof(prefix) - 1U, cached, cached_length);
-	memcpy(row + sizeof(prefix) - 1U + cached_length, suffix,
-	    sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-bool
-yt_port_name_prepare_candidate(const uint8_t *entered,
-    size_t entered_length, const uint8_t *cached, size_t cached_length,
-    uint8_t *candidate, size_t capacity, size_t *candidate_length)
-{
-	size_t normalized;
-
-	if (candidate_length == NULL
-	    || (entered == NULL && entered_length != 0U)
-	    || (cached == NULL && cached_length != 0U))
-		return false;
-	*candidate_length = 0U;
-	if (candidate == NULL || entered_length > capacity)
-		return false;
-	if (entered_length != 0U)
-		memcpy(candidate, entered, entered_length);
-	normalized = qb_title_case_n(candidate, entered_length);
-	if (normalized > YT_TEXT_FIELD_SIZE)
-		normalized = YT_TEXT_FIELD_SIZE;
-	if (normalized != 0U) {
-		*candidate_length = normalized;
-		return true;
-	}
-	if (cached_length > capacity
-	    || (cached_length != 0U && candidate == NULL))
-		return false;
-	if (cached_length != 0U)
-		memcpy(candidate, cached, cached_length);
-	*candidate_length = cached_length;
-	return true;
-}
-
-bool
-yt_port_name_confirmation_prompt(const uint8_t *candidate,
-    size_t candidate_length, uint8_t *prompt, size_t capacity,
-    size_t *length)
-{
-	static const uint8_t suffix[] = "\" Is this OK? [y/N]";
-	size_t needed;
-
-	if (length == NULL || (candidate == NULL && candidate_length != 0U))
-		return false;
-	*length = 0U;
-	needed = 1U + candidate_length + sizeof(suffix) - 1U;
-	if (needed > capacity || (needed != 0U && prompt == NULL))
-		return false;
-	prompt[0] = '"';
-	if (candidate_length != 0U)
-		memcpy(prompt + 1U, candidate, candidate_length);
-	memcpy(prompt + 1U + candidate_length, suffix,
-	    sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-bool
-yt_port_name_overlay(struct yt_port *port, const uint8_t *candidate,
-    size_t candidate_length)
-{
-	size_t copied;
-
-	if (port == NULL || (candidate == NULL && candidate_length != 0U))
-		return false;
-	yt_record_set_text(&port->record, candidate, candidate_length);
-	if (!yt_record_set_number(&port->record, YT_F85,
-	    (float)candidate_length))
-		return false;
-	port->name_length = (float)candidate_length;
-	copied = candidate_length < YT_TEXT_FIELD_SIZE
-	    ? candidate_length : YT_TEXT_FIELD_SIZE;
-	if (copied != 0U)
-		memcpy(port->name, candidate, copied);
-	port->name[copied] = '\0';
-	return true;
-}
-
-double
-yt_port_purchase_price(const float production[3])
-{
-	volatile float sum12;
-	volatile float sum123;
-	volatile float divided;
-	volatile float integral;
-	volatile float result;
-
-	if (production == NULL)
-		return 0.0;
-	sum12 = production[0] + production[1];
-	sum123 = sum12 + production[2];
-	divided = sum123 / 10.0f;
-	integral = floorf(divided);
-	result = integral + 1.0f;
-	return (double)result;
-}
-
-float
-yt_port_purchase_seller_credit(float treasury, float credits, double price)
-{
-	volatile double subtotal = (double)treasury + (double)credits;
-	volatile double total = subtotal + price;
-
-	return (float)total;
-}
-
-float
-yt_port_purchase_buyer_credit(float credits, double price)
-{
-	volatile double result = (double)credits - price;
-
-	return (float)result;
-}
-
-bool
-yt_port_purchase_seller_overlay(struct yt_player *seller, float treasury,
-    double price)
-{
-	volatile float ports;
-
-	if (seller == NULL)
-		return false;
-	seller->credits = yt_port_purchase_seller_credit(treasury,
-	    seller->credits, price);
-	ports = seller->ports_owned - 1.0f;
-	seller->ports_owned = ports;
-	return yt_record_set_number(&seller->record, YT_F81, seller->credits)
-	    && yt_record_set_number(&seller->record, YT_F117,
-	    seller->ports_owned);
-}
-
-bool
-yt_port_purchase_title_overlay(struct yt_port *port, int buyer_record)
-{
-	if (port == NULL)
-		return false;
-	port->owner = (float)buyer_record;
-	port->treasury = 0.0f;
-	return yt_record_set_number(&port->record, YT_F97, port->owner)
-	    && yt_record_set_number(&port->record, YT_F89, 0.0f);
-}
-
-bool
-yt_port_purchase_buyer_overlay(struct yt_player *buyer, double price)
-{
-	volatile float ports;
-
-	if (buyer == NULL)
-		return false;
-	buyer->credits = yt_port_purchase_buyer_credit(buyer->credits, price);
-	ports = buyer->ports_owned + 1.0f;
-	buyer->ports_owned = ports;
-	return yt_record_set_number(&buyer->record, YT_F81, buyer->credits)
-	    && yt_record_set_number(&buyer->record, YT_F117,
-	    buyer->ports_owned);
-}
-
-bool
-yt_genesis_confirmation_prompt(const uint8_t *trader, size_t trader_length,
-    uint8_t *prompt, size_t capacity, size_t *length)
-{
-	static const uint8_t prefix[] = "Are you that Trader ";
-	static const uint8_t suffix[] = " [y/N]";
-	size_t needed;
-
-	if (length == NULL || (trader == NULL && trader_length != 0U))
-		return false;
-	*length = 0U;
-	needed = sizeof(prefix) - 1U + trader_length + sizeof(suffix) - 1U;
-	if (needed > capacity || (needed != 0U && prompt == NULL))
-		return false;
-	memcpy(prompt, prefix, sizeof(prefix) - 1U);
-	if (trader_length != 0U)
-		memcpy(prompt + sizeof(prefix) - 1U, trader, trader_length);
-	memcpy(prompt + sizeof(prefix) - 1U + trader_length,
-	    suffix, sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-bool
-yt_genesis_insufficient_rows(float required, float owned,
-    uint8_t *first, size_t first_capacity, size_t *first_length,
-    uint8_t *second, size_t second_capacity, size_t *second_length)
-{
-	static const uint8_t first_prefix[] =
-	    "You are not up to the challenge. You must own";
-	static const uint8_t first_suffix[] = " ports before you are powerful";
-	static const uint8_t second_prefix[] =
-	    "enough to initiate Genesis. You are";
-	static const uint8_t second_suffix[] =
-	    " short of fulfilling the prophesy.";
-	volatile float shortfall = required - owned;
-	char required_text[64];
-	char shortfall_text[64];
-	int required_length;
-	int shortfall_length;
-	size_t needed_first;
-	size_t needed_second;
-
-	if (first_length == NULL || second_length == NULL)
-		return false;
-	*first_length = 0U;
-	*second_length = 0U;
-	required_length = qb_str_single(required_text, sizeof(required_text),
-	    required);
-	shortfall_length = qb_str_single(shortfall_text, sizeof(shortfall_text),
-	    shortfall);
-	if (required_length < 0 || shortfall_length < 0)
-		return false;
-	needed_first = sizeof(first_prefix) - 1U + (size_t)required_length
-	    + sizeof(first_suffix) - 1U;
-	needed_second = sizeof(second_prefix) - 1U + (size_t)shortfall_length
-	    + sizeof(second_suffix) - 1U;
-	if (needed_first > first_capacity || needed_second > second_capacity
-	    || (needed_first != 0U && first == NULL)
-	    || (needed_second != 0U && second == NULL))
-		return false;
-	memcpy(first, first_prefix, sizeof(first_prefix) - 1U);
-	memcpy(first + sizeof(first_prefix) - 1U, required_text,
-	    (size_t)required_length);
-	memcpy(first + sizeof(first_prefix) - 1U + (size_t)required_length,
-	    first_suffix, sizeof(first_suffix) - 1U);
-	memcpy(second, second_prefix, sizeof(second_prefix) - 1U);
-	memcpy(second + sizeof(second_prefix) - 1U, shortfall_text,
-	    (size_t)shortfall_length);
-	memcpy(second + sizeof(second_prefix) - 1U + (size_t)shortfall_length,
-	    second_suffix, sizeof(second_suffix) - 1U);
-	*first_length = needed_first;
-	*second_length = needed_second;
-	return true;
-}
-
-bool
-yt_main_fighters_sector_overlay(struct yt_sector *sector,
-    const uint8_t desired_raw[4], int player_record)
-{
-	uint8_t owner_raw[4];
-
-	if (sector == NULL || desired_raw == NULL
-	    || qb_mbf32_encode((float)player_record, owner_raw)
-	    == QB_MBF_OVERFLOW
-	    || !yt_record_set_raw_number(&sector->record, YT_F81, desired_raw)
-	    || !yt_record_set_raw_number(&sector->record, YT_F85, owner_raw))
-		return false;
-	sector->fighters = qb_mbf32_decode(desired_raw);
-	sector->fighter_owner = qb_mbf32_decode(owner_raw);
-	return true;
-}
-
-bool
-yt_main_fighters_player_overlay(struct yt_player *player, float remaining)
-{
-	uint8_t remaining_raw[4];
-
-	if (player == NULL
-	    || qb_mbf32_encode(remaining, remaining_raw) == QB_MBF_OVERFLOW
-	    || !yt_record_set_raw_number(&player->record, YT_F61,
-	    remaining_raw))
-		return false;
-	player->fighters = qb_mbf32_decode(remaining_raw);
-	return true;
-}
-
-
-bool
-yt_planet_garrison_prompt(float player_forces, float planet_forces,
-    uint8_t *prompt, size_t capacity, size_t *length)
-{
-	static const uint8_t prefix[] =
-	    "Drop how many ground force units on the planet?";
-	static const uint8_t suffix[] = " Available ->";
-	volatile float available = player_forces + planet_forces;
-	char number[64];
-	int number_length;
-	size_t needed;
-
-	if (length == NULL)
-		return false;
-	*length = 0U;
-	number_length = qb_str_single(number, sizeof(number), available);
-	if (number_length < 0)
-		return false;
-	needed = sizeof(prefix) - 1U + (size_t)number_length
-	    + sizeof(suffix) - 1U;
-	if (needed > capacity || (needed != 0U && prompt == NULL))
-		return false;
-	memcpy(prompt, prefix, sizeof(prefix) - 1U);
-	memcpy(prompt + sizeof(prefix) - 1U, number, (size_t)number_length);
-	memcpy(prompt + sizeof(prefix) - 1U + (size_t)number_length,
-	    suffix, sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-float
-yt_planet_garrison_after(float player_forces, float desired,
-    float planet_forces)
-{
-	volatile float subtracted = player_forces - desired;
-	volatile float result = subtracted + planet_forces;
-
-	return result;
-}
-
-void
-yt_planet_garrison_overlay(struct yt_planet *planet, float desired,
-    int player_record)
-{
-	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x40, 0x00};
-
-	if (planet == NULL)
-		return;
-	planet->ground_forces = desired;
-	(void)yt_record_set_number(&planet->record, YT_F77, desired);
-	(void)yt_record_set_raw_number(&planet->record, YT_F73, dirty_zero);
-	planet->owner = 0.0f;
-	if (desired >= 1.0f && player_record != 0) {
-		planet->owner = (float)player_record;
-		(void)yt_record_set_number(&planet->record, YT_F73,
-		    planet->owner);
-	}
-}
-
-void
-yt_planet_garrison_player_overlay(struct yt_player *player, float remaining)
-{
-	volatile float integral = floorf(remaining);
-
-	if (player == NULL)
-		return;
-	(void)yt_record_set_number(&player->record, YT_F121, integral);
-}
-
-bool
-yt_planet_garrison_success_row(float desired, uint8_t *row,
-    size_t capacity, size_t *length)
-{
-	static const uint8_t prefix[] = "Ground force strength now at";
-	static const uint8_t suffix[] = " units!";
-	char number[64];
-	int number_length;
-	size_t needed;
-
-	if (length == NULL)
-		return false;
-	*length = 0U;
-	number_length = qb_str_single(number, sizeof(number), desired);
-	if (number_length < 0)
-		return false;
-	needed = sizeof(prefix) - 1U + (size_t)number_length
-	    + sizeof(suffix) - 1U;
-	if (needed > capacity || (needed != 0U && row == NULL))
-		return false;
-	memcpy(row, prefix, sizeof(prefix) - 1U);
-	memcpy(row + sizeof(prefix) - 1U, number, (size_t)number_length);
-	memcpy(row + sizeof(prefix) - 1U + (size_t)number_length,
-	    suffix, sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-float
-yt_planet_landing_attrition(float first_draw, float second_draw,
-    float cached_ground_forces)
-{
-	volatile float product = first_draw * second_draw;
-	volatile float scaled = product * cached_ground_forces;
-
-	return floorf(scaled);
-}
-
-void
-yt_planet_landing_vacancy_overlay(struct yt_planet *planet,
-    float ground_forces, int current_player_record)
-{
-	float owner;
-
-	if (planet == NULL)
-		return;
-	owner = ground_forces > 0.0f ? (float)current_player_record : 0.0f;
-	planet->ground_forces = ground_forces;
-	planet->owner = owner;
-	(void)yt_record_set_number(&planet->record, YT_F77, ground_forces);
-	(void)yt_record_set_number(&planet->record, YT_F73, owner);
-}
-
-static bool
-landing_join_number(const uint8_t *prefix, size_t prefix_length,
-    float number, const uint8_t *suffix, size_t suffix_length,
-    uint8_t *output, size_t capacity, size_t *length)
-{
-	char formatted[64];
-	int formatted_length;
-	size_t needed;
-
-	if (length == NULL)
-		return false;
-	*length = 0U;
-	formatted_length = qb_str_single(formatted, sizeof(formatted), number);
-	if (formatted_length < 0)
-		return false;
-	needed = prefix_length + (size_t)formatted_length + suffix_length;
-	if (needed > capacity || (needed != 0U && output == NULL))
-		return false;
-	memcpy(output, prefix, prefix_length);
-	memcpy(output + prefix_length, formatted, (size_t)formatted_length);
-	memcpy(output + prefix_length + (size_t)formatted_length, suffix,
-	    suffix_length);
-	*length = needed;
-	return true;
-}
-
-bool
-yt_planet_landing_traffic_row(const uint8_t *planet_name,
-    size_t planet_name_length, uint8_t *row, size_t capacity,
-    size_t *length)
-{
-	static const uint8_t prefix[] =
-	    "This is space traffic control at planet ";
-	size_t needed;
-
-	if (length == NULL || (planet_name == NULL && planet_name_length != 0U))
-		return false;
-	*length = 0U;
-	needed = sizeof(prefix) - 1U + planet_name_length;
-	if (needed > capacity || (needed != 0U && row == NULL))
-		return false;
-	memcpy(row, prefix, sizeof(prefix) - 1U);
-	if (planet_name_length != 0U)
-		memcpy(row + sizeof(prefix) - 1U, planet_name,
-		    planet_name_length);
-	*length = needed;
-	return true;
-}
-
-bool
-yt_planet_landing_sensor_row(float fresh_ground_forces,
-    float cached_carried_forces, uint8_t *row, size_t capacity,
-    size_t *length)
-{
-	static const uint8_t first[] = "Sensors report ground forces of";
-	static const uint8_t middle[] = " units. You have";
-	static const uint8_t suffix[] = ".";
-	char defenders[64];
-	char carried[64];
-	int defenders_length;
-	int carried_length;
-	size_t needed;
-
-	if (length == NULL)
-		return false;
-	*length = 0U;
-	defenders_length = qb_str_single(defenders, sizeof(defenders),
-	    floorf(fresh_ground_forces));
-	carried_length = qb_str_single(carried, sizeof(carried),
-	    cached_carried_forces);
-	if (defenders_length < 0 || carried_length < 0)
-		return false;
-	needed = sizeof(first) - 1U + (size_t)defenders_length
-	    + sizeof(middle) - 1U + (size_t)carried_length
-	    + sizeof(suffix) - 1U;
-	if (needed > capacity || (needed != 0U && row == NULL))
-		return false;
-	memcpy(row, first, sizeof(first) - 1U);
-	memcpy(row + sizeof(first) - 1U, defenders,
-	    (size_t)defenders_length);
-	memcpy(row + sizeof(first) - 1U + (size_t)defenders_length,
-	    middle, sizeof(middle) - 1U);
-	memcpy(row + sizeof(first) - 1U + (size_t)defenders_length
-	    + sizeof(middle) - 1U, carried, (size_t)carried_length);
-	memcpy(row + needed - (sizeof(suffix) - 1U), suffix,
-	    sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-bool
-yt_planet_landing_amount_prompt(float cached_carried_forces,
-    uint8_t *prompt, size_t capacity, size_t *length)
-{
-	static const uint8_t prefix[] =
-	    "Use how many ground forces? You have";
-	static const uint8_t suffix[] = ". [0] ";
-
-	return landing_join_number(prefix, sizeof(prefix) - 1U,
-	    cached_carried_forces, suffix, sizeof(suffix) - 1U,
-	    prompt, capacity, length);
-}
-
-float
-yt_planet_landing_commitment(const char *response)
-{
-	struct qb_val_result parsed;
-	volatile double integral;
-
-	if (response == NULL)
-		return 0.0f;
-	parsed = qb_val(response);
-	integral = floor(parsed.valid ? parsed.value : 0.0);
-	return (float)integral;
-}
-
-bool
-yt_planet_landing_commitment_valid(float commitment,
-    float cached_carried_forces)
-{
-	return commitment >= 1.0f && commitment <= cached_carried_forces;
-}
-
-bool
-yt_planet_landing_unrest_row(float reduced, float original,
-    uint8_t *row, size_t capacity, size_t *length)
-{
-	static const uint8_t prefix[] =
-	    "ground forces have been reduced to";
-	static const uint8_t middle[] = " from";
-	static const uint8_t suffix[] = "!";
-	char reduced_text[64];
-	char original_text[64];
-	int reduced_length;
-	int original_length;
-	size_t needed;
-
-	if (length == NULL)
-		return false;
-	*length = 0U;
-	reduced_length = qb_str_single(reduced_text, sizeof(reduced_text),
-	    reduced);
-	original_length = qb_str_single(original_text, sizeof(original_text),
-	    original);
-	if (reduced_length < 0 || original_length < 0)
-		return false;
-	needed = sizeof(prefix) - 1U + (size_t)reduced_length
-	    + sizeof(middle) - 1U + (size_t)original_length
-	    + sizeof(suffix) - 1U;
-	if (needed > capacity || (needed != 0U && row == NULL))
-		return false;
-	memcpy(row, prefix, sizeof(prefix) - 1U);
-	memcpy(row + sizeof(prefix) - 1U, reduced_text,
-	    (size_t)reduced_length);
-	memcpy(row + sizeof(prefix) - 1U + (size_t)reduced_length,
-	    middle, sizeof(middle) - 1U);
-	memcpy(row + sizeof(prefix) - 1U + (size_t)reduced_length
-	    + sizeof(middle) - 1U, original_text,
-	    (size_t)original_length);
-	memcpy(row + needed - (sizeof(suffix) - 1U), suffix,
-	    sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-void
-yt_planet_assault_player_overlay(struct yt_player *player, float commitment)
-{
-	volatile float remaining;
-
-	if (player == NULL)
-		return;
-	remaining = player->ground_forces - commitment;
-	player->ground_forces = remaining;
-	(void)yt_record_set_number(&player->record, YT_F121, remaining);
-}
-
-void
-yt_planet_assault_victory_overlay(struct yt_planet *planet, float owner,
-    float attackers)
-{
-	volatile float integral = floorf(attackers);
-
-	if (planet == NULL)
-		return;
-	planet->owner = owner;
-	planet->ground_forces = integral;
-	(void)yt_record_set_number(&planet->record, YT_F73, owner);
-	(void)yt_record_set_number(&planet->record, YT_F77, integral);
-}
-
-void
-yt_planet_assault_failure_overlay(struct yt_planet *planet, float defenders)
-{
-	volatile float integral = floorf(defenders);
-
-	if (planet == NULL)
-		return;
-	planet->ground_forces = integral;
-	(void)yt_record_set_number(&planet->record, YT_F77, integral);
-}
-
-void
-yt_planet_assault_round(bool attacker_damage, float amount,
-    float *attackers, float *defenders)
-{
-	volatile float product;
-	volatile float reduced;
-
-	if (attackers == NULL || defenders == NULL)
-		return;
-	if (attacker_damage) {
-		product = amount * *defenders;
-		reduced = *attackers - product;
-		*attackers = floorf(reduced);
-		if (*attackers < 0.0f)
-			*attackers = 0.0f;
-	}
-	else {
-		product = amount * *attackers;
-		reduced = *defenders - product;
-		*defenders = floorf(reduced);
-		if (*defenders < 0.0f)
-			*defenders = 0.0f;
-	}
-}
-
-bool
-yt_planet_assault_attack_news(const uint8_t *player_name,
-    size_t player_name_length, const uint8_t *planet_name,
-    size_t planet_name_length, float commitment, uint8_t *row,
-    size_t capacity, size_t *length)
-{
-	static const uint8_t marker[] = " +++ ";
-	static const uint8_t attacked[] = " attacked planet ";
-	static const uint8_t with[] = " with";
-	static const uint8_t suffix[] = " ground forces!";
-	char number[64];
-	int number_length;
-	size_t needed;
-	size_t cursor = 0U;
-
-	if (length == NULL || (player_name == NULL && player_name_length != 0U)
-	    || (planet_name == NULL && planet_name_length != 0U))
-		return false;
-	*length = 0U;
-	number_length = qb_str_single(number, sizeof(number), commitment);
-	if (number_length < 0)
-		return false;
-	needed = sizeof(marker) - 1U + player_name_length
-	    + sizeof(attacked) - 1U + planet_name_length + sizeof(with) - 1U
-	    + (size_t)number_length + sizeof(suffix) - 1U;
-	if (needed > capacity || (needed != 0U && row == NULL))
-		return false;
-	memcpy(row + cursor, marker, sizeof(marker) - 1U);
-	cursor += sizeof(marker) - 1U;
-	if (player_name_length != 0U) {
-		memcpy(row + cursor, player_name, player_name_length);
-		cursor += player_name_length;
-	}
-	memcpy(row + cursor, attacked, sizeof(attacked) - 1U);
-	cursor += sizeof(attacked) - 1U;
-	if (planet_name_length != 0U) {
-		memcpy(row + cursor, planet_name, planet_name_length);
-		cursor += planet_name_length;
-	}
-	memcpy(row + cursor, with, sizeof(with) - 1U);
-	cursor += sizeof(with) - 1U;
-	memcpy(row + cursor, number, (size_t)number_length);
-	cursor += (size_t)number_length;
-	memcpy(row + cursor, suffix, sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-bool
-yt_planet_assault_status_row(bool attacker_damage, float remaining,
-    uint8_t *row, size_t capacity, size_t *length)
-{
-	static const uint8_t attacker[] = "Your forces remaining  :";
-	static const uint8_t defender[] = "Ground forces remaining:";
-	static const uint8_t suffix[] = "!";
-	const uint8_t *prefix = attacker_damage ? attacker : defender;
-	size_t prefix_length = attacker_damage
-	    ? sizeof(attacker) - 1U : sizeof(defender) - 1U;
-
-	return landing_join_number(prefix, prefix_length, remaining,
-	    suffix, sizeof(suffix) - 1U, row, capacity, length);
-}
-
-bool
-yt_planet_assault_capture_news(const uint8_t *player_name,
-    size_t player_name_length, const uint8_t *planet_name,
-    size_t planet_name_length, uint8_t *row, size_t capacity,
-    size_t *length)
-{
-	static const uint8_t marker[] = " +++ ";
-	static const uint8_t captured[] = " captured planet ";
-	static const uint8_t suffix[] = "!";
-	size_t needed;
-	size_t cursor = 0U;
-
-	if (length == NULL || (player_name == NULL && player_name_length != 0U)
-	    || (planet_name == NULL && planet_name_length != 0U))
-		return false;
-	*length = 0U;
-	needed = sizeof(marker) - 1U + player_name_length
-	    + sizeof(captured) - 1U + planet_name_length + sizeof(suffix) - 1U;
-	if (needed > capacity || (needed != 0U && row == NULL))
-		return false;
-	memcpy(row + cursor, marker, sizeof(marker) - 1U);
-	cursor += sizeof(marker) - 1U;
-	if (player_name_length != 0U) {
-		memcpy(row + cursor, player_name, player_name_length);
-		cursor += player_name_length;
-	}
-	memcpy(row + cursor, captured, sizeof(captured) - 1U);
-	cursor += sizeof(captured) - 1U;
-	if (planet_name_length != 0U) {
-		memcpy(row + cursor, planet_name, planet_name_length);
-		cursor += planet_name_length;
-	}
-	memcpy(row + cursor, suffix, sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-bool
-yt_planet_assault_failure_row(float defenders, bool news,
-    uint8_t *row, size_t capacity, size_t *length)
-{
-	static const uint8_t marker[] = " +++ ";
-	static const uint8_t prefix[] =
-	    "Attack Failed! Ground Forces remaining:";
-	static const uint8_t suffix[] = "!";
-	uint8_t screen[128];
-	size_t screen_length;
-
-	if (!landing_join_number(prefix, sizeof(prefix) - 1U,
-	    floorf(defenders), suffix, sizeof(suffix) - 1U,
-	    screen, sizeof(screen), &screen_length) || length == NULL)
-		return false;
-	*length = 0U;
-	if (screen_length + (news ? sizeof(marker) - 1U : 0U) > capacity
-	    || (row == NULL && screen_length != 0U))
-		return false;
-	if (news) {
-		memcpy(row, marker, sizeof(marker) - 1U);
-		memcpy(row + sizeof(marker) - 1U, screen, screen_length);
-		*length = sizeof(marker) - 1U + screen_length;
-	}
-	else {
-		memcpy(row, screen, screen_length);
-		*length = screen_length;
-	}
-	return true;
-}
-
-bool
-yt_planet_creation_credit_row(double credits, uint8_t *row,
-    size_t capacity, size_t *length)
-{
-	static const uint8_t prefix[] = "You have";
-	static const uint8_t suffix[] = " credits.";
-	char number[64];
-	int number_length;
-	size_t needed;
-
-	if (length == NULL)
-		return false;
-	*length = 0U;
-	number_length = qb_str_double(number, sizeof(number), credits);
-	if (number_length < 0)
-		return false;
-	needed = sizeof(prefix) - 1U + (size_t)number_length
-	    + sizeof(suffix) - 1U;
-	if (needed > capacity || (needed != 0U && row == NULL))
-		return false;
-	memcpy(row, prefix, sizeof(prefix) - 1U);
-	memcpy(row + sizeof(prefix) - 1U, number, (size_t)number_length);
-	memcpy(row + sizeof(prefix) - 1U + (size_t)number_length,
-	    suffix, sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-void
-yt_planet_creation_overlay(struct yt_planet *planet,
-    int current_player_record)
-{
-	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x20, 0x00};
-	size_t index;
-
-	if (planet == NULL)
-		return;
-	for (index = 0U; index < 3U; ++index) {
-		planet->production[index] = 1.0f;
-		planet->stock[index] = 10.0f;
-		(void)yt_record_set_number(&planet->record,
-		    YT_F45 + index * 4U, 1.0f);
-		(void)yt_record_set_number(&planet->record,
-		    YT_F57 + index * 4U, 10.0f);
-	}
-	planet->mines = 0.0f;
-	planet->missiles = 0.0f;
-	planet->owner = (float)current_player_record;
-	planet->ground_forces = 1.0f;
-	planet->plasma = 0.0f;
-	planet->bank = 0.0f;
-	planet->fighters = 30.0f;
-	(void)yt_record_set_raw_number(&planet->record, YT_F125, dirty_zero);
-	(void)yt_record_set_raw_number(&planet->record, YT_F69, dirty_zero);
-	(void)yt_record_set_number(&planet->record, YT_F73, planet->owner);
-	(void)yt_record_set_number(&planet->record, YT_F77, 1.0f);
-	(void)yt_record_set_number(&planet->record, YT_F113, 0.0f);
-	(void)yt_record_set_number(&planet->record, YT_F117, 0.0f);
-	(void)yt_record_set_number(&planet->record, YT_F129, 30.0f);
-}
-
-void
-yt_planet_creation_timestamp_overlay(struct yt_planet *planet,
-    float day, float minute)
-{
-	if (planet == NULL)
-		return;
-	planet->last_day = day;
-	planet->last_minute = minute;
-	(void)yt_record_set_number(&planet->record, YT_F41, day);
-	(void)yt_record_set_number(&planet->record, YT_F89, minute);
-}
-
-void
-yt_planet_creation_credit_overlay(struct yt_player *player,
-    float price_argument)
-{
-	volatile float sum;
-	volatile float integral;
-
-	if (player == NULL)
-		return;
-	sum = player->credits + price_argument;
-	integral = floorf(sum);
-	player->credits = integral;
-	(void)yt_record_set_number(&player->record, YT_F81, integral);
-}
-
-bool
-yt_planet_creation_news(const uint8_t *trader_name,
-    size_t trader_name_length, const uint8_t *planet_name,
-    size_t planet_name_length, uint8_t *row, size_t capacity,
-    size_t *length)
-{
-	static const uint8_t prefix[] = "  -  ";
-	static const uint8_t middle[] = " made a planet: ";
-	size_t needed;
-	size_t cursor = 0U;
-
-	if (length == NULL || (trader_name == NULL && trader_name_length != 0U)
-	    || (planet_name == NULL && planet_name_length != 0U))
-		return false;
-	*length = 0U;
-	needed = sizeof(prefix) - 1U + trader_name_length
-	    + sizeof(middle) - 1U + planet_name_length;
-	if (needed > capacity || (needed != 0U && row == NULL))
-		return false;
-	memcpy(row + cursor, prefix, sizeof(prefix) - 1U);
-	cursor += sizeof(prefix) - 1U;
-	if (trader_name_length != 0U) {
-		memcpy(row + cursor, trader_name, trader_name_length);
-		cursor += trader_name_length;
-	}
-	memcpy(row + cursor, middle, sizeof(middle) - 1U);
-	cursor += sizeof(middle) - 1U;
-	if (planet_name_length != 0U)
-		memcpy(row + cursor, planet_name, planet_name_length);
-	*length = needed;
-	return true;
-}
-
-bool
-yt_planet_creation_success_row(const uint8_t *planet_name,
-    size_t planet_name_length, uint8_t *row, size_t capacity,
-    size_t *length)
-{
-	static const uint8_t prefix[] = "Planet \"";
-	static const uint8_t suffix[] =
-	    "\" created with Genesis Device!";
-	size_t needed;
-
-	if (length == NULL || (planet_name == NULL && planet_name_length != 0U))
-		return false;
-	*length = 0U;
-	needed = sizeof(prefix) - 1U + planet_name_length
-	    + sizeof(suffix) - 1U;
-	if (needed > capacity || (needed != 0U && row == NULL))
-		return false;
-	memcpy(row, prefix, sizeof(prefix) - 1U);
-	if (planet_name_length != 0U)
-		memcpy(row + sizeof(prefix) - 1U, planet_name,
-		    planet_name_length);
-	memcpy(row + sizeof(prefix) - 1U + planet_name_length, suffix,
-	    sizeof(suffix) - 1U);
-	*length = needed;
-	return true;
-}
-
-float
-yt_planet_move_destination(const char *response)
-{
-	struct qb_val_result parsed;
-	volatile double integral;
-
-	if (response == NULL)
-		return 0.0f;
-	parsed = qb_val(response);
-	integral = floor(parsed.valid ? parsed.value : 0.0);
-	return (float)integral;
-}
-
-float
-yt_planet_move_maximum(float port_record_offset,
-    float sector_record_offset)
-{
-	volatile float result = port_record_offset - sector_record_offset;
-
-	return result;
-}
-
-float
-yt_planet_move_add_cost(float cost)
-{
-	volatile float result = cost + 10.0f;
-
-	return result;
-}
-
-float
-yt_planet_move_fighter_loss(float fighters, float first_draw,
-    float second_draw)
-{
-	volatile float first_product = first_draw * fighters;
-	volatile float first = floorf(first_product) + 1.0f;
-	volatile float second_product = second_draw * first;
-	volatile float loss = floorf(second_product) + 1.0f;
-
-	return loss;
-}
-
-void
-yt_planet_move_sector_overlay(struct yt_sector *sector, float planet_link)
-{
-	if (sector == NULL)
-		return;
-	sector->planet = planet_link;
-	(void)yt_record_set_number(&sector->record, YT_F93, planet_link);
-}
-
-void
-yt_planet_move_explosion_overlay(struct yt_planet *planet)
-{
-	static const uint8_t zero_raw[4] = {0, 0, 0, 0};
-
-	if (planet == NULL)
-		return;
-	planet->name[0] = '\0';
-	planet->name_length = 0.0f;
-	memcpy(planet->record.bytes, zero_raw, sizeof(zero_raw));
-	memset(planet->record.bytes + sizeof(zero_raw), ' ',
-	    YT_TEXT_FIELD_SIZE - sizeof(zero_raw));
-	(void)yt_record_set_raw_number(&planet->record, YT_F85, zero_raw);
-}
-
-void
-yt_planet_move_fighter_overlay(struct yt_player *player, float loss)
-{
-	volatile float remaining;
-
-	if (player == NULL)
-		return;
-	remaining = player->fighters - loss;
-	player->fighters = remaining;
-	(void)yt_record_set_number(&player->record, YT_F61, remaining);
-}
-
-void
-yt_planet_move_success_overlay(struct yt_player *player,
-    float requested_destination)
-{
-	volatile float remaining;
-
-	if (player == NULL)
-		return;
-	remaining = player->turns + -10.0f;
-	player->turns = remaining;
-	player->sector = requested_destination;
-	(void)yt_record_set_number(&player->record, YT_F49, remaining);
-	(void)yt_record_set_number(&player->record, YT_F57,
-	    requested_destination);
-}
-
-static bool
-move_join_parts(const uint8_t *first, size_t first_length,
-    const uint8_t *second, size_t second_length,
-    const uint8_t *third, size_t third_length,
-    const uint8_t *fourth, size_t fourth_length,
-    const uint8_t *fifth, size_t fifth_length,
-    uint8_t *row, size_t capacity, size_t *length)
-{
-	const uint8_t *parts[5] = {first, second, third, fourth, fifth};
-	const size_t sizes[5] = {first_length, second_length, third_length,
-	    fourth_length, fifth_length};
-	size_t needed = 0U;
-	size_t cursor = 0U;
-	size_t index;
-
-	if (length == NULL)
-		return false;
-	*length = 0U;
-	for (index = 0U; index < 5U; ++index) {
-		if (parts[index] == NULL && sizes[index] != 0U)
-			return false;
-		if (SIZE_MAX - needed < sizes[index])
-			return false;
-		needed += sizes[index];
-	}
-	if (needed > capacity || (row == NULL && needed != 0U))
-		return false;
-	for (index = 0U; index < 5U; ++index) {
-		if (sizes[index] != 0U) {
-			memcpy(row + cursor, parts[index], sizes[index]);
-			cursor += sizes[index];
-		}
-	}
-	*length = needed;
-	return true;
-}
-
-bool
-yt_planet_move_path_heading(float start, float destination,
-    uint8_t *row, size_t capacity, size_t *length)
-{
-	static const uint8_t first[] = "The shortest path from sector";
-	static const uint8_t middle[] = " to sector";
-	static const uint8_t suffix[] = " is:";
-	char start_text[64];
-	char destination_text[64];
-	int start_length = qb_str_single(start_text, sizeof(start_text), start);
-	int destination_length = qb_str_single(destination_text,
-	    sizeof(destination_text), destination);
-
-	if (start_length < 0 || destination_length < 0)
-		return false;
-	return move_join_parts(first, sizeof(first) - 1U,
-	    (const uint8_t *)start_text, (size_t)start_length,
-	    middle, sizeof(middle) - 1U,
-	    (const uint8_t *)destination_text, (size_t)destination_length,
-	    suffix, sizeof(suffix) - 1U, row, capacity, length);
-}
-
-bool
-yt_planet_move_summary(float cost, uint8_t *row, size_t capacity,
-    size_t *length)
-{
-	static const uint8_t first[] = "Distance is";
-	static const uint8_t middle[] = " and will take";
-	static const uint8_t suffix[] = " turns.";
-	volatile float distance = cost / 10.0f;
-	char distance_text[64];
-	char cost_text[64];
-	int distance_length = qb_str_single(distance_text,
-	    sizeof(distance_text), distance);
-	int cost_length = qb_str_single(cost_text, sizeof(cost_text), cost);
-
-	if (distance_length < 0 || cost_length < 0)
-		return false;
-	return move_join_parts(first, sizeof(first) - 1U,
-	    (const uint8_t *)distance_text, (size_t)distance_length,
-	    middle, sizeof(middle) - 1U,
-	    (const uint8_t *)cost_text, (size_t)cost_length,
-	    suffix, sizeof(suffix) - 1U, row, capacity, length);
-}
-
-bool
-yt_planet_move_turns_row(float turns, uint8_t *row, size_t capacity,
-    size_t *length)
-{
-	static const uint8_t first[] = "You have";
-	static const uint8_t suffix[] = " turns left.";
-	char number[64];
-	int number_length = qb_str_single(number, sizeof(number), turns);
-
-	if (number_length < 0)
-		return false;
-	return move_join_parts(first, sizeof(first) - 1U,
-	    (const uint8_t *)number, (size_t)number_length,
-	    suffix, sizeof(suffix) - 1U, NULL, 0U, NULL, 0U,
-	    row, capacity, length);
-}
-
-bool
-yt_planet_move_explosion_row(const uint8_t *planet_name,
-    size_t planet_name_length, uint8_t *row, size_t capacity,
-    size_t *length)
-{
-	static const uint8_t first[] = "The stress was too much! PLANET ";
-	static const uint8_t suffix[] = " EXPLODED!";
-
-	return move_join_parts(first, sizeof(first) - 1U,
-	    planet_name, planet_name_length, suffix, sizeof(suffix) - 1U,
-	    NULL, 0U, NULL, 0U, row, capacity, length);
-}
-
-bool
-yt_planet_move_explosion_news(const uint8_t *planet_name,
-    size_t planet_name_length, const uint8_t *player_name,
-    size_t player_name_length, uint8_t *row, size_t capacity,
-    size_t *length)
-{
-	static const uint8_t first[] = " *** Planet ";
-	static const uint8_t middle[] = " EXPLODED while being moved by ";
-	static const uint8_t suffix[] = "!!!";
-
-	return move_join_parts(first, sizeof(first) - 1U,
-	    planet_name, planet_name_length, middle, sizeof(middle) - 1U,
-	    player_name, player_name_length, suffix, sizeof(suffix) - 1U,
-	    row, capacity, length);
-}
-
-bool
-yt_planet_move_loss_row(const uint8_t *actor, size_t actor_length,
-    float loss, uint8_t *row, size_t capacity, size_t *length)
-{
-	static const uint8_t middle[] = " lost";
-	static const uint8_t suffix[] = " fighters in the explosion!";
-	char number[64];
-	int number_length = qb_str_single(number, sizeof(number), loss);
-
-	if (number_length < 0)
-		return false;
-	return move_join_parts(actor, actor_length, middle, sizeof(middle) - 1U,
-	    (const uint8_t *)number, (size_t)number_length,
-	    suffix, sizeof(suffix) - 1U, NULL, 0U,
-	    row, capacity, length);
-}
-
-bool
-yt_planet_move_success_row(const uint8_t *planet_name,
-    size_t planet_name_length, uint8_t *row, size_t capacity,
-    size_t *length)
-{
-	static const uint8_t suffix[] =
-	    " moved! (Xannoron Movers, we move anyTHING, anyWHERE!)";
-
-	return move_join_parts(planet_name, planet_name_length,
-	    suffix, sizeof(suffix) - 1U, NULL, 0U, NULL, 0U, NULL, 0U,
-	    row, capacity, length);
-}
-
 float
 yt_sector_mine_batch(float mines_before)
 {
@@ -2346,7 +414,7 @@ yt_sector_mine_explosion_row(float mines_before, float batch,
 
 	if (before_length < 0 || batch_length < 0)
 		return false;
-	return move_join_parts(first, sizeof(first) - 1U,
+	return yt_game_join_parts(first, sizeof(first) - 1U,
 	    (const uint8_t *)before_text, (size_t)before_length,
 	    middle, sizeof(middle) - 1U,
 	    (const uint8_t *)batch_text, (size_t)batch_length,
@@ -2364,7 +432,7 @@ yt_sector_mine_shields_row(float shields, uint8_t *row,
 
 	if (number_length < 0)
 		return false;
-	return move_join_parts(first, sizeof(first) - 1U,
+	return yt_game_join_parts(first, sizeof(first) - 1U,
 	    (const uint8_t *)number, (size_t)number_length,
 	    suffix, sizeof(suffix) - 1U, NULL, 0U, NULL, 0U,
 	    row, capacity, length);
@@ -2391,7 +459,7 @@ yt_sector_mine_loss_row(enum yt_sector_mine_loss_kind kind, float loss,
 	number_length = qb_str_single(number, sizeof(number), loss);
 	if (number_length < 0)
 		return false;
-	return move_join_parts(first, sizeof(first) - 1U,
+	return yt_game_join_parts(first, sizeof(first) - 1U,
 	    (const uint8_t *)number, (size_t)number_length,
 	    (const uint8_t *)suffix, strlen(suffix), NULL, 0U, NULL, 0U,
 	    row, capacity, length);
@@ -2409,7 +477,7 @@ yt_sector_mine_entry_news(const uint8_t *player_name,
 
 	if (number_length < 0)
 		return false;
-	return move_join_parts(player_name, player_name_length,
+	return yt_game_join_parts(player_name, player_name_length,
 	    middle, sizeof(middle) - 1U,
 	    (const uint8_t *)number, (size_t)number_length,
 	    suffix, sizeof(suffix) - 1U, NULL, 0U,
@@ -2427,7 +495,7 @@ yt_sector_mine_final_news(float shields, uint8_t *row,
 
 	if (number_length < 0)
 		return false;
-	return move_join_parts(first, sizeof(first) - 1U,
+	return yt_game_join_parts(first, sizeof(first) - 1U,
 	    (const uint8_t *)number, (size_t)number_length,
 	    suffix, sizeof(suffix) - 1U, NULL, 0U, NULL, 0U,
 	    row, capacity, length);
@@ -2442,7 +510,7 @@ yt_direct_fighter_mine_warning(const uint8_t *victim_name,
 	static const uint8_t suffix[] =
 	    " had sector mines! They EXPLODED!";
 
-	return move_join_parts(prefix, sizeof(prefix) - 1U,
+	return yt_game_join_parts(prefix, sizeof(prefix) - 1U,
 	    victim_name, victim_name_length, suffix, sizeof(suffix) - 1U,
 	    NULL, 0U, NULL, 0U, row, capacity, length);
 }
@@ -2527,7 +595,7 @@ yt_emergency_warp_result_row(float destination, float cost,
 
 	if (destination_length < 0 || cost_length < 0)
 		return false;
-	return move_join_parts(first, sizeof(first) - 1U,
+	return yt_game_join_parts(first, sizeof(first) - 1U,
 	    (const uint8_t *)destination_text, (size_t)destination_length,
 	    middle, sizeof(middle) - 1U,
 	    (const uint8_t *)cost_text, (size_t)cost_length,
@@ -2546,7 +614,7 @@ yt_emergency_warp_stranded_row(float destination, uint8_t *row,
 
 	if (destination_length < 0)
 		return false;
-	return move_join_parts(first, sizeof(first) - 1U,
+	return yt_game_join_parts(first, sizeof(first) - 1U,
 	    (const uint8_t *)destination_text, (size_t)destination_length,
 	    suffix, sizeof(suffix) - 1U, NULL, 0U, NULL, 0U,
 	    row, capacity, length);
@@ -2593,7 +661,7 @@ yt_movement_confirmation_prompt(float target, uint8_t *row,
 
 	if (number_length < 0)
 		return false;
-	return move_join_parts(first, sizeof(first) - 1U,
+	return yt_game_join_parts(first, sizeof(first) - 1U,
 	    (const uint8_t *)number, (size_t)number_length,
 	    suffix, sizeof(suffix) - 1U, NULL, 0U, NULL, 0U,
 	    row, capacity, length);
@@ -2616,7 +684,7 @@ market_encode_single(float value, uint8_t raw[4], struct yt_error *error,
 
 	if (status == QB_MBF_OK || status == QB_MBF_UNDERFLOW)
 		return true;
-	return startup_configuration_error(error, YT_RANGE, operation);
+	return yt_game_error(error, YT_RANGE, operation);
 }
 
 typedef enum qb_mbf_status (*market_binary_fn)(const uint8_t left[8],
@@ -2631,7 +699,7 @@ market_binary(market_binary_fn operation, const uint8_t left[8],
 
 	if (status == QB_MBF_OK || status == QB_MBF_UNDERFLOW)
 		return true;
-	return startup_configuration_error(error, YT_RANGE, label);
+	return yt_game_error(error, YT_RANGE, label);
 }
 
 bool
@@ -2672,7 +740,7 @@ yt_port_market_update(struct yt_port_market_state *state,
 	    || qb_mbf64_from_u64(1000U, thousand) != QB_MBF_OK
 	    || qb_mbf64_from_u64(1U, one) != QB_MBF_OK
 	    || qb_mbf64_encode(0.5, half) != QB_MBF_OK)
-		return startup_configuration_error(error, YT_RANGE,
+		return yt_game_error(error, YT_RANGE,
 		    "ordinary port constants");
 	minute = qb_single_divide(state->timer_seconds, 60.0f);
 	elapsed = qb_single_add(
@@ -2728,7 +796,7 @@ yt_port_market_update(struct yt_port_market_state *state,
 			    "ordinary port production replacement")
 			    || qb_mbf32_from_mbf64_raw(quotient,
 			    mutable_production[index]) == QB_MBF_OVERFLOW)
-				return startup_configuration_error(error, YT_RANGE,
+				return yt_game_error(error, YT_RANGE,
 				    "ordinary port production CSNG");
 			raised[index] = true;
 			yt_port_mbf64_promote_single(mutable_production[index],
@@ -2765,12 +833,12 @@ yt_port_market_update(struct yt_port_market_state *state,
 			    rounded_source, rounded);
 
 			if (status != QB_MBF_OK && status != QB_MBF_UNDERFLOW)
-				return startup_configuration_error(error, YT_RANGE,
+				return yt_game_error(error, YT_RANGE,
 				    "ordinary port price INT");
 		}
 		if (qb_mbf32_from_mbf64_raw(rounded, mutable_price[index])
 		    == QB_MBF_OVERFLOW)
-			return startup_configuration_error(error, YT_RANGE,
+			return yt_game_error(error, YT_RANGE,
 			    "ordinary port price CSNG");
 		if (qb_mbf32_decode(mutable_price[index]) < 1.0f
 		    && !market_encode_single(1.0f, mutable_price[index], error,
@@ -2794,7 +862,7 @@ yt_port_market_update(struct yt_port_market_state *state,
 		    YT_F49 + index * 4U, stored_capacity)
 		    || !yt_record_set_raw_number(&updated,
 		    YT_F61 + index * 4U, mutable_production[index]))
-			return startup_configuration_error(error, YT_RANGE,
+			return yt_game_error(error, YT_RANGE,
 			    "ordinary port FIELD overlay");
 		memcpy(state->capacity_raw[index], mutable_capacity[index], 8U);
 		state->capacity[index] = qb_mbf64_decode(mutable_capacity[index]);
@@ -2832,7 +900,7 @@ port_report_field_length(const uint8_t raw[4], uint8_t conversion_mode,
 
 	converted = qb_cint_mbf32(raw, conversion_mode, &overflow);
 	if (overflow || converted < 0)
-		return startup_configuration_error(error, YT_RANGE, operation);
+		return yt_game_error(error, YT_RANGE, operation);
 	*length = (size_t)converted;
 	if (*length > YT_TEXT_FIELD_SIZE)
 		*length = YT_TEXT_FIELD_SIZE;
@@ -2879,7 +947,7 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 
 	if (market == NULL || current_player == NULL || report_port == NULL
 	    || date == NULL || time_text == NULL || report == NULL)
-		return startup_configuration_error(error, YT_INVALID,
+		return yt_game_error(error, YT_INVALID,
 		    "port report arguments");
 	memset(report, 0, sizeof(*report));
 	if (!port_report_field_length(report_port->record.bytes + YT_F85,
@@ -2898,7 +966,7 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 	    &report->title_length, " ", 1U)
 	    || !port_report_append(report->title, sizeof(report->title),
 	    &report->title_length, time_text, 8U))
-		return startup_configuration_error(error, YT_RANGE,
+		return yt_game_error(error, YT_RANGE,
 		    "port report title composition");
 
 	for (index = 0U; index < 3U; ++index) {
@@ -2920,11 +988,11 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 		    || !port_report_append(item->name_status,
 		    sizeof(item->name_status), &position, status,
 		    sizeof(buying) - 1U))
-			return startup_configuration_error(error, YT_RANGE,
+			return yt_game_error(error, YT_RANGE,
 			    "port report item composition");
 		if (qb_mbf64_floor_raw(market->capacity_raw[index],
 		    floored_capacity) != QB_MBF_OK)
-			return startup_configuration_error(error, YT_RANGE,
+			return yt_game_error(error, YT_RANGE,
 			    "port report stock INT");
 		formatted_length = qb_str_mbf64(number, sizeof(number),
 		    floored_capacity);
@@ -2932,7 +1000,7 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 		    || !port_report_right_raw((const uint8_t *)number,
 		    (size_t)formatted_length, sizeof(item->capacity),
 		    item->capacity))
-			return startup_configuration_error(error, YT_RANGE,
+			return yt_game_error(error, YT_RANGE,
 			    "port report stock formatting");
 		yt_port_mbf64_promote_single(current_player->record.bytes
 		    + hold_offset[index], promoted_hold);
@@ -2941,12 +1009,12 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 		if (formatted_length < 0
 		    || !port_report_right_raw((const uint8_t *)number,
 		    (size_t)formatted_length, sizeof(item->hold), item->hold))
-			return startup_configuration_error(error, YT_RANGE,
+			return yt_game_error(error, YT_RANGE,
 			    "port report hold formatting");
 		formatted_length = qb_str_mbf32(number, sizeof(number),
 		    market->price_raw[index]);
 		if (formatted_length < 0)
-			return startup_configuration_error(error, YT_RANGE,
+			return yt_game_error(error, YT_RANGE,
 			    "port report price formatting");
 		number_length = (size_t)formatted_length;
 		position = 0U;
@@ -2954,7 +1022,7 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 		    &position, number, number_length)
 		    || !port_report_append(item->price, sizeof(item->price),
 		    &position, padding, sizeof(padding) - 1U))
-			return startup_configuration_error(error, YT_RANGE,
+			return yt_game_error(error, YT_RANGE,
 			    "port report price composition");
 		item->price_length = position;
 	}
@@ -3300,16 +1368,16 @@ yt_planet_transfer_fighter_amount(const char *response, float *amount,
 	enum qb_mbf_status status;
 
 	if (response == NULL || amount == NULL)
-		return startup_configuration_error(error, YT_INVALID,
+		return yt_game_error(error, YT_INVALID,
 		    "planet Transfer fighter amount arguments");
 	parsed = qb_val(response);
 	if (parsed.overflow)
-		return startup_configuration_error(error, YT_RANGE,
+		return yt_game_error(error, YT_RANGE,
 		    "planet Transfer fighter VAL");
 	candidate = (float)(parsed.valid ? parsed.value : 0.0);
 	status = qb_mbf32_encode(candidate, raw);
 	if (status == QB_MBF_OVERFLOW)
-		return startup_configuration_error(error, YT_RANGE,
+		return yt_game_error(error, YT_RANGE,
 		    "planet Transfer fighter CSNG");
 	*amount = status == QB_MBF_UNDERFLOW ? 0.0f : qb_mbf32_decode(raw);
 	return true;
