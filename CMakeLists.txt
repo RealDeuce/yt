@@ -115,6 +115,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_radio.c
     src/yt_session_sector.c
     src/yt_session_death.c
+    src/yt_session_earth.c
     src/yt_session_info.c
     src/yt_session_lockout.c
     src/yt_session_mines.c
@@ -242,6 +243,7 @@ if(BUILD_TESTING)
     yt_add_test(test_session_computer tests/test_session_computer.c yt_runtime)
     yt_add_test(test_session_attack tests/test_session_attack.c yt_runtime)
     yt_add_test(test_session_death tests/test_session_death.c yt_runtime)
+    yt_add_test(test_session_earth tests/test_session_earth.c yt_runtime)
     yt_add_test(test_session_mines tests/test_session_mines.c yt_runtime)
     yt_add_test(test_session_movement tests/test_session_movement.c yt_runtime)
     yt_add_test(test_session_nearest tests/test_session_nearest.c yt_runtime)
@@ -260,6 +262,7 @@ if(BUILD_TESTING)
         test_session_computer
         test_session_attack
         test_session_death
+        test_session_earth
         test_session_mines
         test_session_movement
         test_session_nearest

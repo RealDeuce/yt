@@ -129,6 +129,13 @@ bool session_read_player_expression(struct yt_session *session,
     struct yt_error *error);
 bool session_write_sector(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, struct yt_error *error);
+bool session_read_port(struct yt_session *session, int logical_port,
+    struct yt_port *port, struct yt_error *error);
+bool session_write_port(struct yt_session *session, int logical_port,
+    struct yt_port *port, struct yt_error *error);
+bool session_read_port_at_fault(struct yt_session *session, int logical_port,
+    struct yt_port *port, enum yt_basic_fault_site site,
+    struct yt_error *error);
 bool session_read_planet(struct yt_session *session, int logical_planet,
     struct yt_planet *planet, struct yt_error *error);
 bool session_write_planet(struct yt_session *session, int logical_planet,
@@ -176,6 +183,7 @@ bool session_confirm(struct yt_session *session, const uint8_t *prompt,
     struct yt_error *error);
 bool session_present_alert(struct yt_session *session, const uint8_t *text,
     size_t length, const char *operation, struct yt_error *error);
+bool session_range_error(struct yt_error *error, const char *operation);
 bool session_attention_bytes(struct yt_session *session,
     const uint8_t *text, size_t length, const char *operation,
     struct yt_error *error);
