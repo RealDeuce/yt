@@ -3,30 +3,39 @@
 
 #include "yt_game.h"
 
-typedef bool (*yt_score_progress_fn)(void *context, unsigned phase,
-    struct yt_error *error);
-
-enum yt_score_field_kind {
-	YT_SCORE_FIELD_NONE,
-	YT_SCORE_FIELD_PLAYER,
-	YT_SCORE_FIELD_SECTOR,
-	YT_SCORE_FIELD_TEAM,
+struct yt_score_player {
+	int record;
+	struct yt_player player;
+	double score;
+	bool occupied;
 };
 
-struct yt_score_field_observation {
-	enum yt_score_field_kind kind;
-	uint32_t physical_record;
-	struct yt_record image;
-	bool valid;
+struct yt_score_team {
+	int id;
+	double score;
+};
+
+struct yt_scoreboard {
+	struct yt_game *game;
+	float sector_record_offset;
+	int player_count;
+	int sector_count;
+	double xannor;
+	double mercenaries;
+	struct yt_score_player players[YT_DEFAULT_PLAYER_COUNT];
+	struct yt_score_team teams[YT_DEFAULT_PLAYER_COUNT];
 };
 
 bool yt_score_generate(struct yt_game *game, struct yt_error *error);
-bool yt_score_generate_progress(struct yt_game *game,
-    yt_score_progress_fn progress, void *context, struct yt_error *error);
-bool yt_score_generate_progress_with_layout(struct yt_game *game,
-	float sector_record_offset, float port_record_offset,
-	yt_score_progress_fn progress, void *context,
-	struct yt_score_field_observation *field,
-	struct yt_error *error);
+bool yt_scoreboard_prepare(struct yt_scoreboard *scoreboard,
+    struct yt_game *game, float sector_record_offset,
+    float port_record_offset, struct yt_error *error);
+bool yt_scoreboard_load_players(struct yt_scoreboard *scoreboard,
+    struct yt_error *error);
+bool yt_scoreboard_score_sectors(struct yt_scoreboard *scoreboard,
+    struct yt_error *error);
+void yt_scoreboard_rank_players(struct yt_scoreboard *scoreboard);
+bool yt_scoreboard_write(struct yt_scoreboard *scoreboard,
+    struct yt_error *error);
 
 #endif

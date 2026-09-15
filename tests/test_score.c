@@ -4331,26 +4331,6 @@ struct score_clock_script {
 	size_t position;
 };
 
-struct score_progress_tape {
-	unsigned phases[4];
-	size_t count;
-};
-
-static bool
-score_progress_collect(void *context, unsigned phase,
-    struct yt_error *error)
-{
-	struct score_progress_tape *tape = context;
-
-	if (tape == NULL || tape->count >= YT_ARRAY_LEN(tape->phases)) {
-		if (error != NULL)
-			error->status = YT_RANGE;
-		return false;
-	}
-	tape->phases[tape->count++] = phase;
-	return true;
-}
-
 static bool
 score_line_collect(void *context, const uint8_t *line, size_t length,
     struct yt_error *error)
@@ -15260,8 +15240,7 @@ main(void)
 		{2027, 1, 1, 0, 0, 7, 0},
 		{2027, 1, 1, 0, 0, 8, 0}
 	}, 0};
-	struct score_progress_tape progress = {0};
-	struct yt_score_field_observation score_field;
+	struct yt_scoreboard scoreboard;
 	struct yt_error error;
 	struct yt_record blank;
 	struct yt_sector sector;
@@ -15705,15 +15684,9 @@ main(void)
 		goto close;
 	strcpy(game.config.scoreboard, "NUL");
 	yt_error_clear(&error);
-	if (!yt_score_generate_progress_with_layout(&game,
-	    game.config.sector_offset, game.config.port_offset,
-	    score_progress_collect, &progress, &score_field, &error)
-	    || progress.count != YT_ARRAY_LEN(progress.phases)
-	    || progress.phases[0] != 1U || progress.phases[1] != 2U
-	    || progress.phases[2] != 3U || progress.phases[3] != 4U
-	    || !score_field.valid || score_field.kind != YT_SCORE_FIELD_PLAYER
-	    || score_field.physical_record != 3U
-	    || yt_record_get_number(&score_field.image, YT_F109) != -1.0f)
+	if (!yt_score_generate(&game, &error)
+	    || !yt_game_read_player(&game, 3, &player, &error)
+	    || player.score != -1.0f)
 		goto close;
 	score = fopen("YTTEMP", "rb");
 	if (score == NULL)
@@ -15808,11 +15781,21 @@ main(void)
 		goto close;
 	game.config.sector_offset = 99.0f;
 	game.config.port_offset = 100.0f;
-	if (!yt_score_generate_progress_with_layout(&game,
-	    3.0f, 5.0f, NULL, NULL, &score_field, &error)
-	    || !score_field.valid || score_field.kind != YT_SCORE_FIELD_TEAM
-	    || score_field.physical_record != 5U
-	    || memcmp(score_field.image.bytes, "Team Two", 8U) != 0)
+	if (!yt_scoreboard_prepare(&scoreboard, &game, 3.0f, 5.0f, &error)
+	    || !yt_scoreboard_load_players(&scoreboard, &error)
+	    || !yt_scoreboard_score_sectors(&scoreboard, &error))
+		goto close;
+	yt_scoreboard_rank_players(&scoreboard);
+	if (!yt_scoreboard_write(&scoreboard, &error))
+		goto close;
+	score = fopen("RICH.ASC", "rb");
+	if (score == NULL)
+		goto close;
+	length = fread(bytes, 1, sizeof(bytes) - 1U, score);
+	if (ferror(score) || fclose(score) != 0)
+		goto close;
+	bytes[length] = '\0';
+	if (strstr((const char *)bytes, "Team Two\r\n") == NULL)
 		goto close;
 	if (clock_script.position != YT_ARRAY_LEN(clock_script.values))
 		goto close;
