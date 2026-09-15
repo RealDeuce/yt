@@ -118,6 +118,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_shell.c
     src/yt_session_death.c
     src/yt_session_earth.c
+    src/yt_session_error.c
     src/yt_session_fighters.c
     src/yt_session_genesis.c
     src/yt_session_info.c

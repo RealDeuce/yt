@@ -16,6 +16,13 @@ enum session_present_text_kind {
 	SESSION_PRESENT_BOLD_RAW
 };
 
+enum session_fault_disposition {
+	SESSION_FAULT_UNHANDLED,
+	SESSION_FAULT_RESUME_GAMEPLAY,
+	SESSION_FAULT_ENDED,
+	SESSION_FAULT_HANDLER_FAILED,
+};
+
 struct yt_session {
 	struct yt_door *door;
 	struct yt_error *error;
@@ -177,6 +184,16 @@ bool session_confirm(struct yt_session *session, const uint8_t *prompt,
 bool session_present_alert(struct yt_session *session, const uint8_t *text,
     size_t length, const char *operation, struct yt_error *error);
 bool session_range_error(struct yt_error *error, const char *operation);
+void attach_database_get_fault(struct yt_session *session,
+    struct yt_error *error, enum yt_basic_fault_site site);
+void attach_database_put_fault(struct yt_session *session,
+    struct yt_error *error, enum yt_basic_fault_site site);
+bool session_commit_shared_terminal(struct yt_session *session,
+    const struct yt_shared_error_result *result, struct yt_error *error);
+enum session_fault_disposition session_route_basic_fault(
+    struct yt_session *session, struct yt_error *error);
+bool session_handle_gameplay_fault(struct yt_session *session,
+    struct yt_error *error, bool *resume_gameplay);
 bool session_attention_bytes(struct yt_session *session,
     const uint8_t *text, size_t length, const char *operation,
     struct yt_error *error);
