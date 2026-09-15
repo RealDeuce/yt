@@ -79,6 +79,10 @@ set(YT_GAME_SOURCES
     src/yt_config.c
     src/yt_config_output.c
     src/yt_game.c
+    src/yt_game_nearest.c
+    src/yt_game_projectile.c
+    src/yt_game_records.c
+    src/yt_game_salvage.c
     src/yt_init.c
     src/yt_maint.c
     src/yt_names.c
