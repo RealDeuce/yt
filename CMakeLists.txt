@@ -127,6 +127,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_planets.c
     src/yt_session_ports.c
     src/yt_session_profit.c
+    src/yt_session_projectile.c
     src/yt_session_registration.c
     src/yt_session_route.c
     src/yt_session_salvage.c

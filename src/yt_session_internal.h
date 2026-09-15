@@ -16,12 +16,6 @@ enum session_present_text_kind {
 	SESSION_PRESENT_BOLD_RAW
 };
 
-struct projectile_route_state {
-	float origin;
-	float destination;
-	float amount;
-};
-
 struct yt_session {
 	struct yt_door *door;
 	struct yt_error *error;
@@ -43,9 +37,6 @@ struct yt_session {
 	float shared_status;
 	float path_marker;
 	float route_start;
-	struct projectile_route_state projectile_main_route;
-	struct projectile_route_state projectile_xannor_route;
-	struct projectile_route_state projectile_counterlaunch_route;
 	int spy_count;
 	int spy_sectors[3];
 	int spy_markers[3];
@@ -100,6 +91,8 @@ float session_planet_offset(const struct yt_session *session);
 uint32_t session_port_basic_record(const struct yt_session *session,
     float logical_port);
 int session_sector_count(const struct yt_session *session);
+bool session_is_disruption_sector(const struct yt_session *session,
+    float sector);
 bool yt_session_players_are_friendly(struct yt_session *session,
     int candidate_record, bool *friendly, struct yt_error *error);
 bool yt_session_destination_is_dangerous(struct yt_session *session,

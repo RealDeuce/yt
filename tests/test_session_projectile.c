@@ -84,9 +84,6 @@ test_same_sector_plasma_route(void)
 	CHECK(yt_session_command_projectile(&session, true, &error));
 	CHECK(session.queue_position == session.queue_length);
 	CHECK(random.calls == 1U && door.game.random.draws == 1U);
-	CHECK(session.projectile_main_route.origin == 0.0f);
-	CHECK(session.projectile_main_route.destination == 1.0f);
-	CHECK(session.projectile_main_route.amount == 1.0f);
 	CHECK(session.route_second[0] == 1);
 	CHECK(session.route_second[1] == 0);
 	CHECK(session.player.turns == 9.0f && session.player.plasma == 0.0f);
