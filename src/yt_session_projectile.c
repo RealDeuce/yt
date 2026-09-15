@@ -117,7 +117,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	    &direct_length, news_row, sizeof(news_row), &news_length)
 	    || !session_present_text(session, direct_row, direct_length,
 	    SESSION_PRESENT_LINE, "cruise missile planet-attack row", error)
-	    || !session_append_news_bytes(session, news_row, news_length, error))
+	    || !yt_news_append_bytes(news_row, news_length, error))
 		return false;
 	if (!session_sound(session, 2.0f,
 	    "cruise missile planet attack sound", error))
@@ -144,7 +144,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		    sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "cruise missile planet impact row", error)
-		    || !session_append_news_bytes(session, row, row_length, error))
+		    || !yt_news_append_bytes(row, row_length, error))
 			return false;
 		if (*remaining < 1.0f) {
 			*early_return = true;
@@ -165,7 +165,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		    impact.new_total, row, sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "cruise missile planet impact row", error)
-		    || !session_append_news_bytes(session, row, row_length, error)
+		    || !yt_news_append_bytes(row, row_length, error)
 		    || !read_planet_physical(session, physical_planet, &persistence,
 		    error)
 		    || !yt_projectile_planet_productivity_overlay(&persistence,
@@ -199,7 +199,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		    "cruise missile planet impact row", error)
 		    || !session_sound(session, 3.0f,
 		    "cruise missile planet destruction sound", error)
-		    || !session_append_news_bytes(session, destroyed,
+		    || !yt_news_append_bytes(destroyed,
 		    sizeof(destroyed) - 1U, error))
 			return false;
 	}
@@ -624,7 +624,7 @@ missile_sector(struct yt_session *session, int sector_number,
 		    (const uint8_t *)session->player.name,
 		    strlen(session->player.name), destroyed, (float)sector_number,
 		    row, sizeof(row), &row_length)
-		    || !session_append_news_bytes(session, row, row_length, error)))
+		    || !yt_news_append_bytes(row, row_length, error)))
 			return false;
 		if (!session_read_sector(session, sector_number, &persistence,
 		    error))
@@ -687,7 +687,7 @@ missile_mines:
 			    (const uint8_t *)session->player.name,
 			    strlen(session->player.name), (float)sector_number,
 			    row, sizeof(row), &row_length)
-			    || !session_append_news_bytes(session, row, row_length,
+			    || !yt_news_append_bytes(row, row_length,
 			    error))
 				return false;
 			*last_mine_news_sector = (float)sector_number;
@@ -780,7 +780,7 @@ missile_mines:
 		    (float)sector_number, first_news, sizeof(first_news),
 		    &first_news_length, first_direct, sizeof(first_direct),
 		    &first_direct_length)
-		    || !session_append_news_bytes(session, first_news, first_news_length,
+		    || !yt_news_append_bytes(first_news, first_news_length,
 		    error)
 		    || !session_present_text(session, first_direct,
 		    first_direct_length, SESSION_PRESENT_BOLD_LINE,
@@ -788,7 +788,7 @@ missile_mines:
 			return false;
 		snprintf(row, sizeof(row), "shields to%s units and destroying%s "
 		    "fighters!", shield_text, fighter_text);
-		if (!session_append_news(session, row, error))
+		if (!yt_news_append(row, error))
 			return false;
 		if (!session_present_text(session, (const uint8_t *)row,
 		    strlen(row), SESSION_PRESENT_BOLD_LINE,
@@ -951,7 +951,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	    &news_length)
 	    || !session_present_text(session, direct_row, direct_length,
 	    SESSION_PRESENT_LINE, "plasma planet-hit row", error)
-	    || !session_append_news_bytes(session, news_row, news_length, error)
+	    || !yt_news_append_bytes(news_row, news_length, error)
 	    || !session_sound(session, 2.0f, "plasma planet attack sound",
 	    error))
 		return false;
@@ -986,7 +986,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	    remaining_productivity, row, sizeof(row), &row_length)
 	    || !session_present_text(session, row, row_length,
 	    SESSION_PRESENT_LINE, "plasma productivity row", error)
-	    || !session_append_news_bytes(session, row, row_length, error)
+	    || !yt_news_append_bytes(row, row_length, error)
 	    || !session_read_planet(session, logical_planet, &persistence,
 	    error)
 	    || !yt_projectile_planet_productivity_overlay(&persistence,
@@ -1029,7 +1029,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		    "plasma planet-destroyed row", error)
 		    || !session_sound(session, 3.0f,
 		    "plasma planet destruction sound", error)
-		    || !session_append_news_bytes(session, destroyed_row,
+		    || !yt_news_append_bytes(destroyed_row,
 		    sizeof(destroyed_row) - 1U, error))
 			return false;
 	}
@@ -1038,7 +1038,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		    row, sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "plasma ground-force row", error)
-		    || !session_append_news_bytes(session, row, row_length, error))
+		    || !yt_news_append_bytes(row, row_length, error))
 			return false;
 	}
 	return true;
@@ -1126,7 +1126,7 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 			    && (!plasma_fighter_news_row(attacker,
 			    launch_attacker_length, destroyed, sector_number, row,
 			    sizeof(row), &row_length)
-			    || !session_append_news_bytes(session, row, row_length,
+			    || !yt_news_append_bytes(row, row_length,
 			    error)))
 				return false;
 			if (!session_read_sector(session, sector_number, &sector,
@@ -1175,7 +1175,7 @@ plasma_reload_sector:
 		    || !plasma_mine_entry_news_row(attacker,
 		    launch_attacker_length, sector_number, row, sizeof(row),
 		    &row_length)
-		    || !session_append_news_bytes(session, row, row_length, error))
+		    || !yt_news_append_bytes(row, row_length, error))
 			return false;
 		while (*energy > 0.0 && (double)destroyed < original_mines) {
 			float draw;
@@ -1193,7 +1193,7 @@ plasma_reload_sector:
 			destroyed = (float)original_mines;
 		if (!plasma_mine_result_row(attacker, launch_attacker_length,
 		    true, destroyed, sector_number, row, sizeof(row), &row_length)
-		    || !session_append_news_bytes(session, row, row_length, error)
+		    || !yt_news_append_bytes(row, row_length, error)
 		    || !plasma_mine_result_row(NULL, 0U, false, destroyed,
 		    sector_number, row, sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
@@ -1282,7 +1282,7 @@ plasma_reload_sector:
 			    launch_attacker_length, victim, victim_length,
 			    (float)sector_number, news_row, sizeof(news_row),
 			    &news_length, direct_row, sizeof(direct_row), &direct_length)
-			    || !session_append_news_bytes(session, news_row, news_length,
+			    || !yt_news_append_bytes(news_row, news_length,
 			    error)
 			    || !session_present_text(session, direct_row, direct_length,
 			    SESSION_PRESENT_BOLD_LINE,
@@ -1290,7 +1290,7 @@ plasma_reload_sector:
 			    || !plasma_player_second_row(remaining_shields,
 			    destroyed_fighters, second_row, sizeof(second_row),
 			    &second_length)
-			    || !session_append_news_bytes(session, second_row,
+			    || !yt_news_append_bytes(second_row,
 			    second_length, error)
 			    || !session_present_text(session, second_row, second_length,
 			    SESSION_PRESENT_BOLD_LINE,
@@ -1979,7 +1979,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	    sizeof(news_row), &news_length)
 	    || !session_present_text(session, terminal_row, terminal_length,
 	    SESSION_PRESENT_BOLD_LINE, "player counterlaunch row", error)
-	    || !session_append_news_bytes(session, news_row, news_length, error))
+	    || !yt_news_append_bytes(news_row, news_length, error))
 		return false;
 	origin = attacker.sector;
 	if (!session_counterlaunch_projectile(session, &origin, &target,
@@ -2146,5 +2146,4 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 		return yt_session_common_fatal_self(session, error);
 	return true;
 }
-
 

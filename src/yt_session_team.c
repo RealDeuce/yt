@@ -312,7 +312,7 @@ team_create(struct yt_session *session, struct yt_error *error)
 	if (qb_str_single(number, sizeof(number), selected) < 0
 	    || snprintf(news, sizeof(news), "%s Created Team%s -=- %s",
 	    actor_name, number, name) < 0
-	    || !session_append_news(session, news, error)
+	    || !yt_news_append(news, error)
 	    || snprintf(success, sizeof(success),
 	    "Team number [%s ] [%s] CREATED!", number, name) < 0)
 		return false;
@@ -435,7 +435,7 @@ team_join(struct yt_session *session, struct yt_error *error)
 	    || snprintf(news, sizeof(news), "%s Joined Team%s",
 	    actor_name, number) < 0)
 		return false;
-	if (!session_append_news(session, news, error))
+	if (!yt_news_append(news, error))
 		return false;
 	session_set_foreground(session, 3.0f);
 	if (!session_present_alert(session, success, sizeof(success) - 1U,

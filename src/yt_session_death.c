@@ -206,12 +206,12 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 	if (!yt_death_kill_news_row((const uint8_t *)session->player.name,
 	    strlen(session->player.name), victim_name, victim_name_length, self,
 	    row, sizeof(row), &row_length)
-	    || !session_append_news_bytes(session, row, row_length, error))
+	    || !yt_news_append_bytes(row, row_length, error))
 		return false;
 	if (!self && matched_ports != 0) {
 		if (!yt_death_port_news_row(victim_name, victim_name_length,
 		    matched, row, sizeof(row), &row_length)
-		    || !session_append_news_bytes(session, row, row_length, error))
+		    || !yt_news_append_bytes(row, row_length, error))
 			return false;
 	}
 	if (victim_record == current_player_record) {

@@ -419,22 +419,6 @@ session_mutate_player_credits(struct yt_session *session, float argument,
 	    (size_t)session_record(session), &session->player.record, error);
 }
 
-bool
-session_append_news(struct yt_session *session, const char *text,
-    struct yt_error *error)
-{
-	(void)session;
-	return yt_news_append(text, error);
-}
-
-bool
-session_append_news_bytes(void *context, const uint8_t *text,
-    size_t length, struct yt_error *error)
-{
-	(void)context;
-	return yt_news_append_bytes(text, length, error);
-}
-
 static bool
 read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 {
@@ -1114,7 +1098,7 @@ done:
 		    &row_length)
 		    && session_present_paged_line(session, row, row_length,
 		    "file viewer missing row", active_error)
-		    && session_append_news_bytes(session, row, row_length,
+		    && yt_news_append_bytes(row, row_length,
 		    active_error);
 	}
 	return ok;

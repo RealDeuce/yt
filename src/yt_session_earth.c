@@ -853,7 +853,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 		    || snprintf(news, sizeof(news),
 		    "%s won%s credits in the lottery!", cached_name, amount) < 0)
 			return session_range_error(error, "lottery news row");
-		if (!session_append_news(session, news, error))
+		if (!yt_news_append(news, error))
 			return false;
 	}
 	if (!session_mutate_player_credits(session, award, NULL, error)

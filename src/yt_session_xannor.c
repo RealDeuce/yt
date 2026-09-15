@@ -198,9 +198,9 @@ yt_session_xannor_victory(struct yt_session *session, struct yt_error *error)
 	    &player_name_length, error)
 	    || !yt_xannor_victory_winner(player_name, player_name_length,
 	    winner, sizeof(winner), &winner_length)
-	    || !session_append_news_bytes(session, banner, sizeof(banner), error)
-	    || !session_append_news_bytes(session, winner, winner_length, error)
-	    || !session_append_news_bytes(session, banner, sizeof(banner), error)
+	    || !yt_news_append_bytes(banner, sizeof(banner), error)
+	    || !yt_news_append_bytes(winner, winner_length, error)
+	    || !yt_news_append_bytes(banner, sizeof(banner), error)
 	    || !session_append_radio_bytes(banner, sizeof(banner), -2.0f,
 	    -2.0f, error)
 	    || !session_append_radio_bytes(winner, winner_length, -2.0f,

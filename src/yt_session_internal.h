@@ -2,6 +2,7 @@
 #define YT_SESSION_INTERNAL_H
 
 #include "yt_input.h"
+#include "yt_maint.h"
 #include "yt_pager.h"
 #include "yt_route.h"
 #include "yt_session.h"
@@ -141,8 +142,6 @@ bool session_read_planet(struct yt_session *session, int logical_planet,
 bool session_write_planet(struct yt_session *session, int logical_planet,
     struct yt_planet *planet, struct yt_error *error);
 bool session_write_player(struct yt_session *session, struct yt_error *error);
-bool session_append_news(struct yt_session *session, const char *text,
-    struct yt_error *error);
 void session_set_foreground(struct yt_session *session, float value);
 void session_set_color(struct yt_session *session, int logical);
 bool session_present_text(struct yt_session *session, const uint8_t *text,
@@ -165,8 +164,6 @@ bool session_wait(struct yt_session *session, double seconds,
 void session_close_game(struct yt_session *session);
 bool session_present_forced_local_line(const uint8_t *text, size_t length,
     const char *operation, struct yt_error *error);
-bool session_append_news_bytes(void *context, const uint8_t *text,
-    size_t length, struct yt_error *error);
 void session_set_pager_line_count_raw(struct yt_session *session,
     const uint8_t raw[4]);
 void session_set_pager_line_count(struct yt_session *session, float value);

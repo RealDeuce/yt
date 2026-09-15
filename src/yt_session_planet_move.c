@@ -152,7 +152,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 		    || !yt_planet_move_explosion_news(planet_name,
 		    planet_name_length, player_name, player_name_length,
 		    row, sizeof(row), &row_length)
-		    || !session_append_news_bytes(session, row, row_length, error)
+		    || !yt_news_append_bytes(row, row_length, error)
 		    || !session_sound(session, 3.0f,
 		    "planet move explosion sound", error)
 		    || !session_reload_player(session, error))
@@ -177,7 +177,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 			    SESSION_PRESENT_LINE, "planet move fighter loss row", error)
 			    || !yt_planet_move_loss_row(player_name,
 			    player_name_length, loss, row, sizeof(row), &row_length)
-			    || !session_append_news_bytes(session, row, row_length, error))
+			    || !yt_news_append_bytes(row, row_length, error))
 				return false;
 			*stop = true;
 		}

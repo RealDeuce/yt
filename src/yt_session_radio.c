@@ -837,7 +837,7 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 		memcpy(news + sizeof(prefix) - 1U,
 		    session->cached_player_name,
 		    session->cached_player_name_length);
-		if (!session_append_news_bytes(session, news, length, error))
+		if (!yt_news_append_bytes(news, length, error))
 			return false;
 	}
 	for (index = 0; index < recipient_count; ++index) {
@@ -855,7 +855,7 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 				memcpy(news, prefix, sizeof(prefix) - 1U);
 				memcpy(news + sizeof(prefix) - 1U, lines[body],
 				    length);
-				if (!session_append_news_bytes(session, news,
+				if (!yt_news_append_bytes(news,
 				    sizeof(prefix) - 1U + length, error))
 					return false;
 			}
@@ -871,4 +871,3 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 	    (const uint8_t *)"Transmission successful!",
 	    strlen("Transmission successful!"));
 }
-

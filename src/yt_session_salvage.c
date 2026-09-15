@@ -100,7 +100,7 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 	    || !yt_salvage_header_row((const uint8_t *)session->player.name,
 	    strlen(session->player.name), victim_name, victim_name_length,
 	    row, sizeof(row), &row_length)
-	    || !session_append_news_bytes(session, row, row_length, error)
+	    || !yt_news_append_bytes(row, row_length, error)
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "salvage result row", error))
 		return false;
@@ -139,7 +139,7 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 		if (!yt_salvage_simple_row(
 		    (enum yt_salvage_simple_kind)(index - 1U), awards[index],
 		    row, sizeof(row), &row_length)
-		    || !session_append_news_bytes(session, row, row_length, error)
+		    || !yt_news_append_bytes(row, row_length, error)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "salvage result row", error))
 			return false;
@@ -218,7 +218,7 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 			if (!session_wait(session, 0.5, "ship salvage wait", error)
 			    || !yt_salvage_cargo_row(cargo_kind[index],
 			    cargo_awards[award], row, sizeof(row), &row_length)
-			    || !session_append_news_bytes(session, row, row_length, error)
+			    || !yt_news_append_bytes(row, row_length, error)
 			    || !session_present_text(session, row, row_length,
 			    SESSION_PRESENT_LINE, "salvage result row", error))
 				return false;
@@ -226,7 +226,7 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 	}
 	if (!emitted) {
 		if (!session_wait(session, 0.5, "ship salvage wait", error)
-		    || !session_append_news_bytes(session, nothing,
+		    || !yt_news_append_bytes(nothing,
 		    sizeof(nothing) - 1U, error)
 		    || !session_present_text(session, nothing,
 		    sizeof(nothing) - 1U, SESSION_PRESENT_LINE,

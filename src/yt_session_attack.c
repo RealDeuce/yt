@@ -137,7 +137,7 @@ direct_attack_finish_kill(struct yt_session *session, int target_record,
 	    warning, sizeof(warning), &warning_length)
 	    || !session_present_alert(session, warning, warning_length,
 	    "direct fighter mine warning", error)
-	    || !session_append_news_bytes(session, warning, warning_length,
+	    || !yt_news_append_bytes(warning, warning_length,
 	    error))
 		return false;
 	terminal = false;
@@ -572,7 +572,7 @@ hostile_surrender_run(struct yt_session *session,
 	    news_middle_two, sizeof(news_middle_two) - 1U)
 	    || !attack_append(news, sizeof(news), &position,
 	    state->cached_player_name, state->cached_player_name_length)
-	    || !session_append_news_bytes(session, news, position, error))
+	    || !yt_news_append_bytes(news, position, error))
 		return false;
 	state->ship_fighters = attack_double_add(attack_double_sub(attack_double_sub(
 	    (double)state->current.fighters, state->attacker_loss),
@@ -660,7 +660,7 @@ hostile_attack_persistence_run(struct yt_session *session,
 		    belonging, sizeof(belonging) - 1U)
 		    || !attack_append(news, sizeof(news), &position,
 		    state->owner_label, state->owner_label_length)
-		    || !session_append_news_bytes(session, news, position, error))
+		    || !yt_news_append_bytes(news, position, error))
 			return false;
 		state->news_written = true;
 		state->mercenaries_hurt = state->old_owner == -2.0f;
@@ -723,7 +723,7 @@ hostile_attack_tail_run(struct yt_session *session,
 			    display_length))
 				return false;
 			state->reward_presented = true;
-			if (!session_append_news_bytes(session, news, news_length,
+			if (!yt_news_append_bytes(news, news_length,
 			    error))
 				return false;
 			state->reward_news_written = true;

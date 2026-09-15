@@ -992,7 +992,7 @@ yt_session_planet_assault(struct yt_session *session,
 	    || !yt_planet_assault_attack_news(player_name, player_name_length,
 	    planet_name, planet_name_length, commitment, row, sizeof(row),
 	    &row_length)
-	    || !session_append_news_bytes(session, row, row_length, error))
+	    || !yt_news_append_bytes(row, row_length, error))
 		return false;
 	yt_present_set_blink(&session->presentation, 1.0f);
 	if (!session_present_text(session, engaging, sizeof(engaging) - 1U,
@@ -1036,7 +1036,7 @@ yt_session_planet_assault(struct yt_session *session,
 		if (!session_present_text(session, defenses,
 		    sizeof(defenses) - 1U, SESSION_PRESENT_BOLD_LINE,
 		    "planet assault defenses-destroyed row", error)
-		    || !session_append_news_bytes(session, defenses_news,
+		    || !yt_news_append_bytes(defenses_news,
 		    sizeof(defenses_news) - 1U, error)
 		    || !session_sound(session, 1.0f,
 		    "planet defenses destroyed sound", error))
@@ -1053,7 +1053,7 @@ yt_session_planet_assault(struct yt_session *session,
 			    || !yt_planet_assault_capture_news(player_name,
 			    player_name_length, planet_name, planet_name_length,
 			    row, sizeof(row), &row_length)
-			    || !session_append_news_bytes(session, row, row_length, error)
+			    || !yt_news_append_bytes(row, row_length, error)
 			    || !session_sound(session, 1.0f,
 			    "planet capture sound", error))
 				return false;
@@ -1076,7 +1076,7 @@ yt_session_planet_assault(struct yt_session *session,
 	yt_present_set_blink(&session->presentation, 1.0f);
 	if (!yt_planet_assault_failure_row(defenders, true, row, sizeof(row),
 	    &row_length)
-	    || !session_append_news_bytes(session, row, row_length, error)
+	    || !yt_news_append_bytes(row, row_length, error)
 	    || !yt_planet_assault_failure_row(defenders, false, row,
 	    sizeof(row), &row_length)
 	    || !session_present_text(session, row, row_length,
@@ -1202,7 +1202,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	    || !yt_planet_creation_news(cached_trader, cached_trader_length,
 	    (const uint8_t *)session->planet_name, strlen(session->planet_name),
 	    row, sizeof(row), &row_length)
-	    || !session_append_news_bytes(session, row, row_length, error)
+	    || !yt_news_append_bytes(row, row_length, error)
 	    || !yt_planet_creation_success_row(
 	    (const uint8_t *)session->planet_name, strlen(session->planet_name),
 	    row, sizeof(row), &row_length)

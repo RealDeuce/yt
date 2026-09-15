@@ -365,7 +365,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 	if (!yt_sector_mine_entry_news(player.record.bytes,
 	    (size_t)player.name_length, current_sector, row, sizeof(row),
 	    &row_length)
-	    || !session_append_news_bytes(session, row, row_length, error))
+	    || !yt_news_append_bytes(row, row_length, error))
 		return false;
 
 	for (;;) {
@@ -439,7 +439,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 	}
 	if (!yt_sector_mine_final_news(player.shields, row, sizeof(row),
 	    &row_length)
-	    || !session_append_news_bytes(session, row, row_length, error)
+	    || !yt_news_append_bytes(row, row_length, error)
 	    || !session_read_sector(session, current, &sector, error))
 		return false;
 	return true;

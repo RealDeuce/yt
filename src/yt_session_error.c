@@ -107,12 +107,12 @@ session_commit_shared_terminal(struct yt_session *session,
 			if (!session_present_text(session, event->data,
 			    event->length, SESSION_PRESENT_LINE,
 			    "shared error session row", error)
-			    || !session_append_news_bytes(session, event->data,
+			    || !yt_news_append_bytes(event->data,
 			    event->length, error))
 				return false;
 			break;
 		case YT_SHARED_ERROR_NEWS:
-			if (!session_append_news_bytes(session, event->data,
+			if (!yt_news_append_bytes(event->data,
 			    event->length, error))
 				return false;
 			break;
@@ -202,4 +202,3 @@ session_handle_gameplay_fault(struct yt_session *session,
 	*resume_gameplay = true;
 	return true;
 }
-
