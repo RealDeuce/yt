@@ -171,6 +171,9 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_spies.c
     src/yt_session_startup.c
     src/yt_session_team.c
+    src/yt_session_team_admin.c
+    src/yt_session_team_membership.c
+    src/yt_session_team_menu.c
     src/yt_session_xannor.c)
 
 add_library(yt_runtime STATIC ${YT_RUNTIME_SOURCES})
