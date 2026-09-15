@@ -3,6 +3,7 @@
 
 #include "yt_file.h"
 #include "yt_platform.h"
+#include "yt_port_math.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -233,7 +234,8 @@ test_owned_port_purchase(void)
 	(void)snprintf(port.name, sizeof(port.name), "%s", "Old Port");
 	port.name_length = 8.0f;
 	port.last_day = (float)today;
-	port.last_minute = (float)(yt_platform_timer() / 60.0);
+	port.last_minute = yt_port_single_div((float)yt_platform_timer(),
+	    60.0f);
 	port.treasury = 4.0f;
 	port.sector = 9.0f;
 	port.owner = 7.0f;
