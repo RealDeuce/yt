@@ -124,6 +124,9 @@ bool session_read_sector_at_fault(struct yt_session *session,
 bool session_read_player_at_fault(struct yt_session *session,
     int player_record, struct yt_player *player,
     enum yt_basic_fault_site site, struct yt_error *error);
+bool session_read_player_expression(struct yt_session *session,
+    float record_expression, struct yt_player *player,
+    struct yt_error *error);
 bool session_write_sector(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, struct yt_error *error);
 bool session_read_planet(struct yt_session *session, int logical_planet,
