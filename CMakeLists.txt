@@ -136,6 +136,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_route.c
     src/yt_session_salvage.c
     src/yt_session_spies.c
+    src/yt_session_startup.c
     src/yt_session_team.c
     src/yt_session_xannor.c)
 
