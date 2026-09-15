@@ -7,6 +7,45 @@
 #include <stdio.h>
 #include <string.h>
 
+static float
+team_single_add(float left, float right)
+{
+	volatile float result = left + right;
+
+	return result;
+}
+
+bool
+yt_session_load_team_cache(struct yt_session *session, int team_id,
+    int current_player_record, struct yt_record *overlay,
+    bool *overlay_loaded, bool *live, struct yt_error *error)
+{
+	struct yt_record loaded;
+	float expression;
+	uint32_t physical_record;
+
+	if (overlay_loaded != NULL)
+		*overlay_loaded = false;
+	if (live != NULL)
+		*live = false;
+	memset(&session->team_cache, 0, sizeof(session->team_cache));
+	if (team_id < 1 || team_id > YT_DEFAULT_PLAYER_COUNT)
+		return true;
+	expression = team_single_add(session_sector_offset(session),
+	    (float)team_id);
+	physical_record = qb_brun_random_record_number(expression);
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &loaded, error))
+		return false;
+	if (overlay != NULL)
+		*overlay = loaded;
+	if (overlay_loaded != NULL)
+		*overlay_loaded = true;
+	yt_team_cache_load(&session->team_cache, &loaded,
+	    current_player_record, live);
+	return true;
+}
+
 bool
 session_load_team(struct yt_session *session, int id, struct yt_team *team,
     struct yt_error *error)

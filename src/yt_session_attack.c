@@ -38,6 +38,61 @@ attack_double_sub(double left, double right)
 	return result;
 }
 
+bool
+session_read_combat_player(struct yt_session *session, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	if (player_record != session_record(session))
+		return yt_game_read_player(&session->door->game, player_record,
+		    player, error);
+	if (!session_reload_player(session, error))
+		return false;
+	*player = session->player;
+	return true;
+}
+
+bool
+session_write_combat_player(struct yt_session *session, int player_record,
+    const struct yt_player *player, struct yt_error *error)
+{
+	if (player_record == session_record(session))
+		session->player = *player;
+	return yt_database_write(&session->door->game.database,
+	    (size_t)player_record, &player->record, error);
+}
+
+bool
+yt_session_fighter_shield_spill(struct yt_session *session,
+    double *fighters, float *shields, bool bind_hostile_cells,
+    struct yt_error *error)
+{
+	uint8_t fighter_row[128];
+	uint8_t shield_row[128];
+	size_t fighter_length;
+	size_t shield_length;
+
+	while (*fighters > 0.0 && *shields > 0.0f) {
+		float draw;
+
+		if (!yt_random_next(&session->door->game.random, &draw, error)
+		    || !yt_fighter_shield_spill_step(fighters, shields, draw))
+			return false;
+		if (bind_hostile_cells) {
+			if (draw >= 0.5f)
+				session->hostile_deployed_fighters = *fighters;
+			else
+				session->combat_ship_shields = *shields;
+		}
+	}
+	return yt_fighter_shield_spill_rows(*fighters, *shields,
+	    fighter_row, sizeof(fighter_row), &fighter_length,
+	    shield_row, sizeof(shield_row), &shield_length)
+	    && session_present_text(session, fighter_row, fighter_length,
+	    SESSION_PRESENT_LINE, "fighter spill result", error)
+	    && session_present_text(session, shield_row, shield_length,
+	    SESSION_PRESENT_LINE, "shield spill result", error);
+}
+
 static bool
 direct_attack_finish_kill(struct yt_session *session, int target_record,
     int current_player_record, float current_sector, float target_shields,

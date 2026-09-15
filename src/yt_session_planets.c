@@ -9,6 +9,35 @@
 #include <string.h>
 
 bool
+read_planet_physical(struct yt_session *session, uint32_t physical_record,
+    struct yt_planet *planet, struct yt_error *error)
+{
+	struct yt_record record;
+
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	yt_planet_decode(planet, &record);
+	return true;
+}
+
+bool
+session_write_planet_physical(struct yt_session *session,
+    uint32_t physical_record, struct yt_planet *planet, bool encode,
+    struct yt_error *error)
+{
+	if (encode) {
+		uint8_t stored_name[YT_TEXT_FIELD_SIZE];
+
+		memcpy(stored_name, planet->record.bytes, sizeof(stored_name));
+		yt_planet_encode(planet);
+		memcpy(planet->record.bytes, stored_name, sizeof(stored_name));
+	}
+	return yt_database_write(&session->door->game.database,
+	    (size_t)physical_record, &planet->record, error);
+}
+
+bool
 yt_session_update_planet_physical(struct yt_session *session,
     uint32_t physical_record, struct yt_planet *planet,
     struct yt_planet_economy *economy, struct yt_error *error)
