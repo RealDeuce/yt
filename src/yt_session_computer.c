@@ -654,7 +654,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			    && fighter_owner_differs);
 
 			if (no_information) {
-				if (!yt_session_finalize_action(session, 1.0f, error))
+				if (!yt_session_finalize_action(session, error))
 					return false;
 				return session_present_paged_line(session, unavailable,
 				    sizeof(unavailable) - 1U,

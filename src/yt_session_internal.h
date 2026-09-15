@@ -257,7 +257,7 @@ bool yt_session_command_trade(struct yt_session *session,
     bool *enter_sector, struct yt_error *error);
 bool yt_session_fresh_no_turn_gate(struct yt_session *session, bool *denied,
     struct yt_error *error);
-bool yt_session_finalize_action(struct yt_session *session, float amount,
+bool yt_session_finalize_action(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_earth_store(struct yt_session *session, bool *enter_sector,
     struct yt_error *error);
@@ -291,6 +291,8 @@ bool yt_session_command_mines(struct yt_session *session,
 bool yt_session_mine_encounter(struct yt_session *session, bool *terminal,
     struct yt_error *error);
 bool yt_session_emergency_warp(struct yt_session *session,
+    struct yt_error *error);
+bool yt_session_direct_emergency_warp(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_xannor_victory(struct yt_session *session,
     struct yt_error *error);

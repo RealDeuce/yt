@@ -1421,7 +1421,7 @@ yt_session_command_trade(struct yt_session *session, bool *enter_sector,
 	    || !session_present_timed_paged_row(session, docking,
 	    sizeof(docking) - 1U, "port docking prelude", error))
 		return false;
-	if (!yt_session_finalize_action(session, 1.0f, error)) {
+	if (!yt_session_finalize_action(session, error)) {
 		if (error == NULL || error->status == YT_OK)
 			return true;
 		return false;

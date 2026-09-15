@@ -372,7 +372,7 @@ yt_session_command_move(struct yt_session *session, bool *moved,
 				return true;
 		}
 	}
-	if (!yt_session_finalize_action(session, 1.0f, error)) {
+	if (!yt_session_finalize_action(session, error)) {
 		if (error != NULL && error->status != YT_OK)
 			return false;
 		return true;
