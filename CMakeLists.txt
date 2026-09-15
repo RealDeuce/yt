@@ -111,6 +111,8 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_attack.c
     src/yt_session_bribe.c
     src/yt_session_computer.c
+    src/yt_session_computer_assets.c
+    src/yt_session_computer_media.c
     src/yt_session_computer_menu.c
     src/yt_session_computer_route.c
     src/yt_session_radio.c
