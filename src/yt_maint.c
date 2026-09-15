@@ -2061,20 +2061,13 @@ yt_maintenance_maintain_players(struct yt_game *game, float *player_sector,
 }
 
 static bool
-maintenance_current_date_serial(const struct yt_game *game, int *serial,
-    int *adjusted_year, struct yt_error *error)
-{
-	return yt_current_date_serial(game->config.epoch_year, serial,
-	    adjusted_year, error);
-}
-
-static bool
 current_day_minute(struct maint_state *state, float *day, float *minute,
     struct yt_error *error)
 {
 	int serial;
 
-	if (!maintenance_current_date_serial(&state->game, &serial, NULL, error))
+	if (!yt_current_date_serial(state->game.config.epoch_year, &serial,
+	    NULL, error))
 		return false;
 	*day = (float)serial;
 	*minute = (float)(yt_platform_timer() / 60.0);
@@ -2659,7 +2652,8 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	}
 	local.rebuilt = local.removed_sector == 0;
 	if (local.rebuilt) {
-		if (!maintenance_current_date_serial(game, &today, NULL, error)
+		if (!yt_current_date_serial(game->config.epoch_year, &today, NULL,
+		    error)
 		    || !yt_maintenance_compose_wanderer_phase(blank,
 		    blank_length, true, &output))
 			return false;
@@ -2965,13 +2959,6 @@ store_config_field(struct maint_state *state, size_t offset, float value,
 	    &state->game.config.record, error);
 }
 
-static bool
-store_default_headquarters(void *context, float headquarters,
-    struct yt_error *error)
-{
-	return store_config_field(context, YT_F117, headquarters, error);
-}
-
 bool
 yt_maintenance_store_final_marker(struct yt_game *game, float serial,
     struct yt_error *error)
@@ -3002,7 +2989,8 @@ store_final_marker(struct yt_game *game, struct yt_error *error)
 {
 	int serial;
 
-	if (!maintenance_current_date_serial(game, &serial, NULL, error))
+	if (!yt_current_date_serial(game->config.epoch_year, &serial, NULL,
+	    error))
 		return false;
 	return yt_maintenance_store_final_marker(game, (float)serial,
 	    error);
@@ -3093,7 +3081,7 @@ yt_maintenance_run(struct yt_error *error)
 	/* The shipped 0244..0270 branch persists this before later defaults. */
 	if (yt_maintenance_default_headquarters(
 	    &state.game.config.headquarters)
-	    && !store_default_headquarters(&state,
+	    && !store_config_field(&state, YT_F117,
 	    state.game.config.headquarters, error))
 		goto done;
 	yt_config_normalize_maintenance(&state.game.config);
@@ -3807,7 +3795,8 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	local.rebuilt = sector.planet == 0.0f;
 	starting_draws = game->random.draws;
 	if (local.rebuilt) {
-		if (!maintenance_current_date_serial(game, &today, NULL, error)
+		if (!yt_current_date_serial(game->config.epoch_year, &today, NULL,
+		    error)
 		    || !yt_maintenance_compose_xannor_home(blank,
 		    blank_length, true, &output))
 			return false;
@@ -4414,17 +4403,6 @@ encode_error:
 	return false;
 }
 
-static bool
-xannor_attack_planet(struct maint_state *state, int group,
-    float location[21], float size[21], struct yt_sector *sector,
-    yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_error *error)
-{
-	return yt_maintenance_xannor_planet_arrival(&state->game,
-	    &location[group], &size[group], sector, line_output, line_context,
-	    error);
-}
-
 bool
 yt_maintenance_xannor_player_arrival(struct yt_game *game,
     float *player_sector, float *player_cloak, size_t cache_count,
@@ -4634,8 +4612,9 @@ xannor_route_arrivals_impl(struct maint_state *state, int group,
 		if (!yt_maintenance_xannor_sector_arrival(&state->game, next,
 		    &size[group], &destination, line_output, line_context, error))
 			return false;
-		if (!xannor_attack_planet(state, group, location, size,
-		    &destination, line_output, line_context, error))
+		if (!yt_maintenance_xannor_planet_arrival(&state->game,
+		    &location[group], &size[group], &destination, line_output,
+		    line_context, error))
 			return false;
 		if (yt_maintenance_xannor_post_planet_exhausted(
 		    location[group], size[group])) {
@@ -5029,12 +5008,6 @@ yt_maintenance_maintain_xannor(struct yt_game *game,
 	return success;
 }
 
-static bool
-maintain_xannor(struct maint_state *state, struct yt_error *error)
-{
-	return maintain_xannor_impl(state, maintenance_stdout_line, NULL, error);
-}
-
 static const struct yt_maintenance_output_row *
 maintenance_find_output_row(const struct yt_maintenance_output_result *output,
     uint16_t address)
@@ -5167,7 +5140,8 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 		struct yt_sector sector;
 		int today;
 
-		if (!maintenance_current_date_serial(game, &today, NULL, error)
+		if (!yt_current_date_serial(game->config.epoch_year, &today, NULL,
+		    error)
 		    || !yt_game_read_planet(game, planet_number, &planet, error))
 			return false;
 		yt_record_set_text(&planet.record,
@@ -6066,15 +6040,6 @@ yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
 }
 
 static bool
-move_mercenaries(struct maint_state *state,
-    yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_error *error)
-{
-	return move_mercenaries_impl(&state->game, state->sector_count,
-	    &state->route_cache, line_output, line_context, error);
-}
-
-static bool
 maintain_mercenaries_impl(struct maint_state *state,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error)
@@ -6141,7 +6106,8 @@ maintain_mercenaries_impl(struct maint_state *state,
 	if (!yt_maintenance_mercenary_defections(&state->game,
 	    state->sector_count, line_output, line_context, &defections,
 	    error)
-	    || !move_mercenaries(state, line_output, line_context, error))
+	    || !move_mercenaries_impl(&state->game, state->sector_count,
+	    &state->route_cache, line_output, line_context, error))
 		return false;
 	return true;
 }
@@ -6185,16 +6151,9 @@ yt_maintenance_maintain_mercenaries(struct yt_game *game,
 static bool
 maintain_factions(struct maint_state *state, struct yt_error *error)
 {
-	return maintain_xannor(state, error)
+	return maintain_xannor_impl(state, maintenance_stdout_line, NULL, error)
 	    && maintain_mercenaries_impl(state, maintenance_stdout_line, NULL,
 	    error);
-}
-
-static bool
-lottery_output(yt_maintenance_score_line_fn line_output, void *line_context,
-    const uint8_t *line, size_t length, struct yt_error *error)
-{
-	return line_output(line_context, line, length, error);
 }
 
 static bool
@@ -6207,7 +6166,7 @@ lottery_fail(yt_maintenance_score_line_fn line_output, void *line_context,
 
 	result->failure = failure;
 	result->draws_consumed = game->random.draws - starting_draws;
-	return lottery_output(line_output, line_context, no_winner,
+	return line_output(line_context, no_winner,
 	    sizeof(no_winner) - 1U, error);
 }
 
@@ -6255,9 +6214,9 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	}
 	memset(result, 0, sizeof(*result));
 	starting_draws = game->random.draws;
-	if (!lottery_output(line_output, line_context, blank,
+	if (!line_output(line_context, blank,
 	    blank_length, error)
-	    || !lottery_output(line_output, line_context, phase,
+	    || !line_output(line_context, phase,
 	    sizeof(phase) - 1U, error)
 	    || !yt_random_next(&game->random, &gate, error))
 		return false;
@@ -6362,7 +6321,7 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	    player.record.bytes, (size_t)player_name_length)
 	    || !maintenance_copy_part(line, sizeof(line), &line_length,
 	    winner_suffix, sizeof(winner_suffix) - 1U)
-	    || !lottery_output(line_output, line_context, line, line_length, error)
+	    || !line_output(line_context, line, line_length, error)
 	    || !yt_news_append_bytes(line, line_length, error))
 		return false;
 	sector_length = qb_str_single(sector_text, sizeof(sector_text),
