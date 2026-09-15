@@ -12,7 +12,7 @@ session_radio_body_key(struct yt_session *session)
 	for (;;) {
 		struct yt_input_value selected = {{0, 0}, 0, false};
 
-		if (!yt_input_wait(&session->input, &selected))
+		if (!yt_input_wait(&session->io.input, &selected))
 			return EOF;
 		if (selected.length == 1)
 			return selected.bytes[0];

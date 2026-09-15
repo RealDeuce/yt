@@ -34,8 +34,8 @@ test_replace_sector_force(void)
 	session.door = &door;
 	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
-	memcpy(session.queue, desired, sizeof(desired) - 1U);
-	session.queue_length = sizeof(desired) - 1U;
+	memcpy(session.io.typeahead, desired, sizeof(desired) - 1U);
+	session.io.typeahead_length = sizeof(desired) - 1U;
 	door.game.config.sector_offset = 51.0f;
 	yt_record_blank(&player.record);
 	player.sector = 8.0f;
@@ -53,7 +53,7 @@ test_replace_sector_force(void)
 	CHECK(yt_database_write_durable(&door.game.database, 59U,
 	    &sector.record, &error));
 	CHECK(yt_session_command_fighters(&session, &error));
-	CHECK(session.queue_position == session.queue_length);
+	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(yt_database_read(&door.game.database, 59U, &persisted, &error));
 	yt_sector_decode(&sector, &persisted);
 	CHECK(sector.fighters == 7.0f);

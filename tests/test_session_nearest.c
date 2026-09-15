@@ -38,8 +38,8 @@ test_one_sector_all_ports(void)
 	session.door = &door;
 	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
-	memcpy(session.queue, answer, sizeof(answer) - 1U);
-	session.queue_length = sizeof(answer) - 1U;
+	memcpy(session.io.typeahead, answer, sizeof(answer) - 1U);
+	session.io.typeahead_length = sizeof(answer) - 1U;
 	session.market_bases[0] = 100.0f;
 	session.market_bases[1] = 100.0f;
 	session.market_bases[2] = 100.0f;
@@ -82,7 +82,7 @@ test_one_sector_all_ports(void)
 	    &error));
 
 	CHECK(yt_session_computer_nearest_ports(&session, &error));
-	CHECK(session.queue_position == session.queue_length);
+	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(session.player.sector == 1.0f);
 	CHECK(door.game.today != 0);
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted_player,

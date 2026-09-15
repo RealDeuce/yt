@@ -303,7 +303,7 @@ nearest_page(struct yt_session *session, struct nearest_scan *scan,
 	    YT_NEAREST_PRESENT_BOLD_RAW, prompt, sizeof(prompt) - 1U, error))
 		return false;
 	for (;;) {
-		if (!yt_input_wait(&session->input, &selected))
+		if (!yt_input_wait(&session->io.input, &selected))
 			return false;
 		if (selected.length != 1U)
 			continue;

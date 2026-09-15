@@ -50,8 +50,8 @@ test_same_sector_plasma_route(void)
 	session.door = &door;
 	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
-	memcpy(session.queue, answers, sizeof(answers) - 1U);
-	session.queue_length = sizeof(answers) - 1U;
+	memcpy(session.io.typeahead, answers, sizeof(answers) - 1U);
+	session.io.typeahead_length = sizeof(answers) - 1U;
 	door.game.config.sector_offset = 3.0f;
 	door.game.config.port_offset = 4.0f;
 	yt_record_blank(&door.game.config.record);
@@ -82,7 +82,7 @@ test_same_sector_plasma_route(void)
 	    &sector.record, &error));
 
 	CHECK(yt_session_command_projectile(&session, true, &error));
-	CHECK(session.queue_position == session.queue_length);
+	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(random.calls == 1U && door.game.random.draws == 1U);
 	CHECK(session.player.turns == 9.0f && session.player.plasma == 0.0f);
 	CHECK(yt_game_read_player(&door.game, 2, &player, &error));

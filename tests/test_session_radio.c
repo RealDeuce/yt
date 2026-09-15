@@ -33,10 +33,10 @@ test_real_radio_file_and_empty_compose(void)
 	CHECK(session_append_radio_bytes(message, sizeof(message) - 1U,
 	    -1.0f, -2.0f, &error));
 	CHECK(yt_session_radio_read(&session, true, &error));
-	memcpy(session.queue, empty_target, sizeof(empty_target) - 1U);
-	session.queue_length = sizeof(empty_target) - 1U;
+	memcpy(session.io.typeahead, empty_target, sizeof(empty_target) - 1U);
+	session.io.typeahead_length = sizeof(empty_target) - 1U;
 	CHECK(yt_session_radio_compose(&session, &error));
-	CHECK(session.queue_position == session.queue_length);
+	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(remove("YTRMSG.DAT") == 0);
 }
 

@@ -273,7 +273,7 @@ profit_page(struct yt_session *session, bool *keep_going,
 		    SESSION_PRESENT_RAW, "profit pager prompt", error))
 			return false;
 		for (;;) {
-			if (!yt_input_wait(&session->input, &selected))
+			if (!yt_input_wait(&session->io.input, &selected))
 				return false;
 			if (selected.length != 0U)
 				break;

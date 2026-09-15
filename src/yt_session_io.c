@@ -31,22 +31,22 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 
 	if (size == 0)
 		return false;
-	yt_pager_editor_enter(&session->pager, session->command_accumulator,
-	    sizeof(session->command_accumulator));
+	yt_pager_editor_enter(&session->pager, session->io.editor_buffer,
+	    sizeof(session->io.editor_buffer));
 	dest[0] = '\0';
 	for (;;) {
 		struct yt_input_value selected = {{0, 0}, 0, false};
-		bool queued = session->queue_position < session->queue_length;
+		bool queued = session->io.typeahead_position < session->io.typeahead_length;
 		uint8_t key;
 
 		if (queued) {
-			if (!yt_input_queue_pop(session->queue,
-			    sizeof(session->queue), &session->queue_position,
-			    &session->queue_length, &selected))
+			if (!yt_input_queue_pop(session->io.typeahead,
+			    sizeof(session->io.typeahead), &session->io.typeahead_position,
+			    &session->io.typeahead_length, &selected))
 				return false;
 		}
 		else {
-			if (!yt_input_wait(&session->input, &selected))
+			if (!yt_input_wait(&session->io.input, &selected))
 				return false;
 		}
 		if (selected.length != 1)
@@ -55,20 +55,20 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		if (yt_input_repeat_requested(queued, &selected)) {
 			uint8_t prefix[YT_INPUT_PENDING];
 			size_t prefix_length =
-			    strlen(session->command_accumulator);
-			size_t saved_length = strlen(session->saved_command);
+			    strlen(session->io.editor_buffer);
+			size_t saved_length = strlen(session->io.saved_command);
 
 			if (prefix_length != 0U)
-				memcpy(prefix, session->command_accumulator,
+				memcpy(prefix, session->io.editor_buffer,
 				    prefix_length);
-			memcpy(session->paged_text,
-			    session->command_accumulator, prefix_length + 1U);
+			memcpy(session->io.pending_echo,
+			    session->io.editor_buffer, prefix_length + 1U);
 			session->pager.newline_flag = 1.0f;
 			if (!session_present_paged_row(session, prefix,
 			    prefix_length))
 				return false;
-			memmove(session->command_accumulator,
-			    session->saved_command, saved_length + 1U);
+			memmove(session->io.editor_buffer,
+			    session->io.saved_command, saved_length + 1U);
 			key = '\r';
 		}
 		if (yt_input_submit_requested(key)) {
@@ -81,15 +81,15 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 			if (status != YT_PRESENT_OK)
 				return false;
 			yt_out_present_result(&presentation);
-			snprintf(dest, size, "%s", session->command_accumulator);
+			snprintf(dest, size, "%s", session->io.editor_buffer);
 			return true;
 		}
-		if (key == '\b' && session->command_accumulator[0] != '\0') {
+		if (key == '\b' && session->io.editor_buffer[0] != '\0') {
 			struct yt_present_result presentation;
 			enum yt_present_status status;
-			size_t length = strlen(session->command_accumulator);
+			size_t length = strlen(session->io.editor_buffer);
 
-			session->command_accumulator[length - 1U] = '\0';
+			session->io.editor_buffer[length - 1U] = '\0';
 			status = yt_present_editor_echo(local_erase,
 			    sizeof(local_erase), remote_erase,
 			    sizeof(remote_erase), &session->presentation,
@@ -102,10 +102,10 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		{
 			struct yt_present_result presentation;
 			enum yt_present_status status;
-			size_t length = strlen(session->command_accumulator);
+			size_t length = strlen(session->io.editor_buffer);
 
 			if (key < 0x20U || key > 0x7fU
-			    || length + 1U >= sizeof(session->command_accumulator)
+			    || length + 1U >= sizeof(session->io.editor_buffer)
 			    || length + 1U >= size)
 				continue;
 			status = yt_present_editor_echo(&key, 1U, &key, 1U,
@@ -113,10 +113,10 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 			if (status != YT_PRESENT_OK)
 				return false;
 			yt_out_present_result(&presentation);
-			session->command_accumulator[length] = (char)key;
-			session->command_accumulator[length + 1U] = '\0';
-			session->paged_text[0] = (char)key;
-			session->paged_text[1] = '\0';
+			session->io.editor_buffer[length] = (char)key;
+			session->io.editor_buffer[length + 1U] = '\0';
+			session->io.pending_echo[0] = (char)key;
+			session->io.pending_echo[1] = '\0';
 			session->pager.newline_flag = 1.0f;
 			od_kernel();
 			continue;
@@ -127,8 +127,8 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 void
 session_clear_queue(struct yt_session *session)
 {
-	(void)yt_input_queue_clear(session->queue, sizeof(session->queue),
-	    &session->queue_position, &session->queue_length);
+	(void)yt_input_queue_clear(session->io.typeahead, sizeof(session->io.typeahead),
+	    &session->io.typeahead_position, &session->io.typeahead_length);
 }
 
 static bool
@@ -146,8 +146,8 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 	struct yt_repeat_transform result;
 
 	if (!yt_input_expand_repeat_with_notice(text, size,
-	    session->saved_command, sizeof(session->saved_command),
-	    session->output_source, sizeof(session->output_source), &result)) {
+	    session->io.saved_command, sizeof(session->io.saved_command),
+	    session->io.text_workspace, sizeof(session->io.text_workspace), &result)) {
 		if (result.fault_valid && session->error != NULL) {
 			yt_error_clear(session->error);
 			session->error->status = YT_RANGE;
@@ -165,7 +165,7 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 		return true;
 	if (result.bold_committed)
 		yt_present_set_bold(&session->presentation, 1.0f);
-	return session_command_notice(session, session->output_source);
+	return session_command_notice(session, session->io.text_workspace);
 }
 
 static bool
@@ -175,21 +175,21 @@ session_line(struct yt_session *session, char *text, size_t size)
 
 	if (!read_keyboard_line(session, text, size))
 		return false;
-	if (!yt_input_command_save_staged(text, size, session->queue,
-	    sizeof(session->queue), &session->queue_position,
-	    &session->queue_length, session->saved_command,
-	    sizeof(session->saved_command), session->output_source,
-	    sizeof(session->output_source), YT_BASIC_FAULT_SITE_COUNT, &save))
+	if (!yt_input_command_save_staged(text, size, session->io.typeahead,
+	    sizeof(session->io.typeahead), &session->io.typeahead_position,
+	    &session->io.typeahead_length, session->io.saved_command,
+	    sizeof(session->io.saved_command), session->io.text_workspace,
+	    sizeof(session->io.text_workspace), YT_BASIC_FAULT_SITE_COUNT, &save))
 		return false;
 	if (save.notice_ready) {
-		if (!session_command_notice(session, session->output_source))
+		if (!session_command_notice(session, session->io.text_workspace))
 			return false;
 	}
 	if (!expand_repeat(session, text, size))
 		return false;
-	return yt_input_split_semicolon(text, session->queue,
-	    sizeof(session->queue), &session->queue_position,
-	    &session->queue_length);
+	return yt_input_split_semicolon(text, session->io.typeahead,
+	    sizeof(session->io.typeahead), &session->io.typeahead_position,
+	    &session->io.typeahead_length);
 }
 
 bool
@@ -226,11 +226,11 @@ session_store_output_source(struct yt_session *session,
     const uint8_t *text, size_t length)
 {
 	if ((text == NULL && length != 0U)
-	    || length >= sizeof(session->output_source))
+	    || length >= sizeof(session->io.text_workspace))
 		return false;
 	if (length != 0U)
-		memmove(session->output_source, text, length);
-	session->output_source[length] = '\0';
+		memmove(session->io.text_workspace, text, length);
+	session->io.text_workspace[length] = '\0';
 	return true;
 }
 
@@ -242,12 +242,12 @@ session_run_paged_row(struct yt_session *session, const uint8_t *text,
 	    "[ENTER] for more, [E] to end, or [NS] for Non-stop ";
 	static const uint8_t notice[] = "Ctrl-X to Stop";
 	struct yt_pager_key_state key_state = {
-		.accumulator = session->command_accumulator,
-		.accumulator_capacity = sizeof(session->command_accumulator),
-		.queue = session->queue,
-		.queue_capacity = sizeof(session->queue),
-		.queue_position = &session->queue_position,
-		.queue_length = &session->queue_length,
+		.accumulator = session->io.editor_buffer,
+		.accumulator_capacity = sizeof(session->io.editor_buffer),
+		.queue = session->io.typeahead,
+		.queue_capacity = sizeof(session->io.typeahead),
+		.queue_position = &session->io.typeahead_position,
+		.queue_length = &session->io.typeahead_length,
 		.pager_key = session->pager.key,
 		.pager_key_capacity = sizeof(session->pager.key),
 	};
@@ -259,7 +259,7 @@ session_run_paged_row(struct yt_session *session, const uint8_t *text,
 	bool emit_notice;
 
 	od_kernel();
-	if (!yt_input_poll(&session->input, &sampled)
+	if (!yt_input_poll(&session->io.input, &sampled)
 	    || !yt_pager_apply_key(&sampled, &key_state))
 		return false;
 	status = yt_present_paged_text(text, length, &session->presentation,
@@ -464,12 +464,12 @@ session_drain_pending_input(struct yt_session *session)
 	struct yt_input_drain_state drain;
 	enum yt_input_drain_reason reason;
 
-	if (!yt_input_drain_begin(&drain, &session->input_residue))
+	if (!yt_input_drain_begin(&drain, &session->io.drain_residue))
 		return false;
 	for (;;) {
 		struct yt_input_value selected = {{0, 0}, 0, false};
 
-		if (!yt_input_poll_source(&session->input, false, &selected))
+		if (!yt_input_poll_source(&session->io.input, false, &selected))
 			return false;
 		reason = yt_input_drain_local(&drain, &selected);
 		if (reason == YT_INPUT_DRAIN_ERROR)
@@ -481,7 +481,7 @@ session_drain_pending_input(struct yt_session *session)
 		struct yt_input_value selected = {{0, 0}, 0, false};
 
 		if (session->presentation.sound.mode == 0.0f
-		    && !yt_input_poll_source(&session->input, true, &selected))
+		    && !yt_input_poll_source(&session->io.input, true, &selected))
 			return false;
 		reason = yt_input_drain_serial(&drain,
 		    session->presentation.sound.mode, &selected);
@@ -490,11 +490,11 @@ session_drain_pending_input(struct yt_session *session)
 		if (reason == YT_INPUT_DRAIN_COMPLETE)
 			break;
 	}
-	memset(&session->input_residue, 0, sizeof(session->input_residue));
+	memset(&session->io.drain_residue, 0, sizeof(session->io.drain_residue));
 	if (drain.residue_length != 0)
-		memcpy(session->input_residue.bytes, drain.residue,
+		memcpy(session->io.drain_residue.bytes, drain.residue,
 		    drain.residue_length);
-	session->input_residue.length = drain.residue_length;
+	session->io.drain_residue.length = drain.residue_length;
 	return true;
 }
 
@@ -519,7 +519,7 @@ session_press_any_key(struct yt_session *session, bool drain,
 		goto failed;
 	session_set_foreground(session, (float)(3));
 	yt_out_present_result(&presentation);
-	if (!yt_input_pause(&session->input, 33.0)) {
+	if (!yt_input_pause(&session->io.input, 33.0)) {
 		failure_status = YT_IO_ERROR;
 		failure_operation = "press any key wait";
 		goto failed;
@@ -721,11 +721,11 @@ session_confirm(struct yt_session *session, const uint8_t *prompt,
 		    prompt_scratch_length,
 		    SESSION_PRESENT_RAW, "yes/no prompt", error)
 		    || !session_read_upper_command(session, response, sizeof(response))
-		    || !yt_input_confirmation_staged(response, session->output_source,
-		    sizeof(session->output_source), prompt_scratch,
-		    sizeof(prompt_scratch), &prompt_scratch_length, session->queue,
-		    sizeof(session->queue), &session->queue_position,
-		    &session->queue_length, &session->presentation.bold,
+		    || !yt_input_confirmation_staged(response, session->io.text_workspace,
+		    sizeof(session->io.text_workspace), prompt_scratch,
+		    sizeof(prompt_scratch), &prompt_scratch_length, session->io.typeahead,
+		    sizeof(session->io.typeahead), &session->io.typeahead_position,
+		    &session->io.typeahead_length, &session->presentation.bold,
 		    YT_CONFIRMATION_FAULT_NONE, 0U, &transform)
 		    || !transform.answer_valid)
 			return false;

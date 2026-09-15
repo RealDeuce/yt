@@ -34,12 +34,12 @@ test_active_spy_list(void)
 	CHECK(session.spies.sectors[0] == 7);
 	CHECK(session.spies.sectors[1] == 19);
 
-	memcpy(session.queue, "X", 1U);
-	session.queue_length = 1U;
-	session.queue_position = 0U;
+	memcpy(session.io.typeahead, "X", 1U);
+	session.io.typeahead_length = 1U;
+	session.io.typeahead_position = 0U;
 	session.spies.count = 0;
 	CHECK(yt_session_list_spies(&session, &error));
-	CHECK(session.queue_length == 0U);
+	CHECK(session.io.typeahead_length == 0U);
 }
 
 int

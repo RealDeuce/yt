@@ -65,8 +65,8 @@ test_direct_warp_decline(void)
 	session.door = &door;
 	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
-	memcpy(session.queue, decline, sizeof(decline) - 1U);
-	session.queue_length = sizeof(decline) - 1U;
+	memcpy(session.io.typeahead, decline, sizeof(decline) - 1U);
+	session.io.typeahead_length = sizeof(decline) - 1U;
 	yt_record_blank(&player.record);
 	player.turns = 20.0f;
 	player.sector = 7.0f;
@@ -75,7 +75,7 @@ test_direct_warp_decline(void)
 	    &error));
 	write_player(&door.game.database, &player, &error);
 	CHECK(yt_session_direct_emergency_warp(&session, &error));
-	CHECK(session.queue_position == session.queue_length);
+	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
 	yt_player_decode(&player, &persisted);
 	CHECK(player.turns == 20.0f);

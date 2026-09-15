@@ -266,8 +266,8 @@ test_accepted_bribe(void)
 	session.combat.deployed_fighters = 10.0;
 	session.combat.ship_fighters = 20.0;
 	session.combat.ship_shields = 7.0f;
-	memcpy(session.queue, answer, sizeof(answer) - 1U);
-	session.queue_length = sizeof(answer) - 1U;
+	memcpy(session.io.typeahead, answer, sizeof(answer) - 1U);
+	session.io.typeahead_length = sizeof(answer) - 1U;
 	door.game.config.sector_offset = 3.0f;
 	(void)snprintf(door.identity.real_first,
 	    sizeof(door.identity.real_first), "%s", "Sysop");
@@ -291,7 +291,7 @@ test_accepted_bribe(void)
 	    &direct_hostile_menu, &forced_attack, &error));
 	CHECK(!direct_hostile_menu && !forced_attack);
 	CHECK(random.calls == 3U && door.game.random.draws == 3U);
-	CHECK(session.queue_position == session.queue_length);
+	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(session.player.fighters == 20.0f);
 	CHECK(session.player.credits == 100.0f);
 	CHECK(yt_game_read_player(&door.game, 2, &player, &error));

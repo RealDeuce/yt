@@ -28,12 +28,12 @@ test_quit_decline(void)
 	memset(&session, 0, sizeof(session));
 	session.door = &door;
 	session.pager.nonstop = -1.0f;
-	memcpy(session.queue, decline, sizeof(decline) - 1U);
-	session.queue_length = sizeof(decline) - 1U;
+	memcpy(session.io.typeahead, decline, sizeof(decline) - 1U);
+	session.io.typeahead_length = sizeof(decline) - 1U;
 	yt_error_clear(&error);
 	CHECK(session_quit_confirm(&session, &confirmed, &error));
 	CHECK(!confirmed);
-	CHECK(session.queue_position == session.queue_length);
+	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(session.presentation.foreground == 7.0f);
 }
 

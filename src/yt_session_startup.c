@@ -64,7 +64,7 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 		if (!yt_out_opening_file("YTOPEN.ANS",
 		    session->presentation.sound.mode,
 		    session->presentation.sound.snoop,
-		    &session->input,
+		    &session->io.input,
 		    &opening_basic_error, error)) {
 			if (opening_basic_error != 0U) {
 				if (!yt_shared_error_compose(
@@ -331,14 +331,14 @@ yt_session_instruction_offer(struct yt_session *session,
 	for (;;) {
 		enum yt_yes_no_answer answer;
 
-		memcpy(session->output_source, prompt, sizeof(prompt));
+		memcpy(session->io.text_workspace, prompt, sizeof(prompt));
 		if (!session_present_text(session,
-		    (const uint8_t *)session->output_source,
+		    (const uint8_t *)session->io.text_workspace,
 		    sizeof(prompt) - 1U,
 		    SESSION_PRESENT_RAW, "instruction question", error)
 		    || !session_read_command(session, response, sizeof(response))
-		    || !yt_input_yes_no_candidate(session->command_accumulator,
-		    session->output_source, sizeof(session->output_source),
+		    || !yt_input_yes_no_candidate(session->io.editor_buffer,
+		    session->io.text_workspace, sizeof(session->io.text_workspace),
 		    &answer))
 			return false;
 		if (answer == YT_YES_NO_EMPTY || answer == YT_YES_NO_NO)
@@ -771,7 +771,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		return false;
 	}
 	memset(&session, 0, sizeof(session));
-	yt_input_init(&session.input);
+	yt_input_init(&session.io.input);
 	session.error = error;
 	session.door = door;
 	session.executable_path = executable_path;

@@ -33,8 +33,8 @@ test_genesis_decline(void)
 	session.pager.nonstop = -1.0f;
 	(void)snprintf(session.player.name, sizeof(session.player.name), "%s",
 	    "Baron");
-	memcpy(session.queue, decline, sizeof(decline) - 1U);
-	session.queue_length = sizeof(decline) - 1U;
+	memcpy(session.io.typeahead, decline, sizeof(decline) - 1U);
+	session.io.typeahead_length = sizeof(decline) - 1U;
 	door.game.config.genesis_ports = 300.0f;
 	yt_record_blank(&player.record);
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Baron");
@@ -48,7 +48,7 @@ test_genesis_decline(void)
 	CHECK(yt_database_write_durable(&door.game.database, 2U,
 	    &player.record, &error));
 	CHECK(yt_session_command_genesis(&session, &error));
-	CHECK(session.queue_position == session.queue_length);
+	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(door.game_open);
 	CHECK(door.game.database.file != NULL);
 	CHECK(session.player.ports_owned == 300.0f);

@@ -85,7 +85,7 @@ bool
 session_wait(struct yt_session *session, double seconds,
     const char *operation, struct yt_error *error)
 {
-	if (yt_input_pause(&session->input, seconds))
+	if (yt_input_pause(&session->io.input, seconds))
 		return true;
 	if (error != NULL) {
 		error->status = YT_IO_ERROR;

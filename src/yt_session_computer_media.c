@@ -46,7 +46,7 @@ yt_session_computer_scoreboard(struct yt_session *session,
 	    || !session_read_command(session, response, sizeof(response)))
 		return false;
 	length = strlen(response);
-	yt_input_compat_upper_n((uint8_t *)session->output_source, length);
+	yt_input_compat_upper_n((uint8_t *)session->io.text_workspace, length);
 	yt_input_compat_upper_n((uint8_t *)response, length);
 	session_set_pager_line_count_raw(session, dirty_zero);
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
@@ -82,7 +82,7 @@ yt_session_computer_newspaper(struct yt_session *session,
 		    sizeof(prompt) - 1U, "newspaper selector prompt", error)
 		    || !session_read_command(session, response, sizeof(response)))
 			return false;
-		yt_input_compat_upper_n((uint8_t *)session->output_source,
+		yt_input_compat_upper_n((uint8_t *)session->io.text_workspace,
 		    strlen(response));
 		yt_input_compat_upper_n((uint8_t *)response, strlen(response));
 		choice = yt_computer_newspaper_select(response);

@@ -32,8 +32,8 @@ test_teamless_exit(void)
 	session.door = &door;
 	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
-	memcpy(session.queue, answer, sizeof(answer) - 1U);
-	session.queue_length = sizeof(answer) - 1U;
+	memcpy(session.io.typeahead, answer, sizeof(answer) - 1U);
+	session.io.typeahead_length = sizeof(answer) - 1U;
 	door.game.config.sector_offset = 3.0f;
 	door.game.config.port_offset = 4.0f;
 	yt_record_blank(&door.game.config.record);
@@ -53,7 +53,7 @@ test_teamless_exit(void)
 	    &player.record, &error));
 
 	CHECK(yt_session_command_team(&session, &error));
-	CHECK(session.queue_position == session.queue_length);
+	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(session.player.team == 0.0f);
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
 	CHECK(memcmp(persisted.bytes, player.record.bytes,

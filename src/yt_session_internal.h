@@ -73,6 +73,18 @@ struct session_planet_state {
 	struct yt_planet_economy economy;
 };
 
+struct session_io_state {
+	struct yt_input input;
+	char typeahead[YT_COMMAND_SIZE];
+	size_t typeahead_length;
+	size_t typeahead_position;
+	char editor_buffer[YT_COMMAND_SIZE];
+	char pending_echo[YT_COMMAND_SIZE];
+	char text_workspace[YT_COMMAND_SIZE];
+	char saved_command[YT_COMMAND_SIZE];
+	struct yt_input_value drain_residue;
+};
+
 struct yt_session {
 	struct yt_door *door;
 	struct yt_error *error;
@@ -94,14 +106,7 @@ struct yt_session {
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_player_name_length;
 	struct yt_player_cache player_cache;
-	char queue[YT_COMMAND_SIZE];
-	size_t queue_length;
-	size_t queue_position;
-	char command_accumulator[YT_COMMAND_SIZE];
-	char paged_text[YT_COMMAND_SIZE];
-	char output_source[YT_COMMAND_SIZE];
-	struct yt_input input;
-	char saved_command[YT_COMMAND_SIZE];
+	struct session_io_state io;
 	bool running;
 	bool terminated;
 	bool registered;
@@ -109,7 +114,6 @@ struct yt_session {
 	struct yt_present_state presentation;
 	struct yt_present_time_state time;
 	struct yt_pager_state pager;
-	struct yt_input_value input_residue;
 	struct yt_team_cache team_cache;
 };
 

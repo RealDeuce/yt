@@ -256,9 +256,9 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 			    sizeof(stop_notice) - 1U,
 			    "autopilot stop row", error))
 				return false;
-			if (!yt_input_queue_prepend_program(session->queue,
-			    sizeof(session->queue), &session->queue_position,
-			    &session->queue_length, programmed_moves,
+			if (!yt_input_queue_prepend_program(session->io.typeahead,
+			    sizeof(session->io.typeahead), &session->io.typeahead_position,
+			    &session->io.typeahead_length, programmed_moves,
 			    programmed_moves_length))
 				return false;
 		}

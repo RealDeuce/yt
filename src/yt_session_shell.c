@@ -27,8 +27,8 @@ session_quit_confirm(struct yt_session *session, bool *confirmed,
 		    SESSION_PRESENT_RAW, "hostile quit prompt", error)
 		    || !session_read_upper_command(session, response, sizeof(response)))
 			return false;
-		if (!yt_input_yes_no_candidate(response, session->output_source,
-		    sizeof(session->output_source), &answer))
+		if (!yt_input_yes_no_candidate(response, session->io.text_workspace,
+		    sizeof(session->io.text_workspace), &answer))
 			return false;
 		if (answer == YT_YES_NO_YES) {
 			*confirmed = true;
@@ -190,8 +190,8 @@ yt_session_command_shell(struct yt_session *session, struct yt_error *error)
 		    session->time.text_length, prompt, sizeof(prompt),
 		    &prompt_length))
 			return false;
-		memcpy(session->output_source, prompt, prompt_length);
-		session->output_source[prompt_length] = '\0';
+		memcpy(session->io.text_workspace, prompt, prompt_length);
+		session->io.text_workspace[prompt_length] = '\0';
 		if (!session_present_timed_paged_row(session, prompt,
 		    prompt_length, "main prompt low-time warning", error))
 			return false;
@@ -199,7 +199,7 @@ yt_session_command_shell(struct yt_session *session, struct yt_error *error)
 		    sizeof(command)))
 			return true;
 		response_length = strlen(command);
-		memcpy(session->output_source, command,
+		memcpy(session->io.text_workspace, command,
 		    response_length + 1U);
 		route = yt_main_shell_dispatch(command);
 		switch (route) {

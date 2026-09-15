@@ -210,8 +210,8 @@ test_owned_port_purchase(void)
 	session.market_bases[2] = 40.0f;
 	(void)snprintf(door.identity.real_first,
 	    sizeof(door.identity.real_first), "%s", "Pat");
-	memcpy(session.queue, answers, sizeof(answers) - 1U);
-	session.queue_length = sizeof(answers) - 1U;
+	memcpy(session.io.typeahead, answers, sizeof(answers) - 1U);
+	session.io.typeahead_length = sizeof(answers) - 1U;
 
 	yt_record_blank(&buyer.record);
 	(void)snprintf(buyer.name, sizeof(buyer.name), "%s", "Pat");
@@ -258,7 +258,7 @@ test_owned_port_purchase(void)
 	CHECK(yt_database_write_durable(&door.game.database, 203U,
 	    &port.record, &error));
 	CHECK(yt_session_command_buy_port(&session, &error));
-	CHECK(session.queue_position == session.queue_length);
+	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(yt_database_read(&door.game.database, 7U, &persisted, &error));
 	yt_player_decode(&seller, &persisted);
 	CHECK(seller.credits == 21.0f);
