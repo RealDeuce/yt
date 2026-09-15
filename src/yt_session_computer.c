@@ -24,20 +24,6 @@ computer_error(struct yt_error *error, enum yt_status status,
 }
 
 static bool
-computer_route_sector_reader(void *context, int logical_sector,
-    float warps[6], struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_sector sector;
-
-	if (!session_read_sector_at_fault(session, logical_sector, &sector,
-	    YT_BASIC_FAULT_ROUTE_SECTOR_GET, error))
-		return false;
-	memcpy(warps, sector.warps, sizeof(sector.warps));
-	return true;
-}
-
-static bool
 computer_route_cint(struct yt_session *session, float value, int *converted,
     enum yt_basic_fault_site site, const char *operation,
     struct yt_error *error)
@@ -155,16 +141,10 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	    sizeof(working) - 1U, "path working prompt", error))
 		return false;
 	session->shared_status = 1.0f;
-	if (!yt_route_build(start_value, destination_value,
-	    &session->shared_status, session->route_avoid,
-	    session->presentation.sound.conversion_mode,
-	    session->route_predecessor, session->route_second,
-	    computer_route_sector_reader, session, &route_outcome, error))
+	if (!yt_session_build_route(session, start_value, destination_value,
+	    NULL, true, &found, &route_outcome, &session->shared_status,
+	    error))
 		return false;
-	if (route_outcome == YT_ROUTE_BACK_EDGE)
-		yt_route_reconstruction_back_edge();
-	found = route_outcome == YT_ROUTE_FOUND
-	    || route_outcome == YT_ROUTE_SAME;
 	if (!found) {
 		yt_present_set_blink(&session->presentation, 1.0f);
 		return session_present_text(session, NULL, 0,
