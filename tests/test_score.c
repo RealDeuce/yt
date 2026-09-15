@@ -405,12 +405,15 @@ struct projectile_damage_tape {
 };
 
 static bool
-projectile_damage_draw(void *context, float *value, struct yt_error *error)
+projectile_damage_fill(void *context, void *buffer, size_t length,
+    struct yt_error *error)
 {
 	struct projectile_damage_tape *tape = context;
 	size_t call = tape->position++;
+	uint8_t *bytes = buffer;
+	uint32_t sample;
 
-	if (call == tape->fail_at || call >= tape->count) {
+	if (length != 3U || call == tape->fail_at || call >= tape->count) {
 		if (error != NULL) {
 			error->status = YT_IO_ERROR;
 			(void)snprintf(error->operation,
@@ -418,7 +421,13 @@ projectile_damage_draw(void *context, float *value, struct yt_error *error)
 		}
 		return false;
 	}
-	*value = tape->values[call];
+	if (tape->values[call] >= 1.0f)
+		sample = 0xFFFFFFU;
+	else
+		sample = (uint32_t)floorf(tape->values[call] * 16777216.0f);
+	bytes[0] = (uint8_t)sample;
+	bytes[1] = (uint8_t)(sample >> 8);
+	bytes[2] = (uint8_t)(sample >> 16);
 	return true;
 }
 
@@ -435,6 +444,7 @@ check_projectile_damage_model(void)
 	struct yt_projectile_damage_result damage;
 	struct yt_error error;
 	struct projectile_damage_tape tape;
+	struct yt_random random;
 	float remaining;
 
 	memset(&target, 0, sizeof(target));
@@ -447,8 +457,10 @@ check_projectile_damage_model(void)
 	tape.count = YT_ARRAY_LEN(lethal_draws);
 	tape.position = 0U;
 	tape.fail_at = SIZE_MAX;
+	yt_random_init(&random);
+	yt_random_set_provider(&random, projectile_damage_fill, &tape);
 	if (!yt_projectile_player_damage(&target, &remaining,
-	    projectile_damage_draw, &tape, &damage, &error)
+	    &random, &damage, &error)
 	    || tape.position != 8U || damage.iterations != 2U
 	    || remaining != 0.5f || damage.fighters != 1000.0
 	    || damage.shields != 100.0f || damage.scanner_disabled
@@ -464,7 +476,7 @@ check_projectile_damage_model(void)
 	tape.count = YT_ARRAY_LEN(no_shield_draws);
 	tape.position = 0U;
 	if (!yt_projectile_player_damage(&target, &remaining,
-	    projectile_damage_draw, &tape, &damage, &error)
+	    &random, &damage, &error)
 	    || tape.position != 3U || damage.iterations != 1U
 	    || damage.fighters != 0.0 || damage.shields != 0.0f
 	    || target.fighters != 1000.0f || target.shields != 100.0f)
@@ -480,7 +492,7 @@ check_projectile_damage_model(void)
 	tape.count = YT_ARRAY_LEN(scanner_draws);
 	tape.position = 0U;
 	if (!yt_projectile_player_damage(&target, &remaining,
-	    projectile_damage_draw, &tape, &damage, &error)
+	    &random, &damage, &error)
 	    || tape.position != 4U || damage.iterations != 1U
 	    || remaining != 100.5f || !damage.scanner_disabled
 	    || target.danger_scanner != 0.0f)
@@ -498,7 +510,7 @@ check_projectile_damage_model(void)
 	tape.fail_at = 1U;
 	yt_error_clear(&error);
 	if (yt_projectile_player_damage(&target, &remaining,
-	    projectile_damage_draw, &tape, &damage, &error)
+	    &random, &damage, &error)
 	    || tape.position != 2U || remaining != 0.0f
 	    || target.fighters != 10.0f || target.shields != 10.0f
 	    || error.status != YT_IO_ERROR
@@ -515,7 +527,7 @@ check_projectile_damage_model(void)
 	tape.fail_at = SIZE_MAX;
 	yt_error_clear(&error);
 	return !yt_projectile_player_damage(&target, &remaining,
-	    projectile_damage_draw, &tape, &damage, &error)
+	    &random, &damage, &error)
 	    && tape.position == 1U && remaining == 0.0f
 	    && error.status == YT_RANGE
 	    && strcmp(error.operation, "cruise missile scanner CINT") == 0;
@@ -640,8 +652,11 @@ check_projectile_planet_damage_model(void)
 	static const float productivity_draws[] = {
 		0.001f, 0.002f, 0.003f
 	};
-	static const float clamp_draws[] = {0.01f, 0.01f, 0.01f};
+	static const float clamp_draws[] = {
+		0.015625f, 0.015625f, 0.015625f
+	};
 	struct projectile_damage_tape tape;
+	struct yt_random random;
 	struct yt_projectile_ground_result ground;
 	struct yt_projectile_productivity_result productivity;
 	struct yt_error error;
@@ -653,9 +668,11 @@ check_projectile_planet_damage_model(void)
 	tape.count = YT_ARRAY_LEN(ground_draws);
 	tape.position = 0U;
 	tape.fail_at = SIZE_MAX;
+	yt_random_init(&random);
+	yt_random_set_provider(&random, projectile_damage_fill, &tape);
 	remaining = 2.0f;
 	if (!yt_projectile_planet_ground_damage(20.0f, 7.0f, &remaining,
-	    projectile_damage_draw, &tape, &ground, &error)
+	    &random, &ground, &error)
 	    || tape.position != 2U || ground.iterations != 2U
 	    || ground.ground != 0.0f || ground.owner != 0.0f
 	    || remaining != 0.0f)
@@ -663,7 +680,7 @@ check_projectile_planet_damage_model(void)
 	tape.position = 0U;
 	remaining = 3.0f;
 	if (!yt_projectile_planet_ground_damage(-2.5f, 7.0f, &remaining,
-	    projectile_damage_draw, &tape, &ground, &error)
+	    &random, &ground, &error)
 	    || tape.position != 0U || ground.iterations != 0U
 	    || ground.ground != 0.0f || ground.owner != 0.0f
 	    || remaining != 3.0f)
@@ -676,8 +693,7 @@ check_projectile_planet_damage_model(void)
 	tape.position = 0U;
 	remaining = 1.0f;
 	if (!yt_projectile_planet_productivity_damage(1.0f, production,
-	    stock, &remaining, projectile_damage_draw, &tape, &productivity,
-	    &error)
+	    stock, &remaining, &random, &productivity, &error)
 	    || tape.position != 3U || productivity.iterations != 1U
 	    || productivity.old_total != 0.0f
 	    || productivity.new_total != 0.0f || remaining != 0.0f
@@ -697,11 +713,10 @@ check_projectile_planet_damage_model(void)
 	tape.position = 0U;
 	remaining = 1.0f;
 	if (!yt_projectile_planet_productivity_damage(0.0f, production,
-	    stock, &remaining, projectile_damage_draw, &tape, &productivity,
-	    &error)
+	    stock, &remaining, &random, &productivity, &error)
 	    || productivity.old_total != 100.0f
-	    || productivity.new_total != 80.0f
-	    || stock[0] != 0.0f || stock[1] != 800.0f
+	    || productivity.new_total != 68.75f
+	    || stock[0] != 0.0f || stock[1] != 687.5f
 	    || stock[2] != 0.0f)
 		return false;
 
@@ -714,9 +729,8 @@ check_projectile_planet_damage_model(void)
 	remaining = 1.0f;
 	yt_error_clear(&error);
 	return !yt_projectile_planet_productivity_damage(0.0f, production,
-	    stock, &remaining, projectile_damage_draw, &tape, &productivity,
-	    &error)
-	    && tape.position == 2U && production[0] == -10.0f
+	    stock, &remaining, &random, &productivity, &error)
+	    && tape.position == 2U && production[0] == -21.25f
 	    && production[1] == 20.0f && production[2] == 30.0f
 	    && remaining == 1.0f && error.status == YT_IO_ERROR;
 }

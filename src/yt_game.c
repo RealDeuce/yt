@@ -5611,12 +5611,12 @@ yt_projectile_sector_unlink_overlay(struct yt_sector *sector)
 
 bool
 yt_projectile_planet_ground_damage(float ground, float owner,
-    float *remaining, yt_projectile_damage_draw_fn draw, void *context,
+    float *remaining, struct yt_random *random,
     struct yt_projectile_ground_result *result, struct yt_error *error)
 {
 	size_t iterations = 0U;
 
-	if (remaining == NULL || draw == NULL || result == NULL)
+	if (remaining == NULL || random == NULL || result == NULL)
 		return false;
 	result->ground = ground;
 	result->owner = owner;
@@ -5624,7 +5624,7 @@ yt_projectile_planet_ground_damage(float ground, float owner,
 	while (ground > 0.0f && *remaining > 0.0f) {
 		float value;
 
-		if (!draw(context, &value, error))
+		if (!yt_random_next(random, &value, error))
 			return false;
 		ground = projectile_single_sub(ground,
 		    projectile_single_mul(value, 25.0f));
@@ -5647,7 +5647,7 @@ yt_projectile_planet_ground_damage(float ground, float owner,
 bool
 yt_projectile_planet_productivity_damage(float updater_ore,
     float production[3], float stock[3], float *remaining,
-    yt_projectile_damage_draw_fn draw, void *context,
+    struct yt_random *random,
     struct yt_projectile_productivity_result *result,
     struct yt_error *error)
 {
@@ -5657,7 +5657,7 @@ yt_projectile_planet_productivity_damage(float updater_ore,
 	size_t index;
 
 	if (production == NULL || stock == NULL || remaining == NULL
-	    || draw == NULL || result == NULL)
+	    || random == NULL || result == NULL)
 		return false;
 	old_total = projectile_single_add(projectile_single_add(production[0],
 	    production[1]), production[2]);
@@ -5666,7 +5666,7 @@ yt_projectile_planet_productivity_damage(float updater_ore,
 		for (index = 0U; index < 3U; ++index) {
 			float value;
 
-			if (!draw(context, &value, error))
+			if (!yt_random_next(random, &value, error))
 				return false;
 			production[index] = projectile_single_sub(
 			    production[index], projectile_single_mul(value,
@@ -5792,7 +5792,7 @@ yt_projectile_footer_row(uint8_t *row, size_t capacity, size_t *length)
 
 bool
 yt_projectile_player_damage(struct yt_player *target, float *remaining,
-    yt_projectile_damage_draw_fn draw, void *context,
+    struct yt_random *random,
     struct yt_projectile_damage_result *result, struct yt_error *error)
 {
 	double original_fighters;
@@ -5805,7 +5805,7 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 	bool scanner_disabled = false;
 	size_t iterations = 0U;
 
-	if (target == NULL || remaining == NULL || draw == NULL
+	if (target == NULL || remaining == NULL || random == NULL
 	    || result == NULL)
 		return false;
 	original_fighters = (double)target->fighters;
@@ -5821,7 +5821,7 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 
 		++iterations;
 		*remaining = projectile_single_sub(*remaining, 1.0f);
-		if (!draw(context, &value, error))
+		if (!yt_random_next(random, &value, error))
 			return false;
 		scanner_product = projectile_single_mul(value, *remaining);
 		scanner = qb_cint_mbf32(scanner_raw, 0U, &overflow);
@@ -5839,15 +5839,15 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 			memset(scanner_raw, 0, sizeof(scanner_raw));
 			scanner_disabled = true;
 		}
-		if (!draw(context, &value, error))
+		if (!yt_random_next(random, &value, error))
 			return false;
 		fighter_damage = floor((double)projectile_single_mul(value,
 		    4001.0f) + fighter_damage);
-		if (!draw(context, &value, error))
+		if (!yt_random_next(random, &value, error))
 			return false;
 		/* The SINGLE draw is promoted for the DOUBLE fighter operand. */
 		if ((double)value * original_fighters < fighter_damage) {
-			if (!draw(context, &value, error))
+			if (!yt_random_next(random, &value, error))
 				return false;
 			shield_damage = projectile_single_add(shield_damage,
 			    floorf(projectile_single_mul(value, 1001.0f)));

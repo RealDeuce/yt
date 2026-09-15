@@ -159,8 +159,6 @@ session_set_current_player_record(struct yt_session *session, int record)
 	session->player_record_carrier = record;
 }
 
-static bool random_value(void *context, float *value,
-    struct yt_error *error);
 bool yt_session_build_route(struct yt_session *session, float start,
     float destination, int16_t *next_hop, bool use_avoid, bool *found,
     enum yt_route_outcome *route_outcome, float *returned_status,
@@ -2455,7 +2453,7 @@ yt_session_finalize_action(struct yt_session *session, float amount,
 	}
 	if (!session_present_paged_fragment(session, (const uint8_t *)row, strlen(row)))
 		return false;
-	if (!random_value(session, &draw, error))
+	if (!yt_random_next(&session->door->game.random, &draw, error))
 		return false;
 	if (draw > xannor_threshold) {
 		session_load_xannor_provoker(session, &xannor_provoker);
@@ -2469,15 +2467,6 @@ yt_session_finalize_action(struct yt_session *session, float amount,
 			return false;
 	}
 	return true;
-}
-
-static bool
-random_value(void *context, float *value,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_random_next(&session->door->game.random, value, error);
 }
 
 bool
@@ -2533,14 +2522,14 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	if (!session_present_text(session, gauge_open,
 	    sizeof(gauge_open) - 1U, SESSION_PRESENT_BOLD_RAW,
 	    "emergency warp gauge open", error)
-	    || !random_value(session, &first, error)
-	    || !random_value(session, &second, error))
+	    || !yt_random_next(&session->door->game.random, &first, error)
+	    || !yt_random_next(&session->door->game.random, &second, error))
 		return false;
 	duration = yt_emergency_warp_duration(first, second);
 	for (;;) {
 		float draw;
 
-		if (!random_value(session, &draw, error))
+		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		if (draw > 0.75f)
 			heat = single_add(heat, 1.0f);
@@ -2579,9 +2568,9 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	    "emergency warp post-gauge blank two", error)
 	    || !session_reload_player(session, error))
 		return false;
-	if (!random_value(session, &first, error)
-	    || !random_value(session, &override, error)
-	    || !random_value(session, &turn_draw, error))
+	if (!yt_random_next(&session->door->game.random, &first, error)
+	    || !yt_random_next(&session->door->game.random, &override, error)
+	    || !yt_random_next(&session->door->game.random, &turn_draw, error))
 		return false;
 	destination = yt_emergency_warp_destination(first,
 	    (float)session_sector_count(session));
@@ -2741,7 +2730,7 @@ yt_session_fighter_shield_spill(struct yt_session *session, double *fighters,
 	while (*fighters > 0.0 && *shields > 0.0f) {
 		float draw;
 
-		if (!random_value(session, &draw, error)
+		if (!yt_random_next(&session->door->game.random, &draw, error)
 		    || !yt_fighter_shield_spill_step(fighters, shields, draw))
 			return false;
 		if (bind_hostile_cells) {
@@ -3738,10 +3727,10 @@ yt_session_clearance(struct yt_session *session, bool create,
 		char row[192];
 		int row_length;
 
-		if (!random_value(session, &draw, error))
+		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		if (yt_clearance_candidate_needed(index, draw, discount, create)) {
-			if (!random_value(session, &draw, error))
+			if (!yt_random_next(&session->door->game.random, &draw, error))
 				return false;
 			discount = draw;
 			session->clearance_discounts[index] = discount;
@@ -3938,7 +3927,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 	for (index = 0; index < 6; ++index) {
 		float draw;
 
-		if (!random_value(session, &draw, error))
+		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		winning[index] = (int)floorf(single_mul(draw, 10.0f));
 	}
@@ -3969,7 +3958,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 			struct yt_present_result rewind;
 			enum yt_present_status status;
 
-			if (!random_value(session, &draw, error))
+			if (!yt_random_next(&session->door->game.random, &draw, error))
 				return false;
 			digit = (uint8_t)('0' + (int)floorf(
 			    single_mul(draw, 10.0f)));
@@ -4738,7 +4727,8 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		size_t row_length;
 
 		if (!yt_projectile_planet_ground_damage(planet.ground_forces,
-		    planet.owner, remaining, random_value, session, &impact, error))
+		    planet.owner, remaining, &session->door->game.random, &impact,
+		    error))
 			return false;
 		planet.ground_forces = impact.ground;
 		planet.owner = impact.owner;
@@ -4767,8 +4757,8 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		size_t row_length;
 
 		if (!yt_projectile_planet_productivity_damage(original_ore,
-		    planet.production, planet.stock, remaining, random_value,
-		    session, &impact, error)
+		    planet.production, planet.stock, remaining,
+		    &session->door->game.random, &impact, error)
 		    || !yt_projectile_planet_productivity_row(impact.old_total,
 		    impact.new_total, row, sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
@@ -5209,7 +5199,7 @@ missile_sector(struct yt_session *session, int sector_number,
 		    && (double)destroyed < original_fighters) {
 			float draw;
 
-			if (!random_value(session, &draw, error))
+			if (!yt_random_next(&session->door->game.random, &draw, error))
 				return false;
 			destroyed = floorf(single_add(single_mul(draw, 5000.0f),
 			    destroyed));
@@ -5369,7 +5359,7 @@ missile_mines:
 		    "cruise missile player-attack sound", error))
 			return false;
 		if (!yt_projectile_player_damage(&target, remaining,
-		    random_value, session, &damage, error))
+		    &session->door->game.random, &damage, error))
 			return false;
 		scanner_disabled = damage.scanner_disabled;
 		session_set_foreground(session, 5.0f);
@@ -5575,7 +5565,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		remaining_ground = single_sub(remaining_ground, quantity);
 		for (index = 0U; index < 3U; ++index)
 			production[index] = single_sub(production[index], quantity);
-		if (!random_value(session, &draw, error))
+		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		*energy -= (double)single_mul(draw, 25000.0f);
 	}
@@ -5715,7 +5705,7 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 				float draw;
 
 				destroyed += floor(*energy / 5000.0) + 1.0;
-				if (!random_value(session, &draw, error))
+				if (!yt_random_next(&session->door->game.random, &draw, error))
 					return false;
 				*energy -= (double)single_mul(draw, 25000.0f);
 			}
@@ -5791,7 +5781,7 @@ plasma_reload_sector:
 			volatile double accumulated = (double)destroyed + quantum;
 
 			destroyed = (float)(accumulated + 1.0);
-			if (!random_value(session, &draw, error))
+			if (!yt_random_next(&session->door->game.random, &draw, error))
 				return false;
 			*energy -= (double)single_mul(draw, 25000.0f);
 		}
@@ -5859,7 +5849,7 @@ plasma_reload_sector:
 				volatile double accumulated = destroyed_fighters + quantum;
 
 				destroyed_fighters = accumulated + 1.0;
-				if (!random_value(session, &draw, error))
+				if (!yt_random_next(&session->door->game.random, &draw, error))
 					return false;
 				*energy -= (double)single_mul(draw, 25000.0f);
 			}
@@ -5871,7 +5861,7 @@ plasma_reload_sector:
 				    (double)destroyed_shields + quantum;
 
 				destroyed_shields = (float)(accumulated + 1.0);
-				if (!random_value(session, &draw, error))
+				if (!yt_random_next(&session->door->game.random, &draw, error))
 					return false;
 				*energy -= (double)single_mul(draw, 25000.0f);
 			}
@@ -6389,7 +6379,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 				*origin_alias = (float)next;
 				projectile_route_store(route, *origin_alias, *target,
 				    *missiles);
-				if (!random_value(session, &draw, error))
+				if (!yt_random_next(&session->door->game.random, &draw, error))
 					return false;
 				*target = yt_projectile_cruise_reroute_destination(draw,
 				    session_sector_offset(session),
@@ -6547,7 +6537,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		volatile float integral;
 		volatile float selected;
 
-		if (!random_value(session, &draw, error))
+		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		product = draw * available;
 		integral = floorf(product);

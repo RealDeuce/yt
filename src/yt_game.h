@@ -814,8 +814,6 @@ enum yt_projectile_death_route yt_projectile_death_continuation(
 bool yt_projectile_survivor_sets_counterattack(int shooter);
 bool yt_projectile_survivor_store_counterattack(int shooter,
     int player_record, int *counterattack, uint8_t raw[4]);
-typedef bool (*yt_projectile_damage_draw_fn)(void *context, float *value,
-    struct yt_error *error);
 struct yt_projectile_damage_result {
 	double fighters;
 	float shields;
@@ -842,7 +840,7 @@ struct yt_projectile_ground_result {
 	size_t iterations;
 };
 bool yt_projectile_planet_ground_damage(float ground, float owner,
-    float *remaining, yt_projectile_damage_draw_fn draw, void *context,
+    float *remaining, struct yt_random *random,
     struct yt_projectile_ground_result *result, struct yt_error *error);
 struct yt_projectile_productivity_result {
 	float old_total;
@@ -851,7 +849,7 @@ struct yt_projectile_productivity_result {
 };
 bool yt_projectile_planet_productivity_damage(float updater_ore,
     float production[3], float stock[3], float *remaining,
-    yt_projectile_damage_draw_fn draw, void *context,
+    struct yt_random *random,
     struct yt_projectile_productivity_result *result,
     struct yt_error *error);
 bool yt_projectile_planet_ground_row(float ground, uint8_t *row,
@@ -872,7 +870,7 @@ bool yt_projectile_route_failure_row(bool caller_suffix, uint8_t *row,
 bool yt_projectile_footer_row(uint8_t *row, size_t capacity,
     size_t *length);
 bool yt_projectile_player_damage(struct yt_player *target, float *remaining,
-    yt_projectile_damage_draw_fn draw, void *context,
+    struct yt_random *random,
     struct yt_projectile_damage_result *result, struct yt_error *error);
 bool yt_projectile_attack_first_rows(bool plasma,
     const uint8_t *attacker, size_t attacker_length,
