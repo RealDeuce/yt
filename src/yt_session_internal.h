@@ -280,6 +280,12 @@ bool yt_session_finalize_action(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_earth_store(struct yt_session *session, bool *enter_sector,
     struct yt_error *error);
+bool session_earth_receipt(struct yt_session *session,
+    const struct yt_port *cached_earth, float cost, struct yt_error *error);
+bool session_earth_credit_error(struct yt_session *session, const char *text,
+    struct yt_error *error);
+bool session_earth_lottery(struct yt_session *session,
+    const struct yt_port *cached_earth, struct yt_error *error);
 void session_clear_queue(struct yt_session *session);
 bool session_append_radio_bytes(const uint8_t *text, size_t length,
     float sender, float recipient, struct yt_error *error);
