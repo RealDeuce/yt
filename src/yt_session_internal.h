@@ -181,6 +181,8 @@ bool session_confirm(struct yt_session *session, const uint8_t *prompt,
 bool session_present_alert(struct yt_session *session, const uint8_t *text,
     size_t length, const char *operation, struct yt_error *error);
 bool session_range_error(struct yt_error *error, const char *operation);
+bool session_computer_error(struct yt_error *error, enum yt_status status,
+    const char *operation);
 bool session_buffer_append(uint8_t *buffer, size_t capacity, size_t *length,
     const void *data, size_t data_length);
 void attach_database_get_fault(struct yt_session *session,

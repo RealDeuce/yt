@@ -112,6 +112,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_bribe.c
     src/yt_session_computer.c
     src/yt_session_computer_menu.c
+    src/yt_session_computer_route.c
     src/yt_session_radio.c
     src/yt_session_sector.c
     src/yt_session_sector_entry.c
