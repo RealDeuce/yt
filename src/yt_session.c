@@ -1040,63 +1040,85 @@ session_right_aligned(struct yt_session *session, const char *text,
 	return false;
 }
 
-struct session_file_viewer_context {
-	struct yt_session *session;
-	bool notice_presented;
-	bool preopen_blank_presented;
-};
-
-static bool
-session_file_viewer_output(void *context, const uint8_t *text,
-    size_t length, bool paged, struct yt_error *error)
-{
-	struct session_file_viewer_context *viewer = context;
-
-	if (!viewer->notice_presented) {
-		viewer->notice_presented = true;
-		return paged && session_present_paged_line(viewer->session,
-		    text, length, "file viewer notice", error);
-	}
-	if (!viewer->preopen_blank_presented) {
-		viewer->preopen_blank_presented = true;
-		return !paged && session_present_text(viewer->session, text,
-		    length, SESSION_PRESENT_LINE,
-		    "file viewer pre-open blank", error);
-	}
-	session_set_foreground(viewer->session,
-	    viewer->session->presentation.foreground);
-	if (paged)
-		return session_present_paged_row(viewer->session, text, length);
-	return session_present_text(viewer->session, text, length,
-	    SESSION_PRESENT_LINE, "file viewer final blank", error);
-}
-
 bool
 session_display_game_file(struct yt_session *session, const char *path,
     struct yt_error *error)
 {
-	struct session_file_viewer_context context;
+	static const uint8_t notice[] = "Cntl-X to Stop";
+	struct yt_text_input input;
 	struct yt_error local_error;
 	struct yt_error *active_error = error == NULL ? &local_error : error;
 	float saved_foreground = session_foreground(session);
 	int saved_pager_foreground = session_pager_foreground(session);
-	struct yt_file_viewer_state state = {
-		.foreground = &session->presentation.foreground,
-		.pager_foreground = &session->pager.foreground,
-		.bold = &session->presentation.bold,
-		.line_count = &session->pager.line_count,
-		.pager_key = session->pager.key,
-		.saved_foreground = saved_foreground,
-		.saved_pager_foreground = saved_pager_foreground,
-	};
-	bool ok;
+	bool ok = false;
 
-	memset(&context, 0, sizeof(context));
-	context.session = session;
 	if (error == NULL)
 		yt_error_clear(&local_error);
-	ok = yt_file_viewer_display(path, &state,
-	    session_file_viewer_output, &context, active_error);
+	if (path == NULL) {
+		active_error->status = YT_INVALID;
+		active_error->system_error = 0;
+		snprintf(active_error->operation,
+		    sizeof(active_error->operation), "file viewer");
+		active_error->path[0] = '\0';
+		return false;
+	}
+	session->pager.key[0] = '\0';
+	if (!session_present_paged_line(session, notice, sizeof(notice) - 1U,
+	    "file viewer notice", active_error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "file viewer pre-open blank", active_error))
+		return false;
+	yt_text_input_init(&input);
+	if (!yt_text_input_close(&input, active_error))
+		goto done;
+	session->pager.line_count = 0.0f;
+	if (!yt_text_input_open(&input, path, active_error))
+		goto done;
+	for (;;) {
+		const uint8_t *line;
+		size_t length;
+		bool available;
+		bool eof;
+		int foreground;
+
+		if (!yt_text_input_eof(&input, &eof, active_error))
+			goto done;
+		if (eof || strcmp(session->pager.key, "Q") == 0)
+			break;
+		if (!yt_text_input_read_line(&input, &line, &length, &available,
+		    active_error))
+			goto done;
+		if (!available) {
+			active_error->status = YT_EOF;
+			active_error->system_error = 0;
+			snprintf(active_error->operation,
+			    sizeof(active_error->operation),
+			    "LINE INPUT after EOF check");
+			snprintf(active_error->path, sizeof(active_error->path),
+			    "%s", path);
+			goto done;
+		}
+		foreground = yt_file_viewer_line_foreground(line, length);
+		session->presentation.foreground = (float)foreground;
+		session->pager.foreground = foreground;
+		if (foreground != 2)
+			session->presentation.bold = 1.0f;
+		session_set_foreground(session,
+		    session->presentation.foreground);
+		if (!session_present_paged_row(session, line, length))
+			goto done;
+	}
+	if (!yt_text_input_close(&input, active_error))
+		goto done;
+	session->pager.line_count = 0.0f;
+	session->presentation.foreground = saved_foreground;
+	session->pager.foreground = saved_pager_foreground;
+	session_set_foreground(session, session->presentation.foreground);
+	ok = session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "file viewer final blank", active_error);
+
+done:
+	yt_text_input_destroy(&input);
 	if (ok)
 		session_set_pager_line_count(session, session->pager.line_count);
 	if (!ok && active_error->status == YT_NOT_FOUND) {

@@ -3,6 +3,7 @@
 #include "yt_main_error.h"
 #include "yt_game.h"
 #include "yt_text.h"
+#include "file_viewer_test_model.h"
 #include "yt_team.h"
 #include "qb.h"
 #include "info_panel_model.h"

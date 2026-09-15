@@ -590,8 +590,8 @@ yt_text_input_destroy(struct yt_text_input *input)
 	memset(input, 0, sizeof(*input));
 }
 
-static int
-file_viewer_foreground(const uint8_t *line, size_t length)
+int
+yt_file_viewer_line_foreground(const uint8_t *line, size_t length)
 {
 	if (length >= 4U && memcmp(line, "  - ", 4U) == 0)
 		return 3;
@@ -602,75 +602,6 @@ file_viewer_foreground(const uint8_t *line, size_t length)
 	if (length >= 3U && memcmp(line, "-=*", 3U) == 0)
 		return 7;
 	return 2;
-}
-
-bool
-yt_file_viewer_display(const char *path, struct yt_file_viewer_state *state,
-    yt_file_viewer_present_fn present, void *context,
-    struct yt_error *error)
-{
-	static const uint8_t notice[] = "Cntl-X to Stop";
-	struct yt_text_input input;
-	bool result = false;
-
-	if (path == NULL || state == NULL || present == NULL
-	    || state->foreground == NULL
-	    || state->pager_foreground == NULL || state->bold == NULL
-	    || state->line_count == NULL || state->pager_key == NULL) {
-		errno = 0;
-		set_error(error, YT_INVALID, "file viewer", path);
-		return false;
-	}
-	state->pager_key[0] = '\0';
-	if (!present(context, notice, sizeof(notice) - 1U, true, error)
-	    || !present(context, NULL, 0U, false, error))
-		return false;
-	yt_text_input_init(&input);
-	if (!yt_text_input_close(&input, error))
-		goto done;
-	*state->line_count = 0.0f;
-	if (!yt_text_input_open(&input, path, error))
-		goto done;
-	for (;;) {
-		const uint8_t *line;
-		size_t length;
-		bool available;
-		bool eof;
-		bool stopped;
-		int foreground;
-
-		if (!yt_text_input_eof(&input, &eof, error))
-			goto done;
-		stopped = strcmp(state->pager_key, "Q") == 0;
-		if (eof || stopped)
-			break;
-		if (!yt_text_input_read_line(&input, &line, &length, &available,
-		    error))
-			goto done;
-		if (!available) {
-			errno = 0;
-			set_error(error, YT_EOF, "LINE INPUT after EOF check",
-			    path);
-			goto done;
-		}
-		foreground = file_viewer_foreground(line, length);
-		*state->foreground = (float)foreground;
-		*state->pager_foreground = foreground;
-		if (foreground != 2)
-			*state->bold = 1.0f;
-		if (!present(context, line, length, true, error))
-			goto done;
-	}
-	if (!yt_text_input_close(&input, error))
-		goto done;
-	*state->line_count = 0.0f;
-	*state->foreground = state->saved_foreground;
-	*state->pager_foreground = state->saved_pager_foreground;
-	result = present(context, NULL, 0U, false, error);
-
-done:
-	yt_text_input_destroy(&input);
-	return result;
 }
 
 bool

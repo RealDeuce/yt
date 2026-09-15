@@ -237,24 +237,7 @@ bool yt_text_output_close_all_method(void *context, int8_t file_class,
 	struct yt_error *error);
 void yt_text_output_destroy(struct yt_text_output *output);
 
-struct yt_file_viewer_state {
-	float *foreground;
-	int *pager_foreground;
-	float *bold;
-	float *line_count;
-	char *pager_key;
-	float saved_foreground;
-	int saved_pager_foreground;
-};
-
-typedef bool (*yt_file_viewer_present_fn)(void *context,
-    const uint8_t *text, size_t length, bool paged,
-    struct yt_error *error);
-
-bool yt_file_viewer_display(const char *path,
-	struct yt_file_viewer_state *state,
-	yt_file_viewer_present_fn present, void *context,
-	struct yt_error *error);
+int yt_file_viewer_line_foreground(const uint8_t *line, size_t length);
 
 bool yt_file_viewer_missing_row(const char *path, uint8_t *row,
 	size_t capacity, size_t *length);
