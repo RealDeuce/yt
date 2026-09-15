@@ -100,27 +100,6 @@ planet_name_length(struct yt_session *session, float raw, size_t *length,
 	return true;
 }
 
-static double
-planet_double_add(double left, double right)
-{
-	volatile double result = left + right;
-	return result;
-}
-
-static double
-planet_double_sub(double left, double right)
-{
-	volatile double result = left - right;
-	return result;
-}
-
-static double
-planet_double_mul(double left, double right)
-{
-	volatile double result = left * right;
-	return result;
-}
-
 static float
 planet_current_minute(void)
 {
@@ -211,7 +190,7 @@ yt_session_planet_inventory(struct yt_session *session, int logical_planet,
 				    "planet inventory numeric format");
 		}
 		else if (index == 6) {
-			produced = floor(planet_double_mul(economy.quantity[7],
+			produced = floor(qb_double_multiply(economy.quantity[7],
 			    0x1.47ae14p-7));
 			available = floor(economy.quantity[7]);
 			if (qb_str_double(production, sizeof(production), produced) < 0
@@ -221,7 +200,7 @@ yt_session_planet_inventory(struct yt_session *session, int logical_planet,
 				    "planet inventory credit format");
 		}
 		else if (index == 7) {
-			produced = floor(planet_double_add(planet_double_mul(economy.quantity[8],
+			produced = floor(qb_double_add(qb_double_multiply(economy.quantity[8],
 			    0x1.47ae14p-7), (double)economy.contribution[8]));
 			available = floor(economy.quantity[8]);
 			if (qb_str_double(production, sizeof(production), produced) < 0
@@ -279,7 +258,7 @@ yt_session_planet_take_one(struct yt_session *session, int logical_planet,
 	if (!session_present_paged_line(session, (const uint8_t *)title,
 	    strlen(title), "planet Take One title", error))
 		return false;
-	free_holds = (float)planet_double_sub(planet_double_sub(planet_double_sub(
+	free_holds = (float)qb_double_subtract(qb_double_subtract(qb_double_subtract(
 	    (double)session->player.holds, (double)session->player.ore),
 	    (double)session->player.organics),
 	    (double)session->player.equipment);
@@ -328,7 +307,7 @@ yt_session_planet_take_one(struct yt_session *session, int logical_planet,
 	if (!session_write_planet(session, logical_planet,
 	    &planet, error))
 		return false;
-	session->planet_economy.quantity[item] = planet_double_sub(
+	session->planet_economy.quantity[item] = qb_double_subtract(
 	    session->planet_economy.quantity[item], (double)quantity);
 	return session_reload_player(session, error);
 }

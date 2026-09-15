@@ -4126,30 +4126,6 @@ take_all_planet_item(struct yt_planet *planet, int item)
 	}
 }
 
-static double
-take_all_double_add(double left, double right)
-{
-	volatile double result = left + right;
-
-	return result;
-}
-
-static double
-take_all_double_sub(double left, double right)
-{
-	volatile double result = left - right;
-
-	return result;
-}
-
-static double
-take_all_double_div(double left, double right)
-{
-	volatile double result = left / right;
-
-	return result;
-}
-
 const char *
 yt_planet_take_one_title(int item)
 {
@@ -4178,7 +4154,7 @@ yt_planet_take_one_player_overlay(struct yt_player *player, int item,
 	if (item == 9)
 		*selected = qb_single_add(*selected, amount);
 	else
-		*selected = (float)take_all_double_add((double)*selected,
+		*selected = (float)qb_double_add((double)*selected,
 		    (double)amount);
 }
 
@@ -4193,7 +4169,7 @@ yt_planet_take_one_planet_overlay(struct yt_planet *planet, int item,
 	selected = take_all_planet_item(planet, item);
 	if (selected == NULL)
 		return;
-	*selected = (float)take_all_double_sub(cached_quantity,
+	*selected = (float)qb_double_subtract(cached_quantity,
 	    (double)amount);
 }
 
@@ -4211,7 +4187,7 @@ yt_planet_take_all_weapon_player_overlay(struct yt_player *player,
 	for (index = 1; index < 4U; ++index)
 		amount[items[index]] = (double)(float)floor(
 		    cached_quantity[items[index]]);
-	player->fighters = (float)take_all_double_add(
+	player->fighters = (float)qb_double_add(
 	    (double)player->fighters, amount[4]);
 	player->missiles = qb_single_add(player->missiles,
 	    (float)amount[5]);
@@ -4231,7 +4207,7 @@ yt_planet_take_all_weapon_planet_overlay(struct yt_planet *planet,
 	for (index = 0; index < 4U; ++index) {
 		float *selected = take_all_planet_item(planet, items[index]);
 
-		*selected = (float)take_all_double_sub(
+		*selected = (float)qb_double_subtract(
 		    cached_quantity[items[index]], amount[items[index]]);
 	}
 }
@@ -4247,18 +4223,18 @@ yt_planet_take_all_commodity_player_overlay(struct yt_player *player,
 
 	if (player == NULL || item < 1 || item > 3)
 		return 0.0f;
-	free_double = take_all_double_sub((double)player->holds,
+	free_double = qb_double_subtract((double)player->holds,
 	    (double)player->ore);
-	free_double = take_all_double_sub(free_double,
+	free_double = qb_double_subtract(free_double,
 	    (double)player->organics);
-	free_double = take_all_double_sub(free_double,
+	free_double = qb_double_subtract(free_double,
 	    (double)player->equipment);
 	free_holds = (float)free_double;
 	amount = (float)floor(cached_quantity);
 	if (free_holds < amount)
 		amount = free_holds;
 	selected = take_all_player_item(player, item);
-	*selected = (float)take_all_double_add((double)*selected,
+	*selected = (float)qb_double_add((double)*selected,
 	    (double)amount);
 	return amount;
 }
@@ -4272,7 +4248,7 @@ yt_planet_take_all_commodity_planet_overlay(struct yt_planet *planet,
 	if (planet == NULL || item < 1 || item > 3)
 		return;
 	selected = take_all_planet_item(planet, item);
-	*selected = (float)take_all_double_sub(cached_quantity,
+	*selected = (float)qb_double_subtract(cached_quantity,
 	    (double)amount);
 }
 
@@ -4287,12 +4263,12 @@ yt_planet_transfer_cargo_cache(float rate[10], double quantity[10],
 	for (index = 0; index < 3U; ++index) {
 		int item = (int)index + 1;
 		float threshold = qb_single_multiply(rate[item], 10.0f);
-		double total = take_all_double_add(quantity[item], held[index]);
+		double total = qb_double_add(quantity[item], held[index]);
 
 		if (total > (double)threshold)
-			rate[item] = (float)take_all_double_add(
-			    take_all_double_div(floor(total), 10.0), 1.0);
-		quantity[item] = take_all_double_add(quantity[item], held[index]);
+			rate[item] = (float)qb_double_add(
+			    qb_double_divide(floor(total), 10.0), 1.0);
+		quantity[item] = qb_double_add(quantity[item], held[index]);
 	}
 }
 
@@ -4347,7 +4323,7 @@ yt_planet_transfer_direct_planet_overlay(struct yt_planet *planet, int item,
 		return;
 	selected = take_all_planet_item(planet, item);
 	if (selected != NULL)
-		*selected = (float)take_all_double_add(cached_quantity,
+		*selected = (float)qb_double_add(cached_quantity,
 		    (double)cached_amount);
 }
 
@@ -4356,7 +4332,7 @@ yt_planet_transfer_fighter_player_overlay(struct yt_player *player,
     float cached_fighters, float amount)
 {
 	if (player != NULL)
-		player->fighters = (float)take_all_double_sub(
+		player->fighters = (float)qb_double_subtract(
 		    (double)cached_fighters, (double)amount);
 }
 
@@ -4365,7 +4341,7 @@ yt_planet_transfer_fighter_planet_overlay(struct yt_planet *planet,
     double cached_quantity, float amount)
 {
 	if (planet != NULL)
-		planet->fighters = (float)take_all_double_add(cached_quantity,
+		planet->fighters = (float)qb_double_add(cached_quantity,
 		    (double)amount);
 }
 
@@ -4433,7 +4409,7 @@ yt_planet_transfer_fighter_amount(const char *response, float *amount,
 double
 yt_planet_bank_available(float cached_credits, float cached_bank)
 {
-	return take_all_double_add((double)cached_credits,
+	return qb_double_add((double)cached_credits,
 	    (double)cached_bank);
 }
 
@@ -4441,10 +4417,10 @@ double
 yt_planet_bank_remaining(float cached_credits, float cached_bank,
     double target)
 {
-	double after_target = take_all_double_sub((double)cached_credits,
+	double after_target = qb_double_subtract((double)cached_credits,
 	    target);
 
-	return take_all_double_add(after_target, (double)cached_bank);
+	return qb_double_add(after_target, (double)cached_bank);
 }
 
 void
@@ -4457,7 +4433,7 @@ yt_planet_bank_planet_overlay(struct yt_planet *planet, double target)
 float
 yt_planet_bank_credit_argument(float cached_bank, double target)
 {
-	return (float)take_all_double_sub((double)cached_bank, target);
+	return (float)qb_double_subtract((double)cached_bank, target);
 }
 
 void
@@ -4471,7 +4447,7 @@ yt_planet_bank_credit_overlay(struct yt_player *player, float argument)
 double
 yt_planet_productivity_units(double spend)
 {
-	return take_all_double_div(spend, 250.0);
+	return qb_double_divide(spend, 250.0);
 }
 
 void
@@ -4489,7 +4465,7 @@ yt_planet_productivity_cache(float rate[10], double units, float delta[4])
 	old_sum = qb_single_add(qb_single_add(rate[1], rate[2]),
 	    rate[3]);
 	for (index = 1; index <= 3U; ++index)
-		rate[index] = (float)take_all_double_add((double)rate[index],
+		rate[index] = (float)qb_double_add((double)rate[index],
 		    units);
 	new_sum = qb_single_add(qb_single_add(rate[1], rate[2]),
 	    rate[3]);
@@ -4628,7 +4604,7 @@ yt_earth_prices(const float discount[4], float price[4])
 double
 yt_earth_affordable(float credits, float price)
 {
-	return floor(take_all_double_div((double)credits, (double)price));
+	return floor(qb_double_divide((double)credits, (double)price));
 }
 
 int

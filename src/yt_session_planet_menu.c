@@ -17,13 +17,6 @@ planet_menu_error(struct yt_error *error, const char *operation)
 	return false;
 }
 
-static double
-planet_menu_subtract(double left, double right)
-{
-	volatile double result = left - right;
-	return result;
-}
-
 bool
 yt_session_planet_menu(struct yt_session *session, int logical_planet,
     bool *enter_sector, struct yt_error *error)
@@ -47,8 +40,8 @@ yt_session_planet_menu(struct yt_session *session, int logical_planet,
 		session_set_pager_line_count(session, 0.0f);
 		if (!session_reload_player(session, error))
 			return false;
-		free_holds = planet_menu_subtract(planet_menu_subtract(
-		    planet_menu_subtract((double)session->player.holds,
+		free_holds = qb_double_subtract(qb_double_subtract(
+		    qb_double_subtract((double)session->player.holds,
 		    (double)session->player.ore),
 		    (double)session->player.organics),
 		    (double)session->player.equipment);

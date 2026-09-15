@@ -222,14 +222,6 @@ yt_session_port_report(struct yt_session *session, int logical_port,
 	return true;
 }
 
-static double
-port_double_sub(double left, double right)
-{
-	volatile double result = left - right;
-
-	return result;
-}
-
 static bool
 port_append(uint8_t *buffer, size_t capacity, size_t *length,
     const void *text, size_t text_length)
@@ -269,22 +261,6 @@ commodity_error(struct yt_error *error, const char *operation)
 	return false;
 }
 
-static double
-commodity_double_sub(double left, double right)
-{
-	volatile double result = left - right;
-
-	return result;
-}
-
-static double
-commodity_double_div(double numerator, double denominator)
-{
-	volatile double result = numerator / denominator;
-
-	return result;
-}
-
 static bool
 commodity_row(char *row, size_t capacity, const char *format,
     const char *first, const char *second, struct yt_error *error,
@@ -321,11 +297,11 @@ commodity_prepare(const struct yt_port_market_state *market,
 	terms->factor = market->port.factor[commodity];
 	terms->price = market->price[commodity];
 	terms->credits = (double)player->credits;
-	free_holds = commodity_double_sub((double)player->holds,
+	free_holds = qb_double_subtract((double)player->holds,
 	    (double)player->ore);
-	free_holds = commodity_double_sub(free_holds,
+	free_holds = qb_double_subtract(free_holds,
 	    (double)player->organics);
-	free_holds = commodity_double_sub(free_holds,
+	free_holds = qb_double_subtract(free_holds,
 	    (double)player->equipment);
 	terms->free_holds = (float)free_holds;
 	terms->port_sells = floorf(terms->factor) > 0.0f;
@@ -358,7 +334,7 @@ commodity_prepare(const struct yt_port_market_state *market,
 		if (terms->price == 0.0f)
 			return commodity_error(error,
 			    "commodity trade credit/price division");
-		affordable = commodity_double_div(terms->credits,
+		affordable = qb_double_divide(terms->credits,
 		    (double)terms->price);
 		if (!isfinite(affordable) || floor(affordable) > FLT_MAX
 		    || floor(affordable) < -FLT_MAX)
@@ -1333,10 +1309,10 @@ yt_session_ordinary_commerce(struct yt_session *session,
 	}
 	if (!session_reload_player(session, error))
 		return false;
-	free = port_double_sub((double)session->player.holds,
+	free = qb_double_subtract((double)session->player.holds,
 	    (double)session->player.ore);
-	free = port_double_sub(free, (double)session->player.organics);
-	free = port_double_sub(free, (double)session->player.equipment);
+	free = qb_double_subtract(free, (double)session->player.organics);
+	free = qb_double_subtract(free, (double)session->player.equipment);
 	if (qb_str_double(credits, sizeof(credits),
 	    (double)session->player.credits) < 0
 	    || qb_str_double(free_holds, sizeof(free_holds), free) < 0)

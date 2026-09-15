@@ -6,22 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static double
-attack_double_add(double left, double right)
-{
-	volatile double result = left + right;
-
-	return result;
-}
-
-static double
-attack_double_sub(double left, double right)
-{
-	volatile double result = left - right;
-
-	return result;
-}
-
 bool
 session_read_combat_player(struct yt_session *session, int player_record,
     struct yt_player *player, struct yt_error *error)
@@ -155,10 +139,10 @@ direct_attack_attrition(struct yt_session *session, double committed,
 			return false;
 		if (qb_single_add(qb_single_divide(cloak, 10.0f), sampled)
 		    < 0.44999998807907104f)
-			*attacker_loss = attack_double_add(*attacker_loss,
+			*attacker_loss = qb_double_add(*attacker_loss,
 			    (double)quantum);
 		else
-			*defender_loss = attack_double_add(*defender_loss,
+			*defender_loss = qb_double_add(*defender_loss,
 			    (double)quantum);
 	}
 	return true;
@@ -203,7 +187,7 @@ yt_session_attack_player(struct yt_session *session, int target_record,
 		    "direct Attack too-many row", error);
 	}
 
-	cached_reserve = attack_double_sub((double)current.fighters, committed);
+	cached_reserve = qb_double_subtract((double)current.fighters, committed);
 	yt_direct_attack_fighter_overlay(&current, (float)cached_reserve);
 	if (!session_write_combat_player(session, current_player_record,
 	    &current, error)
@@ -226,10 +210,10 @@ yt_session_attack_player(struct yt_session *session, int target_record,
 	    &current, error))
 		return false;
 	cached_reserve = (double)current.fighters;
-	attacking = attack_double_sub(committed, attacker_loss);
-	defenders = attack_double_sub(defenders, defender_loss);
+	attacking = qb_double_subtract(committed, attacker_loss);
+	defenders = qb_double_subtract(defenders, defender_loss);
 	yt_direct_attack_fighter_overlay(&current,
-	    (float)attack_double_add(cached_reserve, attacking));
+	    (float)qb_double_add(cached_reserve, attacking));
 	if (!session_write_combat_player(session, current_player_record,
 	    &current, error)
 	    || !session_read_combat_player(session, target_record, &target,
@@ -265,7 +249,7 @@ yt_session_attack_player(struct yt_session *session, int target_record,
 	    &current, error))
 		return false;
 	yt_direct_attack_fighter_overlay(&current,
-	    (float)attack_double_add(cached_reserve, attacking));
+	    (float)qb_double_add(cached_reserve, attacking));
 	if (!session_write_combat_player(session, current_player_record,
 	    &current, error))
 		return false;
@@ -539,7 +523,7 @@ hostile_surrender_run(struct yt_session *session,
 	    "surrender joined row", error)
 	    || !session_sound(session, 1.0f, "hostile surrender sound", error))
 		return false;
-	state->surrendered_fighters = attack_double_sub(state->deployed_fighters,
+	state->surrendered_fighters = qb_double_subtract(state->deployed_fighters,
 	    state->defender_loss);
 	if (qb_str_double(surrendered_number, sizeof(surrendered_number),
 	    state->surrendered_fighters) < 0)
@@ -558,7 +542,7 @@ hostile_surrender_run(struct yt_session *session,
 	    state->cached_player_name, state->cached_player_name_length)
 	    || !yt_news_append_bytes(news, position, error))
 		return false;
-	state->ship_fighters = attack_double_add(attack_double_sub(attack_double_sub(
+	state->ship_fighters = qb_double_add(qb_double_subtract(qb_double_subtract(
 	    (double)state->current.fighters, state->attacker_loss),
 	    state->defender_loss), state->deployed_fighters);
 	state->current.fighters = (float)state->ship_fighters;
@@ -806,9 +790,9 @@ yt_session_attack_deployed(struct yt_session *session,
 		return false;
 
 	do {
-		double remaining_attacker = attack_double_sub(commitment,
+		double remaining_attacker = qb_double_subtract(commitment,
 		    attacker_loss);
-		double remaining_defender = attack_double_sub(old_count,
+		double remaining_defender = qb_double_subtract(old_count,
 		    defender_loss);
 		volatile double ratio;
 
@@ -873,17 +857,17 @@ yt_session_attack_deployed(struct yt_session *session,
 		if (!yt_random_next(&session->door->game.random, &last_draw, error))
 			return false;
 		if (yt_hostile_attack_loses_attacker(current.cloak, last_draw))
-			attacker_loss = attack_double_add(attacker_loss, (double)quantum);
+			attacker_loss = qb_double_add(attacker_loss, (double)quantum);
 		else
-			defender_loss = attack_double_add(defender_loss, (double)quantum);
+			defender_loss = qb_double_add(defender_loss, (double)quantum);
 	} while (attacker_loss < commitment && defender_loss < old_count);
 	if (attacker_loss > commitment)
 		attacker_loss = commitment;
 	if (defender_loss > old_count)
 		defender_loss = old_count;
 	if (!surrendered) {
-		ship_fighters = attack_double_sub(old_ship, attacker_loss);
-		deployed_remaining = attack_double_sub(old_count, defender_loss);
+		ship_fighters = qb_double_subtract(old_ship, attacker_loss);
+		deployed_remaining = qb_double_subtract(old_count, defender_loss);
 		current.fighters = (float)ship_fighters;
 		session->combat_ship_fighters = ship_fighters;
 		session->player = current;
@@ -1030,9 +1014,9 @@ bribe_accept(struct yt_session *session, double cached_defenders,
 	    || !session_reload_player(session, error))
 		return false;
 	current = session->player;
-	fighters = attack_double_add((double)current.fighters,
+	fighters = qb_double_add((double)current.fighters,
 	    cached_defenders);
-	credits = attack_double_sub((double)current.credits, (double)offer);
+	credits = qb_double_subtract((double)current.credits, (double)offer);
 	yt_bribe_player_overlay(&current, (float)fighters, (float)credits);
 	return yt_database_write(&session->door->game.database,
 	    (size_t)player_record, &current.record, error);

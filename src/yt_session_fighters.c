@@ -6,14 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static double
-double_add(double left, double right)
-{
-	volatile double result = left + right;
-
-	return result;
-}
-
 bool
 yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 {
@@ -55,7 +47,7 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 		return session_present_alert(session, foreign_refusal,
 		    sizeof(foreign_refusal) - 1U,
 		    "fighter foreign-force refusal", error);
-	available = double_add((double)first_sector.fighters,
+	available = qb_double_add((double)first_sector.fighters,
 	    (double)session->player.fighters);
 	amount = qb_str_double(number, sizeof(number), available);
 	if (amount < 0 || snprintf(row, sizeof(row),
@@ -102,7 +94,7 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 	if (desired < 0.0f)
 		return true;
 	delta = qb_single_subtract(first_sector.fighters, desired);
-	remaining = (float)double_add((double)session->player.fighters,
+	remaining = (float)qb_double_add((double)session->player.fighters,
 	    (double)delta);
 	if (remaining < 0.0f)
 		return session_present_alert(session, insufficient,

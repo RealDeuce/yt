@@ -47,6 +47,10 @@ float qb_single_add(float left, float right);
 float qb_single_subtract(float left, float right);
 float qb_single_multiply(float left, float right);
 float qb_single_divide(float left, float right);
+double qb_double_add(double left, double right);
+double qb_double_subtract(double left, double right);
+double qb_double_multiply(double left, double right);
+double qb_double_divide(double left, double right);
 
 double qb_int(double value);
 double qb_fix(double value);

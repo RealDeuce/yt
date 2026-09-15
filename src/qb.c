@@ -208,6 +208,38 @@ qb_single_divide(float left, float right)
 }
 
 double
+qb_double_add(double left, double right)
+{
+	volatile double result = left + right;
+
+	return result;
+}
+
+double
+qb_double_subtract(double left, double right)
+{
+	volatile double result = left - right;
+
+	return result;
+}
+
+double
+qb_double_multiply(double left, double right)
+{
+	volatile double result = left * right;
+
+	return result;
+}
+
+double
+qb_double_divide(double left, double right)
+{
+	volatile double result = left / right;
+
+	return result;
+}
+
+double
 qb_int(double value)
 {
 	return floor(value);
