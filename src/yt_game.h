@@ -36,13 +36,6 @@ struct yt_player {
 	float mines;
 };
 
-typedef bool (*yt_credit_mutation_apply_fn)(void *context,
-	float player_record, float argument, struct yt_player *player,
-	bool *hydrated, struct yt_error *error);
-typedef void (*yt_player_record_store_fn)(void *context,
-	const uint8_t raw[4]);
-typedef bool (*yt_destroyed_truth_fn)(void *context);
-
 bool yt_game_load_startup_configuration(struct yt_game *game,
 	const char *path, bool local_mode, struct yt_player_cache *player_cache,
 	float disruption_sectors[2], float *local_screen,
@@ -272,12 +265,6 @@ bool yt_projectile_plasma_firing_row(float counter, uint8_t *row,
     size_t capacity, size_t *length);
 float yt_projectile_plasma_next_firing(float counter);
 
-typedef bool (*yt_projectile_output_fn)(void *context,
-    const uint8_t *text, size_t length, struct yt_error *error);
-typedef bool (*yt_projectile_random_fn)(void *context, float *value,
-    struct yt_error *error);
-typedef bool (*yt_projectile_sound_fn)(void *context,
-    float selector, struct yt_error *error);
 bool yt_projectile_is_black_hole(float hop, float first, float second);
 bool yt_projectile_cruise_reroute_row(float hop, uint8_t *row,
     size_t capacity, size_t *length);
@@ -1018,14 +1005,6 @@ enum yt_projectile_target_result yt_projectile_target_response(
 float yt_projectile_quantity_response(const char *response);
 void yt_projectile_debit_overlay(struct yt_player *player, bool plasma,
     float amount);
-typedef bool (*yt_projectile_resolver_fn)(void *context, float *origin,
-    float *target, float *amount, bool plasma, int *counterattack,
-    int *xannor_provoker, struct yt_error *error);
-bool yt_projectile_commit(struct yt_game *game, int player_record,
-    struct yt_player *player, bool plasma, float *origin, float target,
-    float amount, bool *destroyed, int *counterattack, int *xannor_provoker,
-    yt_projectile_resolver_fn resolver, void *resolver_context,
-    struct yt_error *error);
 float yt_counterlaunch_score_count(double cached_score, float retained);
 void yt_counterlaunch_debit_overlay(struct yt_player *fresh_target,
     float first_available, float selected_count);

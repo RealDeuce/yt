@@ -84,7 +84,7 @@ struct test_projectile_command_ops {
 	bool (*xannor)(void *context, int *xannor_provoker,
 	    struct yt_error *error);
 	bool (*fatal)(void *context, struct yt_error *error);
-	yt_destroyed_truth_fn destroyed_truth;
+	bool (*destroyed_truth)(void *context);
 	bool (*counterattack_truth)(void *context);
 	bool (*xannor_truth)(void *context);
 	void (*store_turn_gate_result)(void *context, const uint8_t raw[4]);

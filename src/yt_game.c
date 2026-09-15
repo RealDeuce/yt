@@ -319,34 +319,6 @@ yt_projectile_debit_overlay(struct yt_player *player, bool plasma,
 	(void)yt_record_set_number(&player->record, offset, remaining);
 }
 
-bool
-yt_projectile_commit(struct yt_game *game, int player_record,
-    struct yt_player *player, bool plasma, float *origin, float target,
-    float amount, bool *destroyed, int *counterattack, int *xannor_provoker,
-    yt_projectile_resolver_fn resolver, void *resolver_context,
-    struct yt_error *error)
-{
-	if (game == NULL || player == NULL || origin == NULL
-	    || destroyed == NULL || counterattack == NULL
-	    || xannor_provoker == NULL || resolver == NULL) {
-		if (error != NULL) {
-			error->status = YT_INVALID;
-			error->system_error = 0;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "projectile commit");
-		}
-		return false;
-	}
-	yt_projectile_debit_overlay(player, plasma, amount);
-	if (!yt_game_write_player(game, player_record, player, error)
-	    || !yt_database_flush(&game->database, error))
-		return false;
-	/* YT:22AC clears the fatal result only after the PUT completes. */
-	*destroyed = false;
-	return resolver(resolver_context, origin, &target, &amount, plasma,
-	    counterattack, xannor_provoker, error);
-}
-
 float
 yt_counterlaunch_score_count(double cached_score, float retained)
 {
