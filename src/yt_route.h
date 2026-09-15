@@ -8,7 +8,6 @@ enum yt_route_outcome {
 	YT_ROUTE_SAME,
 	YT_ROUTE_FOUND,
 	YT_ROUTE_NOT_FOUND,
-	YT_ROUTE_BACK_EDGE,
 };
 
 #endif

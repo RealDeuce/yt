@@ -1,15 +1,7 @@
 #include "yt_session_internal.h"
 
-#include <limits.h>
 #include <stdio.h>
 #include <string.h>
-
-static _Noreturn void
-route_reconstruction_back_edge(void)
-{
-	for (;;) {
-	}
-}
 
 static bool
 route_error(struct yt_error *error, const char *operation)
@@ -79,7 +71,6 @@ route_build(struct yt_session *session, float start_value,
     int16_t next_hop[YT_ROUTE_CAPACITY], float *status,
     enum yt_route_outcome *outcome, struct yt_error *error)
 {
-	uint8_t seen[(YT_ROUTE_CAPACITY + CHAR_BIT - 1U) / CHAR_BIT];
 	const float *avoid = session->navigation.avoided_sectors;
 	uint8_t conversion_mode = session->presentation.sound.conversion_mode;
 	bool avoid_enabled;
@@ -198,12 +189,10 @@ route_build(struct yt_session *session, float start_value,
 		return true;
 	}
 
-	memset(seen, 0, sizeof(seen));
 	head = destination;
 	while (predecessor[head] != -1) {
 		int16_t child;
 		int16_t prior;
-		size_t key;
 
 		if (!route_integer_at((float)head, conversion_mode, &child, error,
 		    "route reconstruction child CINT",
@@ -211,13 +200,6 @@ route_build(struct yt_session *session, float start_value,
 			return false;
 		if (!route_index_valid(child))
 			return route_error(error, "route reconstruction child");
-		key = (size_t)child;
-		if ((seen[key / CHAR_BIT]
-		    & (uint8_t)(1U << (key % CHAR_BIT))) != 0U) {
-			*outcome = YT_ROUTE_BACK_EDGE;
-			return true;
-		}
-		seen[key / CHAR_BIT] |= (uint8_t)(1U << (key % CHAR_BIT));
 		prior = predecessor[child];
 		if (!route_integer_at((float)prior, conversion_mode, &prior,
 		    error, "route reconstruction parent CINT",
@@ -256,8 +238,6 @@ yt_session_build_route(struct yt_session *session, float start,
 	    plan->next_hop, &status, &outcome, error);
 	if (!success)
 		return false;
-	if (outcome == YT_ROUTE_BACK_EDGE)
-		route_reconstruction_back_edge();
 	*found = outcome == YT_ROUTE_FOUND || outcome == YT_ROUTE_SAME;
 	if (route_outcome != NULL)
 		*route_outcome = outcome;
