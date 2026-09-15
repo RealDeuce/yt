@@ -6,11 +6,6 @@
 #include <math.h>
 #include <string.h>
 
-static float
-planet_current_minute(void)
-{
-	return qb_single_divide((float)yt_platform_timer(), 60.0f);
-}
 bool
 yt_session_planet_assault(struct yt_session *session,
     uint32_t physical_planet,
@@ -256,7 +251,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 		return false;
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
-	minute = floorf(planet_current_minute());
+	minute = floorf(qb_single_divide((float)yt_platform_timer(), 60.0f));
 	if (!read_planet_physical(session, selected_physical, &planet, error))
 		return false;
 	yt_planet_creation_timestamp_overlay(&planet, (float)today, minute);

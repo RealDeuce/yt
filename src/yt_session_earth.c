@@ -75,14 +75,6 @@ session_port_owner_row_capture(struct yt_session *session,
 	    "port owner row", error);
 }
 
-static bool
-port_owner_row(struct yt_session *session, const struct yt_port *port,
-    struct yt_error *error)
-{
-	return session_port_owner_row_capture(session, port, NULL, 0U, NULL,
-	    error);
-}
-
 bool
 session_earth_receipt(struct yt_session *session, const struct yt_port *cached_earth,
     float cost,
@@ -633,7 +625,8 @@ session_earth_report(struct yt_session *session, struct yt_port *earth,
 	    "Commerce report for Earth: %s %s", date, time_text) < 0
 	    || !session_present_paged_line(session, (const uint8_t *)title,
 	    strlen(title), "Earth report title", error)
-	    || !port_owner_row(session, earth, error))
+	    || !session_port_owner_row_capture(session, earth, NULL, 0U, NULL,
+	    error))
 		return false;
 	memcpy(discount, session->clearance_discounts, sizeof(discount));
 	yt_earth_prices(discount, price);

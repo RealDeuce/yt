@@ -138,14 +138,6 @@ session_read_player_expression(struct yt_session *session,
 }
 
 static bool
-scanner_read_current_player(struct yt_session *session,
-    struct yt_error *error)
-{
-	return yt_game_read_player(&session->door->game, session_record(session),
-	    &session->player, error);
-}
-
-static bool
 scanner_read_team_overlay(struct yt_session *session, float team,
     struct yt_sector *overlay, struct yt_error *error)
 {
@@ -465,11 +457,13 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 	yt_sector_pager_begin(&private_pager);
 	if (!adjacent) {
 		session_set_foreground(session, 1.0f);
-		if (!scanner_read_current_player(session, error))
+		if (!yt_game_read_player(&session->door->game,
+		    session_record(session), &session->player, error))
 			return false;
 		current = session->player.sector;
 		if (!display_sector_one(session, current, &private_pager, error)
-		    || !scanner_read_current_player(session, error))
+		    || !yt_game_read_player(&session->door->game,
+		    session_record(session), &session->player, error))
 			return false;
 		session_set_foreground(session, saved_foreground);
 		return true;
@@ -503,7 +497,8 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 	    (const uint8_t *)"[ End Sensor Scan ]",
 	    strlen("[ End Sensor Scan ]"), SESSION_PRESENT_BOLD_LINE,
 	    "adjacent-sector sensor ending", error)
-	    || !scanner_read_current_player(session, error))
+	    || !yt_game_read_player(&session->door->game,
+	    session_record(session), &session->player, error))
 		return false;
 	session_set_foreground(session, saved_foreground);
 	return true;
@@ -521,7 +516,8 @@ yt_session_display_current_sector_cached(struct yt_session *session,
 	yt_sector_pager_begin(&private_pager);
 	session_set_foreground(session, 1.0f);
 	ok = display_sector_one(session, current, &private_pager, error)
-	    && scanner_read_current_player(session, error);
+	    && yt_game_read_player(&session->door->game,
+	    session_record(session), &session->player, error);
 	if (ok) {
 		session_set_foreground(session, saved_foreground);
 	}

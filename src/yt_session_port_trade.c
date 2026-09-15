@@ -118,14 +118,6 @@ commodity_prepare(const struct yt_port_market_state *market,
 	return true;
 }
 
-static bool
-commodity_write_port(struct yt_session *session, uint32_t physical_record,
-    const struct yt_port *port, struct yt_error *error)
-{
-	return yt_database_write_durable(&session->door->game.database,
-	    (size_t)physical_record, &port->record, error);
-}
-
 bool
 yt_session_trade_commodity(struct yt_session *session,
     const struct yt_port_market_state *market, size_t commodity,
@@ -309,8 +301,9 @@ yt_session_trade_commodity(struct yt_session *session,
 		    &fresh_port, error))
 			return false;
 		yt_trade_treasury_overlay(&fresh_port, receipt);
-		if (!commodity_write_port(session, market->port_physical_record,
-		    &fresh_port, error))
+		if (!yt_database_write_durable(&session->door->game.database,
+		    (size_t)market->port_physical_record, &fresh_port.record,
+		    error))
 			return false;
 	}
 	direction = terms.factor > 0.0f ? 1.0f
@@ -338,8 +331,8 @@ yt_session_trade_commodity(struct yt_session *session,
 	    YT_F49 + commodity * 4U, single_raw))
 		return commodity_error(error, "commodity trade stock overlay");
 	fresh_port.stock[commodity] = qb_mbf32_decode(single_raw);
-	return commodity_write_port(session, market->port_physical_record,
-	    &fresh_port, error);
+	return yt_database_write_durable(&session->door->game.database,
+	    (size_t)market->port_physical_record, &fresh_port.record, error);
 }
 
 bool
