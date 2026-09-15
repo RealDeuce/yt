@@ -291,6 +291,7 @@ bool session_earth_lottery(struct yt_session *session,
 void session_clear_queue(struct yt_session *session);
 bool session_append_radio_bytes(const uint8_t *text, size_t length,
     float sender, float recipient, struct yt_error *error);
+int session_radio_body_key(struct yt_session *session);
 bool session_port_owner_row_capture(struct yt_session *session,
     const struct yt_port *port, uint8_t *captured_name,
     size_t captured_capacity, size_t *captured_length,

@@ -116,6 +116,8 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_computer_menu.c
     src/yt_session_computer_route.c
     src/yt_session_radio.c
+    src/yt_session_radio_compose.c
+    src/yt_session_radio_read.c
     src/yt_session_sector.c
     src/yt_session_sector_entry.c
     src/yt_session_shell.c
