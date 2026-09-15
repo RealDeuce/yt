@@ -315,7 +315,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	return true;
 }
 
-bool
+static bool
 yt_session_computer_owner_is_friendly(struct yt_session *session, float owner,
     bool *friendly, struct yt_error *error)
 {
@@ -351,7 +351,7 @@ yt_session_computer_owner_is_friendly(struct yt_session *session, float owner,
 	return true;
 }
 
-bool
+static bool
 yt_session_computer_check_port_visibility(struct yt_session *session,
     const struct yt_sector *sector, float cached_team, bool *unavailable,
     struct yt_error *error)

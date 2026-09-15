@@ -367,11 +367,6 @@ bool yt_session_radio_read(struct yt_session *session, bool log_mode,
     struct yt_error *error);
 bool yt_session_command_team(struct yt_session *session,
     struct yt_error *error);
-bool yt_session_computer_check_port_visibility(struct yt_session *session,
-    const struct yt_sector *sector, float cached_team, bool *unavailable,
-    struct yt_error *error);
-bool yt_session_computer_owner_is_friendly(struct yt_session *session,
-    float owner, bool *friendly, struct yt_error *error);
 bool yt_session_generate_scoreboard(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_computer_scoreboard(struct yt_session *session,
