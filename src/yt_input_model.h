@@ -184,14 +184,6 @@ struct yt_confirmation_transform {
 	bool prompt_cleared;
 };
 
-typedef bool (*yt_input_repeat_emit_fn)(void *context,
-    const uint8_t *prefix, size_t length);
-typedef bool (*yt_input_submit_fn)(void *context);
-typedef bool (*yt_input_echo_fn)(void *context,
-    const uint8_t *local, size_t local_length, const uint8_t *remote,
-    size_t remote_length);
-typedef bool (*yt_input_continue_fn)(void *context);
-
 enum yt_input_drain_reason {
 	YT_INPUT_DRAIN_CONTINUE,
 	YT_INPUT_DRAIN_LOCAL_COMPLETE,
@@ -222,22 +214,7 @@ bool yt_input_queue_prepend_program(char *queue, size_t capacity,
 	size_t program_length);
 bool yt_input_repeat_requested(bool queued,
     const struct yt_input_value *selected);
-bool yt_input_repeat_current_command(char *accumulator,
-    size_t accumulator_capacity, const char *saved_command,
-    size_t saved_capacity, char *paged_text, size_t paged_text_capacity,
-    float *newline_flag, uint8_t *selected_key,
-    yt_input_repeat_emit_fn emit, void *context);
 bool yt_input_submit_requested(uint8_t selected_key);
-bool yt_input_submit(float *newline_flag,
-    yt_input_submit_fn line, void *context);
-bool yt_input_apply_backspace(uint8_t selected_key, char *accumulator,
-    size_t accumulator_capacity, bool *handled,
-    yt_input_echo_fn echo, void *context);
-bool yt_input_append_printable(uint8_t selected_key, char *accumulator,
-    size_t accumulator_capacity, size_t response_capacity,
-    char *paged_text, size_t paged_text_capacity, float *newline_flag,
-    bool *handled, yt_input_echo_fn echo, yt_input_continue_fn carrier,
-    void *context);
 bool yt_input_command_save_requested(const char *text, size_t capacity,
 	bool *requested);
 bool yt_input_command_save_staged(char *text, size_t text_capacity,

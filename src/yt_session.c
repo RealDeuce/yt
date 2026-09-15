@@ -144,57 +144,6 @@ session_close_game(struct yt_session *session)
 	}
 }
 
-static bool
-session_editor_repeat_emit(void *context, const uint8_t *prefix, size_t length)
-{
-	struct yt_session *session = context;
-
-	session_set_pager_newline(session, 1.0f);
-	return session_present_paged_row(session, prefix, length);
-}
-
-static bool
-session_editor_submit_line(void *context)
-{
-	struct yt_session *session = context;
-	struct yt_present_result presentation;
-	enum yt_present_status status;
-
-	session_set_pager_newline(session, 0.0f);
-	status = yt_present_line(NULL, 0, &session->presentation,
-	    &presentation);
-	if (status != YT_PRESENT_OK)
-		return false;
-	yt_out_present_result(&presentation);
-	return true;
-}
-
-static bool
-session_editor_echo(void *context, const uint8_t *local,
-    size_t local_length, const uint8_t *remote, size_t remote_length)
-{
-	struct yt_session *session = context;
-	struct yt_present_result presentation;
-	enum yt_present_status status;
-
-	status = yt_present_editor_echo(local, local_length, remote,
-	    remote_length, &session->presentation, &presentation);
-	if (status != YT_PRESENT_OK)
-		return false;
-	yt_out_present_result(&presentation);
-	return true;
-}
-
-static bool
-session_editor_continue(void *context)
-{
-	struct yt_session *session = context;
-
-	session_set_pager_newline(session, 1.0f);
-	od_kernel();
-	return true;
-}
-
 static float
 single_add(float left, float right)
 {
@@ -489,6 +438,8 @@ session_append_news_bytes(void *context, const uint8_t *text,
 static bool
 read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 {
+	static const uint8_t local_erase[] = {0x1d, ' ', 0x1d};
+	static const uint8_t remote_erase[] = {'\b', ' ', '\b'};
 
 	if (size == 0)
 		return false;
@@ -514,49 +465,73 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 			continue;
 		key = selected.bytes[0];
 		if (yt_input_repeat_requested(queued, &selected)) {
-			if (!yt_input_repeat_current_command(
-			    session->command_accumulator,
-			    sizeof(session->command_accumulator),
-			    session->saved_command,
-			    sizeof(session->saved_command),
-			    session->paged_text,
-			    sizeof(session->paged_text),
-			    &session->pager.newline_flag, &key,
-			    session_editor_repeat_emit, session))
+			uint8_t prefix[YT_INPUT_PENDING];
+			size_t prefix_length =
+			    strlen(session->command_accumulator);
+			size_t saved_length = strlen(session->saved_command);
+
+			if (prefix_length != 0U)
+				memcpy(prefix, session->command_accumulator,
+				    prefix_length);
+			memcpy(session->paged_text,
+			    session->command_accumulator, prefix_length + 1U);
+			session->pager.newline_flag = 1.0f;
+			if (!session_present_paged_row(session, prefix,
+			    prefix_length))
 				return false;
+			memmove(session->command_accumulator,
+			    session->saved_command, saved_length + 1U);
+			key = '\r';
 		}
 		if (yt_input_submit_requested(key)) {
-			if (!yt_input_submit(
-			    &session->pager.newline_flag,
-			    session_editor_submit_line, session))
+			struct yt_present_result presentation;
+			enum yt_present_status status;
+
+			session->pager.newline_flag = 0.0f;
+			status = yt_present_line(NULL, 0,
+			    &session->presentation, &presentation);
+			if (status != YT_PRESENT_OK)
 				return false;
+			yt_out_present_result(&presentation);
 			snprintf(dest, size, "%s", session->command_accumulator);
 			return true;
 		}
-		{
-			bool handled;
+		if (key == '\b' && session->command_accumulator[0] != '\0') {
+			struct yt_present_result presentation;
+			enum yt_present_status status;
+			size_t length = strlen(session->command_accumulator);
 
-			if (!yt_input_apply_backspace(key,
-			    session->command_accumulator,
-			    sizeof(session->command_accumulator), &handled,
-			    session_editor_echo, session))
+			session->command_accumulator[length - 1U] = '\0';
+			status = yt_present_editor_echo(local_erase,
+			    sizeof(local_erase), remote_erase,
+			    sizeof(remote_erase), &session->presentation,
+			    &presentation);
+			if (status != YT_PRESENT_OK)
 				return false;
-			if (handled)
-				continue;
+			yt_out_present_result(&presentation);
+			continue;
 		}
 		{
-			bool handled;
+			struct yt_present_result presentation;
+			enum yt_present_status status;
+			size_t length = strlen(session->command_accumulator);
 
-			if (!yt_input_append_printable(key,
-			    session->command_accumulator,
-			    sizeof(session->command_accumulator), size,
-			    session->paged_text, sizeof(session->paged_text),
-			    &session->pager.newline_flag, &handled,
-			    session_editor_echo,
-			    session_editor_continue, session))
-				return false;
-			if (handled)
+			if (key < 0x20U || key > 0x7fU
+			    || length + 1U >= sizeof(session->command_accumulator)
+			    || length + 1U >= size)
 				continue;
+			status = yt_present_editor_echo(&key, 1U, &key, 1U,
+			    &session->presentation, &presentation);
+			if (status != YT_PRESENT_OK)
+				return false;
+			yt_out_present_result(&presentation);
+			session->command_accumulator[length] = (char)key;
+			session->command_accumulator[length + 1U] = '\0';
+			session->paged_text[0] = (char)key;
+			session->paged_text[1] = '\0';
+			session->pager.newline_flag = 1.0f;
+			od_kernel();
+			continue;
 		}
 	}
 }

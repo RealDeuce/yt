@@ -1,5 +1,6 @@
 #include "yt_presentation.h"
 #include "yt_pager.h"
+#include "input_editor_test_model.h"
 #include "yt_main_error.h"
 #include "yt_game.h"
 #include "yt_text.h"

@@ -1,4 +1,5 @@
 #include "yt_input_model.h"
+#include "input_editor_test_model.h"
 #include "qb.h"
 #include "yt_pager.h"
 #include "yt_platform.h"
