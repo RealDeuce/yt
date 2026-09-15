@@ -1,5 +1,7 @@
 #include "yt_game_internal.h"
 
+#include "qb.h"
+
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -53,4 +55,30 @@ yt_game_join_parts(const uint8_t *first, size_t first_length,
 	}
 	*length = needed;
 	return true;
+}
+
+bool
+yt_game_row_append(struct yt_game_row_builder *builder, const void *data,
+    size_t length)
+{
+	if (length > builder->capacity - builder->length
+	    || (length != 0U && (builder->row == NULL || data == NULL)))
+		return false;
+	if (length != 0U)
+		memcpy(builder->row + builder->length, data, length);
+	builder->length += length;
+	return true;
+}
+
+bool
+yt_game_row_number(struct yt_game_row_builder *builder, float value,
+    bool promoted)
+{
+	char number[64];
+	int length = promoted
+	    ? qb_str_double(number, sizeof(number), (double)value)
+	    : qb_str_single(number, sizeof(number), value);
+
+	return length >= 0
+	    && yt_game_row_append(builder, number, (size_t)length);
 }

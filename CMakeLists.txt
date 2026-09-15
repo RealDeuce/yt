@@ -81,13 +81,21 @@ set(YT_GAME_SOURCES
     src/yt_game.c
     src/yt_game_combat.c
     src/yt_game_commands.c
+    src/yt_game_earth.c
+    src/yt_game_hazards.c
     src/yt_game_internal.c
+    src/yt_game_market.c
     src/yt_game_nearest.c
     src/yt_game_planet.c
+    src/yt_game_planet_inventory.c
+    src/yt_game_player_combat.c
     src/yt_game_port.c
     src/yt_game_projectile.c
+    src/yt_game_projectile_impact.c
+    src/yt_game_radio.c
     src/yt_game_records.c
     src/yt_game_salvage.c
+    src/yt_game_sector.c
     src/yt_init.c
     src/yt_maint.c
     src/yt_names.c
