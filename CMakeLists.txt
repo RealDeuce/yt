@@ -122,6 +122,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_fighters.c
     src/yt_session_genesis.c
     src/yt_session_info.c
+    src/yt_session_io.c
     src/yt_session_lockout.c
     src/yt_session_mines.c
     src/yt_session_movement.c
