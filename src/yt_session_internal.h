@@ -53,6 +53,19 @@ struct session_navigation_state {
 	bool self_mines_suppressed;
 };
 
+struct session_earth_state {
+	float clearance_discounts[4];
+	bool report_seen;
+	bool anti_cloak_enabled;
+};
+
+struct session_spy_state {
+	int count;
+	int sectors[3];
+	int last_findings[3];
+	bool found;
+};
+
 struct yt_session {
 	struct yt_door *door;
 	struct yt_error *error;
@@ -60,22 +73,17 @@ struct yt_session {
 	int active_player_record;
 	struct session_projectile_state projectile;
 	struct session_navigation_state navigation;
+	struct session_earth_state earth;
+	struct session_spy_state spies;
 	bool destroyed;
-	bool earth_report_seen;
-	bool anti_cloak_enabled;
 	float low_time_remembered;
 	float inherited_loop_index;
 	float planet_record_expression;
 	float shared_target_record;
 	float shared_status;
-	int spy_count;
-	int spy_sectors[3];
-	int spy_markers[3];
-	bool spy_found;
 	struct yt_player player;
 	struct session_combat_state combat;
 	float market_bases[3];
-	float clearance_discounts[4];
 	struct yt_planet_economy planet_economy;
 	float disruption_sectors[2];
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];

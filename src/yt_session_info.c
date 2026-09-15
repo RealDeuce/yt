@@ -280,7 +280,7 @@ yt_session_show_ship(struct yt_session *session, struct yt_error *error)
 	size_t cached_name_length = session->cached_player_name_length;
 	float saved_foreground = session->presentation.foreground;
 	float cloak_percent;
-	bool anti_cloak = session->anti_cloak_enabled;
+	bool anti_cloak = session->earth.anti_cloak_enabled;
 	int length;
 
 	if (!info_refresh_time(session, error))

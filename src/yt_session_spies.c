@@ -25,13 +25,13 @@ yt_session_list_spies(struct yt_session *session, struct yt_error *error)
 	static const uint8_t none[] = "You do not have any spies!";
 	size_t index;
 
-	if (session->spy_count == 0)
+	if (session->spies.count == 0)
 		return session_present_alert(session, none, sizeof(none) - 1U,
 		    "active-spy none notice", error);
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "active-spy leading blank", error))
 		return false;
-	for (index = 0U; index < (size_t)session->spy_count; ++index) {
+	for (index = 0U; index < (size_t)session->spies.count; ++index) {
 		char counter[64];
 		char target[64];
 		uint8_t row[160];
@@ -42,7 +42,7 @@ yt_session_list_spies(struct yt_session *session, struct yt_error *error)
 		counter_length = qb_str_single(counter, sizeof(counter),
 		    (float)(index + 1U));
 		target_length = qb_str_integer(target, sizeof(target),
-		    (int16_t)session->spy_sectors[index]);
+		    (int16_t)session->spies.sectors[index]);
 		if (counter_length < 0 || target_length < 0)
 			return false;
 		row_length = snprintf((char *)row, sizeof(row),
@@ -95,10 +95,10 @@ spy_first_finding(struct yt_session *session, size_t spy, int sector,
 
 	if (!spy_line(session, NULL, 0U, SESSION_PRESENT_LINE, error))
 		return false;
-	if (session->spy_found)
+	if (session->spies.found)
 		return true;
-	session->spy_found = true;
-	session->spy_markers[spy] = sector;
+	session->spies.found = true;
+	session->spies.last_findings[spy] = sector;
 	if (!session_sound(session, 9.0f, "spy finding sound", error))
 		return false;
 	amount = qb_str_single(spy_number, sizeof(spy_number), (float)(spy + 1U));
@@ -197,7 +197,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 	};
 	float last_player_record = session_sector_offset(session);
 	int current_player_record = session_record(session);
-	int active_spies = session->spy_count;
+	int active_spies = session->spies.count;
 	int spy_index;
 
 	if (active_spies == 0)
@@ -206,14 +206,14 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 		struct yt_sector sector;
 		bool overflow;
 		size_t spy = (size_t)spy_index;
-		int sector_number = session->spy_sectors[spy];
+		int sector_number = session->spies.sectors[spy];
 		bool first_ship = true;
 		int candidate;
 
 		session_set_foreground(session, 7.0f);
-		if (!(sector_number == session->spy_markers[spy]
+		if (!(sector_number == session->spies.last_findings[spy]
 		    && sector_number != 0)) {
-			session->spy_found = false;
+			session->spies.found = false;
 			if (!session_read_sector(session, sector_number, &sector,
 			    error))
 				return false;
@@ -368,7 +368,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 					return false;
 			}
 		}
-		if (session->spy_found) {
+		if (session->spies.found) {
 			if (!spy_line(session, NULL, 0U, SESSION_PRESENT_LINE, error)
 			    || !session_press_any_key(session, true, error))
 				return false;
@@ -398,7 +398,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 					return spy_failure(error,
 					    "active spy RND slot");
 				if (warps[selected] != 0) {
-					session->spy_sectors[spy] = warps[selected];
+					session->spies.sectors[spy] = warps[selected];
 					break;
 				}
 			}

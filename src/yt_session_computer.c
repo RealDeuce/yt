@@ -145,7 +145,7 @@ yt_session_computer_port_report(struct yt_session *session,
 
 		if (!session_earth_report(session, &earth, price, error))
 			return false;
-		session->earth_report_seen = false;
+		session->earth.report_seen = false;
 		return true;
 	}
 	{

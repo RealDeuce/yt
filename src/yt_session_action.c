@@ -53,7 +53,7 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 	if (!yt_record_set_raw_number(&session->player.record, YT_F49, turn_raw))
 		return false;
 	quotient = qb_single_divide(session->player.turns, turn_divisor);
-	anti_cloak_allows = !session->anti_cloak_enabled;
+	anti_cloak_allows = !session->earth.anti_cloak_enabled;
 	if (quotient == floorf(quotient) && anti_cloak_allows) {
 		float display;
 		float saved_foreground;

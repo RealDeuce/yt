@@ -211,7 +211,7 @@ earth_purchase_spies(struct yt_session *session,
 		float cost;
 		int quantity;
 		int spy_index;
-		int active_count = session->spy_count;
+		int active_count = session->spies.count;
 		bool blank;
 
 		if (!session_present_text(session, NULL, 0,
@@ -281,12 +281,12 @@ earth_purchase_spies(struct yt_session *session,
 				if (overflow)
 					return session_range_error(error,
 					    "Earth Spy sector CINT");
-				session->spy_sectors[active_count + spy_index] =
+				session->spies.sectors[active_count + spy_index] =
 				    (int)selected;
 				break;
 			}
 		}
-		session->spy_count = active_count + quantity;
+		session->spies.count = active_count + quantity;
 		if (!yt_session_list_spies(session, error)
 		    || !session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "spy purchase pause blank", error)
@@ -481,7 +481,7 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 		if (choice < 1 || choice > 9) {
 			int position;
 
-			session->earth_report_seen = false;
+			session->earth.report_seen = false;
 			position = yt_earth_selector_position(line);
 			if (position == 0) {
 				if (!session_present_alert(session, invalid,
@@ -565,7 +565,7 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 			    error)
 			    || !earth_anti_cloak(session, 1000000000.0f, error))
 				return false;
-			session->anti_cloak_enabled = true;
+			session->earth.anti_cloak_enabled = true;
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE, "Earth Anti-Cloak pause blank", error)
 			    || !session_present_timed_paged_row(session, pause, sizeof(pause) - 1U,

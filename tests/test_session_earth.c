@@ -34,7 +34,7 @@ test_earth_store_exit(void)
 	session.door = &door;
 	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
-	session.earth_report_seen = true;
+	session.earth.report_seen = true;
 	memcpy(session.queue, leave, sizeof(leave) - 1U);
 	session.queue_length = sizeof(leave) - 1U;
 	door.game.config.sector_offset = 51.0f;
@@ -60,7 +60,7 @@ test_earth_store_exit(void)
 	CHECK(session.queue_position == session.queue_length);
 	CHECK(session.player.credits == 123456.0f);
 	CHECK(session.player.sector == 1.0f);
-	CHECK(session.earth_report_seen == false);
+	CHECK(session.earth.report_seen == false);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);
 }

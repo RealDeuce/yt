@@ -109,9 +109,9 @@ yt_session_clearance(struct yt_session *session, bool create,
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "clearance leading blank", error))
 		return false;
-	for (index = 0U; index < YT_ARRAY_LEN(session->clearance_discounts);
+	for (index = 0U; index < YT_ARRAY_LEN(session->earth.clearance_discounts);
 	    ++index) {
-		float discount = session->clearance_discounts[index];
+		float discount = session->earth.clearance_discounts[index];
 		float draw;
 		char percent[64];
 		char row[192];
@@ -123,13 +123,13 @@ yt_session_clearance(struct yt_session *session, bool create,
 			if (!yt_random_next(&session->door->game.random, &draw, error))
 				return false;
 			discount = draw;
-			session->clearance_discounts[index] = discount;
+			session->earth.clearance_discounts[index] = discount;
 		}
 		if (!yt_clearance_normalize(index, &discount)) {
-			session->clearance_discounts[index] = 0.0f;
+			session->earth.clearance_discounts[index] = 0.0f;
 			continue;
 		}
-		session->clearance_discounts[index] = discount;
+		session->earth.clearance_discounts[index] = discount;
 		if (qb_str_single(percent, sizeof(percent),
 		    yt_clearance_percentage(discount)) < 0)
 			return false;
@@ -226,16 +226,16 @@ session_earth_report(struct yt_session *session, struct yt_port *earth,
 	    || !session_port_owner_row_capture(session, earth, NULL, 0U, NULL,
 	    error))
 		return false;
-	memcpy(discount, session->clearance_discounts, sizeof(discount));
+	memcpy(discount, session->earth.clearance_discounts, sizeof(discount));
 	yt_earth_prices(discount, price);
-	if (!session->earth_report_seen) {
+	if (!session->earth.report_seen) {
 		if (!yt_session_clearance(session, false, error))
 			return false;
 	}
 	else if (!session_present_text(session, NULL, 0,
 	    SESSION_PRESENT_LINE, "Earth report ordinary blank", error))
 		return false;
-	session->earth_report_seen = true;
+	session->earth.report_seen = true;
 	if (!session_reload_player(session, error))
 		return false;
 	if (!session_present_paged_row(session, separator, sizeof(separator) - 1U)

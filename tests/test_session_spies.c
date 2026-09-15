@@ -25,19 +25,19 @@ test_active_spy_list(void)
 	memset(&session, 0, sizeof(session));
 	session.door = &door;
 	session.pager.nonstop = -1.0f;
-	session.spy_count = 2;
-	session.spy_sectors[0] = 7;
-	session.spy_sectors[1] = 19;
+	session.spies.count = 2;
+	session.spies.sectors[0] = 7;
+	session.spies.sectors[1] = 19;
 	yt_error_clear(&error);
 	CHECK(yt_session_list_spies(&session, &error));
-	CHECK(session.spy_count == 2);
-	CHECK(session.spy_sectors[0] == 7);
-	CHECK(session.spy_sectors[1] == 19);
+	CHECK(session.spies.count == 2);
+	CHECK(session.spies.sectors[0] == 7);
+	CHECK(session.spies.sectors[1] == 19);
 
 	memcpy(session.queue, "X", 1U);
 	session.queue_length = 1U;
 	session.queue_position = 0U;
-	session.spy_count = 0;
+	session.spies.count = 0;
 	CHECK(yt_session_list_spies(&session, &error));
 	CHECK(session.queue_length == 0U);
 }
