@@ -882,12 +882,6 @@ float_bits(uint32_t bits)
 	return value;
 }
 
-static bool
-draw(struct yt_random *random, float *value, struct yt_error *error)
-{
-	return yt_random_next(random, value, error);
-}
-
 bool
 yt_initializer_confirm_response(const char *response)
 {
@@ -926,7 +920,7 @@ yt_initializer_prepare_yt(struct yt_random *random,
 	yt_initializer_layout_yt(preparation);
 	if (!yt_platform_clock(&epoch_date, error)
 	    || !yt_platform_clock(&maintenance_date, error)
-	    || !draw(random, &sample, error))
+	    || !yt_random_next(random, &sample, error))
 		return false;
 	preparation->config.epoch_year = (float)(epoch_date.year % 100);
 	preparation->config.turns_per_day = 500.0f;
@@ -1068,7 +1062,7 @@ yt_initializer_bounded(struct yt_random *random, int bound, int *value,
 		set_error(error, YT_RANGE, "bounded random", "");
 		return false;
 	}
-	if (!draw(random, &sample, error))
+	if (!yt_random_next(random, &sample, error))
 		return false;
 	*value = (int)floorf(single_mul(sample, (float)bound)) + 1;
 	return true;
@@ -1126,7 +1120,8 @@ yt_generate_port_name(struct yt_random *random, char name[42],
 		set_error(error, YT_INVALID, "compiled port-name pool", "");
 		return false;
 	}
-	if (!draw(random, &first, error) || !draw(random, &second, error))
+	if (!yt_random_next(random, &first, error)
+	    || !yt_random_next(random, &second, error))
 		return false;
 	parts = (int)floorf(single_mul(single_mul(first, second), 3.0f)) + 2;
 	name[0] = '\0';
@@ -1137,7 +1132,7 @@ yt_generate_port_name(struct yt_random *random, char name[42],
 		int selected;
 		size_t length;
 
-		if (!draw(random, &sample, error))
+		if (!yt_random_next(random, &sample, error))
 			return false;
 		selected = (int)floorf(single_mul(sample,
 		    (float)YT_NAME_TOKENS));
@@ -1203,7 +1198,7 @@ randomize_sector(struct world *world, int sector, struct yt_random *random,
 		for (slot = 0; slot < 6; ++slot) {
 			float probability;
 
-			if (!draw(random, &probability, error))
+			if (!yt_random_next(random, &probability, error))
 				return false;
 			if (probability <= local_threshold && slot < 5) {
 				int distance;
@@ -1232,7 +1227,7 @@ randomize_sector(struct world *world, int sector, struct yt_random *random,
 				for (;;) {
 					int destination;
 
-					if (!draw(random, &probability, error))
+					if (!yt_random_next(random, &probability, error))
 						return false;
 					if (probability < long_threshold)
 						break;
@@ -1458,7 +1453,7 @@ build_graph(struct world *world, enum yt_initializer_family family,
 	    || !rmt_present_text(options, 0x1318U, YT_RMT_OUTPUT_LINE,
 	    " ** Building shortcuts back to sector 1", error))
 		return false;
-	if (!draw(random, &position, error))
+	if (!yt_random_next(random, &position, error))
 		return false;
 	position = single_add(single_mul(position, 400.0f), 8.0f);
 	while (position < (float)world->sectors) {
@@ -1472,7 +1467,7 @@ build_graph(struct world *world, enum yt_initializer_family family,
 		}
 		if (world->warps[selected][5] == 0)
 			world->warps[selected][5] = 1;
-		if (!draw(random, &increment, error))
+		if (!yt_random_next(random, &increment, error))
 			return false;
 		position = single_add(position, single_mul(increment, 400.0f));
 	}
@@ -1827,14 +1822,14 @@ write_world_database(struct yt_database *database,
 			return false;
 		yt_record_clear(&record);
 		for (index = 0; index < 3; ++index) {
-			if (!draw(random, &sample, error))
+			if (!yt_random_next(random, &sample, error))
 				return false;
 			yt_record_set_number(&record, YT_F61 + (size_t)index * 4U,
 			    (float)((int)floorf(single_mul(sample, 31767.0f))
 			    + 1000));
 		}
 		for (index = 0; index < 3; ++index) {
-			if (!draw(random, &sample, error))
+			if (!yt_random_next(random, &sample, error))
 				return false;
 			yt_record_set_number(&record, YT_F73 + (size_t)index * 4U,
 			    (float)(-(int)floorf(single_mul(sample, 100.0f))
@@ -1847,7 +1842,7 @@ write_world_database(struct yt_database *database,
 		if (!yt_present_text(options, 0x1c59U, YT_INIT_OUTPUT_LINE,
 		    name, error))
 			return false;
-		if (!draw(random, &sample, error))
+		if (!yt_random_next(random, &sample, error))
 			return false;
 		commodity = (int)floorf(single_mul(sample, 3.0f)) + 1;
 		yt_record_set_text(&record, (const uint8_t *)name, strlen(name));
@@ -2302,7 +2297,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			goto done;
 		config.epoch_year = (float)(current.year % 100);
 		if (!rmt_present_before_headquarters(options, &config, error)
-		    || !draw(random, &sample, error))
+		    || !yt_random_next(random, &sample, error))
 			goto done;
 		config.headquarters = (float)((int)floorf(single_mul(sample,
 		    single_add((float)world.sectors, -7.0f))) + 1);
@@ -2394,7 +2389,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 				goto done;
 			config.last_maintenance = (float)(yt_date_serial(&current,
 			    config.epoch_year, NULL) - 1);
-			if (!draw(random, &sample, error))
+			if (!yt_random_next(random, &sample, error))
 				goto done;
 			config.headquarters = (float)((int)floorf(single_mul(sample,
 			    single_add((float)world.sectors, -7.0f))) + 1);
