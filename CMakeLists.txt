@@ -141,6 +141,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_death.c
     src/yt_session_deployed_attack.c
     src/yt_session_earth.c
+    src/yt_session_earth_store.c
     src/yt_session_error.c
     src/yt_session_fighters.c
     src/yt_session_genesis.c
