@@ -112,6 +112,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_computer.c
     src/yt_session_computer_menu.c
     src/yt_session_radio.c
+    src/yt_session_sector.c
     src/yt_session_death.c
     src/yt_session_info.c
     src/yt_session_lockout.c
@@ -248,6 +249,7 @@ if(BUILD_TESTING)
     yt_add_test(test_session_projectile tests/test_session_projectile.c
         yt_runtime)
     yt_add_test(test_session_radio tests/test_session_radio.c yt_runtime)
+    yt_add_test(test_session_sector tests/test_session_sector.c yt_runtime)
     yt_add_test(test_session_spies tests/test_session_spies.c yt_runtime)
     yt_add_test(test_session_team tests/test_session_team.c yt_runtime)
     foreach(session_test
@@ -263,6 +265,7 @@ if(BUILD_TESTING)
         test_session_profit
         test_session_projectile
         test_session_radio
+        test_session_sector
         test_session_spies
         test_session_team)
         target_sources(${session_test} PRIVATE tests/session_test_runtime.c)

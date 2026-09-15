@@ -185,6 +185,10 @@ bool session_sound(struct yt_session *session, float selector,
     const char *operation, struct yt_error *error);
 bool yt_session_display_sector(struct yt_session *session, bool adjacent,
     struct yt_error *error);
+bool yt_session_display_current_sector_cached(struct yt_session *session,
+    struct yt_error *error);
+bool yt_session_sector_force_is_friendly(struct yt_session *session,
+    const struct yt_sector *sector, struct yt_error *error);
 bool session_quit_confirm(struct yt_session *session, bool *confirmed,
     struct yt_error *error);
 bool yt_session_quit(struct yt_session *session, struct yt_error *error);
