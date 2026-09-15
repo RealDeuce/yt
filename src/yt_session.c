@@ -171,8 +171,6 @@ static bool session_store_output_source(struct yt_session *session,
     const uint8_t *text, size_t length);
 bool session_present_paged_line(struct yt_session *session, const uint8_t *text,
     size_t length, const char *operation, struct yt_error *error);
-static bool computer_port_friendship(struct yt_session *session, float owner,
-    bool *friendly, struct yt_error *error);
 static bool port_report_length(struct yt_session *session, float raw,
     size_t maximum, size_t *length, const char *operation,
     struct yt_error *error);
@@ -530,8 +528,8 @@ read_database_record_at_fault(struct yt_session *session,
 	}
 }
 
-static bool
-read_player_at_fault(struct yt_session *session, int player_record,
+bool
+session_read_player_at_fault(struct yt_session *session, int player_record,
     struct yt_player *player, enum yt_basic_fault_site site,
     struct yt_error *error)
 {
@@ -546,8 +544,8 @@ read_player_at_fault(struct yt_session *session, int player_record,
 	}
 }
 
-static bool
-read_sector_at_fault(struct yt_session *session, int logical_sector,
+bool
+session_read_sector_at_fault(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, enum yt_basic_fault_site site,
     struct yt_error *error)
 {
@@ -600,7 +598,7 @@ session_reload_player(struct yt_session *session, struct yt_error *error)
 {
 	struct yt_player fresh;
 
-	if (!read_player_at_fault(session, session_record(session), &fresh,
+	if (!session_read_player_at_fault(session, session_record(session), &fresh,
 	    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET, error)
 	    || !yt_current_player_hydrate(&session->player, &fresh,
 	    session_record(session), session_sector_offset(session),
@@ -1995,7 +1993,7 @@ set_new_player_identity(struct yt_session *session, int player_record,
 
 	if (name == NULL && length != 0U)
 		return false;
-	if (!read_player_at_fault(session, player_record, &player,
+	if (!session_read_player_at_fault(session, player_record, &player,
 	    YT_BASIC_FAULT_IDENTITY_PLAYER_GET, error)) {
 		if (error != NULL && error->basic_fault_valid)
 			(void)session_route_basic_fault(session, error);
@@ -5246,7 +5244,7 @@ route_sector_reader(void *context, int logical_sector, float warps[6],
 	struct yt_session *session = context;
 	struct yt_sector sector;
 
-	if (!read_sector_at_fault(session, logical_sector, &sector,
+	if (!session_read_sector_at_fault(session, logical_sector, &sector,
 	    YT_BASIC_FAULT_ROUTE_SECTOR_GET, error))
 		return false;
 	memcpy(warps, sector.warps, sizeof(sector.warps));
@@ -8394,7 +8392,8 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		struct yt_sector current_sector;
 		size_t index;
 
-		if (!read_sector_at_fault(session, (int)session->player.sector,
+		if (!session_read_sector_at_fault(session,
+		    (int)session->player.sector,
 		    &current_sector, YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET, error))
 			return false;
 		for (index = 0; index < 6U; ++index)
@@ -8507,7 +8506,8 @@ yt_session_computer_planet_report(struct yt_session *session,
 			session->shared_target_record = qb_mbf32_decode(
 			    sector.record.bytes + YT_F85);
 			fighter_owner = session->shared_target_record;
-			if (!computer_port_friendship(session, fighter_owner,
+			if (!yt_session_computer_owner_is_friendly(session,
+			    fighter_owner,
 			    &fighter_friendly, error))
 				return false;
 			sector_fighters = session->hostile_deployed_fighters;
@@ -8536,7 +8536,8 @@ yt_session_computer_planet_report(struct yt_session *session,
 				uint8_t row[192];
 				size_t length = 0;
 
-				if (!computer_port_friendship(session, planet.owner,
+				if (!yt_session_computer_owner_is_friendly(session,
+				    planet.owner,
 				    &last_friendly, error))
 					return false;
 				last_relationship = session->shared_status;
@@ -8610,145 +8611,6 @@ yt_session_computer_planet_report(struct yt_session *session,
 	}
 }
 
-
-static bool
-computer_port_friendship(struct yt_session *session, float owner,
-    bool *friendly, struct yt_error *error)
-{
-	struct yt_player current;
-	struct yt_player other;
-
-	if (friendly == NULL)
-		return false;
-	*friendly = false;
-	session->shared_status = 0.0f;
-	if (owner < 2.0f
-	    || owner > session_sector_offset(session)
-	    || (float)session_record(session) < 2.0f
-	    || (float)session_record(session)
-	    > session_sector_offset(session))
-		return true;
-	if (owner == (float)session_record(session)) {
-		*friendly = true;
-		session->shared_status = -1.0f;
-		return true;
-	}
-	if (!read_player_at_fault(session, session_record(session), &current,
-	    YT_BASIC_FAULT_PORT_FRIENDSHIP_CURRENT_GET, error))
-		return false;
-	if (current.team == 0.0f)
-		return true;
-	if (!read_player_at_fault(session, (int)owner, &other,
-	    YT_BASIC_FAULT_PORT_FRIENDSHIP_CANDIDATE_GET, error))
-		return false;
-	*friendly = other.team == current.team;
-	if (*friendly)
-		session->shared_status = -1.0f;
-	return true;
-}
-
-bool
-yt_session_computer_check_port_visibility(struct yt_session *session,
-    const struct yt_sector *sector, float cached_team, bool *unavailable,
-    struct yt_error *error)
-{
-	bool friendly;
-
-	if (session == NULL || sector == NULL || unavailable == NULL)
-		return false;
-	session->path_marker = 0.0f;
-	if (!computer_port_friendship(session, sector->fighter_owner,
-	    &friendly, error))
-		return false;
-	session->planet_record_expression = single_add(
-	    session_planet_offset(session), session->inherited_loop_index);
-	*unavailable = (sector->port == 0.0f)
-	    | (sector->fighters > 0.0f && cached_team > 0.0f && !friendly)
-	    | (sector->fighters > 0.0f && cached_team == 0.0f
-	    && sector->fighter_owner != (float)session_record(session));
-	return true;
-}
-
-bool
-yt_session_computer_port_report(struct yt_session *session,
-    bool *enter_sector,
-    struct yt_error *error)
-{
-	static const uint8_t prompt[] = "Enter sector number port is in -=> ";
-	static const uint8_t unavailable[] = "No information available.";
-	float maximum;
-	float cached_team = session->player.team;
-	char response[80];
-	float selected;
-	int sector_number;
-	struct yt_sector sector;
-	bool denied;
-
-	if (enter_sector != NULL)
-		*enter_sector = false;
-	if (!yt_computer_port_maximum(session_port_offset(session),
-	    session_sector_offset(session), &maximum, error))
-		return false;
-	for (;;) {
-		enum yt_computer_port_selection_route route;
-
-		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "computer port sector blank", error)
-		    || !session_present_timed_paged_row(session, prompt, sizeof(prompt) - 1U,
-		    "computer port sector prompt", error)
-		    || !session_read_command(session, response, sizeof(response)))
-			return false;
-		if (!yt_computer_port_select(response, maximum, &selected,
-		    &route, error))
-			return false;
-		if (route == YT_COMPUTER_PORT_SELECTION_EMPTY)
-			return true;
-		if (route == YT_COMPUTER_PORT_SELECTION_ACCEPTED)
-			break;
-		{
-			char number[64];
-			char notice[128];
-
-			if (qb_str_single(number, sizeof(number), maximum) < 0
-			    || snprintf(notice, sizeof(notice),
-			    "Invalid sector number! Range is 1 -%s", number) < 0
-			    || !session_present_alert(session, (const uint8_t *)notice,
-			    strlen(notice), "computer port invalid sector", error))
-				return false;
-		}
-	}
-	sector_number = (int)selected;
-	if (!read_sector_at_fault(session, sector_number, &sector,
-	    YT_BASIC_FAULT_PORT_SELECTED_SECTOR_GET, error))
-		return false;
-	if (!yt_session_computer_check_port_visibility(session, &sector,
-	    cached_team, &denied, error))
-		return false;
-	if (denied)
-		return session_present_paged_line(session, unavailable,
-		    sizeof(unavailable) - 1U,
-		    "computer port unavailable", error);
-	if (sector.port == 1.0f) {
-		struct yt_port earth;
-		float price[4];
-
-		if (!session_earth_report(session, &earth, price, error))
-			return false;
-		session->earth_report_seen = false;
-		return true;
-	}
-	{
-		float sector_record_expression = yt_port_selected_expression(
-		    session_sector_offset(session),
-		    (float)sector_number);
-		struct yt_port_market_state market;
-
-		return yt_session_update_port(session, sector_number,
-		    &sector_record_expression, NULL, &market, error)
-		    && yt_session_port_report(session, (int)market.logical_port,
-		    &market, NULL, error);
-	}
-}
 
 static bool
 show_help(struct yt_session *session, struct yt_error *error)

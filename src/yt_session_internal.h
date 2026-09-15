@@ -118,6 +118,12 @@ uint32_t session_sector_basic_record(const struct yt_session *session,
     float logical_sector);
 bool session_read_sector(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, struct yt_error *error);
+bool session_read_sector_at_fault(struct yt_session *session,
+    int logical_sector, struct yt_sector *sector,
+    enum yt_basic_fault_site site, struct yt_error *error);
+bool session_read_player_at_fault(struct yt_session *session,
+    int player_record, struct yt_player *player,
+    enum yt_basic_fault_site site, struct yt_error *error);
 bool session_write_sector(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, struct yt_error *error);
 bool session_read_planet(struct yt_session *session, int logical_planet,
@@ -357,6 +363,8 @@ bool yt_session_command_team(struct yt_session *session,
 bool yt_session_computer_check_port_visibility(struct yt_session *session,
     const struct yt_sector *sector, float cached_team, bool *unavailable,
     struct yt_error *error);
+bool yt_session_computer_owner_is_friendly(struct yt_session *session,
+    float owner, bool *friendly, struct yt_error *error);
 bool yt_session_generate_scoreboard(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_computer_scoreboard(struct yt_session *session,
