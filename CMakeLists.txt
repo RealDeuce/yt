@@ -71,7 +71,6 @@ set(YT_CORE_SOURCES
     src/yt_platform.c
     src/yt_presentation.c
     src/yt_random.c
-    src/yt_route.c
     src/yt_sound.c
 	    src/yt_startup_model.c
     src/yt_text.c)
@@ -248,7 +247,7 @@ if(BUILD_TESTING)
         tests/player_death_model.c
         tests/projectile_command_model.c
         tests/projectile_plasma_route_model.c)
-    yt_add_test(test_route tests/test_route.c yt_core)
+    yt_add_test(test_route tests/test_route.c yt_runtime)
 
     yt_add_test(test_session_credit tests/test_session_credit.c yt_runtime)
     yt_add_test(test_session_action tests/test_session_action.c yt_runtime)
@@ -272,6 +271,7 @@ if(BUILD_TESTING)
     yt_add_test(test_session_spies tests/test_session_spies.c yt_runtime)
     yt_add_test(test_session_team tests/test_session_team.c yt_runtime)
     foreach(session_test
+        test_route
         test_session_credit
         test_session_action
         test_session_computer
