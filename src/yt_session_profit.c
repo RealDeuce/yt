@@ -50,7 +50,7 @@ static bool
 profit_add(float left, float right, float *result, struct yt_error *error,
     const char *operation)
 {
-	return profit_single(yt_port_single_add(left, right), result, error,
+	return profit_single(qb_single_add(left, right), result, error,
 	    operation);
 }
 
@@ -58,7 +58,7 @@ static bool
 profit_sub(float left, float right, float *result, struct yt_error *error,
     const char *operation)
 {
-	return profit_single(yt_port_single_sub(left, right), result, error,
+	return profit_single(qb_single_subtract(left, right), result, error,
 	    operation);
 }
 

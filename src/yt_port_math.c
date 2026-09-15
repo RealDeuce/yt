@@ -58,35 +58,3 @@ yt_port_mbf64_negate(uint8_t raw[8])
 	if (raw[7] != 0U)
 		raw[6] ^= 0x80U;
 }
-
-float
-yt_port_single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
-float
-yt_port_single_sub(float left, float right)
-{
-	volatile float result = left - right;
-
-	return result;
-}
-
-float
-yt_port_single_mul(float left, float right)
-{
-	volatile float result = left * right;
-
-	return result;
-}
-
-float
-yt_port_single_div(float left, float right)
-{
-	volatile float result = left / right;
-
-	return result;
-}

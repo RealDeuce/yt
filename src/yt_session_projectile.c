@@ -7,30 +7,6 @@
 #include <string.h>
 
 static float
-single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
-static float
-single_sub(float left, float right)
-{
-	volatile float result = left - right;
-
-	return result;
-}
-
-static float
-single_mul(float left, float right)
-{
-	volatile float result = left * right;
-
-	return result;
-}
-
-static float
 session_player_cache_value(const struct yt_session *session,
     int player_record, enum yt_player_cache_kind kind)
 {
@@ -421,7 +397,7 @@ plasma_ground_force_row(float original, float remaining, uint8_t *row,
 	if (row == NULL || length == NULL)
 		return false;
 	loss_length = qb_str_single(loss_text, sizeof(loss_text),
-	    single_sub(original, remaining));
+	    qb_single_subtract(original, remaining));
 	remaining_length = qb_str_single(remaining_text,
 	    sizeof(remaining_text), remaining);
 	if (loss_length < 0 || remaining_length < 0
@@ -603,14 +579,14 @@ missile_sector(struct yt_session *session, int sector_number,
 
 			if (!yt_random_next(&session->door->game.random, &draw, error))
 				return false;
-			destroyed = floorf(single_add(single_mul(draw, 5000.0f),
+			destroyed = floorf(qb_single_add(qb_single_multiply(draw, 5000.0f),
 			    destroyed));
-			*remaining = single_sub(*remaining, 1.0f);
+			*remaining = qb_single_subtract(*remaining, 1.0f);
 			if ((double)destroyed >= original_fighters) {
 				destroyed = (float)original_fighters;
 				break;
 			}
-			counter = single_add(counter, 1.0f);
+			counter = qb_single_add(counter, 1.0f);
 		}
 		if (!cruise_defense_damage_row(destroyed, row, sizeof(row),
 		    &row_length)
@@ -956,7 +932,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	    error))
 		return false;
 
-	original_productivity = single_add(single_add(production[0],
+	original_productivity = qb_single_add(qb_single_add(production[0],
 	    production[1]), production[2]);
 	while ((stale_ore > 0.0f || production[1] > 0.0f
 	    || production[2] > 0.0f) && *energy > 0.0) {
@@ -964,23 +940,23 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		volatile double product = *energy * 0.000004;
 		float quantity = (float)product;
 
-		remaining_ground = single_sub(remaining_ground, quantity);
+		remaining_ground = qb_single_subtract(remaining_ground, quantity);
 		for (index = 0U; index < 3U; ++index)
-			production[index] = single_sub(production[index], quantity);
+			production[index] = qb_single_subtract(production[index], quantity);
 		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
-		*energy -= (double)single_mul(draw, 25000.0f);
+		*energy -= (double)qb_single_multiply(draw, 25000.0f);
 	}
 	for (index = 0U; index < 3U; ++index) {
 		float cap;
 
 		if (production[index] < 0.0f)
 			production[index] = 0.0f;
-		cap = single_mul(production[index], 10.0f);
+		cap = qb_single_multiply(production[index], 10.0f);
 		if (stock[index] > cap)
 			stock[index] = cap;
 	}
-	remaining_productivity = single_add(single_add(production[0],
+	remaining_productivity = qb_single_add(qb_single_add(production[0],
 	    production[1]), production[2]);
 	if (!yt_projectile_planet_productivity_row(original_productivity,
 	    remaining_productivity, row, sizeof(row), &row_length)
@@ -1109,7 +1085,7 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 				destroyed += floor(*energy / 5000.0) + 1.0;
 				if (!yt_random_next(&session->door->game.random, &draw, error))
 					return false;
-				*energy -= (double)single_mul(draw, 25000.0f);
+				*energy -= (double)qb_single_multiply(draw, 25000.0f);
 			}
 			if (*energy < 0.0)
 				*energy = 0.0;
@@ -1185,7 +1161,7 @@ plasma_reload_sector:
 			destroyed = (float)(accumulated + 1.0);
 			if (!yt_random_next(&session->door->game.random, &draw, error))
 				return false;
-			*energy -= (double)single_mul(draw, 25000.0f);
+			*energy -= (double)qb_single_multiply(draw, 25000.0f);
 		}
 		if (*energy < 0.0)
 			*energy = 0.0;
@@ -1200,7 +1176,7 @@ plasma_reload_sector:
 		    SESSION_PRESENT_BOLD_LINE, "plasma destroyed-mines row", error)
 		    || !session_read_sector(session, sector_number, &sector, error))
 			return false;
-		sector.mines = single_sub((float)original_mines, destroyed);
+		sector.mines = qb_single_subtract((float)original_mines, destroyed);
 		if (!yt_record_set_number(&sector.record, YT_F129, sector.mines)
 		    || !yt_database_write(&session->door->game.database,
 		    (size_t)session_sector_basic_record(session,
@@ -1253,7 +1229,7 @@ plasma_reload_sector:
 				destroyed_fighters = accumulated + 1.0;
 				if (!yt_random_next(&session->door->game.random, &draw, error))
 					return false;
-				*energy -= (double)single_mul(draw, 25000.0f);
+				*energy -= (double)qb_single_multiply(draw, 25000.0f);
 			}
 			while (*energy > 0.0
 			    && destroyed_shields < original_shields) {
@@ -1265,14 +1241,14 @@ plasma_reload_sector:
 				destroyed_shields = (float)(accumulated + 1.0);
 				if (!yt_random_next(&session->door->game.random, &draw, error))
 					return false;
-				*energy -= (double)single_mul(draw, 25000.0f);
+				*energy -= (double)qb_single_multiply(draw, 25000.0f);
 			}
 			if (destroyed_fighters > original_fighters)
 				destroyed_fighters = original_fighters;
 			if (destroyed_shields > original_shields)
 				destroyed_shields = original_shields;
 			remaining_fighters = original_fighters - destroyed_fighters;
-			remaining_shields = single_sub(original_shields,
+			remaining_shields = qb_single_subtract(original_shields,
 			    destroyed_shields);
 			if (!yt_game_read_player(&session->door->game, basic, &target,
 			    error)
@@ -1382,7 +1358,7 @@ plasma_reload_sector:
 				    || !session_read_sector(session, sector_number,
 				    &mine_persistence, error))
 					return false;
-				mine_persistence.mines = single_add(
+				mine_persistence.mines = qb_single_add(
 				    mine_persistence.mines, saved_mines);
 				if (!yt_record_set_number(&mine_persistence.record, YT_F129,
 				    mine_persistence.mines)
@@ -1639,9 +1615,9 @@ plasma_route_run(struct yt_session *session,
 				if (!yt_random_next(&session->door->game.random, &draw,
 				    error))
 					return false;
-				span = single_sub(session_port_offset(session),
+				span = qb_single_subtract(session_port_offset(session),
 				    session_sector_offset(session));
-				*destination = floorf(single_add(single_mul(draw, span),
+				*destination = floorf(qb_single_add(qb_single_multiply(draw, span),
 				    1.0f));
 				route->destination = *destination;
 				if (!session_present_text(session, NULL, 0U,
@@ -2146,4 +2122,3 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 		return yt_session_common_fatal_self(session, error);
 	return true;
 }
-

@@ -150,34 +150,13 @@ format_nonhuman_row(char *dest, size_t size, double xannor,
 	return written >= 0 && (size_t)written < size;
 }
 
-static float
-single_add(float left, float right)
-{
-	volatile float result = left + right;
-	return result;
-}
-
-static float
-single_mul(float left, float right)
-{
-	volatile float result = left * right;
-	return result;
-}
-
-static float
-single_sub(float left, float right)
-{
-	volatile float result = left - right;
-	return result;
-}
-
 static bool
 score_read_sector(struct yt_game *game, float sector_record_offset,
     int logical_sector, struct yt_sector *sector, uint32_t *physical_record,
     struct yt_error *error)
 {
 	struct yt_record record;
-	uint32_t physical = qb_brun_random_record_number(single_add(
+	uint32_t physical = qb_brun_random_record_number(qb_single_add(
 	    sector_record_offset, (float)logical_sector));
 
 	if (!yt_database_read(&game->database, (size_t)physical, &record, error))
@@ -195,19 +174,19 @@ base_score(const struct yt_player *player)
 
 	if (player->killed_by != 0)
 		return 0;
-	score = single_add(score, single_mul(player->shields, 50.0f));
-	score = single_add(score, single_mul(player->fighters, 100.0f));
-	score = single_add(score, single_mul(player->holds, 2500.0f));
-	score = single_add(score, single_mul(player->ore, 20.0f));
-	score = single_add(score, single_mul(player->organics, 30.0f));
-	score = single_add(score, single_mul(player->equipment, 40.0f));
-	score = single_add(score, single_mul(player->ports_owned, 50000.0f));
-	score = single_add(score, single_mul(player->missiles, 1000.0f));
-	score = single_add(score, single_mul(player->ground_forces, 750.0f));
-	score = single_add(score, single_mul(player->mines, 2500.0f));
-	score = single_add(score, player->credits);
+	score = qb_single_add(score, qb_single_multiply(player->shields, 50.0f));
+	score = qb_single_add(score, qb_single_multiply(player->fighters, 100.0f));
+	score = qb_single_add(score, qb_single_multiply(player->holds, 2500.0f));
+	score = qb_single_add(score, qb_single_multiply(player->ore, 20.0f));
+	score = qb_single_add(score, qb_single_multiply(player->organics, 30.0f));
+	score = qb_single_add(score, qb_single_multiply(player->equipment, 40.0f));
+	score = qb_single_add(score, qb_single_multiply(player->ports_owned, 50000.0f));
+	score = qb_single_add(score, qb_single_multiply(player->missiles, 1000.0f));
+	score = qb_single_add(score, qb_single_multiply(player->ground_forces, 750.0f));
+	score = qb_single_add(score, qb_single_multiply(player->mines, 2500.0f));
+	score = qb_single_add(score, player->credits);
 	return (double)score
-	    + (double)single_mul(player->plasma, 16000000.0f)
+	    + (double)qb_single_multiply(player->plasma, 16000000.0f)
 	    + (player->danger_scanner != 0 ? 250000.0 : 0.0);
 }
 
@@ -283,7 +262,7 @@ yt_score_generate_progress_with_layout(struct yt_game *game,
 	char path[512];
 	struct yt_text_output output;
 	int player_count = (int)sector_record_offset - 1;
-	int sector_count = (int)single_sub(port_record_offset,
+	int sector_count = (int)qb_single_subtract(port_record_offset,
 	    sector_record_offset);
 	int index;
 
@@ -329,7 +308,7 @@ yt_score_generate_progress_with_layout(struct yt_game *game,
 			return false;
 		score_field_observe(field, YT_SCORE_FIELD_SECTOR,
 		    physical_record, &sector.record);
-		contribution = (double)single_mul(sector.fighters, 100.0f);
+		contribution = (double)qb_single_multiply(sector.fighters, 100.0f);
 		owner = (int)sector.fighter_owner;
 		if (owner == -1)
 			xannor += contribution;

@@ -232,22 +232,6 @@ set_error(struct yt_error *error, enum yt_status status,
 	    path != NULL ? path : "");
 }
 
-static float
-single_add(float left, float right)
-{
-	volatile float value = left + right;
-
-	return value;
-}
-
-static float
-single_sub(float left, float right)
-{
-	volatile float value = left - right;
-
-	return value;
-}
-
 size_t
 yt_portname_runtime_site_count(void)
 {
@@ -409,7 +393,7 @@ yt_portname_compose_output(enum yt_portname_output_kind kind,
 uint32_t
 yt_portname_record_number(float port_offset, float logical_port)
 {
-	float expression = single_add(port_offset, logical_port);
+	float expression = qb_single_add(port_offset, logical_port);
 
 	return qb_brun_random_record_number(expression);
 }
@@ -460,7 +444,7 @@ yt_portname_rename(struct yt_database *database, float port_offset,
 		return false;
 	}
 	starting_draws = random->draws;
-	local.loop_bound = single_sub(planet_offset, port_offset);
+	local.loop_bound = qb_single_subtract(planet_offset, port_offset);
 	if (!emit(YT_PORTNAME_OUTPUT_RENAMING, 0.0f, NULL, 0U, output,
 	    output_context, error))
 		return false;
@@ -491,7 +475,7 @@ yt_portname_rename(struct yt_database *database, float port_offset,
 		    || !yt_database_write(database, (size_t)physical, &record, error))
 			return false;
 		++local.iterations;
-		next = single_add(logical, 1.0f);
+		next = qb_single_add(logical, 1.0f);
 		if (next == logical) {
 			set_error(error, YT_RANGE, "PORTNAME FOR variable stalled", "");
 			return false;

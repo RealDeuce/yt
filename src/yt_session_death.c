@@ -4,14 +4,6 @@
 
 #include <string.h>
 
-static float
-death_single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
 bool
 yt_session_common_fatal_self(struct yt_session *session, struct yt_error *error)
 {
@@ -97,7 +89,7 @@ death_remove_from_team(struct yt_session *session, int victim,
 			session->team_cache.roster[index] = 0;
 	}
 
-	expression = death_single_add(session_sector_offset(session),
+	expression = qb_single_add(session_sector_offset(session),
 	    (float)team_id);
 	physical_record = qb_brun_random_record_number(expression);
 	if (!yt_database_read(&session->door->game.database,

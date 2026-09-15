@@ -58,14 +58,6 @@ yt_session_list_spies(struct yt_session *session, struct yt_error *error)
 	return true;
 }
 
-static float
-single_mul(float left, float right)
-{
-	volatile float result = left * right;
-
-	return result;
-}
-
 static bool
 append_bytes(uint8_t *row, size_t capacity, size_t *length,
     const void *text, size_t text_length)
@@ -401,7 +393,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				if (!yt_random_next(&session->door->game.random, &draw,
 				    error))
 					return false;
-				selected = (int)floorf(single_mul(draw, 6.0f));
+				selected = (int)floorf(qb_single_multiply(draw, 6.0f));
 				if (selected < 0 || selected >= 6)
 					return spy_failure(error,
 					    "active spy RND slot");

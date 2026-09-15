@@ -59,38 +59,6 @@ updater_error(struct yt_error *error, enum yt_status status,
 	return false;
 }
 
-static float
-updater_single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
-static float
-updater_single_sub(float left, float right)
-{
-	volatile float result = left - right;
-
-	return result;
-}
-
-static float
-updater_single_mul(float left, float right)
-{
-	volatile float result = left * right;
-
-	return result;
-}
-
-static float
-updater_single_div(float left, float right)
-{
-	volatile float result = left / right;
-
-	return result;
-}
-
 static void
 updater_promote_single(const uint8_t single[4], uint8_t raw[8])
 {
@@ -212,7 +180,7 @@ updater_subtract_single(const uint8_t left[4], const uint8_t right[4],
 	if (left[3] == 0U)
 		return updater_encode_single(-qb_mbf32_decode(right), raw, error,
 		    "planet updater base subtraction");
-	result = updater_single_sub(qb_mbf32_decode(left),
+	result = qb_single_subtract(qb_mbf32_decode(left),
 	    qb_mbf32_decode(right));
 	if (result == 0.0f) {
 		memcpy(raw, residue, 3U);
@@ -239,7 +207,7 @@ yt_planet_update_prepare(const struct yt_record *record,
 		update->production[index] = yt_record_get_number(record,
 		    YT_F45 + (index - 1U) * 4U);
 
-	sum = updater_single_add(updater_single_add(update->production[1],
+	sum = qb_single_add(qb_single_add(update->production[1],
 	    update->production[2]), update->production[3]);
 	update->production[4] = floorf(sum);
 	if (!updater_encode_single(update->production[4], raw, error,
@@ -247,27 +215,27 @@ yt_planet_update_prepare(const struct yt_record *record,
 		return false;
 	update->production[4] = qb_mbf32_decode(raw);
 
-	sum = updater_single_add(updater_single_add(update->production[1],
+	sum = qb_single_add(qb_single_add(update->production[1],
 	    update->production[2]), update->production[3]);
-	update->production[5] = floorf(updater_single_div(sum,
+	update->production[5] = floorf(qb_single_divide(sum,
 	    qb_mbf32_decode(updater_missile_divisor_s)));
 	if (!updater_encode_single(update->production[5], raw, error,
 	    "planet updater P5"))
 		return false;
 	update->production[5] = qb_mbf32_decode(raw);
 
-	sum = updater_single_add(updater_single_add(update->production[1],
+	sum = qb_single_add(qb_single_add(update->production[1],
 	    update->production[2]), update->production[3]);
-	update->production[6] = floorf(updater_single_div(sum,
+	update->production[6] = floorf(qb_single_divide(sum,
 	    qb_mbf32_decode(updater_mine_divisor_s)));
 	if (!updater_encode_single(update->production[6], raw, error,
 	    "planet updater P6"))
 		return false;
 	update->production[6] = qb_mbf32_decode(raw);
 
-	sum = updater_single_add(updater_single_add(update->production[1],
+	sum = qb_single_add(qb_single_add(update->production[1],
 	    update->production[2]), update->production[3]);
-	update->production[9] = floorf(updater_single_mul(sum,
+	update->production[9] = floorf(qb_single_multiply(sum,
 	    qb_mbf32_decode(updater_plasma_rate_s)));
 	if (!updater_encode_single(update->production[9], raw, error,
 	    "planet updater P9"))
@@ -346,13 +314,13 @@ yt_planet_update_record(struct yt_record *record,
 	    "planet updater TIMER MBF32"))
 		return false;
 	timer_seconds = qb_mbf32_decode(timer_raw);
-	current_minute = updater_single_div(timer_seconds,
+	current_minute = qb_single_divide(timer_seconds,
 	    qb_mbf32_decode(updater_sixty_s));
 	stored_day = yt_record_get_number(&field, YT_F41);
 	stored_minute = yt_record_get_number(&field, YT_F89);
-	elapsed = updater_single_add(
-	    updater_single_sub(current_day, stored_day),
-	    updater_single_div(updater_single_sub(current_minute, stored_minute),
+	elapsed = qb_single_add(
+	    qb_single_subtract(current_day, stored_day),
+	    qb_single_divide(qb_single_subtract(current_minute, stored_minute),
 	    qb_mbf32_decode(updater_minutes_per_day_s)));
 	if (elapsed > qb_mbf32_decode(updater_ten_s) || elapsed < 0.0f)
 		elapsed = qb_mbf32_decode(updater_ten_s);
@@ -383,7 +351,7 @@ yt_planet_update_record(struct yt_record *record,
 	for (index = 1U; index <= 9U; ++index)
 		contribution[index] = qb_mbf32_decode(contribution_raw[index]);
 
-	if (!updater_encode_single(updater_single_mul(elapsed, one_percent),
+	if (!updater_encode_single(qb_single_multiply(elapsed, one_percent),
 	    fraction_raw, error, "planet updater bank fraction"))
 		return false;
 	updater_promote_single(fraction_raw, fraction_double);
@@ -406,7 +374,7 @@ yt_planet_update_record(struct yt_record *record,
 	    || !updater_raw_binary(qb_mbf64_mul_raw, scratch,
 	    updater_one_percent_d, scratch_two, error,
 	    "planet updater force growth rate")
-	    || !updater_encode_single(updater_single_mul(contribution[8], elapsed),
+	    || !updater_encode_single(qb_single_multiply(contribution[8], elapsed),
 	    increment_raw, error, "planet updater force reinforcement"))
 		return false;
 	updater_promote_single(increment_raw, increment_double);
@@ -426,8 +394,8 @@ yt_planet_update_record(struct yt_record *record,
 		return false;
 
 	for (index = 1U; index <= 3U; ++index) {
-		production[index] = updater_single_add(production[index], updater_single_mul(
-		    updater_single_mul(production[index], elapsed), one_percent));
+		production[index] = qb_single_add(production[index], qb_single_multiply(
+		    qb_single_multiply(production[index], elapsed), one_percent));
 		if (!updater_encode_single(production[index], production_raw[index], error,
 		    index == 1U ? "YT-SUB2:0D63 planet updater ERR6"
 		    : "planet updater base growth")) {
@@ -440,12 +408,12 @@ yt_planet_update_record(struct yt_record *record,
 		production[index] = qb_mbf32_decode(production_raw[index]);
 	}
 	for (index = 1U; index <= 6U; ++index) {
-		production[index] = updater_single_add(production[index], contribution[index]);
+		production[index] = qb_single_add(production[index], contribution[index]);
 		if (!updater_encode_single(production[index], production_raw[index], error,
 		    "planet updater production rate"))
 			return false;
 		production[index] = qb_mbf32_decode(production_raw[index]);
-		if (!updater_encode_single(updater_single_mul(production[index], elapsed),
+		if (!updater_encode_single(qb_single_multiply(production[index], elapsed),
 		    increment_raw, error, "planet updater production increment"))
 			return false;
 		updater_promote_single(increment_raw, increment_double);
@@ -457,7 +425,7 @@ yt_planet_update_record(struct yt_record *record,
 			memcpy(quantity_raw[index], scratch, 8U);
 		}
 		if (index <= 3U) {
-			if (!updater_encode_single(updater_single_mul(production[index],
+			if (!updater_encode_single(qb_single_multiply(production[index],
 			    qb_mbf32_decode(updater_ten_s)), threshold_raw, error,
 			    "planet updater commodity threshold"))
 				return false;
@@ -478,12 +446,12 @@ yt_planet_update_record(struct yt_record *record,
 			}
 		}
 	}
-	production[9] = updater_single_add(production[9], contribution[9]);
+	production[9] = qb_single_add(production[9], contribution[9]);
 	if (!updater_encode_single(production[9], production_raw[9], error,
 	    "planet updater plasma rate"))
 		return false;
 	production[9] = qb_mbf32_decode(production_raw[9]);
-	if (!updater_encode_single(updater_single_mul(production[9], elapsed),
+	if (!updater_encode_single(qb_single_multiply(production[9], elapsed),
 	    increment_raw, error, "planet updater plasma increment"))
 		return false;
 	updater_promote_single(increment_raw, increment_double);

@@ -175,6 +175,38 @@ qb_mbf64_encode(double value, uint8_t raw[8])
 	return QB_MBF_OK;
 }
 
+float
+qb_single_add(float left, float right)
+{
+	volatile float result = left + right;
+
+	return result;
+}
+
+float
+qb_single_subtract(float left, float right)
+{
+	volatile float result = left - right;
+
+	return result;
+}
+
+float
+qb_single_multiply(float left, float right)
+{
+	volatile float result = left * right;
+
+	return result;
+}
+
+float
+qb_single_divide(float left, float right)
+{
+	volatile float result = left / right;
+
+	return result;
+}
+
 double
 qb_int(double value)
 {

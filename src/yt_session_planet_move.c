@@ -69,7 +69,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	float moving_planet;
 	float actual_destination = (float)destination;
 	float draw;
-	float xannor_planet = yt_port_single_sub(
+	float xannor_planet = qb_single_subtract(
 	    session->door->game.config.total_records,
 	    session_planet_offset(session));
 	uint32_t moving_record;
@@ -118,7 +118,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 		return false;
 	source_link = source.planet;
 	moving_record = session_planet_basic_record(session, source_link);
-	moving_planet = yt_port_single_sub(yt_port_single_add(
+	moving_planet = qb_single_subtract(qb_single_add(
 	    session_planet_offset(session), source_link),
 	    session_planet_offset(session));
 	yt_planet_move_sector_overlay(&source, 0.0f);
@@ -184,7 +184,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 		return true;
 	}
 	if (moving_planet == 1.0f) {
-		float maximum = yt_port_single_sub(session_port_offset(session),
+		float maximum = qb_single_subtract(session_port_offset(session),
 		    session_sector_offset(session));
 
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -198,7 +198,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 			if (!yt_random_next(&session->door->game.random, &draw,
 			    error))
 				return false;
-			actual_destination = floorf(yt_port_single_mul(draw,
+			actual_destination = floorf(qb_single_multiply(draw,
 			    maximum)) + 1.0f;
 			if (!session_read_sector(session,
 			    (int)actual_destination, &target, error))

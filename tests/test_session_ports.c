@@ -1,4 +1,5 @@
 #include "yt_session_internal.h"
+#include "qb.h"
 #include "session_test_runtime.h"
 
 #include "yt_file.h"
@@ -234,7 +235,7 @@ test_owned_port_purchase(void)
 	(void)snprintf(port.name, sizeof(port.name), "%s", "Old Port");
 	port.name_length = 8.0f;
 	port.last_day = (float)today;
-	port.last_minute = yt_port_single_div((float)yt_platform_timer(),
+	port.last_minute = qb_single_divide((float)yt_platform_timer(),
 	    60.0f);
 	port.treasury = 4.0f;
 	port.sector = 9.0f;

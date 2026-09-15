@@ -43,6 +43,11 @@ enum qb_mbf_status qb_mbf64_floor_raw(const uint8_t operand[8],
 enum qb_mbf_status qb_mbf64_int_positive_raw(const uint8_t operand[8],
     uint8_t raw[8]);
 
+float qb_single_add(float left, float right);
+float qb_single_subtract(float left, float right);
+float qb_single_multiply(float left, float right);
+float qb_single_divide(float left, float right);
+
 double qb_int(double value);
 double qb_fix(double value);
 int32_t qb_cint(double value, bool *overflow);

@@ -100,7 +100,7 @@ earth_receipt(struct yt_session *session, const struct yt_port *cached_earth,
 
 		if (!session_read_port(session, 1, &earth, error))
 			return false;
-		earth.treasury = yt_port_single_add(earth.treasury, receipt);
+		earth.treasury = qb_single_add(earth.treasury, receipt);
 		if (!session_write_port(session, 1, &earth, error))
 			return false;
 	}
@@ -152,7 +152,7 @@ earth_purchase_holds(struct yt_session *session,
 		return false;
 	if (session->player.holds >= session->door->game.config.maximum_holds)
 		return earth_credit_error(session, "You dont need any holds.", error);
-	if (qb_str_single(amount, sizeof(amount), yt_port_single_sub(
+	if (qb_str_single(amount, sizeof(amount), qb_single_subtract(
 	    session->door->game.config.maximum_holds,
 	    session->player.holds)) < 0
 	    || snprintf(row, sizeof(row), "You need%s holds.", amount) < 0)
@@ -169,12 +169,12 @@ earth_purchase_holds(struct yt_session *session,
 	if ((double)quantity > affordable)
 		return earth_credit_error(session,
 		    "You do not have enough credits!", error);
-	if (yt_port_single_add(session->player.holds, quantity)
+	if (qb_single_add(session->player.holds, quantity)
 	    > session->door->game.config.maximum_holds)
 		return earth_credit_error(session,
 		    "You don't need that many!", error);
-	session->player.holds = yt_port_single_add(session->player.holds, quantity);
-	cost = yt_port_single_mul(quantity, price);
+	session->player.holds = qb_single_add(session->player.holds, quantity);
+	cost = qb_single_multiply(quantity, price);
 	return session_write_player(session, error)
 	    && earth_receipt(session, cached_earth, cost, error);
 }
@@ -209,7 +209,7 @@ earth_purchase_supply(struct yt_session *session,
 	if ((double)quantity > affordable)
 		return earth_credit_error(session,
 		    "You do not have enough credits!", error);
-	cost = yt_port_single_mul(quantity, price);
+	cost = qb_single_multiply(quantity, price);
 	yt_earth_supply_overlay(&session->player, choice, quantity);
 	return session_write_player(session, error)
 	    && earth_receipt(session, cached_earth, cost, error);
@@ -236,7 +236,7 @@ earth_purchase_cloak(struct yt_session *session,
 		    SESSION_PRESENT_LINE, "Earth Cloak leading blank", error))
 			return false;
 		points = yt_earth_cloak_points(session->player.cloak);
-		deficit = yt_port_single_sub(50.0f, points);
+		deficit = qb_single_subtract(50.0f, points);
 		default_quantity = yt_earth_cloak_default(deficit,
 		    session->player.credits);
 		if (qb_str_single(deficit_text, sizeof(deficit_text), deficit) < 0
@@ -257,13 +257,13 @@ earth_purchase_cloak(struct yt_session *session,
 		    : yt_earth_purchase_quantity(requested);
 		if (quantity < 1.0f)
 			return true;
-		if (yt_port_single_add(points, quantity) > 50.0f) {
+		if (qb_single_add(points, quantity) > 50.0f) {
 			if (!earth_credit_error(session,
 			    "You can't have over 100% cloak!", error))
 				return false;
 			continue;
 		}
-		cost = yt_port_single_mul(quantity, 1000.0f);
+		cost = qb_single_multiply(quantity, 1000.0f);
 		if (cost > session->player.credits)
 			return earth_credit_error(session,
 			    "You do not have enough credits!", error);
@@ -352,7 +352,7 @@ earth_purchase_spies(struct yt_session *session,
 			continue;
 		}
 		quantity = (int)quantity_value;
-		cost = yt_port_single_mul(quantity_value, price);
+		cost = qb_single_multiply(quantity_value, price);
 		for (spy_index = 0; spy_index < quantity; ++spy_index) {
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE,
@@ -656,7 +656,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 	if (!session_reload_player(session, error))
 		return false;
 	session->player.lottery_plays =
-	    yt_port_single_add(session->player.lottery_plays, 1.0f);
+	    qb_single_add(session->player.lottery_plays, 1.0f);
 	if (session->player.lottery_plays > session->door->game.config.lottery_plays) {
 		if (!session_present_text(session,
 		    (const uint8_t *)
@@ -664,7 +664,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 		    strlen("You will be allowed to play again tomorrow."),
 		    SESSION_PRESENT_BOLD_LINE, "lottery daily reached row", error))
 			return false;
-		session->player.lottery_plays = yt_port_single_sub(
+		session->player.lottery_plays = qb_single_subtract(
 		    session->player.lottery_plays, 1.0f);
 		return lottery_settle(session, cached_earth, 0.0f, error);
 	}
@@ -733,7 +733,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 
 		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
-		winning[index] = (int)floorf(yt_port_single_mul(draw, 10.0f));
+		winning[index] = (int)floorf(qb_single_multiply(draw, 10.0f));
 	}
 	matches = yt_lottery_match_count(winning, ticket, matched_winning);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -765,7 +765,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 			if (!yt_random_next(&session->door->game.random, &draw, error))
 				return false;
 			digit = (uint8_t)('0' + (int)floorf(
-			    yt_port_single_mul(draw, 10.0f)));
+			    qb_single_multiply(draw, 10.0f)));
 			if (!session_present_text(session, &digit, 1U,
 			    SESSION_PRESENT_RAW, "lottery dummy digit", error))
 				return false;

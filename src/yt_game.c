@@ -26,30 +26,6 @@ startup_configuration_error(struct yt_error *error, enum yt_status status,
 	return false;
 }
 
-static float
-startup_single_subtract(float left, float right)
-{
-	volatile float result = left - right;
-
-	return result;
-}
-
-static float
-startup_single_multiply(float left, float right)
-{
-	volatile float result = left * right;
-
-	return result;
-}
-
-static float
-startup_single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
 
 bool
 yt_xannor_victory_mks_internal_fatal_run(uint16_t module_segment,
@@ -179,7 +155,7 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 			    (size_t)basic, &player.record, error))
 				return false;
 		}
-		counter = startup_single_add(counter, 1.0f);
+		counter = qb_single_add(counter, 1.0f);
 	}
 	for (index = 0U; index < 2U; ++index) {
 		float draw;
@@ -191,12 +167,12 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 
 		if (!yt_random_next(&game->random, &draw, error))
 			return false;
-		difference = startup_single_subtract(config->port_offset,
+		difference = qb_single_subtract(config->port_offset,
 		    config->sector_offset);
-		span = startup_single_subtract(difference, 2.0f);
-		product = startup_single_multiply(draw, span);
+		span = qb_single_subtract(difference, 2.0f);
+		product = qb_single_multiply(draw, span);
 		integral = floorf(product);
-		disruption_sectors[index] = startup_single_add(integral, 2.0f);
+		disruption_sectors[index] = qb_single_add(integral, 2.0f);
 		if (integral == -2.0f) {
 			static const uint8_t dirty_zero[4] = {
 				0x00U, 0x00U, 0x80U, 0x00U
@@ -213,9 +189,6 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 	return true;
 }
 
-static float projectile_single_add(float left, float right);
-static float projectile_single_sub(float left, float right);
-static float projectile_single_mul(float left, float right);
 
 
 
@@ -249,7 +222,7 @@ yt_projectile_plasma_opening_values(float bolts, double *energy,
 	volatile double quotient;
 	volatile float rounded;
 
-	*energy = (double)projectile_single_mul(2500000.0f, bolts);
+	*energy = (double)qb_single_multiply(2500000.0f, bolts);
 	quotient = *energy / 50.0;
 	rounded = (float)quotient;
 	*hop_loss = rounded;
@@ -293,7 +266,7 @@ yt_projectile_plasma_firing_row(float counter, uint8_t *row,
 float
 yt_projectile_plasma_next_firing(float counter)
 {
-	return projectile_single_add(counter, 1.0f);
+	return qb_single_add(counter, 1.0f);
 }
 
 enum yt_projectile_target_result
@@ -3820,10 +3793,10 @@ yt_port_market_update(struct yt_port_market_state *state,
 	    || qb_mbf64_encode(0.5, half) != QB_MBF_OK)
 		return startup_configuration_error(error, YT_RANGE,
 		    "ordinary port constants");
-	minute = yt_port_single_div(state->timer_seconds, 60.0f);
-	elapsed = yt_port_single_add(
-	    yt_port_single_sub(state->current_day, state->port.last_day),
-	    yt_port_single_div(yt_port_single_sub(minute,
+	minute = qb_single_divide(state->timer_seconds, 60.0f);
+	elapsed = qb_single_add(
+	    qb_single_subtract(state->current_day, state->port.last_day),
+	    qb_single_divide(qb_single_subtract(minute,
 	    state->port.last_minute), 1440.0f));
 	if (elapsed > 10.0f || elapsed < 0.0f)
 		elapsed = 10.0f;
@@ -3854,7 +3827,7 @@ yt_port_market_update(struct yt_port_market_state *state,
 		    + YT_F49 + index * 4U, mutable_capacity[index]);
 		memcpy(mutable_production[index], state->port.record.bytes
 		    + YT_F61 + index * 4U, 4U);
-		growth_value = yt_port_single_mul(
+		growth_value = qb_single_multiply(
 		    qb_mbf32_decode(mutable_production[index]), elapsed);
 		if (!market_encode_single(growth_value, growth_raw, error,
 		    "ordinary port growth"))
@@ -4181,14 +4154,6 @@ take_all_planet_item(struct yt_planet *planet, int item)
 	}
 }
 
-static float
-take_all_single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
 static double
 take_all_double_add(double left, double right)
 {
@@ -4201,30 +4166,6 @@ static double
 take_all_double_sub(double left, double right)
 {
 	volatile double result = left - right;
-
-	return result;
-}
-
-static float
-take_all_single_mul(float left, float right)
-{
-	volatile float result = left * right;
-
-	return result;
-}
-
-static float
-take_all_single_sub(float left, float right)
-{
-	volatile float result = left - right;
-
-	return result;
-}
-
-static float
-take_all_single_div(float left, float right)
-{
-	volatile float result = left / right;
 
 	return result;
 }
@@ -4263,7 +4204,7 @@ yt_planet_take_one_player_overlay(struct yt_player *player, int item,
 	if (selected == NULL)
 		return;
 	if (item == 9)
-		*selected = take_all_single_add(*selected, amount);
+		*selected = qb_single_add(*selected, amount);
 	else
 		*selected = (float)take_all_double_add((double)*selected,
 		    (double)amount);
@@ -4300,10 +4241,10 @@ yt_planet_take_all_weapon_player_overlay(struct yt_player *player,
 		    cached_quantity[items[index]]);
 	player->fighters = (float)take_all_double_add(
 	    (double)player->fighters, amount[4]);
-	player->missiles = take_all_single_add(player->missiles,
+	player->missiles = qb_single_add(player->missiles,
 	    (float)amount[5]);
-	player->mines = take_all_single_add(player->mines, (float)amount[6]);
-	player->plasma = take_all_single_add(player->plasma, (float)amount[9]);
+	player->mines = qb_single_add(player->mines, (float)amount[6]);
+	player->plasma = qb_single_add(player->plasma, (float)amount[9]);
 }
 
 void
@@ -4373,7 +4314,7 @@ yt_planet_transfer_cargo_cache(float rate[10], double quantity[10],
 		return;
 	for (index = 0; index < 3U; ++index) {
 		int item = (int)index + 1;
-		float threshold = take_all_single_mul(rate[item], 10.0f);
+		float threshold = qb_single_multiply(rate[item], 10.0f);
 		double total = take_all_double_add(quantity[item], held[index]);
 
 		if (total > (double)threshold)
@@ -4406,7 +4347,7 @@ yt_planet_transfer_cargo_planet_overlay(struct yt_planet *planet,
 	for (index = 0; index < 3U; ++index) {
 		int item = (int)index + 1;
 
-		planet->production[index] = take_all_single_sub(rate[item],
+		planet->production[index] = qb_single_subtract(rate[item],
 		    contribution[item]);
 		planet->stock[index] = (float)quantity[item];
 	}
@@ -4551,7 +4492,7 @@ void
 yt_planet_bank_credit_overlay(struct yt_player *player, float argument)
 {
 	if (player != NULL)
-		player->credits = floorf(take_all_single_add(player->credits,
+		player->credits = floorf(qb_single_add(player->credits,
 		    argument));
 }
 
@@ -4573,23 +4514,23 @@ yt_planet_productivity_cache(float rate[10], double units, float delta[4])
 
 	if (rate == NULL || delta == NULL)
 		return;
-	old_sum = take_all_single_add(take_all_single_add(rate[1], rate[2]),
+	old_sum = qb_single_add(qb_single_add(rate[1], rate[2]),
 	    rate[3]);
 	for (index = 1; index <= 3U; ++index)
 		rate[index] = (float)take_all_double_add((double)rate[index],
 		    units);
-	new_sum = take_all_single_add(take_all_single_add(rate[1], rate[2]),
+	new_sum = qb_single_add(qb_single_add(rate[1], rate[2]),
 	    rate[3]);
-	delta[0] = take_all_single_sub(floorf(new_sum), floorf(old_sum));
-	new_value = floorf(take_all_single_div(new_sum, 2500.0f));
-	old_value = floorf(take_all_single_div(old_sum, 2500.0f));
-	delta[1] = take_all_single_sub(new_value, old_value);
-	new_value = floorf(take_all_single_div(new_sum, 25000.0f));
-	old_value = floorf(take_all_single_div(old_sum, 25000.0f));
-	delta[2] = take_all_single_sub(new_value, old_value);
-	new_value = floorf(take_all_single_mul(new_sum, plasma_multiplier));
-	old_value = floorf(take_all_single_mul(old_sum, plasma_multiplier));
-	delta[3] = take_all_single_sub(new_value, old_value);
+	delta[0] = qb_single_subtract(floorf(new_sum), floorf(old_sum));
+	new_value = floorf(qb_single_divide(new_sum, 2500.0f));
+	old_value = floorf(qb_single_divide(old_sum, 2500.0f));
+	delta[1] = qb_single_subtract(new_value, old_value);
+	new_value = floorf(qb_single_divide(new_sum, 25000.0f));
+	old_value = floorf(qb_single_divide(old_sum, 25000.0f));
+	delta[2] = qb_single_subtract(new_value, old_value);
+	new_value = floorf(qb_single_multiply(new_sum, plasma_multiplier));
+	old_value = floorf(qb_single_multiply(old_sum, plasma_multiplier));
+	delta[3] = qb_single_subtract(new_value, old_value);
 }
 
 float
@@ -4694,7 +4635,7 @@ yt_clearance_normalize(size_t item, float *discount)
 float
 yt_clearance_percentage(float discount)
 {
-	return floorf(take_all_single_mul(100.0f, discount));
+	return floorf(qb_single_multiply(100.0f, discount));
 }
 
 void
@@ -4702,14 +4643,14 @@ yt_earth_prices(const float discount[4], float price[4])
 {
 	if (discount == NULL || price == NULL)
 		return;
-	price[0] = floorf(take_all_single_sub(250.0f,
-	    take_all_single_mul(250.0f, discount[0])));
-	price[1] = floorf(take_all_single_sub(50.0f,
-	    take_all_single_mul(50.0f, discount[1])));
-	price[2] = floorf(take_all_single_mul(50.0f,
-	    take_all_single_sub(1.0f, discount[2])));
-	price[3] = floorf(take_all_single_mul(200.5f,
-	    take_all_single_sub(1.0f, discount[3])));
+	price[0] = floorf(qb_single_subtract(250.0f,
+	    qb_single_multiply(250.0f, discount[0])));
+	price[1] = floorf(qb_single_subtract(50.0f,
+	    qb_single_multiply(50.0f, discount[1])));
+	price[2] = floorf(qb_single_multiply(50.0f,
+	    qb_single_subtract(1.0f, discount[2])));
+	price[3] = floorf(qb_single_multiply(200.5f,
+	    qb_single_subtract(1.0f, discount[3])));
 }
 
 double
@@ -4741,20 +4682,20 @@ yt_earth_receipt_amount(float owner, int buyer_record, float cost)
 	if (owner == 0.0f)
 		return 0.0f;
 	if (owner == (float)buyer_record)
-		return floorf(take_all_single_mul(0.009999999776482582f, cost));
+		return floorf(qb_single_multiply(0.009999999776482582f, cost));
 	return cost;
 }
 
 float
 yt_earth_cloak_points(float cloak)
 {
-	return floorf(take_all_single_mul(50.0f, cloak));
+	return floorf(qb_single_multiply(50.0f, cloak));
 }
 
 float
 yt_earth_cloak_default(float deficit, float credits)
 {
-	if (take_all_single_mul(deficit, 1000.0f) > credits)
+	if (qb_single_multiply(deficit, 1000.0f) > credits)
 		return (float)yt_earth_affordable(credits, 1000.0f);
 	return deficit;
 }
@@ -4762,7 +4703,7 @@ yt_earth_cloak_default(float deficit, float credits)
 float
 yt_earth_cloak_overlay(float points, float quantity)
 {
-	return take_all_single_div(floorf(take_all_single_add(points, quantity)),
+	return qb_single_divide(floorf(qb_single_add(points, quantity)),
 	    50.0f);
 }
 
@@ -4772,12 +4713,12 @@ yt_earth_supply_overlay(struct yt_player *player, int choice, float quantity)
 	if (player == NULL)
 		return;
 	if (choice == 3)
-		player->fighters = take_all_single_add(player->fighters, quantity);
+		player->fighters = qb_single_add(player->fighters, quantity);
 	else if (choice == 7)
-		player->ground_forces = floorf(take_all_single_add(
+		player->ground_forces = floorf(qb_single_add(
 		    player->ground_forces, quantity));
 	else if (choice == 8)
-		player->shields = floorf(take_all_single_add(
+		player->shields = floorf(qb_single_add(
 		    player->shields, quantity));
 }
 
@@ -5298,30 +5239,6 @@ yt_projectile_damage_iteration(float counter, float saved_missiles)
 	return counter <= saved_missiles;
 }
 
-static float
-projectile_single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
-static float
-projectile_single_sub(float left, float right)
-{
-	volatile float result = left - right;
-
-	return result;
-}
-
-static float
-projectile_single_mul(float left, float right)
-{
-	volatile float result = left * right;
-
-	return result;
-}
-
 bool
 yt_projectile_is_black_hole(float hop, float first, float second)
 {
@@ -5359,11 +5276,11 @@ float
 yt_projectile_cruise_reroute_destination(float draw,
     float sector_record_offset, float port_record_offset)
 {
-	float span = projectile_single_sub(port_record_offset,
+	float span = qb_single_subtract(port_record_offset,
 	    sector_record_offset);
-	float selected = floorf(projectile_single_mul(draw, span));
+	float selected = floorf(qb_single_multiply(draw, span));
 
-	return projectile_single_add(selected, 1.0f);
+	return qb_single_add(selected, 1.0f);
 }
 
 bool
@@ -5540,14 +5457,14 @@ yt_projectile_sector_mines_overlay(struct yt_sector *sector,
 {
 	if (sector == NULL)
 		return false;
-	sector->mines = projectile_single_add(sector->mines, carried_mines);
+	sector->mines = qb_single_add(sector->mines, carried_mines);
 	return yt_record_set_number(&sector->record, YT_F129, sector->mines);
 }
 
 uint32_t
 yt_projectile_physical_record(float offset, float logical)
 {
-	return qb_brun_random_record_number(projectile_single_add(offset,
+	return qb_brun_random_record_number(qb_single_add(offset,
 	    logical));
 }
 
@@ -5626,9 +5543,9 @@ yt_projectile_planet_ground_damage(float ground, float owner,
 
 		if (!yt_random_next(random, &value, error))
 			return false;
-		ground = projectile_single_sub(ground,
-		    projectile_single_mul(value, 25.0f));
-		*remaining = projectile_single_sub(*remaining, 1.0f);
+		ground = qb_single_subtract(ground,
+		    qb_single_multiply(value, 25.0f));
+		*remaining = qb_single_subtract(*remaining, 1.0f);
 		++iterations;
 		result->ground = ground;
 		result->iterations = iterations;
@@ -5659,7 +5576,7 @@ yt_projectile_planet_productivity_damage(float updater_ore,
 	if (production == NULL || stock == NULL || remaining == NULL
 	    || random == NULL || result == NULL)
 		return false;
-	old_total = projectile_single_add(projectile_single_add(production[0],
+	old_total = qb_single_add(qb_single_add(production[0],
 	    production[1]), production[2]);
 	while ((updater_ore > 0.0f || production[1] > 0.0f
 	    || production[2] > 0.0f) && *remaining > 0.0f) {
@@ -5668,11 +5585,11 @@ yt_projectile_planet_productivity_damage(float updater_ore,
 
 			if (!yt_random_next(random, &value, error))
 				return false;
-			production[index] = projectile_single_sub(
-			    production[index], projectile_single_mul(value,
+			production[index] = qb_single_subtract(
+			    production[index], qb_single_multiply(value,
 			    2000.0f));
 		}
-		*remaining = projectile_single_sub(*remaining, 1.0f);
+		*remaining = qb_single_subtract(*remaining, 1.0f);
 		++iterations;
 	}
 	for (index = 0U; index < 3U; ++index) {
@@ -5680,11 +5597,11 @@ yt_projectile_planet_productivity_damage(float updater_ore,
 
 		if (production[index] < 0.0f)
 			production[index] = 0.0f;
-		cap = projectile_single_mul(production[index], 10.0f);
+		cap = qb_single_multiply(production[index], 10.0f);
 		if (stock[index] > cap)
 			stock[index] = cap;
 	}
-	new_total = projectile_single_add(projectile_single_add(production[0],
+	new_total = qb_single_add(qb_single_add(production[0],
 	    production[1]), production[2]);
 	result->old_total = old_total;
 	result->new_total = new_total;
@@ -5724,7 +5641,7 @@ yt_projectile_planet_productivity_row(float old_total, float new_total,
 		*length = 0U;
 	if (!sector_row_append(&builder, prefix, sizeof(prefix) - 1U)
 	    || !sector_row_number(&builder,
-	    projectile_single_sub(old_total, new_total), false)
+	    qb_single_subtract(old_total, new_total), false)
 	    || !sector_row_append(&builder, middle, sizeof(middle) - 1U)
 	    || !sector_row_number(&builder, new_total, false)
 	    || !sector_row_append(&builder, suffix, sizeof(suffix) - 1U))
@@ -5820,10 +5737,10 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 		int32_t scanner;
 
 		++iterations;
-		*remaining = projectile_single_sub(*remaining, 1.0f);
+		*remaining = qb_single_subtract(*remaining, 1.0f);
 		if (!yt_random_next(random, &value, error))
 			return false;
-		scanner_product = projectile_single_mul(value, *remaining);
+		scanner_product = qb_single_multiply(value, *remaining);
 		scanner = qb_cint_mbf32(scanner_raw, 0U, &overflow);
 		if (overflow) {
 			if (error != NULL) {
@@ -5841,7 +5758,7 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 		}
 		if (!yt_random_next(random, &value, error))
 			return false;
-		fighter_damage = floor((double)projectile_single_mul(value,
+		fighter_damage = floor((double)qb_single_multiply(value,
 		    4001.0f) + fighter_damage);
 		if (!yt_random_next(random, &value, error))
 			return false;
@@ -5849,20 +5766,20 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 		if ((double)value * original_fighters < fighter_damage) {
 			if (!yt_random_next(random, &value, error))
 				return false;
-			shield_damage = projectile_single_add(shield_damage,
-			    floorf(projectile_single_mul(value, 1001.0f)));
+			shield_damage = qb_single_add(shield_damage,
+			    floorf(qb_single_multiply(value, 1001.0f)));
 		}
 		if (fighter_damage >= original_fighters
 		    && shield_damage >= original_shields)
 			break;
-		counter = projectile_single_add(counter, 1.0f);
+		counter = qb_single_add(counter, 1.0f);
 	}
 	if (fighter_damage > original_fighters)
 		fighter_damage = original_fighters;
 	if (shield_damage > original_shields)
 		shield_damage = original_shields;
 	target->fighters = (float)(original_fighters - fighter_damage);
-	target->shields = projectile_single_sub(original_shields,
+	target->shields = qb_single_subtract(original_shields,
 	    shield_damage);
 	result->fighters = fighter_damage;
 	result->shields = shield_damage;

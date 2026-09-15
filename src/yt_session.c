@@ -116,13 +116,6 @@ session_close_game(struct yt_session *session)
 	}
 }
 
-static float
-single_add(float left, float right)
-{
-	volatile float result = left + right;
-	return result;
-}
-
 uint32_t
 session_sector_basic_record(const struct yt_session *session,
     float logical_sector)
@@ -365,7 +358,7 @@ session_mutate_player_credits(struct yt_session *session, float argument,
 		return false;
 	if (hydrated != NULL)
 		*hydrated = true;
-	sum = single_add(session->player.credits, argument);
+	sum = qb_single_add(session->player.credits, argument);
 	result = floorf(sum);
 	if (qb_mbf32_encode(sum, raw) == QB_MBF_OVERFLOW
 	    || qb_mbf32_encode(result, raw) == QB_MBF_OVERFLOW) {

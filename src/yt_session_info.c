@@ -6,14 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static float
-single_mul(float left, float right)
-{
-	volatile float result = left * right;
-
-	return result;
-}
-
 static bool
 info_failure(struct yt_error *error, const char *operation)
 {
@@ -353,7 +345,7 @@ yt_session_show_ship(struct yt_session *session, struct yt_error *error)
 	if (anti_cloak)
 		(void)snprintf(right, sizeof(right), "%s", " FAIL");
 	else {
-		cloak_percent = floorf(single_mul(session->player.cloak, 100.0f));
+		cloak_percent = floorf(qb_single_multiply(session->player.cloak, 100.0f));
 		if (qb_str_single(right, sizeof(right), cloak_percent) < 0
 		    || strlen(right) + 1U >= sizeof(right))
 			return false;

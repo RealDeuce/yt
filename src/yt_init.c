@@ -840,13 +840,6 @@ yt_rmt_preprocess_old_database(struct yt_database *database,
 	return yt_database_flush(database, error);
 }
 
-static float
-single_add(float left, float right)
-{
-	volatile float result = left + right;
-	return result;
-}
-
 bool
 yt_init_sector_prepass(struct yt_database *database, float sector_offset,
     int sector_count, float *port_offset, struct yt_error *error)
@@ -858,19 +851,12 @@ yt_init_sector_prepass(struct yt_database *database, float sector_offset,
 		set_error(error, YT_INVALID, "YT-INIT sector prepass", "");
 		return false;
 	}
-	computed = single_add(sector_offset, (float)sector_count);
+	computed = qb_single_add(sector_offset, (float)sector_count);
 	*port_offset = computed;
 	if (!yt_database_read(database, 1U, &record, error))
 		return false;
 	yt_record_set_number(&record, YT_F57, computed);
 	return yt_database_write(database, 1U, &record, error);
-}
-
-static float
-single_mul(float left, float right)
-{
-	volatile float result = left * right;
-	return result;
 }
 
 static float
@@ -937,7 +923,7 @@ yt_initializer_prepare_yt(struct yt_random *random,
 	preparation->today = yt_date_serial(&maintenance_date,
 	    preparation->config.epoch_year, NULL);
 	preparation->config.last_maintenance = (float)(preparation->today - 1);
-	preparation->config.headquarters = (float)((int)floorf(single_mul(sample,
+	preparation->config.headquarters = (float)((int)floorf(qb_single_multiply(sample,
 	    (float)(YT_INIT_SECTORS - 7))) + 1);
 	return true;
 }
@@ -1064,7 +1050,7 @@ yt_initializer_bounded(struct yt_random *random, int bound, int *value,
 	}
 	if (!yt_random_next(random, &sample, error))
 		return false;
-	*value = (int)floorf(single_mul(sample, (float)bound)) + 1;
+	*value = (int)floorf(qb_single_multiply(sample, (float)bound)) + 1;
 	return true;
 }
 
@@ -1123,7 +1109,7 @@ yt_generate_port_name(struct yt_random *random, char name[42],
 	if (!yt_random_next(random, &first, error)
 	    || !yt_random_next(random, &second, error))
 		return false;
-	parts = (int)floorf(single_mul(single_mul(first, second), 3.0f)) + 2;
+	parts = (int)floorf(qb_single_multiply(qb_single_multiply(first, second), 3.0f)) + 2;
 	name[0] = '\0';
 	for (part = 0; part < parts; ++part) {
 		const struct port_name_token *token;
@@ -1134,7 +1120,7 @@ yt_generate_port_name(struct yt_random *random, char name[42],
 
 		if (!yt_random_next(random, &sample, error))
 			return false;
-		selected = (int)floorf(single_mul(sample,
+		selected = (int)floorf(qb_single_multiply(sample,
 		    (float)YT_NAME_TOKENS));
 		token = &prepared_port_names.tokens[selected];
 		cursor = token->text;
@@ -1455,7 +1441,7 @@ build_graph(struct world *world, enum yt_initializer_family family,
 		return false;
 	if (!yt_random_next(random, &position, error))
 		return false;
-	position = single_add(single_mul(position, 400.0f), 8.0f);
+	position = qb_single_add(qb_single_multiply(position, 400.0f), 8.0f);
 	while (position < (float)world->sectors) {
 		bool overflow;
 		int selected = (int)qb_cint(position, &overflow);
@@ -1469,7 +1455,7 @@ build_graph(struct world *world, enum yt_initializer_family family,
 			world->warps[selected][5] = 1;
 		if (!yt_random_next(random, &increment, error))
 			return false;
-		position = single_add(position, single_mul(increment, 400.0f));
+		position = qb_single_add(position, qb_single_multiply(increment, 400.0f));
 	}
 	return true;
 }
@@ -1825,14 +1811,14 @@ write_world_database(struct yt_database *database,
 			if (!yt_random_next(random, &sample, error))
 				return false;
 			yt_record_set_number(&record, YT_F61 + (size_t)index * 4U,
-			    (float)((int)floorf(single_mul(sample, 31767.0f))
+			    (float)((int)floorf(qb_single_multiply(sample, 31767.0f))
 			    + 1000));
 		}
 		for (index = 0; index < 3; ++index) {
 			if (!yt_random_next(random, &sample, error))
 				return false;
 			yt_record_set_number(&record, YT_F73 + (size_t)index * 4U,
-			    (float)(-(int)floorf(single_mul(sample, 100.0f))
+			    (float)(-(int)floorf(qb_single_multiply(sample, 100.0f))
 			    - 1));
 		}
 		if (logical == 1)
@@ -1844,7 +1830,7 @@ write_world_database(struct yt_database *database,
 			return false;
 		if (!yt_random_next(random, &sample, error))
 			return false;
-		commodity = (int)floorf(single_mul(sample, 3.0f)) + 1;
+		commodity = (int)floorf(qb_single_multiply(sample, 3.0f)) + 1;
 		yt_record_set_text(&record, (const uint8_t *)name, strlen(name));
 		yt_record_set_number(&record, YT_F41, (float)commodity);
 		yt_record_set_number(&record, YT_F45, (float)(today - 10));
@@ -2299,8 +2285,8 @@ yt_initialize_world(const struct yt_initializer_options *options,
 		if (!rmt_present_before_headquarters(options, &config, error)
 		    || !yt_random_next(random, &sample, error))
 			goto done;
-		config.headquarters = (float)((int)floorf(single_mul(sample,
-		    single_add((float)world.sectors, -7.0f))) + 1);
+		config.headquarters = (float)((int)floorf(qb_single_multiply(sample,
+		    qb_single_add((float)world.sectors, -7.0f))) + 1);
 		if (!rmt_present_after_headquarters(options, &config, error))
 			goto done;
 		make_config_record(&config, config.scoreboard_length);
@@ -2391,8 +2377,8 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			    config.epoch_year, NULL) - 1);
 			if (!yt_random_next(random, &sample, error))
 				goto done;
-			config.headquarters = (float)((int)floorf(single_mul(sample,
-			    single_add((float)world.sectors, -7.0f))) + 1);
+			config.headquarters = (float)((int)floorf(qb_single_multiply(sample,
+			    qb_single_add((float)world.sectors, -7.0f))) + 1);
 		}
 		make_config_record(&config, config.scoreboard_length);
 		if (!write_config_and_players(database, &config, options, error)

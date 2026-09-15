@@ -8,34 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static float
-single_add(float left, float right)
-{
-	volatile float result = left + right;
-	return result;
-}
-
-static float
-single_subtract(float left, float right)
-{
-	volatile float result = left - right;
-	return result;
-}
-
-static float
-single_multiply(float left, float right)
-{
-	volatile float result = left * right;
-	return result;
-}
-
-static float
-single_divide(float left, float right)
-{
-	volatile float result = left / right;
-	return result;
-}
-
 
 bool
 yt_startup_split_command(const uint8_t *command, size_t length,
@@ -129,7 +101,7 @@ yt_startup_detect_baud(uint8_t dll, uint8_t dlm, float *baud)
 
 	if (baud == NULL || divisor == 0U)
 		return false;
-	*baud = single_divide(115200.0f, (float)divisor);
+	*baud = qb_single_divide(115200.0f, (float)divisor);
 	return true;
 }
 
@@ -222,11 +194,11 @@ yt_startup_restored_divisor(float baud, uint8_t *dll, uint8_t *dlm)
 
 	if (dll == NULL || dlm == NULL || !isfinite(baud) || baud <= 0.0f)
 		return false;
-	divisor = single_divide(115200.0f, baud);
-	high_product = single_multiply(divisor, 1.0f / 256.0f);
+	divisor = qb_single_divide(115200.0f, baud);
+	high_product = qb_single_multiply(divisor, 1.0f / 256.0f);
 	high_fixed = truncf(high_product);
-	low = single_subtract(divisor,
-	    single_multiply(high_fixed, 256.0f));
+	low = qb_single_subtract(divisor,
+	    qb_single_multiply(high_fixed, 256.0f));
 	low_integer = qb_cint_mode((double)low, 0U, &overflow);
 	if (overflow)
 		return false;
@@ -246,9 +218,9 @@ yt_startup_session_deadline(float timer, double minutes, float cap_timer)
 	float maximum;
 	float minute_single = (float)minutes;
 
-	requested = single_subtract(single_add(floorf(timer),
-	    single_multiply(60.0f, minute_single)), 3.0f);
-	maximum = single_add(floorf(cap_timer), 10800.0f);
+	requested = qb_single_subtract(qb_single_add(floorf(timer),
+	    qb_single_multiply(60.0f, minute_single)), 3.0f);
+	maximum = qb_single_add(floorf(cap_timer), 10800.0f);
 	return requested < maximum ? requested : maximum;
 }
 

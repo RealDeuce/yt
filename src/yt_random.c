@@ -1,4 +1,5 @@
 #include "yt_random.h"
+#include "qb.h"
 #include "yt_platform.h"
 
 #include <math.h>
@@ -43,27 +44,6 @@ yt_random_next(struct yt_random *random, float *value, struct yt_error *error)
 	++random->draws;
 	*value = random->last;
 	return true;
-}
-
-static float
-random_single_mul(float left, float right)
-{
-	volatile float result = left * right;
-	return result;
-}
-
-static float
-random_single_sub(float left, float right)
-{
-	volatile float result = left - right;
-	return result;
-}
-
-static float
-random_single_add(float left, float right)
-{
-	volatile float result = left + right;
-	return result;
 }
 
 bool
@@ -124,15 +104,15 @@ yt_random_nested_single(struct yt_random *random, float count, float *range,
 		return true;
 	terminal = count;
 	for (index = 1.0f; index <= terminal;
-	    index = random_single_add(index, 1.0f)) {
+	    index = qb_single_add(index, 1.0f)) {
 		float selection;
 		float integral;
 		float result;
 
 		if (!yt_random_next(random, &selection, error))
 			return false;
-		integral = floorf(random_single_mul(selection, *range));
-		result = random_single_add(integral, 1.0f);
+		integral = floorf(qb_single_multiply(selection, *range));
+		result = qb_single_add(integral, 1.0f);
 		*value = result;
 		*range = result;
 	}
@@ -181,10 +161,10 @@ yt_random_market_bases(struct yt_random *random, float bases[3],
 		if (!yt_random_next(random, &first, error)
 		    || !yt_random_next(random, &second, error))
 			return false;
-		bases[commodity] = random_single_add(
-		    random_single_sub(center[commodity],
-		    random_single_mul(first, span[commodity])),
-		    random_single_mul(second, span[commodity]));
+		bases[commodity] = qb_single_add(
+		    qb_single_subtract(center[commodity],
+		    qb_single_multiply(first, span[commodity])),
+		    qb_single_multiply(second, span[commodity]));
 	}
 	return true;
 }

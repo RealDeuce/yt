@@ -838,34 +838,6 @@ set_error(struct yt_error *error, enum yt_status status,
 }
 
 static float
-sadd(float left, float right)
-{
-	volatile float result = left + right;
-	return result;
-}
-
-static float
-ssub(float left, float right)
-{
-	volatile float result = left - right;
-	return result;
-}
-
-static float
-smul(float left, float right)
-{
-	volatile float result = left * right;
-	return result;
-}
-
-static float
-sdiv(float left, float right)
-{
-	volatile float result = left / right;
-	return result;
-}
-
-static float
 sint(float value)
 {
 	volatile float result = floorf(value);
@@ -890,13 +862,13 @@ yt_maintenance_age_player(float cloak, float last_active,
 	result->persisted_cloak = working;
 	result->cloak_written = working > 0.0f;
 	if (result->cloak_written) {
-		working = sadd(working, cloak_charge);
+		working = qb_single_add(working, cloak_charge);
 		if (working < 0.0f)
 			working = 0.0f;
 		result->persisted_cloak = working;
 		result->cloak_expired = working == 0.0f;
 	}
-	result->cutoff = ssub(today, retention_days);
+	result->cutoff = qb_single_subtract(today, retention_days);
 	result->delete_player = !result->cloak_expired
 	    && last_active <= result->cutoff && killer_status != 0.0f;
 	return true;
@@ -977,7 +949,7 @@ yt_maintenance_xannor_roaming_split(struct yt_random *random,
 		*result = local;
 		return true;
 	}
-	if (*group_one < sdiv(top_score, 2000.0f)) {
+	if (*group_one < qb_single_divide(top_score, 2000.0f)) {
 		local.skip_group = true;
 		*result = local;
 		return true;
@@ -999,7 +971,7 @@ yt_maintenance_xannor_roaming_split(struct yt_random *random,
 		}
 	}
 	*group_size = (float)split;
-	*group_one = ssub(*group_one, *group_size);
+	*group_one = qb_single_subtract(*group_one, *group_size);
 	*group_location = headquarters;
 	local.group_one_after = *group_one;
 	local.group_size_after = *group_size;
@@ -1102,7 +1074,7 @@ yt_maintenance_xannor_target_override(int group_number,
 	top_override = (revenge_live_sector != 0 && group_number > 15
 	    && top_player_target != 0) || group_number == 20;
 	*target = top_override ? top_player_target : discovered_target;
-	if (group_one < sdiv(top_score, 2000.0f))
+	if (group_one < qb_single_divide(top_score, 2000.0f))
 		*target = headquarters;
 	return true;
 }
@@ -1157,7 +1129,7 @@ yt_maintenance_xannor_player_scan_admit(int group_number,
     float group_location, float player_location, float cached_cloak,
     float cloak_draw)
 {
-	float threshold = ssub(cached_cloak, 0.33000001311302185f);
+	float threshold = qb_single_subtract(cached_cloak, 0.33000001311302185f);
 
 	return player_location == group_location && group_number != 20
 	    && threshold <= cloak_draw;
@@ -1228,14 +1200,14 @@ yt_maintenance_xannor_defense(struct yt_random *random, float *group_size,
 		if (!yt_random_next(random, &sample, error))
 			return false;
 		if (sample > 0.5f)
-			xloss = sadd(xloss, quantum);
+			xloss = qb_single_add(xloss, quantum);
 		else
-			dloss = sadd(dloss, quantum);
+			dloss = qb_single_add(dloss, quantum);
 	}
 	xloss = fminf(xloss, original_xannor);
 	dloss = fminf(dloss, original_defenders);
-	*group_size = ssub(original_xannor, xloss);
-	*defense_fighters = ssub(original_defenders, dloss);
+	*group_size = qb_single_subtract(original_xannor, xloss);
+	*defense_fighters = qb_single_subtract(original_defenders, dloss);
 	if (*defense_fighters <= 0.0f) {
 		*defense_fighters = 0.0f;
 		*defense_owner = 0.0f;
@@ -1275,13 +1247,13 @@ xannor_player_fighter_phase(struct yt_random *random,
 		if (!yt_random_next(random, &sample, error))
 			return false;
 		if (sample > 0.5f)
-			xannor_losses = sadd(xannor_losses, quantum);
+			xannor_losses = qb_single_add(xannor_losses, quantum);
 		else
-			player_losses = sadd(player_losses, quantum);
+			player_losses = qb_single_add(player_losses, quantum);
 	}
 	player_losses = fminf(player_losses, original_player);
 	xannor_losses = fminf(xannor_losses, original_xannor);
-	*player_fighters = ssub(original_player, player_losses);
+	*player_fighters = qb_single_subtract(original_player, player_losses);
 	result->player_fighter_losses = player_losses;
 	result->xannor_losses = xannor_losses;
 	return true;
@@ -1304,9 +1276,9 @@ xannor_player_shield_phase(struct yt_random *random, float player_fighters,
 		if (!yt_random_next(random, &sample, error))
 			return false;
 		if (sample >= 0.5f)
-			*player_shields = ssub(*player_shields, quantum);
+			*player_shields = qb_single_subtract(*player_shields, quantum);
 		else
-			xannor_losses = sadd(xannor_losses, quantum);
+			xannor_losses = qb_single_add(xannor_losses, quantum);
 	}
 	if (*player_shields < 0.0f)
 		*player_shields = 0.0f;
@@ -1337,7 +1309,7 @@ yt_maintenance_xannor_player_combat(struct yt_random *random,
 		return false;
 	if (*player_fighters < 0.0f)
 		*player_fighters = 0.0f;
-	*xannor_fighters = ssub(original_xannor, result->xannor_losses);
+	*xannor_fighters = qb_single_subtract(original_xannor, result->xannor_losses);
 	return true;
 }
 
@@ -2112,8 +2084,8 @@ current_day_minute(struct maint_state *state, float *day, float *minute,
 static float
 elapsed_days(float day, float minute, float old_day, float old_minute)
 {
-	float elapsed = sadd(ssub(day, old_day),
-	    sdiv(ssub(minute, old_minute), 1440.0f));
+	float elapsed = qb_single_add(qb_single_subtract(day, old_day),
+	    qb_single_divide(qb_single_subtract(minute, old_minute), 1440.0f));
 
 	if (elapsed > 10.0f || elapsed < 0.0f)
 		elapsed = 10.0f;
@@ -2141,13 +2113,13 @@ yt_maintenance_update_port(struct yt_random *random, struct yt_port *port,
 	result->elapsed = elapsed;
 	for (commodity = 0; commodity < 3; ++commodity) {
 		stock[commodity] = (double)port->stock[commodity]
-		    + (double)smul(port->production[commodity], elapsed);
+		    + (double)qb_single_multiply(port->production[commodity], elapsed);
 		if (stock[commodity] / 10.0
 		    > (double)port->production[commodity])
 			port->production[commodity] =
 			    (float)(stock[commodity] / 10.0);
 	}
-	result->plagued = sadd(sadd(port->production[0],
+	result->plagued = qb_single_add(qb_single_add(port->production[0],
 	    port->production[1]), port->production[2]) > 16000000.0f;
 	if (result->plagued) {
 		float maximum = 0.0f;
@@ -2159,13 +2131,13 @@ yt_maintenance_update_port(struct yt_random *random, struct yt_port *port,
 
 				if (!yt_random_next(random, &sample, error))
 					return false;
-				port->production[commodity] = sadd(
-				    smul(sample, port->production[commodity]),
+				port->production[commodity] = qb_single_add(
+				    qb_single_multiply(sample, port->production[commodity]),
 				    500.0f);
 			}
 		}
 		for (commodity = 0; commodity < 3; ++commodity) {
-			float cap = smul(port->production[commodity], 10.0f);
+			float cap = qb_single_multiply(port->production[commodity], 10.0f);
 
 			if (stock[commodity] > (double)cap)
 				stock[commodity] = (double)cap;
@@ -2334,59 +2306,59 @@ yt_maintenance_update_planet(struct yt_random *random,
 	quantity[6] = planet->bank;
 	quantity[7] = planet->ground_forces;
 	quantity[8] = planet->plasma;
-	sum = sadd(sadd(production[0], production[1]), production[2]);
+	sum = qb_single_add(qb_single_add(production[0], production[1]), production[2]);
 	production[3] = sint(sum);
-	production[4] = sint(sdiv(sum, 2500.0f));
-	production[5] = sint(sdiv(sum, 25000.0f));
+	production[4] = sint(qb_single_divide(sum, 2500.0f));
+	production[5] = sint(qb_single_divide(sum, 25000.0f));
 	production[6] = 0.0f;
 	production[7] = 0.0f;
-	production[8] = sint(smul(sum, missile_multiplier));
+	production[8] = sint(qb_single_multiply(sum, missile_multiplier));
 	elapsed = elapsed_days(day, minute, planet->last_day,
 	    planet->last_minute);
 	old_bank = quantity[6];
-	contribution[0] = sdiv(old_bank, 10000.0f);
-	contribution[1] = sdiv(old_bank, 20000.0f);
-	contribution[2] = sdiv(old_bank, 30000.0f);
-	contribution[3] = sdiv(old_bank, 500.0f);
-	contribution[4] = smul(old_bank, missile_multiplier);
-	contribution[5] = smul(old_bank, mine_multiplier);
+	contribution[0] = qb_single_divide(old_bank, 10000.0f);
+	contribution[1] = qb_single_divide(old_bank, 20000.0f);
+	contribution[2] = qb_single_divide(old_bank, 30000.0f);
+	contribution[3] = qb_single_divide(old_bank, 500.0f);
+	contribution[4] = qb_single_multiply(old_bank, missile_multiplier);
+	contribution[5] = qb_single_multiply(old_bank, mine_multiplier);
 	contribution[6] = 0.0f;
-	contribution[7] = sdiv(old_bank, 10000.0f);
+	contribution[7] = qb_single_divide(old_bank, 10000.0f);
 	contribution[8] = (float)((double)old_bank * 0.00000004);
 
-	quantity[6] = sint(sadd(quantity[6],
-	    smul(smul(quantity[6], elapsed), one_percent)));
-	quantity[7] = sint(sadd(sadd(quantity[7],
-	    smul(smul(quantity[7], elapsed), one_percent)),
-	    smul(contribution[7], elapsed)));
+	quantity[6] = sint(qb_single_add(quantity[6],
+	    qb_single_multiply(qb_single_multiply(quantity[6], elapsed), one_percent)));
+	quantity[7] = sint(qb_single_add(qb_single_add(quantity[7],
+	    qb_single_multiply(qb_single_multiply(quantity[7], elapsed), one_percent)),
+	    qb_single_multiply(contribution[7], elapsed)));
 	for (index = 0; index < 3; ++index)
-		production[index] = sadd(production[index],
-		    smul(smul(production[index], elapsed), one_percent));
+		production[index] = qb_single_add(production[index],
+		    qb_single_multiply(qb_single_multiply(production[index], elapsed), one_percent));
 	for (index = 0; index < 6; ++index) {
-		quantity[index] = sadd(quantity[index],
-		    smul(sadd(production[index], contribution[index]), elapsed));
+		quantity[index] = qb_single_add(quantity[index],
+		    qb_single_multiply(qb_single_add(production[index], contribution[index]), elapsed));
 		if (index < 3
-		    && quantity[index] > smul(production[index], 10.0f))
-			production[index] = sdiv(quantity[index], 10.0f);
+		    && quantity[index] > qb_single_multiply(production[index], 10.0f))
+			production[index] = qb_single_divide(quantity[index], 10.0f);
 	}
-	quantity[8] = sadd(quantity[8],
-	    smul(sadd(production[8], contribution[8]), elapsed));
+	quantity[8] = qb_single_add(quantity[8],
+	    qb_single_multiply(qb_single_add(production[8], contribution[8]), elapsed));
 	for (index = 0; index < 3; ++index) {
 		if (production[index] < 1.0f)
 			production[index] = 1.0f;
 	}
 
-	old_total = sadd(sadd(production[0], production[1]), production[2]);
+	old_total = qb_single_add(qb_single_add(production[0], production[1]), production[2]);
 	old_ground = quantity[7];
 	if (!yt_random_next(random, &first, error)
 	    || !yt_random_next(random, &second, error))
 		return false;
-	if (smul(first, old_total)
-	    > sadd(smul(second, 16000000.0f), 100000.0f))
+	if (qb_single_multiply(first, old_total)
+	    > qb_single_add(qb_single_multiply(second, 16000000.0f), 100000.0f))
 		event = YT_MAINTENANCE_PLANET_PLAGUE;
 	if (!yt_random_next(random, &third, error))
 		return false;
-	if (smul(third, old_ground) > 16000000.0f)
+	if (qb_single_multiply(third, old_ground) > 16000000.0f)
 		event = YT_MAINTENANCE_PLANET_CIVIL_WAR;
 	if (event != YT_MAINTENANCE_PLANET_NO_EVENT) {
 		float expense = 0.0f;
@@ -2396,7 +2368,7 @@ yt_maintenance_update_planet(struct yt_random *random,
 
 			if (!yt_random_next(random, &sample, error))
 				return false;
-			production[index] = smul(sample, production[index]);
+			production[index] = qb_single_multiply(sample, production[index]);
 		}
 		if (quantity[7] > 0.0f) {
 			float a;
@@ -2405,11 +2377,11 @@ yt_maintenance_update_planet(struct yt_random *random,
 			if (!yt_random_next(random, &a, error)
 			    || !yt_random_next(random, &b, error))
 				return false;
-			quantity[7] = ssub(quantity[7],
-			    smul(smul(quantity[7], a), b));
+			quantity[7] = qb_single_subtract(quantity[7],
+			    qb_single_multiply(qb_single_multiply(quantity[7], a), b));
 		}
 		for (index = 0; index < 3; ++index) {
-			float cap = smul(production[index], 10.0f);
+			float cap = qb_single_multiply(production[index], 10.0f);
 
 			if (quantity[index] > cap)
 				quantity[index] = cap;
@@ -2419,7 +2391,7 @@ yt_maintenance_update_planet(struct yt_random *random,
 
 			if (!yt_random_next(random, &sample, error))
 				return false;
-			expense = sint(smul(sample, quantity[6]));
+			expense = sint(qb_single_multiply(sample, quantity[6]));
 			quantity[6] = (float)((double)quantity[6]
 			    - (double)expense);
 		}
@@ -2441,7 +2413,7 @@ yt_maintenance_update_planet(struct yt_random *random,
 	result->elapsed = elapsed;
 	result->event = event;
 	result->old_event_total = old_total;
-	result->new_event_total = sadd(sadd(production[0], production[1]),
+	result->new_event_total = qb_single_add(qb_single_add(production[0], production[1]),
 	    production[2]);
 	result->old_event_ground = old_ground;
 	result->new_event_ground = quantity[7];
@@ -3374,7 +3346,7 @@ yt_maintenance_xannor_groups_extract(struct yt_game *game,
 			continue;
 		for (later = group + 1; later <= 20; ++later) {
 			if (location[later] == location[group]) {
-				size[group] = sadd(size[group], size[later]);
+				size[group] = qb_single_add(size[group], size[later]);
 				size[later] = 0.0f;
 				location[later] = 0.0f;
 			}
@@ -3395,10 +3367,10 @@ yt_maintenance_xannor_regeneration(float top_score, const float size[21],
 	if (size == NULL || result == NULL)
 		return false;
 	for (group = 1; group <= 20; ++group)
-		local.total_before = sadd(local.total_before, size[group]);
-	regeneration_single = sint(sdiv(top_score, 500.0f));
+		local.total_before = qb_single_add(local.total_before, size[group]);
+	regeneration_single = sint(qb_single_divide(top_score, 500.0f));
 	local.regeneration = (double)regeneration_single;
-	local.ceiling = sint(sdiv(top_score, 100.0f));
+	local.ceiling = sint(qb_single_divide(top_score, 100.0f));
 	if (local.total_before > local.ceiling)
 		local.regeneration = 0.0;
 	converted = (float)((double)size[1] + local.regeneration);
@@ -3483,7 +3455,7 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		if (sample <= 0.5f)
 			defenders -= (double)quantum;
 		else
-			size[1] = ssub(size[1], quantum);
+			size[1] = qb_single_subtract(size[1], quantum);
 	}
 	local.draws_consumed = game->random.draws - starting_draws;
 	local.successful = defenders <= 0.0;
@@ -3600,7 +3572,7 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 			    "YTDATA.DAT");
 		return false;
 	}
-	planet_number = ssub(game->config.total_records,
+	planet_number = qb_single_subtract(game->config.total_records,
 	    game->config.planet_offset);
 	if (sector.planet == planet_number) {
 		if (!yt_record_set_number(&sector.record, YT_F93, 0.0f)
@@ -3848,13 +3820,13 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 		    output.rows[3].length, error)
 		    || !yt_game_read_planet(game, planet_count, &planet, error))
 			return false;
-		minute = sint(sdiv((float)yt_platform_timer(), 60.0f));
+		minute = sint(qb_single_divide((float)yt_platform_timer(), 60.0f));
 		if (!yt_random_next(&game->random, &sample, error))
 			return false;
-		planet.ground_forces = sint(smul(sample, 250.0f));
+		planet.ground_forces = sint(qb_single_multiply(sample, 250.0f));
 		if (!yt_random_next(&game->random, &sample, error))
 			return false;
-		planet.bank = sadd(100000.0f, smul(sample, 10000000.0f));
+		planet.bank = qb_single_add(100000.0f, qb_single_multiply(sample, 10000000.0f));
 		if (!maintenance_write_xannor_rebuild(game, planet_count,
 		    &planet, today, minute, error)
 		    || !line_output(line_context, output.rows[4].data,
@@ -3873,8 +3845,8 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	local.ground_before_daily_update = planet.ground_forces;
 	if (!yt_random_next(&game->random, &sample, error))
 		return false;
-	planet.ground_forces = sadd(planet.ground_forces,
-	    sint(smul(sample, 25.0f)));
+	planet.ground_forces = qb_single_add(planet.ground_forces,
+	    sint(qb_single_multiply(sample, 25.0f)));
 	planet.owner = -1.0f;
 	if (planet.bank == 0.0f)
 		planet.bank = 16000000.0f;
@@ -3951,7 +3923,7 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 	    || !yt_random_next(&game->random, &gate, error))
 		return false;
 	if (local.top_score < 2500000.0f
-	    || ssub(player_cloak[local.top_record],
+	    || qb_single_subtract(player_cloak[local.top_record],
 	    0.33000001311302185f) > gate) {
 		local.draws_consumed = game->random.draws - starting_draws;
 		if (result != NULL)
@@ -4120,8 +4092,8 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 			return false;
 		if ((float)damage > *group_size)
 			damage = (int)*group_size;
-		*group_size = ssub(*group_size, (float)damage);
-		sector->mines = ssub(sector->mines, 1.0f);
+		*group_size = qb_single_subtract(*group_size, (float)damage);
+		sector->mines = qb_single_subtract(sector->mines, 1.0f);
 	}
 	if (initial_group != *group_size) {
 		float remaining_mines = sector->mines;
@@ -4163,7 +4135,7 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 		else {
 			length = 0U;
 			first_length = qb_str_single(first, sizeof(first),
-			    ssub(initial_group, *group_size));
+			    qb_single_subtract(initial_group, *group_size));
 			if (first_length < 0
 			    || !maintenance_copy_part(line, sizeof(line), &length,
 			    loss_prefix, sizeof(loss_prefix) - 1U)
@@ -4224,9 +4196,9 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 		return false;
 	length = 0U;
 	first_length = qb_str_single(first, sizeof(first),
-	    ssub(initial_defenders, remaining_defenders));
+	    qb_single_subtract(initial_defenders, remaining_defenders));
 	second_length = qb_str_single(second, sizeof(second),
-	    ssub(defense_group, *group_size));
+	    qb_single_subtract(defense_group, *group_size));
 	if (first_length < 0 || second_length < 0
 	    || !maintenance_copy_part(line, sizeof(line), &length,
 	    defense_prefix, sizeof(defense_prefix) - 1U)
@@ -4317,9 +4289,9 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 
 		if (!yt_random_next(&game->random, &sample, error))
 			return false;
-		*group_size = ssub(*group_size, 1.0f);
-		planet.ground_forces = ssub(planet.ground_forces,
-		    floorf(smul(sample, 1000.0f)));
+		*group_size = qb_single_subtract(*group_size, 1.0f);
+		planet.ground_forces = qb_single_subtract(planet.ground_forces,
+		    floorf(qb_single_multiply(sample, 1000.0f)));
 	}
 	if (planet.ground_forces < 0.0f)
 		planet.ground_forces = 0.0f;
@@ -4341,18 +4313,18 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 
 				if (!yt_random_next(&game->random, &sample, error))
 					return false;
-				planet.production[index] = ssub(
+				planet.production[index] = qb_single_subtract(
 				    planet.production[index],
-				    sdiv(smul(sample, quantum), 3.0f));
+				    qb_single_divide(qb_single_multiply(sample, quantum), 3.0f));
 				if (planet.production[index] < 0.0f)
 					planet.production[index] = 0.0f;
 			}
 		}
 		else
-			*group_size = ssub(*group_size, quantum);
+			*group_size = qb_single_subtract(*group_size, quantum);
 	}
 	for (index = 0; index < 3; ++index) {
-		float cap = smul(planet.production[index], 10.0f);
+		float cap = qb_single_multiply(planet.production[index], 10.0f);
 
 		if (planet.stock[index] > cap)
 			planet.stock[index] = cap;
@@ -4537,7 +4509,7 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	    || !yt_database_write(&game->database, (size_t)player_record,
 	    &player.record, error))
 		return false;
-	*xannor_fighters = ssub(original_xannor, combat.xannor_losses);
+	*xannor_fighters = qb_single_subtract(original_xannor, combat.xannor_losses);
 	killed = player.shields < 1.0f;
 	if (killed) {
 		if (!yt_game_read_player(game, player_record, &player, error)
@@ -4773,7 +4745,7 @@ yt_maintenance_xannor_groups_persist(struct yt_game *game,
 			}
 			if (!yt_game_read_sector(game, logical, &host, error))
 				return false;
-			host.fighters = sadd(host.fighters, size[group]);
+			host.fighters = qb_single_add(host.fighters, size[group]);
 			host.fighter_owner = -1.0f;
 			if (!yt_game_write_sector(game, logical, &host, error))
 				return false;
@@ -4810,7 +4782,7 @@ yt_maintenance_xannor_group_twenty_finish(struct yt_game *game,
 	}
 	if (!yt_game_read_sector(game, logical, &sector, error))
 		return false;
-	sector.fighters = sadd(sector.fighters, 1.0f);
+	sector.fighters = qb_single_add(sector.fighters, 1.0f);
 	return yt_game_write_sector(game, logical, &sector, error);
 }
 
@@ -5267,15 +5239,15 @@ yt_maintenance_collect_mercenary_tax(struct yt_game *game, int port_count,
 			return false;
 		if (port.treasury == 0.0f)
 			continue;
-		tax = sint(sdiv(port.treasury, 10.0f));
-		local.tax_pool = sadd(local.tax_pool, tax);
-		port.treasury = ssub(port.treasury,
-		    sint(sdiv(port.treasury, 10.0f)));
+		tax = sint(qb_single_divide(port.treasury, 10.0f));
+		local.tax_pool = qb_single_add(local.tax_pool, tax);
+		port.treasury = qb_single_subtract(port.treasury,
+		    sint(qb_single_divide(port.treasury, 10.0f)));
 		if (!yt_game_write_port(game, port_number, &port, error))
 			return false;
 		++local.taxed_ports;
 	}
-	local.fleet_strength = sint(sdiv(local.tax_pool, 10.0f));
+	local.fleet_strength = sint(qb_single_divide(local.tax_pool, 10.0f));
 	*result = local;
 	return true;
 }
@@ -5322,7 +5294,7 @@ yt_maintenance_place_mercenary_fleets(struct yt_game *game,
 		    &sector.record, error))
 			return false;
 	}
-	*hired_fighters = smul(strength, 10.0f);
+	*hired_fighters = qb_single_multiply(strength, 10.0f);
 	return true;
 }
 
@@ -5353,7 +5325,7 @@ yt_maintenance_mercenary_defections(struct yt_game *game, int sector_count,
 			if (!yt_random_next(&game->random, &sample, error))
 				return false;
 			if (sector.fighter_owner > 1.0f
-			    && smul(sample, 100.0f) > sector.fighters) {
+			    && qb_single_multiply(sample, 100.0f) > sector.fighters) {
 				char amount[64];
 				char sector_text[64];
 				uint8_t line[YT_MAINTENANCE_OUTPUT_ROW_SIZE];
@@ -5521,12 +5493,12 @@ yt_maintenance_mercenary_mines(struct yt_game *game, int sector_number,
 		return true;
 	}
 	local.losses = (float)damage;
-	local.survivors = ssub(moving_fighters, local.losses);
+	local.survivors = qb_single_subtract(moving_fighters, local.losses);
 	local.mine_hit = true;
 	local.killed = local.survivors == 0.0f;
 	if (!yt_game_read_sector(game, sector_number, arrival_sector, error))
 		return false;
-	arrival_sector->mines = ssub(arrival_sector->mines, 1.0f);
+	arrival_sector->mines = qb_single_subtract(arrival_sector->mines, 1.0f);
 	if (!yt_record_set_number(&arrival_sector->record, YT_F129,
 	    arrival_sector->mines)) {
 		set_error(error, YT_RANGE, "encode Mercenary mine",
@@ -6353,7 +6325,7 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 		if (!yt_random_next(&game->random, &first, error)
 		    || !yt_random_next(&game->random, &second, error))
 			return false;
-		production = smul(smul(first, second), 3000.0f);
+		production = qb_single_multiply(qb_single_multiply(first, second), 3000.0f);
 		if (!yt_record_set_number(&planet.record,
 		    YT_F45 + (size_t)index * 4U, production)
 		    || !yt_record_set_raw_number(&planet.record,
@@ -6365,10 +6337,10 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	    (float)local.player_record)
 	    || !yt_random_next(&game->random, &gate, error)
 	    || !yt_record_set_number(&planet.record, YT_F77,
-	    sint(sadd(smul(gate, 100.0f), 1.0f)))
+	    sint(qb_single_add(qb_single_multiply(gate, 100.0f), 1.0f)))
 	    || !yt_random_next(&game->random, &gate, error)
 	    || !yt_record_set_number(&planet.record, YT_F117,
-	    smul(gate, 16000000.0f))
+	    qb_single_multiply(gate, 16000000.0f))
 	    || !yt_record_set_raw_number(&planet.record, YT_F125,
 	    canonical_zero))
 		return false;

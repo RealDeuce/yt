@@ -124,7 +124,7 @@ planet_double_mul(double left, double right)
 static float
 planet_current_minute(void)
 {
-	return yt_port_single_div((float)yt_platform_timer(), 60.0f);
+	return qb_single_divide((float)yt_platform_timer(), 60.0f);
 }
 static float *
 player_item(struct yt_player *player, int item)
@@ -605,7 +605,7 @@ yt_session_planet_rename(struct yt_session *session, int logical_planet,
 		size_t name_length;
 		size_t confirmation_length = 0;
 
-		current_record = yt_port_single_add(
+		current_record = qb_single_add(
 		    session_planet_offset(session),
 		    (float)logical_planet);
 		if (yt_planet_rename_protected(current_record,
@@ -1139,7 +1139,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (answer != YT_YES_NO_YES)
 		return true;
-	scan = yt_port_single_add(session_planet_offset(session), 2.0f);
+	scan = qb_single_add(session_planet_offset(session), 2.0f);
 	for (;;) {
 		uint32_t physical = qb_brun_random_record_number(scan);
 
@@ -1161,9 +1161,9 @@ create_planet(struct yt_session *session, struct yt_error *error)
 				return false;
 			return true;
 		}
-		scan = yt_port_single_add(scan, 1.0f);
+		scan = qb_single_add(scan, 1.0f);
 	}
-	selected_logical = yt_port_single_sub(selected_expression,
+	selected_logical = qb_single_subtract(selected_expression,
 	    session_planet_offset(session));
 	logical = (int)selected_logical;
 	if (!yt_session_planet_rename(session, logical, &renamed, error))
@@ -1254,7 +1254,7 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 	if (!session_present_paged_line(session, landing, sizeof(landing) - 1U,
 	    "planet landing progress", error))
 		return false;
-	session->planet_record_expression = yt_port_single_add(
+	session->planet_record_expression = qb_single_add(
 	    session_planet_offset(session), sector.planet);
 	logical = (int)sector.planet;
 	physical = session_planet_basic_record(session, (float)logical);

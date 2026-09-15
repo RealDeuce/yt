@@ -5,30 +5,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static float
-single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
-static float
-single_sub(float left, float right)
-{
-	volatile float result = left - right;
-
-	return result;
-}
-
-static float
-single_mul(float left, float right)
-{
-	volatile float result = left * right;
-
-	return result;
-}
-
 static bool
 mine_loss_row(struct yt_session *session, enum yt_sector_mine_loss_kind kind,
     float loss, uint8_t *row, size_t capacity, struct yt_error *error)
@@ -54,11 +30,11 @@ mine_stock_loss(struct yt_session *session, float batch, float *stock,
 {
 	float sampled;
 
-	if (!mine_shrink(session, single_mul(batch, *stock), &sampled, error))
+	if (!mine_shrink(session, qb_single_multiply(batch, *stock), &sampled, error))
 		return false;
 	if (sampled > *stock)
 		sampled = *stock;
-	*stock = single_sub(*stock, sampled);
+	*stock = qb_single_subtract(*stock, sampled);
 	*loss = sampled;
 	return true;
 }
@@ -124,12 +100,12 @@ mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
 	float empty;
 
 	if (player->fighters != 0.0f) {
-		if (!mine_shrink(session, single_mul(40000.0f, batch), &loss,
+		if (!mine_shrink(session, qb_single_multiply(40000.0f, batch), &loss,
 		    error))
 			return false;
 		if (loss > player->fighters)
 			loss = player->fighters;
-		player->fighters = single_sub(player->fighters, loss);
+		player->fighters = qb_single_subtract(player->fighters, loss);
 		*touched |= YT_SECTOR_MINE_DAMAGE_FIGHTERS;
 		if (!mine_loss_row(session, YT_SECTOR_MINE_LOSS_FIGHTERS,
 		    loss, row, sizeof(row), error))
@@ -139,7 +115,7 @@ mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
 		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		loss = yt_sector_mine_cloak_loss(player->cloak, batch, draw);
-		player->cloak = single_sub(player->cloak, loss);
+		player->cloak = qb_single_subtract(player->cloak, loss);
 		*touched |= YT_SECTOR_MINE_DAMAGE_CLOAK;
 		if (!mine_loss_row(session, YT_SECTOR_MINE_LOSS_CLOAK, loss,
 		    row, sizeof(row), error))
@@ -149,7 +125,7 @@ mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
 		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		loss = yt_sector_mine_missile_loss(player->missiles, batch, draw);
-		player->missiles = single_sub(player->missiles, loss);
+		player->missiles = qb_single_subtract(player->missiles, loss);
 		*touched |= YT_SECTOR_MINE_DAMAGE_MISSILES;
 		if (!mine_loss_row(session, YT_SECTOR_MINE_LOSS_MISSILES, loss,
 		    row, sizeof(row), error))
@@ -191,10 +167,10 @@ mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
 		return true;
 	if (!mine_shrink(session, empty, &loss, error))
 		return false;
-	loss = single_mul(loss, batch);
+	loss = qb_single_multiply(loss, batch);
 	if (loss > empty)
 		loss = empty;
-	player->holds = single_sub(player->holds, loss);
+	player->holds = qb_single_subtract(player->holds, loss);
 	if (player->holds < 1.0f) {
 		player->holds = 0.0f;
 		session->destroyed = true;
@@ -299,7 +275,7 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 		return true;
 
 	session->self_mine_suppressed = true;
-	remaining = single_sub(carried, amount);
+	remaining = qb_single_subtract(carried, amount);
 	player.mines = remaining;
 	if (!yt_record_set_number(&player.record, YT_F129, remaining)
 	    || !yt_game_write_player(&session->door->game,
@@ -307,7 +283,7 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 	    || !yt_database_flush(&session->door->game.database, error)
 	    || !session_read_sector(session, current_sector, &sector, error))
 		return false;
-	sector.mines = single_add(sector.mines, amount);
+	sector.mines = qb_single_add(sector.mines, amount);
 	if (!yt_record_set_number(&sector.record, YT_F129, sector.mines)
 	    || !session_write_sector(session, current_sector, &sector, error)
 	    || !yt_database_flush(&session->door->game.database, error))
@@ -382,7 +358,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 		mines_before = sector.mines;
 		batch = yt_sector_mine_batch(mines_before);
 		yt_sector_mine_sector_overlay(&sector,
-		    single_sub(mines_before, batch));
+		    qb_single_subtract(mines_before, batch));
 		if (!yt_database_write(&session->door->game.database,
 		    (size_t)yt_sector_basic_record(&session->door->game.config,
 		    current), &sector.record, error))

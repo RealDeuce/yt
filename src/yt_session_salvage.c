@@ -1,31 +1,8 @@
 #include "yt_session_internal.h"
+#include "qb.h"
 
 #include <math.h>
 #include <string.h>
-
-static float
-single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
-static float
-single_sub(float left, float right)
-{
-	volatile float result = left - right;
-
-	return result;
-}
-
-static float
-single_mul(float left, float right)
-{
-	volatile float result = left * right;
-
-	return result;
-}
 
 static bool
 salvage_load_player(struct yt_session *session, int player_record,
@@ -119,7 +96,7 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 		case 4U: stock = victim.ground_forces; break;
 		default: stock = victim.mines; break;
 		}
-		awards[index] = floorf(single_mul(draw, stock));
+		awards[index] = floorf(qb_single_multiply(draw, stock));
 	}
 	if (!session_wait(session, 1.0, "ship salvage wait", error)
 	    || !salvage_load_player(session, killer_record, &killer, error))
@@ -143,16 +120,16 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "salvage result row", error))
 			return false;
-		*simple_fields[index - 1U] = single_add(
+		*simple_fields[index - 1U] = qb_single_add(
 		    *simple_fields[index - 1U], awards[index]);
 	}
 	if (!salvage_save_player(session, killer_record, &killer, error))
 		return false;
 
 	requested_holds = awards[0];
-	if (single_add(killer.holds, requested_holds)
+	if (qb_single_add(killer.holds, requested_holds)
 	    > session->door->game.config.maximum_holds)
-		requested_holds = single_sub(
+		requested_holds = qb_single_subtract(
 		    session->door->game.config.maximum_holds, killer.holds);
 	if (requested_holds > 0.0f) {
 		float counter;
@@ -166,7 +143,7 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 		cargo_stock[2] = victim.equipment;
 		cargo_remaining = victim.holds;
 		for (counter = 1.0f; counter <= requested_holds;
-		    counter = single_add(counter, 1.0f)) {
+		    counter = qb_single_add(counter, 1.0f)) {
 			float one_based;
 			float pick;
 			float boundary;
@@ -176,35 +153,35 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 			    &session->door->game.random, cargo_remaining,
 			    &one_based, error))
 				return false;
-			pick = single_sub(one_based, 1.0f);
+			pick = qb_single_subtract(one_based, 1.0f);
 			if (pick < cargo_stock[0])
 				selected = 0;
 			else {
-				boundary = single_add(cargo_stock[0],
+				boundary = qb_single_add(cargo_stock[0],
 				    cargo_stock[1]);
 				if (pick < boundary)
 					selected = 1;
 				else {
-					boundary = single_add(boundary,
+					boundary = qb_single_add(boundary,
 					    cargo_stock[2]);
 					selected = pick < boundary ? 2 : 3;
 				}
 			}
-			cargo_awards[selected] = single_add(
+			cargo_awards[selected] = qb_single_add(
 			    cargo_awards[selected], 1.0f);
 			if (selected < 3)
-				cargo_stock[selected] = single_sub(
+				cargo_stock[selected] = qb_single_subtract(
 				    cargo_stock[selected], 1.0f);
-			cargo_remaining = single_sub(cargo_remaining, 1.0f);
+			cargo_remaining = qb_single_subtract(cargo_remaining, 1.0f);
 		}
 		if (!salvage_load_player(session, killer_record, &killer, error))
 			return false;
 		for (index = 0U; index < YT_ARRAY_LEN(cargo_awards); ++index)
-			killer.holds = single_add(killer.holds,
+			killer.holds = qb_single_add(killer.holds,
 			    cargo_awards[index]);
-		killer.ore = single_add(killer.ore, cargo_awards[0]);
-		killer.organics = single_add(killer.organics, cargo_awards[1]);
-		killer.equipment = single_add(killer.equipment,
+		killer.ore = qb_single_add(killer.ore, cargo_awards[0]);
+		killer.organics = qb_single_add(killer.organics, cargo_awards[1]);
+		killer.equipment = qb_single_add(killer.equipment,
 		    cargo_awards[2]);
 		if (!salvage_save_player(session, killer_record, &killer, error)
 		    || !session_wait(session, 0.5, "ship salvage wait", error))

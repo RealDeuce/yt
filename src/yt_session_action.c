@@ -6,30 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static float
-single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
-static float
-single_mul(float left, float right)
-{
-	volatile float result = left * right;
-
-	return result;
-}
-
-static float
-single_div(float left, float right)
-{
-	volatile float result = left / right;
-
-	return result;
-}
-
 bool
 yt_session_fresh_no_turn_gate(struct yt_session *session, bool *denied,
     struct yt_error *error)
@@ -76,7 +52,7 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 	session->player.turns = qb_mbf32_decode(turn_raw);
 	if (!yt_record_set_raw_number(&session->player.record, YT_F49, turn_raw))
 		return false;
-	quotient = single_div(session->player.turns, turn_divisor);
+	quotient = qb_single_divide(session->player.turns, turn_divisor);
 	anti_cloak_allows = !session->anti_cloak_enabled;
 	if (quotient == floorf(quotient) && anti_cloak_allows) {
 		float display;
@@ -99,7 +75,7 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 		(void)yt_player_cache_set_raw(&session->player_cache, cache_record,
 		    YT_PLAYER_CACHE_CLOAK,
 		    session->player.record.bytes + YT_F125);
-		display = floorf(single_mul(session->player.cloak,
+		display = floorf(qb_single_multiply(session->player.cloak,
 		    cloak_display_scale));
 		qb_str_single(number, sizeof(number), display);
 		snprintf(row, sizeof(row), "Cloak at%s%%", number);
@@ -223,7 +199,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		if (draw > 0.75f)
-			heat = single_add(heat, 1.0f);
+			heat = qb_single_add(heat, 1.0f);
 		if (heat < 10.0f) {
 			session_set_foreground(session, 2.0f);
 		}
@@ -243,7 +219,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 			return false;
 		if (heat >= 31.0f)
 			break;
-		counter = single_add(counter, 1.0f);
+		counter = qb_single_add(counter, 1.0f);
 		if (counter > duration)
 			break;
 	}

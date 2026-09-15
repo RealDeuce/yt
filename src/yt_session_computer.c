@@ -345,7 +345,7 @@ yt_session_computer_check_port_visibility(struct yt_session *session,
 	    sector->fighter_owner,
 	    &friendly, error))
 		return false;
-	session->planet_record_expression = yt_port_single_add(
+	session->planet_record_expression = qb_single_add(
 	    session_planet_offset(session), session->inherited_loop_index);
 	*unavailable = (sector->port == 0.0f)
 	    | (sector->fighters > 0.0f && cached_team > 0.0f && !friendly)
@@ -472,7 +472,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 	static const uint8_t prompt[] =
 	    "What sector number is the planet in? ";
 	static const uint8_t unavailable[] = "No information available.";
-	float maximum = yt_port_single_sub(session_port_offset(session),
+	float maximum = qb_single_subtract(session_port_offset(session),
 	    session_sector_offset(session));
 
 	for (;;) {
@@ -525,7 +525,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			return false;
 		link = qb_mbf32_decode(sector.record.bytes + YT_F93);
 		{
-			float maximum_planet = yt_port_single_sub(
+			float maximum_planet = qb_single_subtract(
 			    session->door->game.config.total_records,
 			    session_planet_offset(session));
 
@@ -550,7 +550,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 				return false;
 			sector_fighters = session->hostile_deployed_fighters;
 			last_relationship = session->shared_status;
-			scratch = yt_port_single_add(
+			scratch = qb_single_add(
 			    session_planet_offset(session), link);
 			session->planet_record_expression = scratch;
 			if (!session_read_planet(session, (int)link, &planet, error)
@@ -645,7 +645,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			return computer_error(error, YT_RANGE,
 			    "computer planet stale current-planet record");
 		return yt_session_planet_inventory(session, (int)(valid_link
-		    ? link : yt_port_single_sub(
+		    ? link : qb_single_subtract(
 		    session->planet_record_expression,
 		    session_planet_offset(session))), error);
 	}

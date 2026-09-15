@@ -6,14 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static float
-single_sub(float left, float right)
-{
-	volatile float result = left - right;
-
-	return result;
-}
-
 static double
 double_add(double left, double right)
 {
@@ -109,7 +101,7 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 	desired = qb_mbf32_decode(desired_raw);
 	if (desired < 0.0f)
 		return true;
-	delta = single_sub(first_sector.fighters, desired);
+	delta = qb_single_subtract(first_sector.fighters, desired);
 	remaining = (float)double_add((double)session->player.fighters,
 	    (double)delta);
 	if (remaining < 0.0f)
@@ -135,5 +127,3 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 	    strlen(row))
 	    && session_sound(session, 4.0f, "sector fighter sound", error);
 }
-
-

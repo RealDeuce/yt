@@ -5,19 +5,11 @@
 #include <stdio.h>
 #include <string.h>
 
-static float
-single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
 bool
 yt_pager_advance(struct yt_pager_state *pager,
     struct yt_present_state *presentation, int *saved_foreground)
 {
-	pager->line_count = single_add(pager->line_count, 1.0f);
+	pager->line_count = qb_single_add(pager->line_count, 1.0f);
 	if (pager->nonstop != 0.0f || pager->line_count < 23.0f
 	    || pager->newline_flag != 0.0f)
 		return false;
@@ -113,7 +105,7 @@ yt_sector_pager_begin(struct yt_sector_pager_state *pager)
 void
 yt_sector_pager_add(struct yt_sector_pager_state *pager, float lines)
 {
-	pager->line_count = single_add(pager->line_count, lines);
+	pager->line_count = qb_single_add(pager->line_count, lines);
 }
 
 bool
@@ -134,13 +126,13 @@ yt_radio_pager_begin(struct yt_radio_pager_state *pager)
 void
 yt_radio_pager_add_pair(struct yt_radio_pager_state *pager)
 {
-	pager->line_count = single_add(pager->line_count, 2.0f);
+	pager->line_count = qb_single_add(pager->line_count, 2.0f);
 }
 
 bool
 yt_radio_pager_add_body(struct yt_radio_pager_state *pager)
 {
-	pager->line_count = single_add(pager->line_count, 1.0f);
+	pager->line_count = qb_single_add(pager->line_count, 1.0f);
 	if (pager->line_count <= 22.0f)
 		return false;
 	pager->line_count = 0.0f;

@@ -182,7 +182,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 	bool first_visible = true;
 	bool first_warp = true;
 
-	session->current_sector_record = yt_port_single_add(
+	session->current_sector_record = qb_single_add(
 	    session_sector_offset(session), logical_sector);
 	if (!scanner_read_sector(session, logical_sector, &sector, error))
 		return false;

@@ -40,7 +40,7 @@ yt_session_update_port(struct yt_session *session, int sector_number,
 	else {
 		sector_expression = sector_record_expression != NULL
 		    ? *sector_record_expression
-		    : yt_port_single_add(session_sector_offset(session),
+		    : qb_single_add(session_sector_offset(session),
 		    (float)sector_number);
 		sector_physical_record = qb_brun_random_record_number(
 		    sector_expression);
@@ -54,7 +54,7 @@ yt_session_update_port(struct yt_session *session, int sector_number,
 		yt_sector_decode(&sector, &record);
 	}
 	market->logical_port = sector.port;
-	market->port_record_expression = yt_port_single_add(
+	market->port_record_expression = qb_single_add(
 	    session_port_offset(session), market->logical_port);
 	market->port_physical_record = qb_brun_random_record_number(
 	    market->port_record_expression);
@@ -163,7 +163,7 @@ yt_session_port_report(struct yt_session *session, int logical_port,
 		return false;
 	physical_record = market->port_physical_record != 0U
 	    ? market->port_physical_record
-	    : qb_brun_random_record_number(yt_port_single_add(
+	    : qb_brun_random_record_number(qb_single_add(
 	    session_port_offset(session), (float)logical_port));
 	if (physical_record == 0U)
 		return port_update_error(error, "port report record conversion");
@@ -351,7 +351,7 @@ commodity_prepare(const struct yt_port_market_state *market,
 			    "commodity trade cached quantity CSNG");
 		terms->maximum = qb_mbf32_decode(single_raw);
 	}
-	if ((double)floorf(yt_port_single_mul(terms->price,
+	if ((double)floorf(qb_single_multiply(terms->price,
 	    terms->maximum)) > terms->credits) {
 		double affordable;
 
@@ -542,8 +542,8 @@ yt_session_trade_commodity(struct yt_session *session,
 		}
 		break;
 	}
-	total = floorf(yt_port_single_add(
-	    yt_port_single_mul(terms.price, quantity), 0.5f));
+	total = floorf(qb_single_add(
+	    qb_single_multiply(terms.price, quantity), 0.5f));
 	if (qb_str_single(first, sizeof(first), quantity) < 0
 	    || snprintf(row, sizeof(row), "Agreed,%s units.", first) < 0
 	    || !session_present_paged_fragment(session, (const uint8_t *)row,
@@ -567,7 +567,7 @@ yt_session_trade_commodity(struct yt_session *session,
 		float receipt = total;
 
 		if (market->port.owner == (float)session_record(session))
-			receipt = floorf(yt_port_single_mul(
+			receipt = floorf(qb_single_multiply(
 			    0.009999999776482582f, total));
 		if (!read_port_physical(session, market->port_physical_record,
 		    &fresh_port, error))
@@ -580,7 +580,7 @@ yt_session_trade_commodity(struct yt_session *session,
 	direction = terms.factor > 0.0f ? 1.0f
 	    : terms.factor < 0.0f ? -1.0f : 0.0f;
 	if (!session_mutate_player_credits(session,
-	    -yt_port_single_mul(total, direction), NULL, error)
+	    -qb_single_multiply(total, direction), NULL, error)
 	    || !session_reload_player(session, error))
 		return false;
 	yt_trade_holds_overlay(&session->player, commodity, quantity, direction);
@@ -744,11 +744,11 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "treasury scan blank", error))
 		return false;
-	loop_bound = yt_port_single_sub(session_planet_offset(session),
+	loop_bound = qb_single_subtract(session_planet_offset(session),
 	    session_port_offset(session));
 	for (counter = 1.0f; counter <= loop_bound;
-	    counter = yt_port_single_add(counter, 1.0f)) {
-		float expression = yt_port_single_add(session_port_offset(session),
+	    counter = qb_single_add(counter, 1.0f)) {
+		float expression = qb_single_add(session_port_offset(session),
 		    counter);
 		uint32_t physical_record = qb_brun_random_record_number(expression);
 
@@ -761,10 +761,10 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 		yt_port_decode(&port, &record);
 		if (port.owner != (float)session_record(session))
 			continue;
-		owned = yt_port_single_add(owned, 1.0f);
+		owned = qb_single_add(owned, 1.0f);
 		if (!qb_mbf32_truth(port.record.bytes + YT_F89))
 			continue;
-		credited = yt_port_single_add(credited, 1.0f);
+		credited = qb_single_add(credited, 1.0f);
 		if (!treasury_add(total, port.record.bytes + YT_F89, error)
 		    || !treasury_format_single("Sector:", port.sector, text,
 		    sizeof(text), error, "treasury sector field")
@@ -821,7 +821,7 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 	    strlen(text), SESSION_PRESENT_LINE, "treasury credited ports",
 	    error))
 		return false;
-	barren = yt_port_single_sub(owned, credited);
+	barren = qb_single_subtract(owned, credited);
 	if (!treasury_format_single("Barren ports..:", barren, text,
 	    sizeof(text), error, "treasury barren ports")
 	    || !session_present_text(session, (const uint8_t *)text,

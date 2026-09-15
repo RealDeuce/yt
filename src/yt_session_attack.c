@@ -6,22 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static float
-attack_single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
-static float
-attack_single_div(float left, float right)
-{
-	volatile float result = left / right;
-
-	return result;
-}
-
 static double
 attack_double_add(double left, double right)
 {
@@ -169,7 +153,7 @@ direct_attack_attrition(struct yt_session *session, double committed,
 		if (!yt_random_next(&session->door->game.random, &sampled,
 		    error))
 			return false;
-		if (attack_single_add(attack_single_div(cloak, 10.0f), sampled)
+		if (qb_single_add(qb_single_divide(cloak, 10.0f), sampled)
 		    < 0.44999998807907104f)
 			*attacker_loss = attack_double_add(*attacker_loss,
 			    (double)quantum);
@@ -369,7 +353,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		self = record == session_record(session);
 		cloaked = cached_cloak > 0.0f;
 		if (sector_mismatch || self || cloaked) {
-			candidate = attack_single_add(candidate, 1.0f);
+			candidate = qb_single_add(candidate, 1.0f);
 			continue;
 		}
 
@@ -390,7 +374,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 			    row_length))
 				return false;
 			encountered = true;
-			candidate = attack_single_add(candidate, 1.0f);
+			candidate = qb_single_add(candidate, 1.0f);
 			continue;
 		}
 
@@ -400,7 +384,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		    || !session_confirm(session, row, row_length, &answer, error))
 			return false;
 		if (answer == YT_YES_NO_NO) {
-			candidate = attack_single_add(candidate, 1.0f);
+			candidate = qb_single_add(candidate, 1.0f);
 			continue;
 		}
 		if (answer != YT_YES_NO_YES && answer != YT_YES_NO_EMPTY)
@@ -704,7 +688,7 @@ hostile_attack_tail_run(struct yt_session *session,
 		state->bonus = yt_xannor_attack_bonus(state->defender_loss,
 		    state->current.turns, state->turns_per_day);
 		if (state->bonus >= 1.0f) {
-			state->current.turns = attack_single_add(state->current.turns,
+			state->current.turns = qb_single_add(state->current.turns,
 			    state->bonus);
 			(void)yt_record_set_number(&state->current.record, YT_F49,
 			    state->current.turns);

@@ -1,4 +1,5 @@
 #include "yt_config.h"
+#include "qb.h"
 
 #include <math.h>
 #include <string.h>
@@ -130,22 +131,6 @@ config_hq_error(struct yt_error *error, enum yt_status status,
 	return false;
 }
 
-static float
-config_single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
-static float
-config_single_sub(float left, float right)
-{
-	volatile float result = left - right;
-
-	return result;
-}
-
 bool
 yt_config_headquarters_relocate(struct yt_database *database,
     const struct yt_config *config, float candidate,
@@ -211,7 +196,7 @@ yt_config_headquarters_relocate(struct yt_database *database,
 	    (size_t)yt_sector_basic_record(config, old_logical), &field,
 	    error))
 		return false;
-	merged_fighters = config_single_add(captured_candidate_fighters,
+	merged_fighters = qb_single_add(captured_candidate_fighters,
 	    yt_record_get_number(&field, YT_F81));
 	(void)yt_record_set_raw_number(&field, YT_F93, raw_clear);
 	(void)yt_record_set_raw_number(&field, YT_F85, raw_clear);
@@ -222,7 +207,7 @@ yt_config_headquarters_relocate(struct yt_database *database,
 	    (size_t)yt_sector_basic_record(config, candidate_logical), &field,
 	    error))
 		return false;
-	planet_link = config_single_sub(config->total_records,
+	planet_link = qb_single_subtract(config->total_records,
 	    config->planet_offset);
 	if (!yt_record_set_number(&field, YT_F85, -1.0f)
 	    || !yt_record_set_number(&field, YT_F81, merged_fighters)
