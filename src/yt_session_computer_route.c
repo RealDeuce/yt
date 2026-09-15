@@ -45,6 +45,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	char response[160];
 	char programmed_moves[YT_COMMAND_SIZE];
 	size_t programmed_moves_length;
+	struct session_route_plan route;
 	float maximum;
 	float start_value;
 	float destination_value;
@@ -127,7 +128,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		return false;
 	session->shared_status = 1.0f;
 	if (!yt_session_build_route(session, start_value, destination_value,
-	    NULL, true, &found, &route_outcome, &session->shared_status,
+	    &route, true, &found, &route_outcome, &session->shared_status,
 	    error))
 		return false;
 	if (!found) {
@@ -185,7 +186,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		    YT_BASIC_FAULT_ROUTE_DISPLAY_VERTEX_CINT,
 		    "route display vertex CINT", error))
 			return false;
-		next = session->route_second[display_index];
+		next = route.next_hop[display_index];
 		if (next == 0)
 			break;
 		cursor = next;
@@ -276,4 +277,3 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	}
 	return true;
 }
-

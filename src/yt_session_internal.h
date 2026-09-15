@@ -30,6 +30,10 @@ struct session_projectile_state {
 	float retained_counterlaunch_missiles;
 };
 
+struct session_route_plan {
+	int16_t next_hop[YT_ROUTE_CAPACITY];
+};
+
 struct yt_session {
 	struct yt_door *door;
 	struct yt_error *error;
@@ -80,8 +84,6 @@ struct yt_session {
 	bool fatal_wait_complete;
 	struct yt_present_state presentation;
 	float route_avoid[YT_ROUTE_AVOID_COUNT];
-	int16_t route_predecessor[YT_ROUTE_CAPACITY];
-	int16_t route_second[YT_ROUTE_CAPACITY];
 	char planet_name[42];
 	struct yt_present_time_state time;
 	struct yt_pager_state pager;
@@ -107,9 +109,9 @@ bool yt_session_players_are_friendly(struct yt_session *session,
 bool yt_session_destination_is_dangerous(struct yt_session *session,
     float target, bool *dangerous, struct yt_error *error);
 bool yt_session_build_route(struct yt_session *session, float start,
-    float destination, int16_t *next_hop, bool use_avoid, bool *found,
-    enum yt_route_outcome *route_outcome, float *returned_status,
-    struct yt_error *error);
+    float destination, struct session_route_plan *plan, bool use_avoid,
+    bool *found, enum yt_route_outcome *route_outcome,
+    float *returned_status, struct yt_error *error);
 bool yt_session_store_move(struct yt_session *session, float target,
     struct yt_error *error);
 bool yt_session_command_move(struct yt_session *session, bool *moved,

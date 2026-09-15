@@ -273,6 +273,7 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	char number[64];
 	uint8_t row[512];
 	size_t row_length;
+	struct session_route_plan route;
 	float start = session->player.sector;
 	float destination;
 	float maximum = yt_planet_move_maximum(session_port_offset(session),
@@ -342,7 +343,7 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 		}
 		return false;
 	}
-	if (!yt_session_build_route(session, start, destination, NULL, true,
+	if (!yt_session_build_route(session, start, destination, &route, true,
 	    &found, NULL, NULL, error))
 		return false;
 	if (!found) {
@@ -370,7 +371,7 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 		return false;
 	cursor = start_node;
 	for (;;) {
-		int next = session->route_second[cursor];
+		int next = route.next_hop[cursor];
 		int column;
 		int ignored_row;
 		int number_length;
@@ -426,7 +427,7 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 		return false;
 	cursor = start_node;
 	for (;;) {
-		int next = session->route_second[cursor];
+		int next = route.next_hop[cursor];
 		int number_length;
 
 		if (next == 0)

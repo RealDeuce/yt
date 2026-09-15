@@ -75,14 +75,13 @@ route_index_valid(int16_t index)
 
 static bool
 route_build(struct yt_session *session, float start_value,
-    float destination_value, float *status, enum yt_route_outcome *outcome,
-    struct yt_error *error)
+    float destination_value, int16_t predecessor[YT_ROUTE_CAPACITY],
+    int16_t next_hop[YT_ROUTE_CAPACITY], float *status,
+    enum yt_route_outcome *outcome, struct yt_error *error)
 {
 	uint8_t seen[(YT_ROUTE_CAPACITY + CHAR_BIT - 1U) / CHAR_BIT];
 	const float *avoid = session->route_avoid;
 	uint8_t conversion_mode = session->presentation.sound.conversion_mode;
-	int16_t *predecessor = session->route_predecessor;
-	int16_t *second = session->route_second;
 	bool avoid_enabled;
 	int16_t start;
 	int16_t destination;
@@ -93,23 +92,23 @@ route_build(struct yt_session *session, float start_value,
 		return route_error(error, "route arguments");
 	avoid_enabled = *status != 0.0f;
 	memset(predecessor, 0, YT_ROUTE_CAPACITY * sizeof(*predecessor));
-	memset(second, 0, YT_ROUTE_CAPACITY * sizeof(*second));
+	memset(next_hop, 0, YT_ROUTE_CAPACITY * sizeof(*next_hop));
 	if (!route_endpoint_at(start_value, conversion_mode, &start, error,
 	    "route start FIFO CINT", YT_BASIC_FAULT_ROUTE_START_FIFO_CINT))
 		return false;
 	if (start_value == destination_value) {
 		predecessor[0] = start;
-		second[0] = 0;
+		next_hop[0] = 0;
 		if (!route_endpoint_at(start_value, conversion_mode, &start, error,
 		    "route start predecessor CINT",
 		    YT_BASIC_FAULT_ROUTE_START_PREDECESSOR_CINT))
 			return false;
-		second[start] = 0;
+		next_hop[start] = 0;
 		*outcome = YT_ROUTE_SAME;
 		return true;
 	}
 
-	second[1] = start;
+	next_hop[1] = start;
 	if (!route_endpoint_at(start_value, conversion_mode, &start, error,
 	    "route start predecessor CINT",
 	    YT_BASIC_FAULT_ROUTE_START_PREDECESSOR_CINT))
@@ -158,7 +157,7 @@ route_build(struct yt_session *session, float start_value,
 			return false;
 		if (!route_index_valid(queue_index))
 			return route_error(error, "route FIFO index");
-		current = second[queue_index];
+		current = next_hop[queue_index];
 		if (!route_integer_at((float)current, conversion_mode, &current,
 		    error, "route FIFO node CINT",
 		    YT_BASIC_FAULT_ROUTE_FIFO_NODE_CINT))
@@ -187,13 +186,13 @@ route_build(struct yt_session *session, float start_value,
 			if (tail == (int16_t)(YT_ROUTE_CAPACITY - 1U))
 				return route_error(error, "route FIFO capacity");
 			tail++;
-			second[tail] = neighbor;
+			next_hop[tail] = neighbor;
 		}
 		head++;
 	}
 
 	if (tail < head) {
-		second[start] = 0;
+		next_hop[start] = 0;
 		*status = 1.0f;
 		*outcome = YT_ROUTE_NOT_FOUND;
 		return true;
@@ -226,13 +225,13 @@ route_build(struct yt_session *session, float start_value,
 			return false;
 		if (!route_index_valid(prior))
 			return route_error(error, "route reconstruction parent");
-		second[prior] = child;
+		next_hop[prior] = child;
 		head = prior;
 	}
 	if (!route_endpoint_at(destination_value, conversion_mode, &destination,
 	    error, "route next-hop CINT", YT_BASIC_FAULT_ROUTE_NEXT_HOP_CINT))
 		return false;
-	second[destination] = 0;
+	next_hop[destination] = 0;
 	*status = 0.0f;
 	*outcome = YT_ROUTE_FOUND;
 	return true;
@@ -240,20 +239,21 @@ route_build(struct yt_session *session, float start_value,
 
 bool
 yt_session_build_route(struct yt_session *session, float start,
-    float destination, int16_t *next_hop, bool use_avoid, bool *found,
-    enum yt_route_outcome *route_outcome, float *returned_status,
-    struct yt_error *error)
+    float destination, struct session_route_plan *plan, bool use_avoid,
+    bool *found, enum yt_route_outcome *route_outcome,
+    float *returned_status, struct yt_error *error)
 {
+	struct session_route_plan discarded_plan;
+	int16_t predecessor[YT_ROUTE_CAPACITY];
 	float status = use_avoid ? 1.0f : 0.0f;
 	enum yt_route_outcome outcome;
 	bool success;
-	size_t index;
 
-	success = route_build(session, start, destination, &status, &outcome,
-	    error);
-	if (next_hop != NULL)
-		for (index = 0U; index < YT_ROUTE_CAPACITY; ++index)
-			next_hop[index] = session->route_second[index];
+	if (plan == NULL)
+		plan = &discarded_plan;
+
+	success = route_build(session, start, destination, predecessor,
+	    plan->next_hop, &status, &outcome, error);
 	if (!success)
 		return false;
 	if (outcome == YT_ROUTE_BACK_EDGE)

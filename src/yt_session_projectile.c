@@ -164,6 +164,7 @@ plasma_route_run(struct yt_session *session,
 	char second[64];
 	uint8_t row[192];
 	size_t steps = 0U;
+	struct session_route_plan plan;
 
 	for (;;) {
 		bool overflow;
@@ -178,15 +179,15 @@ plasma_route_run(struct yt_session *session,
 				return false;
 			*origin = 0.0f;
 			route->origin = 0.0f;
-			session->route_second[0] = (int16_t)destination_index;
-			session->route_second[(int16_t)destination_index] = 0;
+			plan.next_hop[0] = (int16_t)destination_index;
+			plan.next_hop[(int16_t)destination_index] = 0;
 		} else {
 			bool found;
 			enum yt_route_outcome outcome;
 			float status = 0.0f;
 
 			if (!yt_session_build_route(session, route->origin,
-			    route->destination, NULL, false, &found, &outcome,
+			    route->destination, &plan, false, &found, &outcome,
 			    &status, error))
 				return false;
 			*origin = route->origin;
@@ -206,7 +207,7 @@ plasma_route_run(struct yt_session *session,
 			current_index = qb_cint(current_hop, &overflow);
 			if (overflow)
 				return false;
-			next_hop = session->route_second[(int16_t)current_index];
+			next_hop = plan.next_hop[(int16_t)current_index];
 			current_hop = (float)next_hop;
 			if (next_hop == 0 || *energy < 1.0)
 				return plasma_footer(session, error);
@@ -285,6 +286,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 	float hop_loss;
 	uint8_t attacker[YT_PROJECTILE_ATTACKER_CAPACITY];
 	size_t attacker_length;
+	struct session_route_plan plan;
 	int local_counterattack = 0;
 	int local_xannor_provoker = 0;
 	int *counterattack = pending_counterattack != NULL
@@ -326,7 +328,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 		float route_status;
 
 		bool route_success = yt_session_build_route(session,
-		    route->origin, route->destination, NULL,
+		    route->origin, route->destination, &plan,
 		    yt_projectile_route_avoid_enabled(plasma, *counterattack,
 		    session_record(session)), &found, &route_outcome,
 		    &route_status, error);
@@ -358,7 +360,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 		}
 		cursor = start;
 		for (;;) {
-			int next = session->route_second[cursor];
+			int next = plan.next_hop[cursor];
 
 			if (!yt_projectile_route_has_next((int16_t)next))
 				break;
