@@ -120,7 +120,7 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 	if (!yt_random_next(&session->door->game.random, &draw, error))
 		return false;
 	if (draw > xannor_threshold) {
-		xannor_provoker = session->xannor_provoker;
+		xannor_provoker = session->projectile.pending_xannor_provoker;
 		if (!yt_session_launch_xannor_retaliation(session,
 		    &xannor_provoker,
 		    error))

@@ -36,7 +36,7 @@ test_one_sector_all_ports(void)
 	memset(&sector, 0, sizeof(sector));
 	memset(&port, 0, sizeof(port));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
 	memcpy(session.queue, answer, sizeof(answer) - 1U);
 	session.queue_length = sizeof(answer) - 1U;

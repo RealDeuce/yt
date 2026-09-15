@@ -72,7 +72,7 @@ session_current_date_serial(struct yt_session *session, int *serial,
 int
 session_record(const struct yt_session *session)
 {
-	return session->player_record_carrier;
+	return session->active_player_record;
 }
 
 bool

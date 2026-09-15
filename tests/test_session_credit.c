@@ -33,7 +33,7 @@ test_credit_mutation(void)
 	memset(&session, 0, sizeof(session));
 	memset(&source, 0, sizeof(source));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.current_sector_record = -7.0f;
 	yt_record_blank(&door.game.config.record);
 	CHECK(yt_record_set_number(&door.game.config.record, YT_F53, 100.0f));

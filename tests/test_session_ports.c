@@ -102,7 +102,7 @@ test_zero_capacity_trade(void)
 	memset(&player, 0, sizeof(player));
 	memset(&market, 0, sizeof(market));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	market.port_physical_record = 2057U;
 	market.port.factor[0] = 60.0f;
 	market.price[0] = 20.0f;
@@ -145,7 +145,7 @@ test_no_port_purchase(void)
 	memset(&player, 0, sizeof(player));
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
 	door.game.config.sector_offset = 100.0f;
 	door.game.config.port_offset = 200.0f;
@@ -200,7 +200,7 @@ test_owned_port_purchase(void)
 	memset(&sector, 0, sizeof(sector));
 	memset(&port, 0, sizeof(port));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
 	door.game.config.epoch_year = 26.0f;
 	door.game.config.sector_offset = 100.0f;
@@ -295,7 +295,7 @@ test_player_friendship(void)
 	memset(&current, 0, sizeof(current));
 	memset(&candidate, 0, sizeof(candidate));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	door.game.config.sector_offset = 51.0f;
 	yt_record_blank(&current.record);
 	current.team = 7.0f;

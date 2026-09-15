@@ -32,7 +32,7 @@ test_earth_store_exit(void)
 	memset(&player, 0, sizeof(player));
 	memset(&earth, 0, sizeof(earth));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
 	session.earth_report_seen = true;
 	memcpy(session.queue, leave, sizeof(leave) - 1U);

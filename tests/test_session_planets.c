@@ -36,7 +36,7 @@ test_self_owned_planet(void)
 	memset(&player, 0, sizeof(player));
 	memset(&planet, 0, sizeof(planet));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
 	door.game.config.epoch_year = 26.0f;
 	door.game.config.planet_offset = 3.0f;
@@ -96,7 +96,7 @@ test_land_and_leave_owned_planet(void)
 	memset(&sector, 0, sizeof(sector));
 	memset(&planet, 0, sizeof(planet));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
 	session.running = true;
 	memcpy(session.queue, answer, sizeof(answer) - 1U);

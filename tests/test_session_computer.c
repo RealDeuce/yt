@@ -37,7 +37,7 @@ test_activate_and_deactivate(void)
 	memset(&sector, 0, sizeof(sector));
 	memset(&planet, 0, sizeof(planet));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
 	session.running = true;
 	memcpy(session.queue, command, sizeof(command) - 1U);
@@ -120,7 +120,7 @@ test_port_visibility_through_report(void)
 	memset(&owner, 0, sizeof(owner));
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.inherited_loop_index = 52.0f;
 	session.pager.nonstop = -1.0f;
 	door.game.config.sector_offset = 51.0f;

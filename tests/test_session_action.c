@@ -63,7 +63,7 @@ test_direct_warp_decline(void)
 	memset(&session, 0, sizeof(session));
 	memset(&player, 0, sizeof(player));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
 	memcpy(session.queue, decline, sizeof(decline) - 1U);
 	session.queue_length = sizeof(decline) - 1U;
@@ -101,7 +101,7 @@ test_emergency_warp_persistence(void)
 	memset(&session, 0, sizeof(session));
 	memset(&player, 0, sizeof(player));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
 	session.foreground = 7.0f;
 	door.game.config.sector_offset = 51.0f;

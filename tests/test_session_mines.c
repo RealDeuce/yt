@@ -56,7 +56,7 @@ test_shielded_encounter(void)
 	memset(&player, 0, sizeof(player));
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.foreground = 6.0f;
 	session.presentation.foreground = 6.0f;
 	session.pager.foreground = 6;
@@ -134,7 +134,7 @@ test_unshielded_missile_draw(void)
 	memset(&player, 0, sizeof(player));
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.foreground = 6.0f;
 	session.presentation.foreground = 6.0f;
 	session.pager.foreground = 6;

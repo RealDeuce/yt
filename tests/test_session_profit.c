@@ -57,7 +57,7 @@ test_adjacent_and_global_reports(void)
 	memset(&source, 0, sizeof(source));
 	memset(&target, 0, sizeof(target));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.current_sector_record = 4.0f;
 	session.foreground = 1.0f;
 	session.presentation.foreground = 1.0f;

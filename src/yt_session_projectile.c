@@ -441,15 +441,15 @@ session_launch_projectile(struct yt_session *session, float *origin,
 	bool result;
 
 	if (counterattack != NULL)
-		*counterattack = session->counterattack_player;
+		*counterattack = session->projectile.pending_counterattack_player;
 	if (xannor_provoker != NULL)
-		*xannor_provoker = session->xannor_provoker;
+		*xannor_provoker = session->projectile.pending_xannor_provoker;
 	result = launch_projectile(session, target, amount, plasma, &route, origin,
 	    NULL, NULL, NULL, counterattack, xannor_provoker, error);
 	if (counterattack != NULL)
-		*counterattack = session->counterattack_player;
+		*counterattack = session->projectile.pending_counterattack_player;
 	if (xannor_provoker != NULL)
-		*xannor_provoker = session->xannor_provoker;
+		*xannor_provoker = session->projectile.pending_xannor_provoker;
 	return result;
 }
 
@@ -463,16 +463,16 @@ session_counterlaunch_projectile(struct yt_session *session, float *origin,
 	bool result;
 
 	if (counterattack != NULL)
-		*counterattack = session->counterattack_player;
+		*counterattack = session->projectile.pending_counterattack_player;
 	if (xannor_provoker != NULL)
-		*xannor_provoker = session->xannor_provoker;
+		*xannor_provoker = session->projectile.pending_xannor_provoker;
 	result = launch_projectile(session, target, amount, plasma,
 	    &route, origin, NULL, NULL, NULL,
 	    counterattack, xannor_provoker, error);
 	if (counterattack != NULL)
-		*counterattack = session->counterattack_player;
+		*counterattack = session->projectile.pending_counterattack_player;
 	if (xannor_provoker != NULL)
-		*xannor_provoker = session->xannor_provoker;
+		*xannor_provoker = session->projectile.pending_xannor_provoker;
 	return result;
 }
 
@@ -501,8 +501,8 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	uint8_t saved_cloak_raw[4];
 
 	if (counterattacker != NULL)
-		*counterattacker = session->counterattack_player;
-	session->player_record_carrier = session_record(session);
+		*counterattacker = session->projectile.pending_counterattack_player;
+	session->active_player_record = session_record(session);
 	saved_record = session_record(session);
 	if (*counterattacker < YT_PLAYER_FIRST_RECORD
 	    || *counterattacker > (int)session_sector_offset(session)
@@ -533,7 +533,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		(void)yt_player_cache_set_raw(&session->player_cache, saved_record,
 		    YT_PLAYER_CACHE_CLOAK, zero);
 	}
-	session->player_record_carrier = *counterattacker;
+	session->active_player_record = *counterattacker;
 	if (!yt_player_stored_name(&attacker, stored_name,
 	    &stored_name_length, error))
 		return false;
@@ -541,10 +541,10 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	memcpy(attacker_name, stored_name, stored_name_length);
 	memcpy(session->player.name, attacker_name, sizeof(session->player.name));
 
-	session->counterlaunch_count = yt_counterlaunch_score_count(
-	    (double)saved_player.score, session->counterlaunch_count);
-	if (session->counterlaunch_count > available
-	    || session->counterlaunch_count == 0.0f) {
+	session->projectile.retained_counterlaunch_missiles = yt_counterlaunch_score_count(
+	    (double)saved_player.score, session->projectile.retained_counterlaunch_missiles);
+	if (session->projectile.retained_counterlaunch_missiles > available
+	    || session->projectile.retained_counterlaunch_missiles == 0.0f) {
 		float draw;
 		volatile float product;
 		volatile float integral;
@@ -555,19 +555,19 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		product = draw * available;
 		integral = floorf(product);
 		selected = integral + 1.0f;
-		session->counterlaunch_count = selected;
+		session->projectile.retained_counterlaunch_missiles = selected;
 	}
 	if (!yt_game_read_player(&session->door->game, *counterattacker,
 	    &debit_player, error))
 		return false;
 	yt_counterlaunch_debit_overlay(&debit_player, available,
-	    session->counterlaunch_count);
+	    session->projectile.retained_counterlaunch_missiles);
 	if (!yt_game_write_player(&session->door->game, *counterattacker,
 	    &debit_player, error)
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "player counterlaunch blank", error)
 	    || !yt_counterlaunch_rows(stored_name, stored_name_length,
-	    session->counterlaunch_count, saved_name, saved_name_length,
+	    session->projectile.retained_counterlaunch_missiles, saved_name, saved_name_length,
 	    terminal_row, sizeof(terminal_row), &terminal_length, news_row,
 	    sizeof(news_row), &news_length)
 	    || !session_present_text(session, terminal_row, terminal_length,
@@ -576,12 +576,12 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		return false;
 	origin = attacker.sector;
 	if (!session_counterlaunch_projectile(session, &origin, &target,
-	    &session->counterlaunch_count, false, counterattacker,
+	    &session->projectile.retained_counterlaunch_missiles, false, counterattacker,
 	    xannor_provoker, error))
 		return false;
 
 	*counterattacker = 0;
-	session->player_record_carrier = saved_record;
+	session->active_player_record = saved_record;
 	session->player = saved_player;
 	if (valid_cache)
 		(void)yt_player_cache_set_raw(&session->player_cache, saved_record,
@@ -719,19 +719,19 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 	    || !yt_database_flush(&session->door->game.database, error))
 		return false;
 	session->destroyed = false;
-	counterattack = session->counterattack_player;
-	xannor_provoker = session->xannor_provoker;
+	counterattack = session->projectile.pending_counterattack_player;
+	xannor_provoker = session->projectile.pending_xannor_provoker;
 	if (!launch_projectile(session, &target, &amount, plasma,
 	    &route, &origin, origin_raw, target_raw,
 	    amount_raw, &counterattack, &xannor_provoker, error))
 		return false;
-	counterattack = session->counterattack_player;
-	xannor_provoker = session->xannor_provoker;
-	if (session->counterattack_player != 0
+	counterattack = session->projectile.pending_counterattack_player;
+	xannor_provoker = session->projectile.pending_xannor_provoker;
+	if (session->projectile.pending_counterattack_player != 0
 	    && !launch_player_counterattack(session, &counterattack,
 	    &xannor_provoker, error))
 		return false;
-	if (session->xannor_provoker != 0
+	if (session->projectile.pending_xannor_provoker != 0
 	    && !yt_session_launch_xannor_retaliation(session,
 	    &xannor_provoker, error))
 		return false;

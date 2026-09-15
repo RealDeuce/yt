@@ -483,7 +483,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		    strlen(full), &matches, error))
 			return false;
 		if (matches) {
-			session->player_record_carrier = basic;
+			session->active_player_record = basic;
 			session->player = candidate;
 			if (!yt_player_stored_name(&candidate,
 			    session->cached_player_name,
@@ -505,7 +505,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		    "new player entering row", error))
 			return false;
 		vacancy_bound = session->door->game.config.sector_offset;
-		session->player_record_carrier = YT_PLAYER_FIRST;
+		session->active_player_record = YT_PLAYER_FIRST;
 		for (basic = YT_PLAYER_FIRST;
 		    (float)basic <= vacancy_bound;
 		    ++basic) {
@@ -518,7 +518,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 				vacant = basic;
 				break;
 			}
-			session->player_record_carrier = basic + 1;
+			session->active_player_record = basic + 1;
 		}
 
 		if (vacant == 0) {

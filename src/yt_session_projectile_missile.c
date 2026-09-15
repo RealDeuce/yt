@@ -616,7 +616,7 @@ missile_mines:
 				if (yt_projectile_survivor_store_counterattack(
 				    session_record(session), basic, counterattack,
 				    counterattack_raw))
-					session->counterattack_player =
+					session->projectile.pending_counterattack_player =
 					    (int)qb_mbf32_decode(counterattack_raw);
 			}
 			return true;

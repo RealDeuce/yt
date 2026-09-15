@@ -32,7 +32,7 @@ test_replace_sector_force(void)
 	memset(&player, 0, sizeof(player));
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
 	memcpy(session.queue, desired, sizeof(desired) - 1U);
 	session.queue_length = sizeof(desired) - 1U;

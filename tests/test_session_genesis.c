@@ -29,7 +29,7 @@ test_genesis_decline(void)
 	memset(&session, 0, sizeof(session));
 	memset(&player, 0, sizeof(player));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
 	(void)snprintf(session.player.name, sizeof(session.player.name), "%s",
 	    "Baron");

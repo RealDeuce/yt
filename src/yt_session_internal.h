@@ -24,14 +24,18 @@ enum session_fault_disposition {
 	SESSION_FAULT_HANDLER_FAILED,
 };
 
+struct session_projectile_state {
+	int pending_counterattack_player;
+	int pending_xannor_provoker;
+	float retained_counterlaunch_missiles;
+};
+
 struct yt_session {
 	struct yt_door *door;
 	struct yt_error *error;
 	const char *executable_path;
-	int player_record_carrier;
-	int counterattack_player;
-	int xannor_provoker;
-	float counterlaunch_count;
+	int active_player_record;
+	struct session_projectile_state projectile;
 	bool destroyed;
 	float current_warps[6];
 	bool self_mine_suppressed;
@@ -79,8 +83,6 @@ struct yt_session {
 	float route_avoid[YT_ROUTE_AVOID_COUNT];
 	int16_t route_predecessor[YT_ROUTE_CAPACITY];
 	int16_t route_second[YT_ROUTE_CAPACITY];
-	char computer_route_scratch[YT_COMMAND_SIZE];
-	size_t computer_route_scratch_length;
 	char planet_name[42];
 	struct yt_present_time_state time;
 	struct yt_pager_state pager;

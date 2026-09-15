@@ -68,7 +68,7 @@ test_destination_danger(void)
 	memset(&session, 0, sizeof(session));
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.foreground = 7.0f;
 	door.game.config.sector_offset = 51.0f;
 	door.game.config.port_offset = 2055.0f;
@@ -123,7 +123,7 @@ test_move_storage(void)
 	memset(&session, 0, sizeof(session));
 	memset(&player, 0, sizeof(player));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.self_mine_suppressed = true;
 	door.game.config.sector_offset = 51.0f;
 	yt_record_blank(&player.record);

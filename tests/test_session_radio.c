@@ -27,7 +27,7 @@ test_real_radio_file_and_empty_compose(void)
 	memset(&door, 0, sizeof(door));
 	memset(&session, 0, sizeof(session));
 	session.door = &door;
-	session.player_record_carrier = 2;
+	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
 	yt_error_clear(&error);
 	CHECK(session_append_radio_bytes(message, sizeof(message) - 1U,
