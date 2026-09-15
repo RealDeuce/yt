@@ -42,27 +42,6 @@ bool yt_pager_accept_response(struct yt_pager_state *pager, char *response,
 void yt_pager_complete(struct yt_pager_state *pager,
     struct yt_present_state *presentation, int saved_foreground);
 
-typedef bool (*yt_paged_row_carrier_fn)(void *context);
-typedef bool (*yt_paged_row_sample_fn)(void *context,
-	struct yt_input_value *sampled);
-typedef bool (*yt_paged_row_present_fn)(void *context,
-	const uint8_t *text, size_t length);
-typedef bool (*yt_paged_row_finish_fn)(void *context, bool newline_flag);
-typedef bool (*yt_paged_row_response_fn)(void *context, char *response,
-	size_t capacity);
-
-struct yt_paged_row_ops {
-	yt_paged_row_carrier_fn carrier;
-	yt_paged_row_sample_fn sample;
-	yt_paged_row_present_fn present;
-	yt_paged_row_finish_fn finish;
-	yt_paged_row_response_fn response;
-};
-
-bool yt_paged_row_run(struct yt_pager_state *pager,
-	struct yt_present_state *presentation,
-	struct yt_pager_key_state *key_state, const uint8_t *text,
-	size_t length, const struct yt_paged_row_ops *ops, void *context);
 bool yt_pager_apply_key(const struct yt_input_value *value,
     struct yt_pager_key_state *state);
 

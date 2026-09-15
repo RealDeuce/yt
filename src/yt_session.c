@@ -667,54 +667,6 @@ session_read_number_command(struct yt_session *session, char *text, size_t size)
 }
 
 static bool
-session_paged_kernel(void *context)
-{
-	(void)context;
-	od_kernel();
-	return true;
-}
-
-static bool
-session_paged_sample(void *context, struct yt_input_value *sampled)
-{
-	struct yt_session *session = context;
-
-	return yt_input_poll(&session->input, sampled);
-}
-
-static bool
-session_paged_present(void *context, const uint8_t *text, size_t length)
-{
-	struct yt_session *session = context;
-	struct yt_present_result presentation;
-	enum yt_present_status status;
-
-	status = yt_present_paged_text(text, length, &session->presentation,
-	    &presentation);
-	yt_out_present_result(&presentation);
-	return status == YT_PRESENT_OK;
-}
-
-static bool
-session_paged_finish(void *context, bool newline_flag)
-{
-	struct yt_session *session = context;
-	struct yt_present_result presentation;
-	enum yt_present_status status;
-
-	status = yt_present_paged_finish(newline_flag,
-	    &session->presentation, &presentation);
-	yt_out_present_result(&presentation);
-	return status == YT_PRESENT_OK;
-}
-
-static bool
-session_paged_response(void *context, char *response, size_t capacity)
-{
-	return read_keyboard_line(context, response, capacity);
-}
-
-static bool
 session_store_output_source(struct yt_session *session,
     const uint8_t *text, size_t length)
 {
@@ -727,16 +679,13 @@ session_store_output_source(struct yt_session *session,
 	return true;
 }
 
-bool
-session_present_paged_row(struct yt_session *session, const uint8_t *text, size_t length)
+static bool
+session_run_paged_row(struct yt_session *session, const uint8_t *text,
+    size_t length)
 {
-	static const struct yt_paged_row_ops ops = {
-		session_paged_kernel,
-		session_paged_sample,
-		session_paged_present,
-		session_paged_finish,
-		session_paged_response,
-	};
+	static const uint8_t prompt[] =
+	    "[ENTER] for more, [E] to end, or [NS] for Non-stop ";
+	static const uint8_t notice[] = "Ctrl-X to Stop";
 	struct yt_pager_key_state key_state = {
 		.accumulator = session->command_accumulator,
 		.accumulator_capacity = sizeof(session->command_accumulator),
@@ -747,13 +696,52 @@ session_present_paged_row(struct yt_session *session, const uint8_t *text, size_
 		.pager_key = session->pager.key,
 		.pager_key_capacity = sizeof(session->pager.key),
 	};
-	bool result;
+	struct yt_present_result presentation;
+	struct yt_input_value sampled;
+	char response[80];
+	enum yt_present_status status;
+	int saved_foreground;
+	bool emit_notice;
 
-	if (!session_store_output_source(session, text, length))
+	od_kernel();
+	if (!yt_input_poll(&session->input, &sampled)
+	    || !yt_pager_apply_key(&sampled, &key_state))
 		return false;
-	result = yt_paged_row_run(&session->pager, &session->presentation,
-	    &key_state, text, length, &ops, session);
-	return result;
+	status = yt_present_paged_text(text, length, &session->presentation,
+	    &presentation);
+	yt_out_present_result(&presentation);
+	if (status != YT_PRESENT_OK)
+		return false;
+	od_kernel();
+	status = yt_present_paged_finish(session->pager.newline_flag != 0.0f,
+	    &session->presentation, &presentation);
+	yt_out_present_result(&presentation);
+	if (status != YT_PRESENT_OK)
+		return false;
+	if (yt_pager_advance(&session->pager, &session->presentation,
+	    &saved_foreground)) {
+		if (!session_run_paged_row(session, prompt,
+		    sizeof(prompt) - 1U)
+		    || !read_keyboard_line(session, response, sizeof(response)))
+			return false;
+		emit_notice = yt_pager_accept_response(&session->pager, response,
+		    sizeof(response));
+		if (emit_notice && !session_run_paged_row(session, notice,
+		    sizeof(notice) - 1U))
+			return false;
+		yt_pager_complete(&session->pager, &session->presentation,
+		    saved_foreground);
+	}
+	session->pager.newline_flag = 0.0f;
+	return true;
+}
+
+bool
+session_present_paged_row(struct yt_session *session, const uint8_t *text,
+    size_t length)
+{
+	return session_store_output_source(session, text, length)
+	    && session_run_paged_row(session, text, length);
 }
 
 void

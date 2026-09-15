@@ -1307,6 +1307,60 @@ viewer_pager_response(void *context, char *response, size_t capacity)
 	return true;
 }
 
+typedef bool (*test_paged_row_carrier_fn)(void *context);
+typedef bool (*test_paged_row_sample_fn)(void *context,
+    struct yt_input_value *sampled);
+typedef bool (*test_paged_row_present_fn)(void *context,
+    const uint8_t *text, size_t length);
+typedef bool (*test_paged_row_finish_fn)(void *context, bool newline_flag);
+typedef bool (*test_paged_row_response_fn)(void *context, char *response,
+    size_t capacity);
+
+struct yt_paged_row_ops {
+	test_paged_row_carrier_fn carrier;
+	test_paged_row_sample_fn sample;
+	test_paged_row_present_fn present;
+	test_paged_row_finish_fn finish;
+	test_paged_row_response_fn response;
+};
+
+static bool
+yt_paged_row_run(struct yt_pager_state *pager,
+    struct yt_present_state *presentation,
+    struct yt_pager_key_state *key_state, const uint8_t *text,
+    size_t length, const struct yt_paged_row_ops *ops, void *context)
+{
+	static const uint8_t prompt[] =
+	    "[ENTER] for more, [E] to end, or [NS] for Non-stop ";
+	static const uint8_t notice[] = "Ctrl-X to Stop";
+	struct yt_input_value sampled;
+	char response[80];
+	int saved_foreground;
+	bool emit_notice;
+
+	if (!ops->carrier(context)
+	    || !ops->sample(context, &sampled)
+	    || !yt_pager_apply_key(&sampled, key_state)
+	    || !ops->present(context, text, length)
+	    || !ops->carrier(context)
+	    || !ops->finish(context, pager->newline_flag != 0.0f))
+		return false;
+	if (yt_pager_advance(pager, presentation, &saved_foreground)) {
+		if (!yt_paged_row_run(pager, presentation, key_state, prompt,
+		    sizeof(prompt) - 1U, ops, context)
+		    || !ops->response(context, response, sizeof(response)))
+			return false;
+		emit_notice = yt_pager_accept_response(pager, response,
+		    sizeof(response));
+		if (emit_notice && !yt_paged_row_run(pager, presentation,
+		    key_state, notice, sizeof(notice) - 1U, ops, context))
+			return false;
+		yt_pager_complete(pager, presentation, saved_foreground);
+	}
+	pager->newline_flag = 0.0f;
+	return true;
+}
+
 static const struct yt_paged_row_ops viewer_pager_ops = {
 	viewer_pager_carrier,
 	viewer_pager_sample,
