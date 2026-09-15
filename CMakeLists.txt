@@ -217,7 +217,8 @@ if(BUILD_TESTING)
     target_compile_definitions(test_presentation PRIVATE
         YT_DATA_DIR="${YT_GENERATED_DATA_DIR}/")
     add_dependencies(test_presentation yt-data)
-    add_executable(test_output tests/test_output.c src/yt_output.c)
+    add_executable(test_output tests/test_output.c src/yt_output.c
+        src/yt_input.c)
     yt_configure_target(test_output)
     target_compile_definitions(test_output PRIVATE YT_TESTING)
     target_include_directories(test_output PRIVATE

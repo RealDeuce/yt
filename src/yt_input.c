@@ -3,6 +3,8 @@
 #include "OpenDoor.h"
 #include "yt_door.h"
 
+#include <math.h>
+#include <stdint.h>
 #include <string.h>
 
 static bool
@@ -97,6 +99,35 @@ yt_input_wait_until(struct yt_input *input, uint32_t seconds,
 	input_value(&event, selected);
 	*timed_out = false;
 	return true;
+}
+
+bool
+yt_input_pause(struct yt_input *input, double seconds)
+{
+	struct yt_input_value selected = {{0, 0}, 0, false};
+	uint64_t deadline_milliseconds;
+	uint64_t duration_milliseconds;
+	DWORD current_seconds;
+	WORD current_milliseconds;
+	bool timed_out;
+
+	if (!isfinite(seconds))
+		return false;
+	if (seconds <= 0.0)
+		return true;
+	if (seconds > (double)UINT32_MAX)
+		return false;
+	od_get_time(&current_seconds, &current_milliseconds);
+	duration_milliseconds = (uint64_t)llround(seconds * 1000.0);
+	if (duration_milliseconds == 0U)
+		duration_milliseconds = 1U;
+	deadline_milliseconds = (uint64_t)current_seconds * 1000U
+	    + current_milliseconds + duration_milliseconds;
+	if (deadline_milliseconds > (uint64_t)UINT32_MAX * 1000U + 999U)
+		return false;
+	return yt_input_wait_until(input,
+	    (uint32_t)(deadline_milliseconds / 1000U),
+	    (uint16_t)(deadline_milliseconds % 1000U), &selected, &timed_out);
 }
 
 bool

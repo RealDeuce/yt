@@ -43,6 +43,10 @@ static size_t attribute_call_count;
 static size_t cursor_call_count;
 static size_t putch_call_count;
 static size_t clear_call_count;
+static tODInputEvent next_input_event;
+static bool input_ready;
+static size_t input_poll_count;
+static size_t input_wait_count;
 static INT current_row = 1;
 static INT current_column = 1;
 static int failures;
@@ -67,6 +71,10 @@ reset_calls(void)
 	cursor_call_count = 0U;
 	putch_call_count = 0U;
 	clear_call_count = 0U;
+	memset(&next_input_event, 0, sizeof(next_input_event));
+	input_ready = false;
+	input_poll_count = 0U;
+	input_wait_count = 0U;
 	current_row = 1;
 	current_column = 1;
 }
@@ -149,67 +157,44 @@ od_clr_scr(void)
 	++clear_call_count;
 }
 
-static bool
-poll_never(void *context, bool *ready, struct yt_error *error)
+BOOL ODCALL
+od_get_input(tODInputEvent *event, tODMilliSec wait, WORD flags)
 {
-	(void)context;
-	(void)error;
-	*ready = false;
-	return true;
+	(void)wait;
+	(void)flags;
+	++input_poll_count;
+	if (!input_ready)
+		return FALSE;
+	*event = next_input_event;
+	input_ready = false;
+	return TRUE;
 }
 
-static bool
-wait_once(void *context, float seconds, struct yt_error *error)
+BOOL ODCALL
+od_get_input_until(tODInputEvent *event, DWORD seconds, WORD milliseconds,
+    WORD flags)
 {
-	size_t *calls = context;
-
-	(void)error;
-	CHECK(seconds == 3.0f);
-	++*calls;
-	return true;
+	CHECK(seconds == 3U);
+	CHECK(milliseconds == 0U);
+	++input_wait_count;
+	return od_get_input(event, 0, flags);
 }
 
-struct opening_poll_state {
-	size_t local_polls;
-	size_t remote_polls;
-	size_t waits;
-	size_t local_ready_at;
-	size_t remote_ready_at;
-};
-
-static bool
-opening_poll_local(void *context, bool *ready, struct yt_error *error)
+void ODCALL
+od_get_time(DWORD *seconds, WORD *milliseconds)
 {
-	struct opening_poll_state *state = context;
-
-	(void)error;
-	++state->local_polls;
-	*ready = state->local_ready_at != 0U
-	    && state->local_polls == state->local_ready_at;
-	return true;
+	*seconds = 0U;
+	*milliseconds = 0U;
 }
 
-static bool
-opening_poll_remote(void *context, bool *ready, struct yt_error *error)
+static void
+queue_input(char value, BOOL remote)
 {
-	struct opening_poll_state *state = context;
-
-	(void)error;
-	++state->remote_polls;
-	*ready = state->remote_ready_at != 0U
-	    && state->remote_polls == state->remote_ready_at;
-	return true;
-}
-
-static bool
-opening_wait(void *context, float seconds, struct yt_error *error)
-{
-	struct opening_poll_state *state = context;
-
-	(void)error;
-	CHECK(seconds == 3.0f);
-	++state->waits;
-	return true;
+	memset(&next_input_event, 0, sizeof(next_input_event));
+	next_input_event.EventType = EVENT_CHARACTER;
+	next_input_event.bFromRemote = remote;
+	next_input_event.chKeyPress = value;
+	input_ready = true;
 }
 
 static void
@@ -246,13 +231,12 @@ static void
 test_ansi_opening_routes(void)
 {
 	static const uint8_t file_data[] = "\x1b[2JX\r\n\x1a";
-	const char *path = "test-output-opening.dat";
+	const char *path = "TEST-OUTPUT-OPENING.DAT";
 	const char *missing_path = "TEST-OUTPUT-MISSING-53.ANS";
+	struct yt_input input;
 	struct yt_error error;
-	struct opening_poll_state opening;
 	uint16_t open_basic_error = 0U;
 	FILE *file;
-	size_t waits = 0U;
 
 	file = fopen(path, "wb");
 	CHECK(file != NULL);
@@ -263,12 +247,12 @@ test_ansi_opening_routes(void)
 	CHECK(fclose(file) == 0);
 
 	reset_calls();
+	yt_input_init(&input);
 	od_control.od_force_local = TRUE;
 	od_control.baud = 19200U;
 	yt_error_clear(&error);
-	CHECK(yt_out_opening_file(path, 1.0f, 1.0f, poll_never,
-	    poll_never, wait_once, &waits, NULL, &error)
-	    && waits == 1U && output_call_count == 0U
+	CHECK(yt_out_opening_file(path, 1.0f, 1.0f, &input, NULL, &error)
+	    && input_wait_count == 1U && output_call_count == 0U
 	    && emulated_call_count == 3U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
 	    && strcmp(emulated_calls[1].text, "\r\n") == 0
@@ -277,14 +261,13 @@ test_ansi_opening_routes(void)
 	    && emulated_calls[1].remote_echo
 	    && emulated_calls[2].remote_echo);
 
-	waits = 0U;
 	reset_calls();
+	yt_input_init(&input);
 	od_control.od_force_local = FALSE;
 	od_control.baud = 38400U;
 	yt_error_clear(&error);
-	CHECK(yt_out_opening_file(path, 0.0f, 1.0f, poll_never,
-	    poll_never, wait_once, &waits, NULL, &error)
-	    && waits == 1U && output_call_count == 0U
+	CHECK(yt_out_opening_file(path, 0.0f, 1.0f, &input, NULL, &error)
+	    && input_wait_count == 1U && output_call_count == 0U
 	    && emulated_call_count == 4U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
 	    && strcmp(emulated_calls[1].text, "\n\r") == 0
@@ -295,51 +278,48 @@ test_ansi_opening_routes(void)
 	    && emulated_calls[2].remote_echo
 	    && emulated_calls[3].remote_echo);
 
-	memset(&opening, 0, sizeof(opening));
-	opening.local_ready_at = 1U;
 	reset_calls();
+	yt_input_init(&input);
 	od_control.od_force_local = TRUE;
+	queue_input('L', FALSE);
 	yt_error_clear(&error);
-	CHECK(yt_out_opening_file(path, 1.0f, 1.0f, opening_poll_local,
-	    opening_poll_remote, opening_wait, &opening, NULL, &error)
-	    && opening.local_polls == 1U && opening.remote_polls == 0U
-	    && opening.waits == 0U && emulated_call_count == 3U
+	CHECK(yt_out_opening_file(path, 1.0f, 1.0f, &input, NULL, &error)
+	    && input_poll_count == 1U && input_wait_count == 0U
+	    && emulated_call_count == 3U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
 	    && strcmp(emulated_calls[1].text, "\r\n") == 0
 	    && strcmp(emulated_calls[2].text, "\x1b[0m") == 0);
 
-	memset(&opening, 0, sizeof(opening));
-	opening.remote_ready_at = 1U;
 	reset_calls();
+	yt_input_init(&input);
 	od_control.od_force_local = FALSE;
+	queue_input('R', TRUE);
 	yt_error_clear(&error);
-	CHECK(yt_out_opening_file(path, 0.0f, 1.0f, opening_poll_local,
-	    opening_poll_remote, opening_wait, &opening, NULL, &error)
-	    && opening.local_polls == 1U && opening.remote_polls == 1U
-	    && opening.waits == 0U && emulated_call_count == 4U
+	CHECK(yt_out_opening_file(path, 0.0f, 1.0f, &input, NULL, &error)
+	    && input_poll_count == 1U && input_wait_count == 0U
+	    && input.pending_valid && input.pending.bytes[0] == 'R'
+	    && input.pending.remote && emulated_call_count == 4U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
 	    && strcmp(emulated_calls[1].text, "\n\r") == 0
 	    && strcmp(emulated_calls[2].text, "\x1b") == 0
 	    && strcmp(emulated_calls[3].text, "[0m") == 0);
 
-	memset(&opening, 0, sizeof(opening));
 	reset_calls();
+	yt_input_init(&input);
 	yt_error_clear(&error);
-	CHECK(yt_out_opening_file(path, 2.0f, 0.0f, opening_poll_local,
-	    opening_poll_remote, opening_wait, &opening, NULL, &error)
-	    && opening.local_polls == 1U && opening.remote_polls == 1U
-	    && opening.waits == 1U && emulated_call_count == 2U
+	CHECK(yt_out_opening_file(path, 2.0f, 0.0f, &input, NULL, &error)
+	    && input_poll_count == 3U && input_wait_count == 1U
+	    && emulated_call_count == 2U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
 	    && strcmp(emulated_calls[1].text, "\n\r") == 0);
 	CHECK(remove(path) == 0);
 
+	yt_input_init(&input);
 	yt_error_clear(&error);
-	CHECK(!yt_out_opening_file(missing_path, 0.0f, 1.0f,
-	    poll_never, poll_never, wait_once, &waits, &open_basic_error,
-	    &error)
+	CHECK(!yt_out_opening_file(missing_path, 0.0f, 1.0f, &input,
+	    &open_basic_error, &error)
 	    && open_basic_error == 53U && error.status == YT_NOT_FOUND);
 }
-
 static void
 set_event(struct yt_present_event *event,
     enum yt_present_operation operation, const void *data, size_t length)

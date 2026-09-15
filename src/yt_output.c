@@ -239,11 +239,40 @@ out_opening_set_error(struct yt_error *error, enum yt_status status,
 	    path != NULL ? path : "");
 }
 
+static bool
+out_opening_poll_local(struct yt_input *input, bool *ready,
+    struct yt_error *error)
+{
+	struct yt_input_value local = {{0, 0}, 0, false};
+
+	if (!yt_input_poll_source(input, false, &local)) {
+		out_opening_set_error(error, YT_IO_ERROR,
+		    "ANSI opening local input poll", NULL);
+		return false;
+	}
+	*ready = local.length != 0U;
+	return true;
+}
+
+static bool
+out_opening_poll_remote(struct yt_input *input, bool *ready)
+{
+	return yt_input_source_ready(input, true, ready);
+}
+
+static bool
+out_opening_wait(struct yt_input *input, struct yt_error *error)
+{
+	if (yt_input_pause(input, 3.0))
+		return true;
+	out_opening_set_error(error, YT_IO_ERROR, "ANSI opening EOF wait", NULL);
+	return false;
+}
+
 bool
 yt_out_opening_file(const char *path, float mode, float snoop,
-    yt_out_opening_poll_fn poll_local,
-    yt_out_opening_poll_fn poll_remote, yt_out_opening_wait_fn wait,
-    void *poll_context, uint16_t *basic_error, struct yt_error *error)
+    struct yt_input *session_input, uint16_t *basic_error,
+    struct yt_error *error)
 {
 	static const uint8_t local_newline[] = {'\r', '\n'};
 	static const uint8_t remote_newline[] = {'\n', '\r'};
@@ -258,7 +287,7 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 
 	if (basic_error != NULL)
 		*basic_error = 0U;
-	if (poll_local == NULL || poll_remote == NULL || wait == NULL) {
+	if (session_input == NULL) {
 		errno = 0;
 		out_opening_set_error(error, YT_INVALID,
 		    "opening stream arguments", NULL);
@@ -304,7 +333,7 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 		OPENING_TEXT_RETRY(yt_text_input_eof(&input, &eof, active_error),
 		    input.last_read.basic_error);
 		if (eof) {
-			if (!wait(poll_context, 3.0f, active_error))
+			if (!out_opening_wait(session_input, active_error))
 				goto done;
 			break;
 		}
@@ -324,7 +353,8 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 				    sizeof(local_newline));
 			}
 		}
-		OPENING_RETRY(poll_local(poll_context, &ready, active_error));
+		OPENING_RETRY(out_opening_poll_local(session_input, &ready,
+		    active_error));
 		if (ready)
 			break;
 		if (mode != 1.0f) {
@@ -332,8 +362,7 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 			out_emulated_bytes(line, length);
 			out_emulated_bytes(remote_newline,
 			    sizeof(remote_newline));
-			OPENING_RETRY(poll_remote(poll_context, &ready,
-			    active_error));
+			OPENING_RETRY(out_opening_poll_remote(session_input, &ready));
 			if (ready)
 				break;
 		}

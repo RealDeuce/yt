@@ -131,40 +131,11 @@ session_is_disruption_sector(const struct yt_session *session, float sector)
 	    || sector == session->disruption_sectors[1];
 }
 
-static bool
-session_timed_wait(struct yt_session *session, double seconds)
-{
-	struct yt_input_value selected = {{0, 0}, 0, false};
-	uint64_t deadline_milliseconds;
-	uint64_t duration_milliseconds;
-	DWORD current_seconds;
-	WORD current_milliseconds;
-	bool timed_out;
-
-	if (!isfinite(seconds))
-		return false;
-	if (seconds <= 0.0)
-		return true;
-	if (seconds > (double)UINT32_MAX)
-		return false;
-	od_get_time(&current_seconds, &current_milliseconds);
-	duration_milliseconds = (uint64_t)llround(seconds * 1000.0);
-	if (duration_milliseconds == 0U)
-		duration_milliseconds = 1U;
-	deadline_milliseconds = (uint64_t)current_seconds * 1000U
-	    + current_milliseconds + duration_milliseconds;
-	if (deadline_milliseconds > (uint64_t)UINT32_MAX * 1000U + 999U)
-		return false;
-	return yt_input_wait_until(&session->input,
-	    (uint32_t)(deadline_milliseconds / 1000U),
-	    (uint16_t)(deadline_milliseconds % 1000U), &selected, &timed_out);
-}
-
 bool
 session_wait(struct yt_session *session, double seconds,
     const char *operation, struct yt_error *error)
 {
-	if (session_timed_wait(session, seconds))
+	if (yt_input_pause(&session->input, seconds))
 		return true;
 	if (error != NULL) {
 		error->status = YT_IO_ERROR;
@@ -1236,7 +1207,7 @@ session_press_any_key(struct yt_session *session, bool drain,
 		goto failed;
 	session_set_foreground(session, (float)(3));
 	yt_out_present_result(&presentation);
-	if (!session_timed_wait(session, 33.0)) {
+	if (!yt_input_pause(&session->input, 33.0)) {
 		failure_status = YT_IO_ERROR;
 		failure_operation = "press any key wait";
 		goto failed;
@@ -1449,40 +1420,6 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-opening_poll_local(void *context, bool *ready, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_input_value local = {{0, 0}, 0, false};
-
-	if (!yt_input_poll_source(&session->input, false, &local)) {
-		if (error != NULL) {
-			error->status = YT_IO_ERROR;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "ANSI opening local input poll");
-		}
-		return false;
-	}
-	*ready = local.length != 0U;
-	return true;
-}
-
-static bool
-opening_poll_remote(void *context, bool *ready, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	(void)error;
-	return yt_input_source_ready(&session->input, true, ready);
-}
-
-static bool
-opening_wait(void *context, float seconds, struct yt_error *error)
-{
-	return seconds == 3.0f
-	    && session_wait(context, 3.0, "ANSI opening EOF wait", error);
-}
-
-static bool
 opening_and_date(struct yt_session *session, struct yt_error *error)
 {
 	struct yt_shared_error_result shared_error;
@@ -1512,8 +1449,7 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 		if (!yt_out_opening_file("YTOPEN.ANS",
 		    session->presentation.sound.mode,
 		    session->presentation.sound.snoop,
-		    opening_poll_local,
-		    opening_poll_remote, opening_wait, session,
+		    &session->input,
 		    &opening_basic_error, error)) {
 			if (opening_basic_error != 0U) {
 				if (!yt_shared_error_compose(
