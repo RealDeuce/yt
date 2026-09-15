@@ -474,32 +474,24 @@ set_transaction_error(struct yt_error *error, const char *operation,
 }
 
 bool
-yt_main_error_commit_fatal_to(const char *path,
-    const struct yt_main_error_result *result,
-    yt_main_error_present_fn present, void *present_context,
-    struct yt_error *error)
+yt_main_error_append_fatal_to(const char *path,
+    const struct yt_main_error_result *result, struct yt_error *error)
 {
-	if (path == NULL || result == NULL || present == NULL
+	if (path == NULL || result == NULL
 	    || result->route != YT_MAIN_ERROR_FATAL
 	    || result->action_length > sizeof(result->action)) {
 		set_transaction_error(error, "commit fatal main error", path);
 		return false;
 	}
-	/* YT:B3C3 completes the paged session row before OPEN at B3DA. */
-	if (!present(present_context, result->action, result->action_length,
-	    error))
-		return false;
 	return yt_text_append_line(path, result->action, result->action_length,
 	    error);
 }
 
 bool
-yt_main_error_commit_fatal(const struct yt_main_error_result *result,
-    yt_main_error_present_fn present, void *present_context,
+yt_main_error_append_fatal(const struct yt_main_error_result *result,
     struct yt_error *error)
 {
-	return yt_main_error_commit_fatal_to("ERRORS.DOR", result, present,
-	    present_context, error);
+	return yt_main_error_append_fatal_to("ERRORS.DOR", result, error);
 }
 
 static bool

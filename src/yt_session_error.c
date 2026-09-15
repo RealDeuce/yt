@@ -77,14 +77,6 @@ session_local_line(struct yt_session *session, const uint8_t *text,
 	return false;
 }
 
-static bool
-session_main_error_present(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
-	    "main error fatal row", error);
-}
-
 bool
 session_commit_shared_terminal(struct yt_session *session,
     const struct yt_shared_error_result *result, struct yt_error *error)
@@ -165,8 +157,11 @@ session_route_basic_fault(struct yt_session *session, struct yt_error *error)
 		    (const uint8_t *)time_text, strlen(time_text),
 		    &projection.main))
 			return SESSION_FAULT_HANDLER_FAILED;
-		if (!yt_main_error_commit_fatal(&projection.main,
-		    session_main_error_present, session, error))
+		/* The session row completes before ERRORS.DOR is opened. */
+		if (!session_present_text(session, projection.main.action,
+		    projection.main.action_length, SESSION_PRESENT_LINE,
+		    "main error fatal row", error)
+		    || !yt_main_error_append_fatal(&projection.main, error))
 			return SESSION_FAULT_HANDLER_FAILED;
 	}
 	else {

@@ -536,14 +536,6 @@ session_command_notice(struct yt_session *session, const char *text)
 	return session_wait(session, 1.0, "command notice wait", NULL);
 }
 
-void
-session_compat_upper_n(struct yt_session *session, uint8_t *text,
-    size_t length)
-{
-	(void)session;
-	yt_input_compat_upper_n(text, length);
-}
-
 static bool
 expand_repeat(struct yt_session *session, char *text, size_t size)
 {
@@ -609,7 +601,7 @@ session_read_upper_command(struct yt_session *session, char *text, size_t size)
 {
 	if (!session_read_command(session, text, size))
 		return false;
-	session_compat_upper_n(session, (uint8_t *)text, strlen(text));
+	yt_input_compat_upper_n((uint8_t *)text, strlen(text));
 	return session_store_output_source(session, (const uint8_t *)text,
 	    strlen(text));
 }

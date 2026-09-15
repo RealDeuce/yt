@@ -310,7 +310,7 @@ nearest_page(struct yt_session *session, struct nearest_scan *scan,
 		key = selected.bytes[0];
 		if (key == '\r')
 			key = 'Y';
-		session_compat_upper_n(session, &key, 1U);
+		yt_input_compat_upper_n(&key, 1U);
 		if (key != 'Y' && key != 'N' && key != '+')
 			continue;
 		if (!nearest_present(session, YT_NEAREST_PAGER_ECHO,

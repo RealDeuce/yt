@@ -1578,8 +1578,9 @@ test_main_error_fatal_transaction(void)
 	memset(&capture, 0, sizeof(capture));
 	capture.path = path;
 	capture.succeeds = true;
-	CHECK(yt_main_error_commit_fatal_to(path, &result,
-	    capture_main_error_row, &capture, &error));
+	CHECK(capture_main_error_row(&capture, result.action,
+	    result.action_length, &error)
+	    && yt_main_error_append_fatal_to(path, &result, &error));
 	CHECK(capture.calls == 1U
 	    && capture.row_length == sizeof(record) - 1U
 	    && memcmp(capture.row, record, sizeof(record) - 1U) == 0);
@@ -1595,8 +1596,9 @@ test_main_error_fatal_transaction(void)
 	capture.expected_before = stale;
 	capture.expected_before_length = sizeof(stale) - 1U;
 	capture.succeeds = true;
-	CHECK(yt_main_error_commit_fatal_to(path, &result,
-	    capture_main_error_row, &capture, &error));
+	CHECK(capture_main_error_row(&capture, result.action,
+	    result.action_length, &error)
+	    && yt_main_error_append_fatal_to(path, &result, &error));
 	CHECK(capture.calls == 1U);
 	CHECK(yt_text_read(path, &text, &error));
 	CHECK(text.length == sizeof(stale_expected) - 1U
@@ -1611,8 +1613,8 @@ test_main_error_fatal_transaction(void)
 	capture.expected_before_length = sizeof(stale) - 1U;
 	capture.succeeds = false;
 	yt_error_clear(&error);
-	CHECK(!yt_main_error_commit_fatal_to(path, &result,
-	    capture_main_error_row, &capture, &error));
+	CHECK(!capture_main_error_row(&capture, result.action,
+	    result.action_length, &error));
 	CHECK(capture.calls == 1U && error.status == YT_IO_ERROR);
 	CHECK(yt_text_read(path, &text, &error));
 	CHECK(text.length == sizeof(stale) - 1U
@@ -1627,8 +1629,7 @@ test_main_error_fatal_transaction(void)
 	capture.expected_before_length = sizeof(stale) - 1U;
 	capture.succeeds = true;
 	yt_error_clear(&error);
-	CHECK(!yt_main_error_commit_fatal_to(path, &invalid,
-	    capture_main_error_row, &capture, &error));
+	CHECK(!yt_main_error_append_fatal_to(path, &invalid, &error));
 	CHECK(capture.calls == 0U && error.status == YT_INVALID);
 
 	memset(&capture, 0, sizeof(capture));
@@ -1637,8 +1638,9 @@ test_main_error_fatal_transaction(void)
 	capture.expected_before_length = sizeof(stale) - 1U;
 	capture.succeeds = true;
 	yt_error_clear(&error);
-	CHECK(!yt_main_error_commit_fatal_to(failed_path, &result,
-	    capture_main_error_row, &capture, &error));
+	CHECK(capture_main_error_row(&capture, result.action,
+	    result.action_length, &error)
+	    && !yt_main_error_append_fatal_to(failed_path, &result, &error));
 	CHECK(capture.calls == 1U && error.status == YT_IO_ERROR);
 	CHECK(yt_text_read(path, &text, &error));
 	CHECK(text.length == sizeof(stale) - 1U

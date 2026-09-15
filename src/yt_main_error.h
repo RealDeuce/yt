@@ -147,9 +147,6 @@ struct yt_main_error_result {
 	size_t action_length;
 };
 
-typedef bool (*yt_main_error_present_fn)(void *context,
-    const uint8_t *text, size_t length, struct yt_error *error);
-
 enum yt_shared_error_route {
 	YT_SHARED_ERROR_RETRY_CURRENT,
 	YT_SHARED_ERROR_AUTOPILOT_MEMORY,
@@ -224,12 +221,9 @@ bool yt_main_error_compose(int16_t error_number, int32_t source_line,
     const uint8_t *time_text, size_t time_length,
     struct yt_main_error_result *result);
 
-bool yt_main_error_commit_fatal_to(const char *path,
-    const struct yt_main_error_result *result,
-    yt_main_error_present_fn present, void *present_context,
-    struct yt_error *error);
-bool yt_main_error_commit_fatal(const struct yt_main_error_result *result,
-    yt_main_error_present_fn present, void *present_context,
+bool yt_main_error_append_fatal_to(const char *path,
+    const struct yt_main_error_result *result, struct yt_error *error);
+bool yt_main_error_append_fatal(const struct yt_main_error_result *result,
     struct yt_error *error);
 
 bool yt_shared_error_compose(int16_t error_number, int32_t source_line,

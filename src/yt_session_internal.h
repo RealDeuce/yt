@@ -167,8 +167,6 @@ bool session_present_forced_local_line(const uint8_t *text, size_t length,
 void session_set_pager_line_count_raw(struct yt_session *session,
     const uint8_t raw[4]);
 void session_set_pager_line_count(struct yt_session *session, float value);
-void session_compat_upper_n(struct yt_session *session, uint8_t *text,
-    size_t length);
 bool session_read_command(struct yt_session *session, char *text,
     size_t size);
 bool session_read_upper_command(struct yt_session *session, char *text,

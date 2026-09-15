@@ -285,7 +285,7 @@ profit_page(struct yt_session *session, bool *keep_going,
 		memcpy(response, selected.bytes, length);
 		if (length == 1U && response[0] == '\r')
 			response[0] = 'Y';
-		session_compat_upper_n(session, response, length);
+		yt_input_compat_upper_n(response, length);
 		if (!session_present_text(session, response, length,
 		    SESSION_PRESENT_LINE, "profit pager echo", error))
 			return false;
