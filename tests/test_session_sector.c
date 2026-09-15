@@ -50,6 +50,9 @@ test_current_sector_from_real_records(void)
 	CHECK(yt_session_display_sector(&session, false, &error));
 	CHECK(session.current_sector_record == 4.0f);
 	CHECK(session.player.sector == 1.0f);
+	CHECK(yt_session_sector_entry(&session, &error));
+	CHECK(session.current_sector_record == 4.0f);
+	CHECK(session.player.sector == 1.0f);
 	sector.fighters = 1.0f;
 	sector.fighter_owner = 2.0f;
 	CHECK(yt_session_sector_force_is_friendly(&session, &sector, &error));
