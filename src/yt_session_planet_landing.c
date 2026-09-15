@@ -260,11 +260,11 @@ create_planet(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (!session_mutate_player_credits(session, -25000.0f, NULL, error)
 	    || !yt_planet_creation_news(cached_trader, cached_trader_length,
-	    (const uint8_t *)session->planet_name, strlen(session->planet_name),
+	    (const uint8_t *)session->planet.name, strlen(session->planet.name),
 	    row, sizeof(row), &row_length)
 	    || !yt_news_append_bytes(row, row_length, error)
 	    || !yt_planet_creation_success_row(
-	    (const uint8_t *)session->planet_name, strlen(session->planet_name),
+	    (const uint8_t *)session->planet.name, strlen(session->planet.name),
 	    row, sizeof(row), &row_length)
 	    || !session_present_paged_line(session, row, row_length,
 	    "planet creation success row", error)
@@ -302,7 +302,7 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 	if (!session_read_sector(session,
 	    (int)session->player.sector, &sector, error))
 		return false;
-	session->inherited_loop_index = sector.planet;
+	session->planet.inherited_record_index = sector.planet;
 	if (sector.planet == 0.0f) {
 		bool created = create_planet(session, error);
 
@@ -314,7 +314,7 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 	if (!session_present_paged_line(session, landing, sizeof(landing) - 1U,
 	    "planet landing progress", error))
 		return false;
-	session->planet_record_expression = qb_single_add(
+	session->planet.current_physical_record = qb_single_add(
 	    session_planet_offset(session), sector.planet);
 	logical = (int)sector.planet;
 	physical = session_planet_basic_record(session, (float)logical);

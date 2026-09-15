@@ -62,7 +62,7 @@ test_self_owned_planet(void)
 	CHECK(yt_session_planet_permission(&session, 1, &denied, &error));
 	CHECK(!denied);
 	CHECK(door.game.random.draws == 0U);
-	CHECK(session.planet_economy.current_day == (float)today);
+	CHECK(session.planet.economy.current_day == (float)today);
 	CHECK(yt_database_read(&door.game.database, 4U, &persisted, &error));
 	CHECK(yt_record_get_number(&persisted, YT_F41) == (float)today);
 	CHECK(yt_record_get_number(&persisted, YT_F73) == 2.0f);

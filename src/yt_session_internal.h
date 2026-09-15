@@ -66,6 +66,13 @@ struct session_spy_state {
 	bool found;
 };
 
+struct session_planet_state {
+	float inherited_record_index;
+	float current_physical_record;
+	char name[42];
+	struct yt_planet_economy economy;
+};
+
 struct yt_session {
 	struct yt_door *door;
 	struct yt_error *error;
@@ -77,14 +84,12 @@ struct yt_session {
 	struct session_spy_state spies;
 	bool destroyed;
 	float low_time_remembered;
-	float inherited_loop_index;
-	float planet_record_expression;
 	float shared_target_record;
 	float shared_status;
 	struct yt_player player;
 	struct session_combat_state combat;
 	float market_bases[3];
-	struct yt_planet_economy planet_economy;
+	struct session_planet_state planet;
 	float disruption_sectors[2];
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_player_name_length;
@@ -102,7 +107,6 @@ struct yt_session {
 	bool registered;
 	bool fatal_wait_complete;
 	struct yt_present_state presentation;
-	char planet_name[42];
 	struct yt_present_time_state time;
 	struct yt_pager_state pager;
 	struct yt_input_value input_residue;

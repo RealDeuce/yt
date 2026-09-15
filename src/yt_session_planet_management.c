@@ -121,7 +121,7 @@ yt_session_planet_bank(struct yt_session *session, int logical_planet,
 	available = yt_planet_bank_available(session->player.credits, old_bank);
 	if (snprintf(title, sizeof(title),
 	    "Welcome to the intergalactic bank of %s!",
-	    session->planet_name) < 0
+	    session->planet.name) < 0
 	    || qb_str_double(available_text, sizeof(available_text), available) < 0
 	    || snprintf(prompt, sizeof(prompt),
 	    "How many credits do you want in the account?%s Available ->",
@@ -244,7 +244,7 @@ yt_session_planet_rename(struct yt_session *session, int logical_planet,
 	    &planet, error))
 		return false;
 	yt_planet_rename_overlay(&planet, name, strlen(name));
-	snprintf(session->planet_name, sizeof(session->planet_name), "%s", name);
+	snprintf(session->planet.name, sizeof(session->planet.name), "%s", name);
 	written = session_write_planet(session, logical_planet,
 	    &planet, error);
 	if (written && renamed != NULL)
@@ -315,7 +315,7 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 		for (index = 0; index < 3; ++index) {
 			int item = (int)index + 1;
 
-			session->planet_economy.quantity[item] =
+			session->planet.economy.quantity[item] =
 			    economy.quantity[item];
 		}
 		if (!yt_game_read_player(&session->door->game,
@@ -373,7 +373,7 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 		    logical_planet, &planet, error))
 			return false;
 		yt_planet_transfer_fighter_planet_overlay(&planet,
-		    session->planet_economy.quantity[4], amount);
+		    session->planet.economy.quantity[4], amount);
 		if (!session_write_planet(session, logical_planet,
 		    &planet, error))
 			return false;
@@ -409,7 +409,7 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 		    logical_planet, &planet, error))
 			return false;
 		yt_planet_transfer_direct_planet_overlay(&planet, item,
-		    session->planet_economy.quantity[item], amount);
+		    session->planet.economy.quantity[item], amount);
 		if (!session_write_planet(session, logical_planet,
 		    &planet, error)
 		    || !session_present_text(session, NULL, 0,

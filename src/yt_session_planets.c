@@ -64,7 +64,7 @@ yt_session_update_planet_physical(struct yt_session *session,
 	    || !yt_database_flush(&session->door->game.database, error))
 		return false;
 	yt_planet_decode(planet, &record);
-	session->planet_economy = updated_economy;
+	session->planet.economy = updated_economy;
 	if (economy != NULL)
 		*economy = updated_economy;
 	return true;

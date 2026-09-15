@@ -51,7 +51,7 @@ yt_session_planet_inventory(struct yt_session *session, int logical_planet,
 	    || !planet_name_length(session, planet.name_length,
 	    &name_length, error))
 		return false;
-	snprintf(session->planet_name, sizeof(session->planet_name), "%s",
+	snprintf(session->planet.name, sizeof(session->planet.name), "%s",
 	    planet.name);
 	held[0] = (double)session->player.ore;
 	held[1] = (double)session->player.organics;
@@ -164,7 +164,7 @@ yt_session_planet_take_one(struct yt_session *session, int logical_planet,
 	    (double)session->player.holds, (double)session->player.ore),
 	    (double)session->player.organics),
 	    (double)session->player.equipment);
-	available = (float)floor(session->planet_economy.quantity[item]);
+	available = (float)floor(session->planet.economy.quantity[item]);
 	maximum = item <= 3 && free_holds < available
 	    ? free_holds : available;
 	if (qb_str_single(maximum_text, sizeof(maximum_text), maximum) < 0
@@ -183,7 +183,7 @@ yt_session_planet_take_one(struct yt_session *session, int logical_planet,
 		parsed = qb_val(response);
 		quantity = (float)floor(parsed.valid ? parsed.value : 0.0);
 	}
-	if ((double)quantity > floor(session->planet_economy.quantity[item])
+	if ((double)quantity > floor(session->planet.economy.quantity[item])
 	    || quantity < 0.0f) {
 		static const uint8_t stock[] = "They don't have that many.";
 
@@ -205,12 +205,12 @@ yt_session_planet_take_one(struct yt_session *session, int logical_planet,
 	    &planet, error))
 		return false;
 	yt_planet_take_one_planet_overlay(&planet, item,
-	    session->planet_economy.quantity[item], quantity);
+	    session->planet.economy.quantity[item], quantity);
 	if (!session_write_planet(session, logical_planet,
 	    &planet, error))
 		return false;
-	session->planet_economy.quantity[item] = qb_double_subtract(
-	    session->planet_economy.quantity[item], (double)quantity);
+	session->planet.economy.quantity[item] = qb_double_subtract(
+	    session->planet.economy.quantity[item], (double)quantity);
 	return session_reload_player(session, error);
 }
 
@@ -237,7 +237,7 @@ yt_session_planet_take_all(struct yt_session *session, int logical_planet,
 	    || !session_reload_player(session, error))
 		return false;
 	yt_planet_take_all_weapon_player_overlay(&session->player,
-	    session->planet_economy.quantity, amount);
+	    session->planet.economy.quantity, amount);
 	if (!session_write_player(session, error)
 	    || !session_present_paged_line(session, taking, sizeof(taking) - 1U,
 	    "planet take-all taking", error))
@@ -267,7 +267,7 @@ yt_session_planet_take_all(struct yt_session *session, int logical_planet,
 	    &planet, error))
 		return false;
 	yt_planet_take_all_weapon_planet_overlay(&planet,
-	    session->planet_economy.quantity, amount);
+	    session->planet.economy.quantity, amount);
 	if (!session_write_planet(session, logical_planet,
 	    &planet, error))
 		return false;
@@ -280,14 +280,14 @@ yt_session_planet_take_all(struct yt_session *session, int logical_planet,
 			return false;
 		commodity_amount = yt_planet_take_all_commodity_player_overlay(
 		    &session->player, index,
-		    session->planet_economy.quantity[index]);
+		    session->planet.economy.quantity[index]);
 		if (!session_write_player(session, error))
 			return false;
 		if (!session_read_planet(session,
 		    logical_planet, &planet, error))
 			return false;
 		yt_planet_take_all_commodity_planet_overlay(&planet, index,
-		    session->planet_economy.quantity[index], commodity_amount);
+		    session->planet.economy.quantity[index], commodity_amount);
 		if (!session_write_planet(session,
 		    logical_planet, &planet, error))
 			return false;

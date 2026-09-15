@@ -417,7 +417,7 @@ yt_session_ordinary_commerce(struct yt_session *session,
 		    "port docking cargo status", error))
 			return false;
 	}
-	session->inherited_loop_index = 4.0f;
+	session->planet.inherited_record_index = 4.0f;
 	return true;
 }
 

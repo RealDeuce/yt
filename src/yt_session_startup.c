@@ -476,7 +476,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		struct yt_player candidate;
 		bool matches;
 
-		session->inherited_loop_index = (float)basic;
+		session->planet.inherited_record_index = (float)basic;
 		if (!yt_game_read_player(&session->door->game, basic, &candidate,
 		    error)
 		    || !yt_player_name_matches(&candidate, (const uint8_t *)full,
@@ -492,7 +492,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			returning = true;
 			break;
 		}
-		session->inherited_loop_index = (float)(basic + 1);
+		session->planet.inherited_record_index = (float)(basic + 1);
 	}
 	if (!returning) {
 		int vacant = 0;

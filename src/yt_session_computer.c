@@ -70,8 +70,8 @@ yt_session_computer_check_port_visibility(struct yt_session *session,
 	    sector->fighter_owner,
 	    &friendly, error))
 		return false;
-	session->planet_record_expression = qb_single_add(
-	    session_planet_offset(session), session->inherited_loop_index);
+	session->planet.current_physical_record = qb_single_add(
+	    session_planet_offset(session), session->planet.inherited_record_index);
 	*unavailable = (sector->port == 0.0f)
 	    | (sector->fighters > 0.0f && cached_team > 0.0f && !friendly)
 	    | (sector->fighters > 0.0f && cached_team == 0.0f
@@ -277,7 +277,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			last_relationship = session->shared_status;
 			scratch = qb_single_add(
 			    session_planet_offset(session), link);
-			session->planet_record_expression = scratch;
+			session->planet.current_physical_record = scratch;
 			if (!session_read_planet(session, (int)link, &planet, error)
 			    || !computer_field_length(session, planet.name_length,
 			    YT_TEXT_FIELD_SIZE, &name_length,
@@ -366,12 +366,12 @@ yt_session_computer_planet_report(struct yt_session *session,
 				    "computer planet unavailable", error);
 			}
 		}
-		if (!valid_link && session->planet_record_expression < 1.0f)
+		if (!valid_link && session->planet.current_physical_record < 1.0f)
 			return session_computer_error(error, YT_RANGE,
 			    "computer planet stale current-planet record");
 		return yt_session_planet_inventory(session, (int)(valid_link
 		    ? link : qb_single_subtract(
-		    session->planet_record_expression,
+		    session->planet.current_physical_record,
 		    session_planet_offset(session))), error);
 	}
 }
