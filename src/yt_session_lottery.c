@@ -153,7 +153,7 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 	    SESSION_PRESENT_RAW, "lottery winning prefix", error))
 		return false;
 	{
-		int saved_foreground = (int)session->foreground;
+		int saved_foreground = (int)session->presentation.foreground;
 
 	for (index = 0; index < 6; ++index) {
 		int row;
@@ -215,7 +215,7 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 	{
 		char match_text[64];
 		char award_text[80];
-		int saved_foreground = (int)session->foreground;
+		int saved_foreground = (int)session->presentation.foreground;
 
 		award = yt_lottery_award(matches);
 		if (qb_str_single(match_text, sizeof(match_text),

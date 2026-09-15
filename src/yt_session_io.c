@@ -14,18 +14,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static float
-session_foreground(const struct yt_session *session)
-{
-	return session->foreground;
-}
-
-static int
-session_pager_foreground(const struct yt_session *session)
-{
-	return (int)session_foreground(session);
-}
-
 static void
 session_set_pager_newline(struct yt_session *session, float value)
 {
@@ -615,8 +603,8 @@ session_display_game_file(struct yt_session *session, const char *path,
 	struct yt_text_input input;
 	struct yt_error local_error;
 	struct yt_error *active_error = error == NULL ? &local_error : error;
-	float saved_foreground = session_foreground(session);
-	int saved_pager_foreground = session_pager_foreground(session);
+	float saved_foreground = session->presentation.foreground;
+	int saved_pager_foreground = (int)session->presentation.foreground;
 	bool ok = false;
 
 	if (error == NULL)

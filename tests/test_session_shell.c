@@ -34,7 +34,7 @@ test_quit_decline(void)
 	CHECK(session_quit_confirm(&session, &confirmed, &error));
 	CHECK(!confirmed);
 	CHECK(session.queue_position == session.queue_length);
-	CHECK(session.foreground == 7.0f);
+	CHECK(session.presentation.foreground == 7.0f);
 }
 
 int

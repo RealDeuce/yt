@@ -57,7 +57,6 @@ test_shielded_encounter(void)
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.foreground = 6.0f;
 	session.presentation.foreground = 6.0f;
 	session.pager.foreground = 6;
 	session.pager.nonstop = -1.0f;
@@ -88,7 +87,7 @@ test_shielded_encounter(void)
 	CHECK(!session.destroyed);
 	CHECK(random.calls == 3U && door.game.random.draws == 3U);
 	CHECK(session.player.shields == 100.0f);
-	CHECK(session.foreground == 3.0f);
+	CHECK(session.presentation.foreground == 3.0f);
 	CHECK(yt_present_background(&session.presentation) == 1.0f);
 	CHECK(yt_present_blink(&session.presentation) == 0.0f);
 	CHECK(yt_database_read(&door.game.database, 93U, &record, &error));
@@ -135,7 +134,6 @@ test_unshielded_missile_draw(void)
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.foreground = 6.0f;
 	session.presentation.foreground = 6.0f;
 	session.pager.foreground = 6;
 	session.pager.nonstop = -1.0f;

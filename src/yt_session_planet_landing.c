@@ -33,7 +33,7 @@ yt_session_planet_assault(struct yt_session *session,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "planet assault entry blank", error))
 		return false;
-	saved_foreground = session->foreground;
+	saved_foreground = session->presentation.foreground;
 	if (!yt_session_update_planet_physical(session, physical_planet, &planet,
 	    NULL, error)
 	    || !read_planet_physical(session, physical_planet, &planet, error)

@@ -91,7 +91,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 	*dangerous = false;
 	if (target < 1.0f || target > (float)session_sector_count(session))
 		return true;
-	saved_foreground = session->foreground;
+	saved_foreground = session->presentation.foreground;
 	session_set_foreground(session, 3.0f);
 	yt_present_set_background(&session->presentation, 4.0f);
 	if (!session_read_sector(session, (int)target, &sector, error))

@@ -56,7 +56,6 @@ test_distinct_player_death(void)
 	memset(&session, 0, sizeof(session));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.foreground = 6.0f;
 	session.presentation.foreground = 6.0f;
 	session.pager.foreground = 6;
 	session.pager.nonstop = -1.0f;

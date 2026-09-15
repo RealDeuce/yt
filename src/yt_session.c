@@ -56,7 +56,6 @@ session_set_pager_line_count(struct yt_session *session, float value)
 void
 session_set_foreground(struct yt_session *session, float value)
 {
-	session->foreground = value;
 	session->presentation.foreground = value;
 	session->pager.foreground = (int)value;
 }

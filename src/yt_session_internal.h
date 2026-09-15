@@ -59,7 +59,6 @@ struct yt_session {
 	double hostile_deployed_fighters;
 	float combat_ship_shields;
 	float hostile_owner;
-	float foreground;
 	float market_bases[3];
 	float clearance_discounts[4];
 	struct yt_planet_economy planet_economy;

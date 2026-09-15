@@ -69,7 +69,7 @@ test_destination_danger(void)
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.foreground = 7.0f;
+	session.presentation.foreground = 7.0f;
 	door.game.config.sector_offset = 51.0f;
 	door.game.config.port_offset = 2055.0f;
 	yt_error_clear(&error);
@@ -89,7 +89,7 @@ test_destination_danger(void)
 	    &dangerous, &error));
 	CHECK(!dangerous);
 	CHECK(session.shared_status == -1.0f);
-	CHECK(session.foreground == 7.0f);
+	CHECK(session.presentation.foreground == 7.0f);
 	CHECK(yt_present_background(&session.presentation) == 0.0f);
 	CHECK(session.player.team == 7.0f);
 

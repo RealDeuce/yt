@@ -565,7 +565,7 @@ plasma_reload_sector:
 				return false;
 			original_fighters = (double)target.fighters;
 			original_shields = target.shields;
-			saved_foreground = session->foreground;
+			saved_foreground = session->presentation.foreground;
 			session_set_foreground(session, 5.0f);
 			if (!session_sound(session, 2.0f,
 			    "plasma player-attack sound", error))

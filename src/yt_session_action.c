@@ -79,7 +79,7 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 		    cloak_display_scale));
 		qb_str_single(number, sizeof(number), display);
 		snprintf(row, sizeof(row), "Cloak at%s%%", number);
-		saved_foreground = session->foreground;
+		saved_foreground = session->presentation.foreground;
 		session_set_foreground(session, 7.0f);
 		if (!session_present_timed_paged_row(session, (const uint8_t *)row, strlen(row),
 		    "action-finalizer cloak row", error))

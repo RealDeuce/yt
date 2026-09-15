@@ -364,7 +364,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 		    current), &sector.record, error))
 			return false;
 
-		saved_foreground = session->foreground;
+		saved_foreground = session->presentation.foreground;
 		session_set_foreground(session, 3.0f);
 		yt_present_set_background(&session->presentation, 0.0f);
 		yt_present_set_blink(&session->presentation, 0.0f);
