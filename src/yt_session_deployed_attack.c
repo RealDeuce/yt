@@ -138,8 +138,8 @@ hostile_surrender_run(struct yt_session *session,
 	state->current.fighters = (float)state->ship_fighters;
 	state->deployed_remaining = 0.0;
 	state->fighter_owner = 0.0f;
-	session->combat_ship_fighters = state->ship_fighters;
-	session->hostile_deployed_fighters = state->deployed_remaining;
+	session->combat.ship_fighters = state->ship_fighters;
+	session->combat.deployed_fighters = state->deployed_remaining;
 	position = 0U;
 	if (!session_buffer_append(count, sizeof(count), &position,
 	    (const uint8_t *)surrendered_number, surrendered_length)
@@ -339,7 +339,7 @@ yt_session_attack_deployed(struct yt_session *session,
 	size_t cached_player_name_length;
 	size_t lost_length = 0U;
 	size_t destroyed_length = 0U;
-	double old_count = session->hostile_deployed_fighters;
+	double old_count = session->combat.deployed_fighters;
 	double old_ship;
 	double attacker_loss = 0.0;
 	double defender_loss = 0.0;
@@ -371,9 +371,9 @@ yt_session_attack_deployed(struct yt_session *session,
 	    "%s", cached_player_name_text);
 	(void)snprintf(current.name, sizeof(current.name), "%s",
 	    cached_player_name_text);
-	current.fighters = (float)session->combat_ship_fighters;
+	current.fighters = (float)session->combat.ship_fighters;
 	current.cloak = session->player.cloak;
-	current.shields = session->combat_ship_shields;
+	current.shields = session->combat.ship_shields;
 	old_ship = (double)current.fighters;
 	if (!session_sound(session, 2.0f, "deployed attack opening sound",
 	    error))
@@ -439,7 +439,7 @@ yt_session_attack_deployed(struct yt_session *session,
 				(void)snprintf(session->player.name,
 				    sizeof(session->player.name), "%s",
 				    cached_player_name_text);
-				session->hostile_deployed_fighters =
+				session->combat.deployed_fighters =
 				    deployed_remaining;
 				break;
 			}
@@ -459,7 +459,7 @@ yt_session_attack_deployed(struct yt_session *session,
 		ship_fighters = qb_double_subtract(old_ship, attacker_loss);
 		deployed_remaining = qb_double_subtract(old_count, defender_loss);
 		current.fighters = (float)ship_fighters;
-		session->combat_ship_fighters = ship_fighters;
+		session->combat.ship_fighters = ship_fighters;
 		session->player = current;
 		(void)snprintf(session->player.name,
 		    sizeof(session->player.name), "%s",
@@ -512,7 +512,7 @@ yt_session_attack_deployed(struct yt_session *session,
 		    cached_player_name_text);
 	}
 	sector->fighters = (float)deployed_remaining;
-	session->hostile_deployed_fighters = deployed_remaining;
+	session->combat.deployed_fighters = deployed_remaining;
 	persistence = (struct yt_hostile_attack_persistence_state){
 		.current_player_record = current_player_record,
 		.current_sector = current_sector,
@@ -523,8 +523,8 @@ yt_session_attack_deployed(struct yt_session *session,
 		.old_owner = old_owner,
 		.cached_player_name = cached_player_name,
 		.cached_player_name_length = cached_player_name_length,
-		.owner_label = session->hostile_owner_label,
-		.owner_label_length = session->hostile_owner_label_length,
+		.owner_label = session->combat.hostile_owner_label,
+		.owner_label_length = session->combat.hostile_owner_label_length,
 		.current = current,
 		.sector = *sector,
 	};
@@ -540,10 +540,10 @@ yt_session_attack_deployed(struct yt_session *session,
 	}
 	if (persistence.sector_written) {
 		*sector = persistence.sector;
-		session->hostile_deployed_fighters = deployed_remaining;
+		session->combat.deployed_fighters = deployed_remaining;
 	}
 	if (persistence.mercenaries_hurt)
-		session->mercenaries_hurt = true;
+		session->combat.mercenaries_hurt = true;
 	if (!child_result)
 		return false;
 	if (persistence.route == YT_HOSTILE_ATTACK_PERSISTENCE_FATAL)

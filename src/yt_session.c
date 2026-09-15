@@ -343,8 +343,8 @@ session_reload_player(struct yt_session *session, struct yt_error *error)
 	    session->anti_cloak_enabled, &session->current_sector_record,
 	    &session->player_cache, error))
 		return false;
-	session->combat_ship_fighters = session->player.fighters;
-	session->combat_ship_shields = session->player.shields;
+	session->combat.ship_fighters = session->player.fighters;
+	session->combat.ship_shields = session->player.shields;
 	return true;
 }
 

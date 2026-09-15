@@ -24,7 +24,7 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 
 	if (!session_present_paged_fragment(session, heading, sizeof(heading) - 1U))
 		return false;
-	cached_ship_fighters = session->combat_ship_fighters;
+	cached_ship_fighters = session->combat.ship_fighters;
 	admission = yt_hostile_attack_admit((float)cached_ship_fighters, 0.0f);
 	if (admission == YT_HOSTILE_ATTACK_NO_FIGHTERS)
 		return session_present_alert(session, none, sizeof(none) - 1U,
@@ -174,8 +174,8 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 			if (!session_reload_player(session, error))
 				return false;
 			session_set_foreground(session, 3.0f);
-			if (!yt_hostile_menu_row(session->combat_ship_fighters,
-			    session->hostile_deployed_fighters, row,
+			if (!yt_hostile_menu_row(session->combat.ship_fighters,
+			    session->combat.deployed_fighters, row,
 			    sizeof(row), &row_length)) {
 				if (error != NULL) {
 					error->status = YT_RANGE;
@@ -229,7 +229,7 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 						return false;
 					if (session->destroyed)
 						return true;
-					if (session->hostile_deployed_fighters
+					if (session->combat.deployed_fighters
 					    <= 0.0) {
 						session_set_foreground(session, 1.0f);
 						if (!yt_session_display_sector(session, false, error))
@@ -270,7 +270,7 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 						break;
 					}
 					if (forced_attack) {
-						if (session->hostile_deployed_fighters
+						if (session->combat.deployed_fighters
 						    <= 0.0) {
 							session_set_foreground(session, 1.0f);
 							if (!yt_session_display_sector(session, false, error))

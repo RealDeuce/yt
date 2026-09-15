@@ -34,6 +34,16 @@ struct session_route_plan {
 	int16_t next_hop[YT_ROUTE_CAPACITY];
 };
 
+struct session_combat_state {
+	double ship_fighters;
+	float ship_shields;
+	double deployed_fighters;
+	float hostile_owner;
+	uint8_t hostile_owner_label[160];
+	size_t hostile_owner_label_length;
+	bool mercenaries_hurt;
+};
+
 struct yt_session {
 	struct yt_door *door;
 	struct yt_error *error;
@@ -43,7 +53,6 @@ struct yt_session {
 	bool destroyed;
 	float current_warps[6];
 	bool self_mine_suppressed;
-	bool mercenaries_hurt;
 	bool earth_report_seen;
 	bool anti_cloak_enabled;
 	float low_time_remembered;
@@ -59,10 +68,7 @@ struct yt_session {
 	bool spy_found;
 	struct yt_player player;
 	float current_sector_record;
-	double combat_ship_fighters;
-	double hostile_deployed_fighters;
-	float combat_ship_shields;
-	float hostile_owner;
+	struct session_combat_state combat;
 	float market_bases[3];
 	float clearance_discounts[4];
 	struct yt_planet_economy planet_economy;
@@ -88,8 +94,6 @@ struct yt_session {
 	struct yt_present_time_state time;
 	struct yt_pager_state pager;
 	struct yt_input_value input_residue;
-	uint8_t hostile_owner_label[160];
-	size_t hostile_owner_label_length;
 	struct yt_team_cache team_cache;
 };
 

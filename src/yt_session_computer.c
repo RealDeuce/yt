@@ -265,7 +265,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			bool fighters_positive;
 			size_t name_length;
 
-			session->hostile_deployed_fighters =
+			session->combat.deployed_fighters =
 			    (double)sector.fighters;
 			session->shared_target_record = qb_mbf32_decode(
 			    sector.record.bytes + YT_F85);
@@ -273,7 +273,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			if (!yt_session_computer_owner_is_friendly(session,
 			    fighter_owner, &fighter_friendly, error))
 				return false;
-			sector_fighters = session->hostile_deployed_fighters;
+			sector_fighters = session->combat.deployed_fighters;
 			last_relationship = session->shared_status;
 			scratch = qb_single_add(
 			    session_planet_offset(session), link);
@@ -336,7 +336,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			}
 		}
 		else {
-			sector_fighters = session->hostile_deployed_fighters;
+			sector_fighters = session->combat.deployed_fighters;
 			fighter_owner = session->shared_target_record;
 			last_relationship = session->shared_status;
 			scratch = link;

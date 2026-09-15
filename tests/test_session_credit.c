@@ -58,8 +58,8 @@ test_credit_mutation(void)
 	CHECK(hydrated);
 	CHECK(session.player.credits == 99.0f);
 	CHECK(session.current_sector_record == 109.0f);
-	CHECK(session.combat_ship_fighters == 12.0);
-	CHECK(session.combat_ship_shields == 34.0f);
+	CHECK(session.combat.ship_fighters == 12.0);
+	CHECK(session.combat.ship_shields == 34.0f);
 	CHECK(session.player_cache.cloak[2] == 0.75f);
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
 	CHECK(yt_record_get_number(&persisted, YT_F81) == 99.0f);

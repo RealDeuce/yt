@@ -57,7 +57,7 @@ bribe_force_attack(struct yt_session *session, struct yt_sector *sector,
     bool *forced_attack, struct yt_error *error)
 {
 	enum qb_mbf_status conversion;
-	float commitment = (float)session->combat_ship_fighters;
+	float commitment = (float)session->combat.ship_fighters;
 	uint8_t raw[4];
 
 	*forced_attack = true;
@@ -71,8 +71,8 @@ bribe_force_attack(struct yt_session *session, struct yt_sector *sector,
 		return false;
 	}
 	commitment = qb_mbf32_decode(raw);
-	switch (yt_bribe_forced_admit(session->combat_ship_fighters,
-	    session->combat_ship_shields, mercenary_fatal_gate, commitment)) {
+	switch (yt_bribe_forced_admit(session->combat.ship_fighters,
+	    session->combat.ship_shields, mercenary_fatal_gate, commitment)) {
 	case YT_BRIBE_FORCED_FATAL:
 		return yt_session_common_fatal_self(session, error);
 	case YT_BRIBE_FORCED_LESS_THAN_ONE:
@@ -130,13 +130,13 @@ yt_session_bribe_deployed(struct yt_session *session,
 		return false;
 	*direct_hostile_menu = false;
 	*forced_attack = false;
-	cached_defenders = session->hostile_deployed_fighters;
-	ship_fighters = session->combat_ship_fighters;
+	cached_defenders = session->combat.deployed_fighters;
+	ship_fighters = session->combat.ship_fighters;
 	available_credits = (double)session->player.credits;
 	name = (const uint8_t *)session->door->identity.real_first;
 	name_length = strlen(session->door->identity.real_first);
 
-	if (session->hostile_owner != -2.0f) {
+	if (session->combat.hostile_owner != -2.0f) {
 		if (!bribe_name_row(ordinary_prefix,
 		    sizeof(ordinary_prefix) - 1U, name, name_length, bang,
 		    sizeof(bang) - 1U, row, sizeof(row), &row_length)
@@ -144,7 +144,7 @@ yt_session_bribe_deployed(struct yt_session *session,
 		    "ordinary Bribe refusal", error)
 		    || !yt_random_next(&session->door->game.random, &draw, error))
 			return false;
-		force_attack = yt_bribe_ordinary_forces(session->hostile_owner,
+		force_attack = yt_bribe_ordinary_forces(session->combat.hostile_owner,
 		    cached_defenders, ship_fighters, draw);
 		if (!force_attack)
 			return true;
@@ -165,7 +165,7 @@ yt_session_bribe_deployed(struct yt_session *session,
 	    error))
 		return false;
 	force_attack = yt_bribe_mercenary_forces(cached_defenders,
-	    ship_fighters, draw, second_draw, session->mercenaries_hurt);
+	    ship_fighters, draw, second_draw, session->combat.mercenaries_hurt);
 	if (force_attack) {
 		if (!bribe_name_row(life_prefix, sizeof(life_prefix) - 1U,
 		    name, name_length, bang, sizeof(bang) - 1U, row,

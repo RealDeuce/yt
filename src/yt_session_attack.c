@@ -47,9 +47,9 @@ yt_session_fighter_shield_spill(struct yt_session *session,
 			return false;
 		if (bind_hostile_cells) {
 			if (draw >= 0.5f)
-				session->hostile_deployed_fighters = *fighters;
+				session->combat.deployed_fighters = *fighters;
 			else
-				session->combat_ship_shields = *shields;
+				session->combat.ship_shields = *shields;
 		}
 	}
 	return yt_fighter_shield_spill_rows(*fighters, *shields,

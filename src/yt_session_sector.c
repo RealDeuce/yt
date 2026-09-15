@@ -155,9 +155,9 @@ static void
 scanner_cache_hostile_sector(struct yt_session *session,
     const struct yt_sector *sector)
 {
-	session->hostile_deployed_fighters = (double)qb_mbf32_decode(
+	session->combat.deployed_fighters = (double)qb_mbf32_decode(
 	    &sector->record.bytes[YT_F81]);
-	session->hostile_owner = qb_mbf32_decode(
+	session->combat.hostile_owner = qb_mbf32_decode(
 	    &sector->record.bytes[YT_F85]);
 }
 
@@ -332,7 +332,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 		const struct yt_sector *team_pointer = NULL;
 		bool scratch_changed;
 		bool owner_team_nonzero = false;
-		size_t scratch_length = session->hostile_owner_label_length;
+		size_t scratch_length = session->combat.hostile_owner_label_length;
 
 		if (!session_present_text(session, heading,
 		    sizeof(heading) - 1U, SESSION_PRESENT_BOLD_RAW,
@@ -362,20 +362,20 @@ display_sector_one(struct yt_session *session, float logical_sector,
 				if (team_number_length < 1
 				    || owner_name_length + sizeof(team_prefix) - 1U
 				    + (size_t)team_number_length >
-				    sizeof(session->hostile_owner_label))
+				    sizeof(session->combat.hostile_owner_label))
 					return false;
-				memcpy(session->hostile_owner_label, owner_name,
+				memcpy(session->combat.hostile_owner_label, owner_name,
 				    owner_name_length);
 				scratch_length = owner_name_length;
-				memcpy(session->hostile_owner_label + scratch_length,
+				memcpy(session->combat.hostile_owner_label + scratch_length,
 				    team_prefix, sizeof(team_prefix) - 1U);
 				scratch_length += sizeof(team_prefix) - 1U;
-				memcpy(session->hostile_owner_label + scratch_length,
+				memcpy(session->combat.hostile_owner_label + scratch_length,
 				    team_number + 1,
 				    (size_t)team_number_length - 1U);
 				scratch_length += (size_t)team_number_length - 1U;
-				session->hostile_owner_label[scratch_length++] = ']';
-				session->hostile_owner_label_length = scratch_length;
+				session->combat.hostile_owner_label[scratch_length++] = ']';
+				session->combat.hostile_owner_label_length = scratch_length;
 				if (!scanner_read_team_overlay(session, owner.team,
 				    &team_overlay, error))
 					return false;
@@ -384,14 +384,14 @@ display_sector_one(struct yt_session *session, float logical_sector,
 		}
 		if (!yt_sector_fighter_row(&sector, session_record(session),
 		    owner_pointer, team_pointer, row, sizeof(row), &row_length,
-		    session->hostile_owner_label,
-		    sizeof(session->hostile_owner_label), &scratch_length,
+		    session->combat.hostile_owner_label,
+		    sizeof(session->combat.hostile_owner_label), &scratch_length,
 		    &scratch_changed, error)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "sector fighter owner row", error))
 			return false;
 		if (scratch_changed)
-			session->hostile_owner_label_length = scratch_length;
+			session->combat.hostile_owner_label_length = scratch_length;
 		yt_sector_pager_add(private_pager,
 		    owner_team_nonzero ? 3.0f : 2.0f);
 	}
