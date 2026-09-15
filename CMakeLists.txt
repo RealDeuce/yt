@@ -109,6 +109,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session.c
     src/yt_session_action.c
     src/yt_session_attack.c
+    src/yt_session_bribe.c
     src/yt_session_computer.c
     src/yt_session_computer_menu.c
     src/yt_session_radio.c
@@ -116,6 +117,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_sector_entry.c
     src/yt_session_shell.c
     src/yt_session_death.c
+    src/yt_session_deployed_attack.c
     src/yt_session_earth.c
     src/yt_session_error.c
     src/yt_session_fighters.c
