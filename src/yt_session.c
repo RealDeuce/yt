@@ -107,6 +107,20 @@ session_range_error(struct yt_error *error, const char *operation)
 	return false;
 }
 
+bool
+session_buffer_append(uint8_t *buffer, size_t capacity, size_t *length,
+    const void *data, size_t data_length)
+{
+	if (buffer == NULL || length == NULL || *length > capacity
+	    || data_length > capacity - *length
+	    || (data == NULL && data_length != 0U))
+		return false;
+	if (data_length != 0U)
+		memcpy(buffer + *length, data, data_length);
+	*length += data_length;
+	return true;
+}
+
 void
 session_close_game(struct yt_session *session)
 {

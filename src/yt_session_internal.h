@@ -132,6 +132,8 @@ bool session_write_sector(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, struct yt_error *error);
 bool session_read_port(struct yt_session *session, int logical_port,
     struct yt_port *port, struct yt_error *error);
+bool session_read_port_physical(struct yt_session *session,
+    uint32_t physical_record, struct yt_port *port, struct yt_error *error);
 bool session_write_port(struct yt_session *session, int logical_port,
     struct yt_port *port, struct yt_error *error);
 bool session_read_port_at_fault(struct yt_session *session, int logical_port,
@@ -179,6 +181,8 @@ bool session_confirm(struct yt_session *session, const uint8_t *prompt,
 bool session_present_alert(struct yt_session *session, const uint8_t *text,
     size_t length, const char *operation, struct yt_error *error);
 bool session_range_error(struct yt_error *error, const char *operation);
+bool session_buffer_append(uint8_t *buffer, size_t capacity, size_t *length,
+    const void *data, size_t data_length);
 void attach_database_get_fault(struct yt_session *session,
     struct yt_error *error, enum yt_basic_fault_site site);
 void attach_database_put_fault(struct yt_session *session,
