@@ -64,15 +64,15 @@ yt_rmt_door_prepare(struct yt_rmt_door *door, int port,
 }
 
 bool
-yt_rmt_door_start(struct yt_rmt_door *door,
-    const struct yt_rmt_serial_state *state, struct yt_error *error)
+yt_rmt_door_start(struct yt_rmt_door *door, int port,
+    struct yt_error *error)
 {
-	if (door == NULL || state == NULL || !door->serial.prepared
+	if (door == NULL || !door->serial.prepared
 	    || door->serial.restored || door->initialized
-	    || state->outcome != YT_RMT_SERIAL_REMOTE
-	    || state->requested_port < 1 || state->requested_port > 4
-	    || state->requested_port - 1 > INT16_MAX
-	    || state->detected_baud != (float)door->serial.observed_baud) {
+	    || port < 1 || port > 4 || port - 1 > INT16_MAX
+	    || door->serial.observed_baud == 0U
+	    || door->serial.observed_baud > 115200U
+	    || 115200U % door->serial.observed_baud != 0U) {
 		if (error != NULL) {
 			error->status = YT_INVALID;
 			error->system_error = 0;
@@ -116,7 +116,7 @@ yt_rmt_door_start(struct yt_rmt_door *door,
 	od_control.od_disable |= DIS_INFOFILE | DIS_NAME_PROMPT | DIS_TIMEOUT;
 	od_control.baud = door->serial.observed_baud;
 	od_control.od_connect_speed = door->serial.observed_baud;
-	od_control.port = (INT16)(state->requested_port - 1);
+	od_control.port = (INT16)(port - 1);
 	od_control.od_open_handle = (DWORD_PTR)door->serial.native_handle;
 	(void)snprintf(od_control.od_prog_name, sizeof(od_control.od_prog_name),
 	    "Yankee Trader RMT-INIT");

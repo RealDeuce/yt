@@ -120,62 +120,6 @@ struct yt_rmt_standalone_output {
 	bool proceed;
 };
 
-enum yt_rmt_serial_outcome {
-	YT_RMT_SERIAL_LOCAL,
-	YT_RMT_SERIAL_REMOTE,
-	YT_RMT_SERIAL_ZERO_DIVISOR
-};
-
-struct yt_rmt_serial_state {
-	enum yt_rmt_serial_outcome outcome;
-	int requested_port;
-	int brun_device;
-	uint16_t uart_base;
-	uint16_t modem_status_port;
-	uint16_t bios_address;
-	uint16_t bios_value;
-	struct yt_startup_framing opening_framing;
-	float detected_baud;
-	uint8_t sampled_dll;
-	uint8_t sampled_dlm;
-	uint8_t restored_dll;
-	uint8_t restored_dlm;
-	uint8_t open_spec[64];
-	size_t open_spec_length;
-};
-
-enum yt_rmt_serial_event_operation {
-	YT_RMT_SERIAL_EVENT_DEF_SEG,
-	YT_RMT_SERIAL_EVENT_POKE,
-	YT_RMT_SERIAL_EVENT_IN,
-	YT_RMT_SERIAL_EVENT_OUT,
-	YT_RMT_SERIAL_EVENT_OPEN,
-	YT_RMT_SERIAL_EVENT_RUNTIME_ERROR
-};
-
-enum yt_rmt_serial_event_outcome {
-	YT_RMT_SERIAL_EVENTS_LOCAL,
-	YT_RMT_SERIAL_EVENTS_ZERO_DIVISOR,
-	YT_RMT_SERIAL_EVENTS_OPEN_ERROR,
-	YT_RMT_SERIAL_EVENTS_REMOTE
-};
-
-#define YT_RMT_SERIAL_EVENTS 24U
-
-struct yt_rmt_serial_event {
-	enum yt_rmt_serial_event_operation operation;
-	uint16_t address;
-	uint16_t value;
-	int error_number;
-	bool complete;
-};
-
-struct yt_rmt_serial_event_result {
-	enum yt_rmt_serial_event_outcome outcome;
-	struct yt_rmt_serial_event events[YT_RMT_SERIAL_EVENTS];
-	size_t event_count;
-};
-
 struct yt_initializer_options {
 	enum yt_initializer_family family;
 	const char *scoreboard;
@@ -234,14 +178,6 @@ bool yt_rmt_standalone_prompt_compose(
     struct yt_rmt_standalone_output *output);
 bool yt_rmt_standalone_response_compose(const uint8_t *response,
     size_t response_length, struct yt_rmt_standalone_output *output);
-bool yt_rmt_serial_state_compose(const uint8_t *identifier,
-    size_t identifier_length, const uint8_t *description,
-    size_t description_length, uint8_t dll, uint8_t dlm,
-    struct yt_rmt_serial_state *result);
-bool yt_rmt_serial_events_compose(const struct yt_rmt_serial_state *state,
-    uint8_t pre_open_lcr, uint8_t pre_open_ier, int serial_open_error,
-    uint8_t post_open_lcr, uint8_t post_open_ier,
-    struct yt_rmt_serial_event_result *result);
 bool yt_rmt_remote_status_compose(bool serial_open, float com_port,
     float baud, struct yt_rmt_standalone_output *output);
 bool yt_rmt_credited_name(const char *first, const char *last,

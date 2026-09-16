@@ -12,8 +12,6 @@
 #include <string.h>
 
 struct rmt_remote_info {
-	uint8_t identifier[2048];
-	size_t identifier_length;
 	uint8_t description[2048];
 	size_t description_length;
 	char first[128];
@@ -188,7 +186,6 @@ read_dorinfo_name(const char *path, struct rmt_remote_info *info,
 	last_value = storage + offsets[7];
 	last_length = lengths[7];
 	if (first_length >= 128U || last_length >= 128U
-	    || identifier_length > sizeof(info->identifier)
 	    || description_length > sizeof(info->description)) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -203,9 +200,6 @@ read_dorinfo_name(const char *path, struct rmt_remote_info *info,
 	port_value = qb_val_n(identifier_length != 0U
 	    ? identifier + identifier_length - 1U : NULL,
 	    identifier_length != 0U ? 1U : 0U);
-	if (identifier_length != 0U)
-		memcpy(info->identifier, identifier, identifier_length);
-	info->identifier_length = identifier_length;
 	if (description_length != 0U)
 		memcpy(info->description, description, description_length);
 	info->description_length = description_length;
@@ -434,6 +428,12 @@ rmt_close_all(struct yt_database *database, struct yt_rmt_door *door,
 	return true;
 }
 
+static bool
+rmt_observed_baud_supported(uint32_t baud)
+{
+	return baud != 0U && baud <= 115200U && 115200U % baud == 0U;
+}
+
 int
 main(void)
 {
@@ -449,7 +449,6 @@ main(void)
 		.write = write_rmt_presentation,
 	};
 	struct rmt_remote_info remote;
-	struct yt_rmt_serial_state serial_state;
 	struct yt_startup_framing framing;
 	char handoff[512];
 	char answer[80];
@@ -458,8 +457,6 @@ main(void)
 	bool local_mode;
 	float com_port = 0.0f;
 	uint32_t old_size;
-	uint8_t dll;
-	uint8_t dlm;
 
 	yt_error_clear(&error);
 	rmt_handoff_init(&handoff_file);
@@ -514,12 +511,8 @@ main(void)
 			    remote.description_length, &framing)
 			    || !yt_rmt_door_prepare(&door, (int)com_port, &framing,
 			    &error)
-			    || !yt_startup_divisor_from_observed_baud(
-			    door.serial.observed_baud, &dll, &dlm)
-			    || !yt_rmt_serial_state_compose(remote.identifier,
-			    remote.identifier_length, remote.description,
-			    remote.description_length, dll, dlm, &serial_state)
-			    || !yt_rmt_door_start(&door, &serial_state, &error)) {
+			    || !rmt_observed_baud_supported(door.serial.observed_baud)
+			    || !yt_rmt_door_start(&door, (int)com_port, &error)) {
 				if (error.status == YT_OK) {
 					error.status = YT_RANGE;
 					snprintf(error.operation, sizeof(error.operation),
@@ -530,7 +523,7 @@ main(void)
 			}
 		}
 		if (!yt_rmt_remote_status_compose(!local_mode, com_port,
-		    local_mode ? 0.0f : serial_state.detected_baud, &output)
+		    local_mode ? 0.0f : (float)door.serial.observed_baud, &output)
 		    || !write_local_bytes(&door, output.bytes, output.length, &error)
 		    || !credited_remote_name(remote.first, remote.last, credited,
 		    &error)) {

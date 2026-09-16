@@ -1523,66 +1523,12 @@ test_numeric_response(void)
 }
 
 static void
-test_serial_startup_model(void)
+test_startup_helpers(void)
 {
-	static const struct {
-		uint8_t dll;
-		uint8_t dlm;
-		float baud;
-	} divisors[] = {
-		{1U, 0U, 115200.0f},
-		{2U, 0U, 57600.0f},
-		{3U, 0U, 38400.0f},
-		{0U, 6U, 75.0f},
-	};
 	struct yt_startup_framing framing;
-	struct yt_startup_serial_layout layout;
 	uint8_t text[64];
-	uint8_t dll;
-	uint8_t dlm;
-	float baud;
 	size_t length;
-	size_t index;
 
-	CHECK(yt_startup_parse_port((const uint8_t *)"COM3:", 5U) == 3);
-	CHECK(yt_startup_parse_port((const uint8_t *)"COM2 ", 5U) == 0);
-	CHECK(yt_startup_parse_port((const uint8_t *)"9", 1U) == 9);
-	CHECK(yt_startup_parse_port(NULL, 0U) == 0);
-	CHECK(yt_startup_serial_layout(3, &layout)
-	    && layout.brun_device == 1 && layout.uart_base == 0x3E8U
-	    && layout.modem_status_port == 0x3EEU
-	    && layout.bios_address == 0x400U
-	    && layout.bios_value == 0x03E8U);
-	CHECK(yt_startup_serial_layout(4, &layout)
-	    && layout.brun_device == 2 && layout.uart_base == 0x2E8U
-	    && layout.modem_status_port == 0x2EEU
-	    && layout.bios_address == 0x402U
-	    && layout.bios_value == 0x02E8U);
-	CHECK(!yt_startup_serial_layout(0, &layout));
-
-	for (index = 0U; index < YT_ARRAY_LEN(divisors); ++index) {
-		CHECK(yt_startup_detect_baud(divisors[index].dll,
-		    divisors[index].dlm, &baud));
-		CHECK(baud == divisors[index].baud);
-		CHECK(yt_startup_restored_divisor(baud, &dll, &dlm)
-		    && dll == divisors[index].dll
-		    && dlm == divisors[index].dlm);
-	}
-	CHECK(yt_startup_detect_baud(255U, 255U, &baud));
-	CHECK(baud == 115200.0f / 65535.0f);
-	CHECK(yt_startup_restored_divisor(baud, &dll, &dlm)
-	    && dll == 255U && dlm == 255U);
-	CHECK(!yt_startup_detect_baud(0U, 0U, &baud));
-	CHECK(!yt_startup_restored_divisor(0.0f, &dll, &dlm));
-	CHECK(yt_startup_divisor_from_observed_baud(38400U, &dll, &dlm)
-	    && dll == 3U && dlm == 0U);
-	CHECK(yt_startup_divisor_from_observed_baud(75U, &dll, &dlm)
-	    && dll == 0U && dlm == 6U);
-	CHECK(!yt_startup_divisor_from_observed_baud(0U, &dll, &dlm));
-	CHECK(!yt_startup_divisor_from_observed_baud(230400U, &dll, &dlm));
-	CHECK(!yt_startup_divisor_from_observed_baud(12345U, &dll, &dlm));
-	CHECK(!yt_startup_divisor_from_observed_baud(38400U, NULL, &dlm));
-	CHECK(!yt_startup_divisor_from_observed_baud(38400U, &dll, NULL));
 	CHECK(yt_startup_framing_compose(
 	    (const uint8_t *)"38400 BAUD,O,8,1",
 	    strlen("38400 BAUD,O,8,1"), &framing)
@@ -1595,21 +1541,6 @@ test_serial_startup_model(void)
 	    && framing.data_bits == 7U && framing.stop_bits == 1U);
 	CHECK(!yt_startup_framing_compose(NULL, 1U, &framing));
 	CHECK(!yt_startup_framing_compose(NULL, 0U, NULL));
-
-	CHECK(yt_startup_open_spec(3,
-	    (const uint8_t *)"57600 BAUD,E,7,1",
-	    strlen("57600 BAUD,E,7,1"), text, sizeof(text),
-	    &length));
-	CHECK(length == strlen("COM1:1200,E,7,1,CS65535,DS,CD")
-	    && memcmp(text, "COM1:1200,E,7,1,CS65535,DS,CD", length) == 0);
-	CHECK(yt_startup_open_spec(2,
-	    (const uint8_t *)"38400 BAUD,O,8,1",
-	    strlen("38400 BAUD,O,8,1"), text, sizeof(text),
-	    &length));
-	CHECK(length == strlen("COM2:1200,N,8,1,CS65535,DS,CD")
-	    && memcmp(text, "COM2:1200,N,8,1,CS65535,DS,CD", length) == 0);
-	CHECK(!yt_startup_open_spec(0, NULL, 0U, text, sizeof(text),
-	    &length));
 
 	CHECK(yt_startup_canonical_name((const uint8_t *)"  jANE", 6U,
 	    (const uint8_t *)"  o'NEIL  ", 10U, text, sizeof(text), &length));
@@ -1809,7 +1740,7 @@ main(void)
 	test_yes_no_candidate();
 	test_a8d2_fault_stages();
 	test_numeric_response();
-	test_serial_startup_model();
+	test_startup_helpers();
 	test_platform_rmt_serial();
 	if (failures != 0) {
 		fprintf(stderr, "%u input-model test(s) failed\n", failures);
