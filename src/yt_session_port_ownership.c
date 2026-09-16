@@ -172,16 +172,8 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 		    strlen(text), 14.0f, "treasury sector field", error))
 			return false;
 		{
-			bool overflow = false;
-			int32_t converted = qb_cint_mbf32(
-			    port.record.bytes + YT_F85,
-			    session->presentation.sound.conversion_mode, &overflow);
-			size_t name_length;
+			size_t name_length = port.name_length;
 
-			if (overflow || converted < 0)
-				return treasury_error(error,
-				    "treasury port-name length");
-			name_length = (size_t)converted;
 			if (name_length > YT_TEXT_FIELD_SIZE)
 				name_length = YT_TEXT_FIELD_SIZE;
 			if (!session_fixed_width_bytes(session, port.record.bytes,
@@ -335,8 +327,6 @@ yt_session_command_rename_port(struct yt_session *session,
 	size_t cached_name_length;
 	int logical_port;
 	float relative_port;
-	bool overflow = false;
-	int32_t converted_length;
 
 	if (session == NULL || !session_reload_player(session, error)
 	    || !session_read_sector(session, (int)session->player.sector,
@@ -357,11 +347,7 @@ yt_session_command_rename_port(struct yt_session *session,
 	if (relative_port == 1.0f)
 		return session_present_alert(session, earth, sizeof(earth) - 1U,
 		    "rename Earth row", error);
-	converted_length = qb_cint_mbf32(port.record.bytes + YT_F85,
-	    session->presentation.sound.conversion_mode, &overflow);
-	if (overflow || converted_length < 0)
-		return treasury_error(error, "port name length");
-	cached_name_length = (size_t)converted_length;
+	cached_name_length = port.name_length;
 	if (cached_name_length > sizeof(cached_name))
 		cached_name_length = sizeof(cached_name);
 	memcpy(cached_name, port.record.bytes, cached_name_length);
@@ -564,8 +550,6 @@ yt_session_command_buy_port(struct yt_session *session,
 	char credits_text[64];
 	size_t length;
 	int logical_port;
-	int32_t converted_length;
-	bool conversion_overflow = false;
 	bool earth;
 	enum yt_yes_no_answer answer;
 
@@ -596,14 +580,7 @@ yt_session_command_buy_port(struct yt_session *session,
 		old_name_length = sizeof(earth_name) - 1U;
 	}
 	else {
-		converted_length = qb_cint_mbf32(
-		    terminal_port.record.bytes + YT_F85,
-		    session->presentation.sound.conversion_mode,
-		    &conversion_overflow);
-		if (conversion_overflow || converted_length < 0)
-			return treasury_error(error,
-			    "buy old port name length");
-		old_name_length = (size_t)converted_length;
+		old_name_length = terminal_port.name_length;
 		if (old_name_length > sizeof(old_name))
 			old_name_length = sizeof(old_name);
 		memcpy(old_name, terminal_port.record.bytes, old_name_length);
