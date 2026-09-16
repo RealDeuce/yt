@@ -285,6 +285,7 @@ if(BUILD_TESTING)
     yt_add_test(test_ytconfig_output tests/test_ytconfig_output.c yt_game)
     yt_add_test(test_score tests/test_score.c yt_game)
     target_sources(test_score PRIVATE
+        tests/config_test_support.c
         tests/direct_attack_model.c
 	    tests/hostile_attack_model.c
         tests/hostile_bribe_model.c
@@ -355,6 +356,7 @@ if(BUILD_TESTING)
     add_dependencies(test_clean_install yt-init ytmaint)
 
     yt_add_test(test_utilities tests/test_utilities.c yt_game)
+    target_sources(test_utilities PRIVATE tests/config_test_support.c)
     if(NOT WIN32)
         target_compile_definitions(test_utilities PRIVATE _XOPEN_SOURCE=700)
     endif()

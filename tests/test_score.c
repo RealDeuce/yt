@@ -14,6 +14,7 @@
 #include "yt_platform.h"
 #include "yt_score.h"
 #include "yt_team.h"
+#include "config_test_support.h"
 #include "yt_score_format.h"
 #include "yt_text.h"
 
@@ -83,7 +84,7 @@ check_startup_configuration_transaction(void)
 	source.maximum_holds = 1000.0f;
 	source.marker = 6324.0f;
 	source.maximum_planets = 0.0f;
-	yt_config_encode(&source);
+	test_config_encode(&source);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, path, YT_OPEN_CREATE, &error)
 	    || !yt_database_write(&game.database, 1U, &source.record, &error))
@@ -4127,7 +4128,7 @@ check_maintenance_headquarters_write(void)
 	config.headquarters = 0.0f;
 	yt_error_clear(&error);
 	if (!yt_database_open(&database, "YTDATA.DAT", YT_OPEN_CREATE,
-	    &error) || !yt_config_store(&database, &config, &error))
+	    &error) || !test_config_store(&database, &config, &error))
 		goto done;
 	yt_database_close(&database);
 	memset(&database, 0, sizeof(database));
@@ -6664,7 +6665,7 @@ check_maintenance_final_suffix_pass(void)
 	game.config.planet_offset = 4.0f;
 	game.config.total_records = 5.0f;
 	game.config.last_maintenance = 17.0f;
-	yt_config_encode(&game.config);
+	test_config_encode(&game.config);
 	before = game.config.record;
 	expected = before;
 	if (!yt_record_set_number(&expected, YT_F81, 204.0f))
@@ -15373,7 +15374,7 @@ main(void)
 	game.config.initial_fighters = 45.0f;
 	game.config.initial_credits = 678.0f;
 	game.config.initial_holds = 9.0f;
-	if (!yt_config_store(&game.database, &game.config, &error))
+	if (!test_config_store(&game.database, &game.config, &error))
 		goto close;
 	yt_record_blank(&blank);
 	if (!yt_database_write(&game.database, 2, &blank, &error)

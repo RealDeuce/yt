@@ -44,9 +44,6 @@ bool yt_config_decode(struct yt_config *config,
     const struct yt_record *record, struct yt_error *error);
 bool yt_config_load(struct yt_database *database, struct yt_config *config,
     struct yt_error *error);
-bool yt_config_store(struct yt_database *database,
-    const struct yt_config *config, struct yt_error *error);
-void yt_config_encode(struct yt_config *config);
 void yt_config_normalize_game(struct yt_config *config, bool local_mode);
 void yt_config_normalize_maintenance(struct yt_config *config);
 bool yt_config_headquarters_relocate(struct yt_database *database,

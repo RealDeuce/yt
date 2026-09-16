@@ -1,6 +1,7 @@
 #include "qb.h"
 #include "yt_config.h"
 #include "yt_config_output.h"
+#include "config_test_support.h"
 #include "yt_file.h"
 #include "yt_game.h"
 #include "yt_init.h"
@@ -3176,7 +3177,7 @@ test_ytconfig(struct yt_error *error)
 		return false;
 	game.config.local_screen = -2.0f;
 	game.config.last_maintenance = -1.0f;
-	if (!yt_config_store(&game.database, &game.config, error))
+	if (!test_config_store(&game.database, &game.config, error))
 		goto done;
 	if (!yt_config_prepare_menu_working(&game.config, scoreboard, &working))
 		goto done;
@@ -3290,7 +3291,7 @@ test_ytconfig_genesis(struct yt_error *error)
 		goto done;
 	original_genesis = game.config.genesis_ports;
 	game.config.genesis_ports = 300.0f;
-	if (!yt_config_store(&game.database, &game.config, error))
+	if (!test_config_store(&game.database, &game.config, error))
 		goto done;
 	yt_game_close(&game);
 	memset(&game, 0, sizeof(game));
@@ -3348,7 +3349,7 @@ test_ytconfig_genesis(struct yt_error *error)
 	    && memcmp(game.config.record.bytes, expected_record.bytes,
 		YT_RECORD_SIZE) == 0;
 	game.config.genesis_ports = original_genesis;
-	if (!yt_config_store(&game.database, &game.config, error))
+	if (!test_config_store(&game.database, &game.config, error))
 		valid = false;
 
 done:
@@ -3561,7 +3562,7 @@ test_ytconfig_scalar_options(struct yt_error *error)
 	game.config.last_maintenance = -1.0f;
 	if (game.config.headquarters == 0.0f)
 		game.config.headquarters = 85.0f;
-	if (!yt_config_store(&game.database, &game.config, error)
+	if (!test_config_store(&game.database, &game.config, error)
 	    || !yt_database_flush(&game.database, error)
 	    || !yt_config_load(&game.database, &game.config, error))
 		goto done;
