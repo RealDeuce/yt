@@ -311,9 +311,7 @@ yt_maintenance_mercenary_defections(struct yt_game *game, int sector_count,
 				size_t name_length;
 				int amount_length;
 				int sector_length;
-				int32_t owner_record;
-				int32_t stored_length;
-				bool overflow;
+				int owner_record;
 				struct yt_player owner;
 				static const uint8_t prefix[] = "  - ";
 				static const uint8_t fighters[] =
@@ -321,13 +319,7 @@ yt_maintenance_mercenary_defections(struct yt_game *game, int sector_count,
 				static const uint8_t belonging[] = " belonging to ";
 				static const uint8_t suffix[] = " joined the mercs!";
 
-				owner_record = qb_cint_mbf32(sector.record.bytes + YT_F85,
-				    0U, &overflow);
-				if (overflow || owner_record < 1) {
-					set_error(error, YT_RANGE,
-					    "Mercenary defection owner", "YTDATA.DAT");
-					return false;
-				}
+				owner_record = (int)sector.fighter_owner;
 				sector.fighter_owner = -2.0f;
 				if (!yt_record_set_number(&sector.record, YT_F85,
 				    sector.fighter_owner)) {
@@ -341,15 +333,8 @@ yt_maintenance_mercenary_defections(struct yt_game *game, int sector_count,
 				    || !yt_game_read_player(game, owner_record, &owner,
 				    error))
 					return false;
-				stored_length = qb_cint_mbf32(owner.record.bytes + YT_F85, 0U,
-				    &overflow);
-				if (overflow || stored_length < 0) {
-					set_error(error, YT_RANGE,
-					    "Mercenary defection owner name", "YTDATA.DAT");
-					return false;
-				}
-				name_length = (size_t)stored_length < YT_TEXT_FIELD_SIZE
-				    ? (size_t)stored_length : YT_TEXT_FIELD_SIZE;
+				name_length = owner.name_length < YT_TEXT_FIELD_SIZE
+				    ? owner.name_length : YT_TEXT_FIELD_SIZE;
 				amount_length = qb_str_single(amount, sizeof(amount),
 				    sector.fighters);
 				sector_length = qb_str_single(sector_text,
@@ -552,9 +537,8 @@ yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 	struct yt_planet planet;
 	uint8_t line[YT_MAINTENANCE_OUTPUT_ROW_SIZE];
 	size_t line_length;
-	int32_t planet_number;
-	int32_t name_length;
-	bool overflow;
+	int planet_number;
+	size_t name_length;
 	double incoming;
 	double existing;
 
@@ -564,12 +548,7 @@ yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 		    "YTDATA.DAT");
 		return false;
 	}
-	planet_number = qb_cint_mbf32(arrival_sector->record.bytes + YT_F93,
-	    0U, &overflow);
-	if (overflow) {
-		set_error(error, YT_RANGE, "Mercenary planet link", "YTDATA.DAT");
-		return false;
-	}
+	planet_number = (int)arrival_sector->planet;
 	if ((arrival_sector->fighter_owner != -2.0f
 	    && arrival_sector->fighter_owner != 0.0f)
 	    || planet_number == 0) {
@@ -578,12 +557,7 @@ yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 	}
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
-	name_length = qb_cint_mbf32(planet.record.bytes + YT_F85, 0U,
-	    &overflow);
-	if (overflow || name_length < 0 || name_length > 41) {
-		set_error(error, YT_RANGE, "Mercenary planet name", "YTDATA.DAT");
-		return false;
-	}
+	name_length = planet.name_length;
 	local.planet_fighters = (float)qb_int((double)planet.fighters);
 	planet.fighters = 0.0f;
 	if (!yt_record_set_raw_number(&planet.record, YT_F129,
@@ -619,13 +593,13 @@ yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 	local.taking_report = local.planet_fighters > 0.0f;
 	if (local.capture_report
 	    && (!mercenary_planet_line(incoming, local.planet_fighters,
-	    planet.record.bytes, (size_t)name_length, false, line, &line_length)
+	    planet.record.bytes, name_length, false, line, &line_length)
 	    || !line_output(line_context, line, line_length, error)
 	    || !yt_news_append_bytes(line, line_length, error)))
 		return false;
 	if (local.taking_report
 	    && (!mercenary_planet_line(moving_fighters + existing,
-	    local.planet_fighters, planet.record.bytes, (size_t)name_length,
+	    local.planet_fighters, planet.record.bytes, name_length,
 	    true, line, &line_length)
 	    || !yt_news_append_bytes(line, line_length, error)
 	    || !line_output(line_context, line, line_length, error)))
@@ -730,9 +704,7 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 	double defenders;
 	double moving;
 	float original_owner;
-	int32_t owner_record = 0;
-	int32_t stored_length;
-	bool overflow;
+	int owner_record = 0;
 
 	if (game == NULL || sector_number < 1 || line_output == NULL
 	    || arrival_sector == NULL || moving_after == NULL
@@ -761,25 +733,12 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 		owner_length = sizeof(xannor) - 1U;
 	}
 	else {
-		owner_record = qb_cint_mbf32(arrival_sector->record.bytes + YT_F85,
-		    0U, &overflow);
-		if (overflow || owner_record < 1
-		    || !yt_game_read_player(game, owner_record, &owner_player,
-		    error)) {
-			if (!overflow && owner_record < 1)
-				set_error(error, YT_RANGE,
-				    "Mercenary destination owner", "YTDATA.DAT");
+		owner_record = (int)original_owner;
+		if (!yt_game_read_player(game, owner_record, &owner_player,
+		    error))
 			return false;
-		}
-		stored_length = qb_cint_mbf32(owner_player.record.bytes + YT_F85, 0U,
-		    &overflow);
-		if (overflow || stored_length < 0) {
-			set_error(error, YT_RANGE,
-			    "Mercenary destination owner name", "YTDATA.DAT");
-			return false;
-		}
-		owner_length = (size_t)stored_length < YT_TEXT_FIELD_SIZE
-		    ? (size_t)stored_length : YT_TEXT_FIELD_SIZE;
+		owner_length = owner_player.name_length < YT_TEXT_FIELD_SIZE
+		    ? owner_player.name_length : YT_TEXT_FIELD_SIZE;
 		memcpy(owner_name, owner_player.record.bytes, owner_length);
 	}
 	{

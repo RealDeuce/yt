@@ -5437,7 +5437,7 @@ check_maintenance_mercenary_defection_pass(void)
 	for (sector = 1; sector <= 5; ++sector) {
 		float fighters = sector == 1 ? 99.0f
 		    : sector == 2 ? 100.0f : 1.0f;
-		float fighter_owner = sector == 1 ? 2.3999999f
+		float fighter_owner = sector == 1 ? 2.0f
 		    : sector == 2 ? 3.0f : sector == 3 ? -2.0f
 		    : sector == 4 ? 1.0f : 2.0f;
 
