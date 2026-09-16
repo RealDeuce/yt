@@ -106,7 +106,7 @@ test_report_text(void)
 	player_fixture(&player);
 	report_port_fixture(&market, &port);
 	yt_error_clear(&error);
-	CHECK(yt_port_report_compose(&market, &player, &port, 0U,
+	CHECK(yt_port_report_compose(&market, &player, &port,
 	    (const uint8_t *)"07-25-2026", (const uint8_t *)"12:34:56",
 	    &report, &error));
 	CHECK(report.title_length == sizeof(title) - 1U);
@@ -141,7 +141,7 @@ test_exact_capacity(void)
 	report_port_fixture(&market, &port);
 	CHECK(qb_mbf64_encode(16777217.0, market.capacity_raw[0]) == QB_MBF_OK);
 	yt_error_clear(&error);
-	CHECK(yt_port_report_compose(&market, &player, &port, 0U,
+	CHECK(yt_port_report_compose(&market, &player, &port,
 	    (const uint8_t *)"07-25-2026", (const uint8_t *)"12:34:56",
 	    &report, &error));
 	CHECK(memcmp(report.item[0].capacity, "    16777217", 12U) == 0);

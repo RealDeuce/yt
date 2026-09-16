@@ -222,22 +222,6 @@ port_report_append(uint8_t *row, size_t capacity, size_t *position,
 }
 
 static bool
-port_report_field_length(const uint8_t raw[4], uint8_t conversion_mode,
-    size_t *length, struct yt_error *error, const char *operation)
-{
-	bool overflow;
-	int32_t converted;
-
-	converted = qb_cint_mbf32(raw, conversion_mode, &overflow);
-	if (overflow || converted < 0)
-		return yt_game_error(error, YT_RANGE, operation);
-	*length = (size_t)converted;
-	if (*length > YT_TEXT_FIELD_SIZE)
-		*length = YT_TEXT_FIELD_SIZE;
-	return true;
-}
-
-static bool
 port_report_right_raw(const uint8_t *source, size_t source_length,
     size_t width, uint8_t *rendered)
 {
@@ -254,7 +238,7 @@ port_report_right_raw(const uint8_t *source, size_t source_length,
 bool
 yt_port_report_compose(const struct yt_port_market_state *market,
     const struct yt_player *current_player,
-    const struct yt_port *report_port, uint8_t conversion_mode,
+    const struct yt_port *report_port,
     const uint8_t date[10], const uint8_t time_text[8],
     struct yt_port_report_text *report, struct yt_error *error)
 {
@@ -280,9 +264,9 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 		return yt_game_error(error, YT_INVALID,
 		    "port report arguments");
 	memset(report, 0, sizeof(*report));
-	if (!port_report_field_length(report_port->record.bytes + YT_F85,
-	    conversion_mode, &name_length, error, "port report name length"))
-		return false;
+	name_length = report_port->name_length;
+	if (name_length > YT_TEXT_FIELD_SIZE)
+		name_length = YT_TEXT_FIELD_SIZE;
 	if (!port_report_append(report->title, sizeof(report->title),
 	    &report->title_length, title_prefix, sizeof(title_prefix) - 1U)
 	    || !port_report_append(report->title, sizeof(report->title),
@@ -402,4 +386,3 @@ yt_trade_holds_overlay(struct yt_player *player, size_t commodity,
 	(void)yt_record_set_number(&player->record, YT_F73, player->organics);
 	(void)yt_record_set_number(&player->record, YT_F77, player->equipment);
 }
-

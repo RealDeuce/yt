@@ -169,7 +169,7 @@ yt_session_port_report(struct yt_session *session, int logical_port,
 	yt_format_time(&now, rendered_time);
 	memcpy(time_text, rendered_time, sizeof(time_text));
 	if (!yt_port_report_compose(market, &current_player, &report_port,
-	    session->presentation.sound.conversion_mode, date, time_text,
+	    date, time_text,
 	    &report, error)
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "port report title blank", error)

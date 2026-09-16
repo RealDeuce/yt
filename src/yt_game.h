@@ -641,7 +641,7 @@ struct yt_port_report_text {
 };
 bool yt_port_report_compose(const struct yt_port_market_state *market,
     const struct yt_player *current_player,
-    const struct yt_port *report_port, uint8_t conversion_mode,
+    const struct yt_port *report_port,
     const uint8_t date[10], const uint8_t time[8],
     struct yt_port_report_text *report, struct yt_error *error);
 int yt_computer_selector_position(const char *command);
