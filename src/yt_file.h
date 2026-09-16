@@ -55,45 +55,6 @@ struct yt_database_close_result {
 	bool close_all;
 };
 
-enum yt_com_close_outcome {
-	YT_COM_CLOSE_RETURNED,
-	YT_COM_CLOSE_RUNTIME_ERROR,
-};
-
-struct yt_com_close_state {
-	int8_t file_class;
-	uint8_t binary_mode;
-	uint8_t kind;
-	uint16_t control;
-	uint16_t port_descriptor;
-	uint16_t transmit_count;
-	uint32_t saved_vector;
-	bool field_bound;
-	bool control_live;
-	bool interrupt_installed;
-};
-
-struct yt_com_close_observation {
-	bool optional_status_supplied;
-	uint8_t optional_status;
-	const uint8_t *drain_statuses;
-	size_t drain_status_count;
-};
-
-struct yt_com_close_result {
-	enum yt_com_close_outcome outcome;
-	uint16_t port_state_address;
-	uint16_t basic_error;
-	size_t drain_status_count;
-	bool optional_eof_write;
-	bool teardown_completed;
-	bool control_released;
-};
-
-bool yt_com_close_run(struct yt_com_close_state *state,
-    const struct yt_com_close_observation *observation,
-    struct yt_com_close_result *result);
-
 enum yt_database_lof_operation {
 	YT_DATABASE_LOF_OPERATION_NONE,
 	YT_DATABASE_LOF_CURRENT,
