@@ -10,6 +10,7 @@
 #include "yt_input_model.h"
 #include "yt_main_error.h"
 #include "yt_maint.h"
+#include "yt_maint_internal.h"
 #include "yt_platform.h"
 #include "yt_score.h"
 #include "yt_team.h"
@@ -7818,7 +7819,7 @@ check_maintenance_xannor_roaming_groups_pass(void)
 		zero_draws, sizeof(zero_draws), 0U
 	};
 	struct score_line_tape screen = {0};
-	struct yt_maintenance_route_cache cache = {0};
+	struct maint_state state = {0};
 	struct yt_record record;
 	struct yt_sector sector;
 	struct yt_game game;
@@ -7879,15 +7880,22 @@ check_maintenance_xannor_roaming_groups_pass(void)
 		memcpy(expected + expected_length, "Size: 1 \r", 9U);
 		expected_length += 9U;
 	}
-	if (!yt_maintenance_xannor_roaming_groups(&game, &cache,
-	    player_sector, player_cloak, YT_ARRAY_LEN(player_sector),
+	state.game = game;
+	state.player_sector = player_sector;
+	state.player_cloak = player_cloak;
+	state.player_count = 1;
+	state.sector_count = 40;
+	state.port_count = 1;
+	state.planet_count = 1;
+	if (!yt_maintenance_xannor_roaming_groups(&state,
 	    2000.0f, 40, 0, 0, 0, location, size, score_line_collect,
 	    &screen, &error)
-	    || game.random.draws != 57U
+	    || state.game.random.draws != 57U
 	    || script.position != sizeof(zero_draws)
 	    || screen.lines != 19U || screen.length != expected_length
 	    || memcmp(screen.data, expected, expected_length) != 0
-	    || cache.warps == NULL || cache.sector_count != 40)
+	    || state.route_cache.warps == NULL
+	    || state.route_cache.sector_count != 40)
 		goto done;
 	for (group = 1; group <= 20; ++group) {
 		if (location[group] != 40.0f
@@ -7903,7 +7911,7 @@ check_maintenance_xannor_roaming_groups_pass(void)
 	valid = true;
 
 done:
-	yt_maintenance_route_cache_free(&cache);
+	yt_maintenance_route_cache_free(&state.route_cache);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
 	(void)remove("YTNEWS.DAT");
@@ -7934,7 +7942,7 @@ check_maintenance_xannor_phase_pass(void)
 		zero_draws, sizeof(zero_draws), 0U
 	};
 	struct score_line_tape screen = {0};
-	struct yt_maintenance_route_cache cache = {0};
+	struct maint_state state = {0};
 	struct yt_text_file news = {0};
 	struct yt_record record;
 	struct yt_sector sector;
@@ -8017,10 +8025,16 @@ check_maintenance_xannor_phase_pass(void)
 		memcpy(expected + expected_length, "Size: 1 \r", 9U);
 		expected_length += 9U;
 	}
-	if (!yt_maintenance_maintain_xannor(&game, &cache, player_sector,
-	    player_cloak, YT_ARRAY_LEN(player_sector), score_line_collect,
+	state.game = game;
+	state.player_sector = player_sector;
+	state.player_cloak = player_cloak;
+	state.player_count = 1;
+	state.sector_count = 40;
+	state.port_count = 1;
+	state.planet_count = 100;
+	if (!yt_maintenance_xannor_run(&state, score_line_collect,
 	    &screen, &error)
-	    || game.random.draws != 60U
+	    || state.game.random.draws != 60U
 	    || script.position != sizeof(zero_draws)
 	    || screen.lines != 30U || screen.length != expected_length
 	    || memcmp(screen.data, expected, expected_length) != 0
@@ -8039,14 +8053,14 @@ check_maintenance_xannor_phase_pass(void)
 	    || sector.planet != 100.0f
 	    || !yt_game_read_planet(&game, 100, &planet, &error)
 	    || planet.owner != -1.0f || planet.ground_forces != 0.0f
-	    || planet.bank != 1.0f || cache.warps == NULL
-	    || cache.sector_count != 40)
+	    || planet.bank != 1.0f || state.route_cache.warps == NULL
+	    || state.route_cache.sector_count != 40)
 		goto done;
 	valid = true;
 
 done:
 	yt_text_free(&news);
-	yt_maintenance_route_cache_free(&cache);
+	yt_maintenance_route_cache_free(&state.route_cache);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
 	(void)remove("YTNEWS.DAT");
@@ -8210,7 +8224,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	struct yt_player route_player;
 	struct yt_planet planet;
 	struct yt_radio_record radio[2];
-	struct yt_maintenance_route_cache cache = {0};
+	struct maint_state state = {0};
 	struct yt_maintenance_xannor_route_result route;
 	struct yt_text_file news = {0};
 	struct yt_game game;
@@ -8288,15 +8302,20 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	location[2] = 1.0f;
 	size[2] = 10.0f;
 	player_sector[2] = 2.0f;
+	state.game = game;
+	state.player_sector = player_sector;
+	state.player_cloak = player_cloak;
+	state.player_count = 2;
+	state.sector_count = 4;
 	if (!yt_maintenance_xannor_target_override(2, 4, 99.0f, 200000.0f,
 	    3, 0, 0, &target, &error) || target != 3
-	    || !yt_maintenance_xannor_route_arrivals(&game, &cache,
-	    player_sector, player_cloak, YT_ARRAY_LEN(player_sector), 2, target,
-	    location, size, &route, &error)
+	    || !yt_maintenance_xannor_route_arrivals(&state, 2, target,
+	    (float)target, location, size, maintenance_stdout_line, NULL,
+	    &route, &error)
 	    || route.hops != 2 || !route.reached_target
 	    || route.route_missing || route.exhausted
 	    || location[2] != 3.0f || size[2] != 9.0f
-	    || game.random.draws != 7U
+	    || state.game.random.draws != 7U
 	    || random_script.position != sizeof(seven_zero_draws)
 	    || !yt_text_read("YTNEWS.DAT", &news, &error)
 	    || news.length != sizeof(expected_news) - 1U
@@ -8364,27 +8383,24 @@ check_maintenance_xannor_route_arrivals_pass(void)
 		    && planet.record.bytes[offset] != planet_before.bytes[offset])
 			goto done;
 	}
-	if (!yt_maintenance_xannor_route_arrivals(&game, &cache,
-	    player_sector, player_cloak, YT_ARRAY_LEN(player_sector), 2, 4,
-	    location, size, &route, &error)
+	if (!yt_maintenance_xannor_route_arrivals(&state, 2, 4, 4.0f,
+	    location, size, maintenance_stdout_line, NULL, &route, &error)
 	    || route.hops != 0 || route.reached_target
 	    || !route.route_missing || route.exhausted
 	    || location[2] != 3.0f || size[2] != 9.0f)
 		goto done;
 	location[2] = 1.0f;
 	size[2] = 0.0f;
-	if (!yt_maintenance_xannor_route_arrivals(&game, &cache,
-	    player_sector, player_cloak, YT_ARRAY_LEN(player_sector), 2, 3,
-	    location, size, &route, &error)
+	if (!yt_maintenance_xannor_route_arrivals(&state, 2, 3, 3.0f,
+	    location, size, maintenance_stdout_line, NULL, &route, &error)
 	    || route.hops != 0 || route.reached_target
 	    || route.route_missing || !route.exhausted
 	    || location[2] != 0.0f || size[2] != 0.0f)
 		goto done;
 	location[2] = 0.6f;
 	size[2] = 10.0f;
-	if (!yt_maintenance_xannor_route_arrivals(&game, &cache,
-	    player_sector, player_cloak, YT_ARRAY_LEN(player_sector), 2, 3,
-	    location, size, &route, &error)
+	if (!yt_maintenance_xannor_route_arrivals(&state, 2, 3, 3.0f,
+	    location, size, maintenance_stdout_line, NULL, &route, &error)
 	    || route.hops != 0 || route.reached_target
 	    || route.route_missing || !route.exhausted
 	    || location[2] != 0.0f || size[2] != 0.0f)
@@ -8395,7 +8411,7 @@ done:
 	if (radio_file != NULL)
 		(void)fclose(radio_file);
 	yt_text_free(&news);
-	yt_maintenance_route_cache_free(&cache);
+	yt_maintenance_route_cache_free(&state.route_cache);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
 	(void)remove("YTNEWS.DAT");
@@ -9201,39 +9217,6 @@ check_date_serial(void)
 	yt_platform_set_clock_provider(NULL, NULL);
 
 	return true;
-}
-
-static bool
-check_maintenance_route_enqueue(void)
-{
-	int queue[5] = {1, 9, 9, 9, 9};
-	int previous[5] = {0, -1, 0, 4, 0};
-	size_t tail = 1U;
-
-	if (yt_maintenance_route_enqueue(0, 1, 4, queue, 5U, &tail,
-	    previous) != YT_MAINTENANCE_ENQUEUE_SKIPPED || tail != 1U
-	    || previous[0] != 0)
-		return false;
-	if (yt_maintenance_route_enqueue(3, 1, 4, queue, 5U, &tail,
-	    previous) != YT_MAINTENANCE_ENQUEUE_SKIPPED || tail != 1U
-	    || previous[3] != 4)
-		return false;
-	if (yt_maintenance_route_enqueue(2, 1, 4, queue, 5U, &tail,
-	    previous) != YT_MAINTENANCE_ENQUEUE_ADDED || tail != 2U
-	    || queue[1] != 2 || previous[2] != 1)
-		return false;
-	if (yt_maintenance_route_enqueue(4, 2, 4, queue, 5U, &tail,
-	    previous) != YT_MAINTENANCE_ENQUEUE_ADDED || tail != 3U
-	    || queue[2] != 4 || previous[4] != 2)
-		return false;
-	if (yt_maintenance_route_enqueue(5, 2, 4, queue, 5U, &tail,
-	    previous) != YT_MAINTENANCE_ENQUEUE_INVALID || tail != 3U)
-		return false;
-	tail = 5U;
-	previous[3] = 0;
-	return yt_maintenance_route_enqueue(3, 2, 4, queue, 5U, &tail,
-	    previous) == YT_MAINTENANCE_ENQUEUE_INVALID
-	    && tail == 5U && previous[3] == 0;
 }
 
 static bool
@@ -15209,8 +15192,6 @@ main(void)
 		return fail("DATE$/TIME$ formatting differs");
 	if (!check_date_serial())
 		return fail("DATE$ serial helper differs");
-	if (!check_maintenance_route_enqueue())
-		return fail("maintenance route enqueue helper differs");
 	if (!check_player_name_match())
 		return fail("returning-player fixed-field name match differs");
 	if (!check_hostile_surrender_transaction())

@@ -216,23 +216,10 @@ bool yt_maintenance_xannor_player_scan_admit(int group_number,
 bool yt_maintenance_xannor_player_scan_continue(int player_record,
     int player_count);
 
-enum yt_maintenance_enqueue_result {
-	YT_MAINTENANCE_ENQUEUE_INVALID,
-	YT_MAINTENANCE_ENQUEUE_SKIPPED,
-	YT_MAINTENANCE_ENQUEUE_ADDED
-};
-
 struct yt_maintenance_route_cache {
 	float *warps;
 	int *successors;
 	int sector_count;
-};
-
-struct yt_maintenance_xannor_route_result {
-	int hops;
-	bool reached_target;
-	bool route_missing;
-	bool exhausted;
 };
 
 struct yt_maintenance_xannor_player_result {
@@ -464,32 +451,11 @@ bool yt_maintenance_xannor_planet_arrival(struct yt_game *game,
     float *group_location, float *group_size, struct yt_sector *sector,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error);
-enum yt_maintenance_enqueue_result yt_maintenance_route_enqueue(int neighbor,
-    int predecessor, int sector_count, int *queue, size_t queue_capacity,
-    size_t *tail, int *previous);
 bool yt_maintenance_route_next_hop(struct yt_game *game,
     struct yt_maintenance_route_cache *cache, int source, int target,
     int *next_hop, struct yt_error *error);
 void yt_maintenance_route_cache_free(
     struct yt_maintenance_route_cache *cache);
-bool yt_maintenance_xannor_route_arrivals(struct yt_game *game,
-    struct yt_maintenance_route_cache *cache, float *player_sector,
-    float *player_cloak, size_t cache_count, int group_number,
-    int target_sector, float location[21], float size[21],
-    struct yt_maintenance_xannor_route_result *result,
-    struct yt_error *error);
-bool yt_maintenance_xannor_roaming_groups(struct yt_game *game,
-    struct yt_maintenance_route_cache *cache, float *player_sector,
-    float *player_cloak, size_t cache_count, float top_score,
-    int top_target, int hunt_player, int revenge_live, int revenge_cached,
-    float location[21], float size[21],
-    yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_error *error);
-bool yt_maintenance_maintain_xannor(struct yt_game *game,
-    struct yt_maintenance_route_cache *cache, float *player_sector,
-    float *player_cloak, size_t cache_count,
-    yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_error *error);
 bool yt_maintenance_maintain_mercenaries(struct yt_game *game,
     struct yt_maintenance_route_cache *cache,
     yt_maintenance_score_line_fn line_output, void *line_context,

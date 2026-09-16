@@ -19,21 +19,27 @@ set_error(struct yt_error *error, enum yt_status status,
 	    path != NULL ? path : "");
 }
 
-enum yt_maintenance_enqueue_result
-yt_maintenance_route_enqueue(int neighbor, int predecessor, int sector_count,
+enum enqueue_result {
+	ENQUEUE_INVALID,
+	ENQUEUE_SKIPPED,
+	ENQUEUE_ADDED
+};
+
+static enum enqueue_result
+route_enqueue(int neighbor, int predecessor, int sector_count,
     int *queue, size_t queue_capacity, size_t *tail, int *previous)
 {
 	if (queue == NULL || tail == NULL || previous == NULL
 	    || sector_count < 1 || neighbor < 0 || neighbor > sector_count
 	    || *tail > queue_capacity)
-		return YT_MAINTENANCE_ENQUEUE_INVALID;
+		return ENQUEUE_INVALID;
 	if (neighbor == 0 || previous[neighbor] != 0)
-		return YT_MAINTENANCE_ENQUEUE_SKIPPED;
+		return ENQUEUE_SKIPPED;
 	if (*tail == queue_capacity)
-		return YT_MAINTENANCE_ENQUEUE_INVALID;
+		return ENQUEUE_INVALID;
 	previous[neighbor] = predecessor;
 	queue[(*tail)++] = neighbor;
-	return YT_MAINTENANCE_ENQUEUE_ADDED;
+	return ENQUEUE_ADDED;
 }
 
 void
@@ -127,17 +133,17 @@ yt_maintenance_route_next_hop(struct yt_game *game,
 		for (slot = 0; slot < 6; ++slot) {
 			int neighbor = (int)cache->warps[(size_t)current * 6U
 			    + (size_t)slot];
-			enum yt_maintenance_enqueue_result enqueued;
+			enum enqueue_result enqueued;
 
-			enqueued = yt_maintenance_route_enqueue(neighbor, current,
+			enqueued = route_enqueue(neighbor, current,
 			    sector_count, queue, (size_t)sector_count + 1U, &tail,
 			    previous);
-			if (enqueued == YT_MAINTENANCE_ENQUEUE_INVALID) {
+			if (enqueued == ENQUEUE_INVALID) {
 				set_error(error, YT_RANGE, "maintenance route warp",
 				    "YTDATA.DAT");
 				goto done;
 			}
-			if (enqueued == YT_MAINTENANCE_ENQUEUE_SKIPPED)
+			if (enqueued == ENQUEUE_SKIPPED)
 				continue;
 			if (neighbor == target) {
 				found = true;

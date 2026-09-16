@@ -17,6 +17,13 @@ struct maint_state {
 	struct yt_maintenance_route_cache route_cache;
 };
 
+struct yt_maintenance_xannor_route_result {
+	int hops;
+	bool reached_target;
+	bool route_missing;
+	bool exhausted;
+};
+
 static inline float
 yt_maintenance_sint(float value)
 {
@@ -40,6 +47,16 @@ bool maintenance_emit_output_row(
 bool maintenance_stdout_line(void *context, const uint8_t *line,
     size_t length, struct yt_error *error);
 bool yt_maintenance_xannor_run(struct maint_state *state,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error);
+bool yt_maintenance_xannor_route_arrivals(struct maint_state *state,
+    int group, int target, float top_player_target, float location[21],
+    float size[21], yt_maintenance_score_line_fn line_output,
+    void *line_context, struct yt_maintenance_xannor_route_result *result,
+    struct yt_error *error);
+bool yt_maintenance_xannor_roaming_groups(struct maint_state *state,
+    float score, int top_target, int hunt_player, int revenge_live,
+    int revenge_cached, float location[21], float size[21],
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error);
 bool yt_maintenance_mercenaries_run(struct maint_state *state,
