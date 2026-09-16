@@ -397,3 +397,151 @@ yt_maintenance_maintain_players(struct yt_game *game, float *player_sector,
 	return yt_maintenance_players_run(&state, line_output, line_context,
 	    error);
 }
+
+bool
+yt_maintenance_age_player(float cloak, float last_active,
+    float killer_status, float today, float retention_days,
+    struct yt_maintenance_player_aging_result *result)
+{
+	static const float cloak_charge = -0.05000000074505806f;
+	float working;
+
+	if (result == NULL)
+		return false;
+	memset(result, 0, sizeof(*result));
+	working = cloak;
+	if (working < 0.0f)
+		working = 1.0f;
+	result->cached_cloak = working;
+	result->persisted_cloak = working;
+	result->cloak_written = working > 0.0f;
+	if (result->cloak_written) {
+		working = qb_single_add(working, cloak_charge);
+		if (working < 0.0f)
+			working = 0.0f;
+		result->persisted_cloak = working;
+		result->cloak_expired = working == 0.0f;
+	}
+	result->cutoff = qb_single_subtract(today, retention_days);
+	result->delete_player = !result->cloak_expired
+	    && last_active <= result->cutoff && killer_status != 0.0f;
+	return true;
+}
+
+bool
+yt_maintenance_player_name(const struct yt_player *player, bool *occupied,
+    struct yt_maintenance_text *name, struct yt_error *error)
+{
+	bool overflow;
+	int32_t stored_length;
+	float raw_length;
+
+	if (player == NULL || occupied == NULL || name == NULL) {
+		set_error(error, YT_INVALID, "maintenance player name",
+		    "YTDATA.DAT");
+		return false;
+	}
+	name->data = player->record.bytes;
+	name->length = 0U;
+	raw_length = qb_mbf32_decode(player->record.bytes + YT_F85);
+	*occupied = raw_length != 0.0f;
+	if (!*occupied)
+		return true;
+	stored_length = qb_cint_mbf32(player->record.bytes + YT_F85, 0U,
+	    &overflow);
+	if (overflow || stored_length < 0) {
+		set_error(error, YT_RANGE, "maintenance player name",
+		    "YTDATA.DAT");
+		return false;
+	}
+	name->length = (size_t)stored_length < YT_TEXT_FIELD_SIZE
+	    ? (size_t)stored_length : YT_TEXT_FIELD_SIZE;
+	return true;
+}
+
+static bool
+immediate_death_cleanup_impl(struct maint_state *state, int victim_record,
+    float killer, struct yt_player *victim, struct yt_error *error)
+{
+	int logical;
+
+	state->player_sector[victim_record] = 0.0f;
+	state->player_cloak[victim_record] = 0.0f;
+	victim->killed_by = killer;
+	victim->sector = 0.0f;
+	victim->ground_forces = 0.0f;
+	for (logical = 1; logical <= state->port_count; ++logical) {
+		struct yt_port port;
+
+		if (!yt_game_read_port(&state->game, logical, &port, error))
+			return false;
+		if (port.owner == (float)victim_record) {
+			port.owner = 0.0f;
+			port.treasury = 0.0f;
+			if (!yt_game_write_port(&state->game, logical, &port,
+			    error))
+				return false;
+		}
+	}
+	for (logical = 1; logical <= state->sector_count; ++logical) {
+		struct yt_sector sector;
+
+		if (!yt_game_read_sector(&state->game, logical, &sector, error))
+			return false;
+		if (sector.fighter_owner == (float)victim_record) {
+			sector.fighter_owner = -2.0f;
+			if (!yt_game_write_sector(&state->game, logical, &sector,
+			    error))
+				return false;
+		}
+	}
+	if (!yt_maintenance_remove_player_from_teams(state, victim_record, error))
+		return false;
+	victim->team = 0.0f;
+	if (!yt_record_set_number(&victim->record, YT_F45,
+	    victim->killed_by)
+	    || !yt_record_set_number(&victim->record, YT_F57, victim->sector)
+	    || !yt_record_set_number(&victim->record, YT_F89, victim->team)
+	    || !yt_record_set_number(&victim->record, YT_F121,
+	    victim->ground_forces)) {
+		set_error(error, YT_RANGE, "encode immediate death player",
+		    "YTDATA.DAT");
+		return false;
+	}
+	return yt_database_write(&state->game.database,
+	    (size_t)victim_record, &victim->record, error);
+}
+
+bool
+yt_maintenance_immediate_death(struct yt_game *game, float *player_sector,
+    float *player_cloak, size_t cache_count, int victim_record, float killer,
+    struct yt_player *victim, struct yt_error *error)
+{
+	struct maint_state state;
+	int player_count;
+
+	if (game == NULL || player_sector == NULL || player_cloak == NULL
+	    || victim == NULL) {
+		set_error(error, YT_INVALID, "immediate death", "");
+		return false;
+	}
+	player_count = (int)game->config.sector_offset - 1;
+	if (victim_record < 2 || victim_record > player_count + 1
+	    || (size_t)victim_record >= cache_count) {
+		set_error(error, YT_RANGE, "immediate death", "YTDATA.DAT");
+		return false;
+	}
+	memset(&state, 0, sizeof(state));
+	state.game = *game;
+	state.player_count = player_count;
+	state.sector_count = (int)(game->config.port_offset
+	    - game->config.sector_offset);
+	state.port_count = (int)(game->config.planet_offset
+	    - game->config.port_offset);
+	state.planet_count = (int)(game->config.total_records
+	    - game->config.planet_offset);
+	state.player_sector = player_sector;
+	state.player_cloak = player_cloak;
+	return immediate_death_cleanup_impl(&state, victim_record, killer,
+	    victim, error);
+}
