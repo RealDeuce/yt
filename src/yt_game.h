@@ -2,7 +2,6 @@
 #define YT_GAME_H
 
 #include "qb.h"
-#include "yt_brun_fatal.h"
 #include "yt_config.h"
 #include "yt_player_cache.h"
 #include "yt_random.h"
@@ -95,22 +94,6 @@ struct yt_planet {
 	float mines;
 	float fighters;
 };
-
-/*
- * Joins the documented MKS$ allocator-owner corruption at YT-SUB:A995 to
- * the shared BRUN 0AC9 terminal.  Public ERR 14/16 results remain in the
- * ordinary shared error-router domain and are not accepted here.
- */
-bool yt_xannor_victory_mks_internal_fatal_run(uint16_t module_segment,
-	bool redirected_stdin, bool function_bar, bool cursor_shape_known,
-	uint16_t process_entry_cursor_shape,
-	const struct yt_brun_internal_fatal_ops *ops, void *context,
-	struct yt_brun_internal_fatal_state *state);
-bool yt_main_startup_internal_fatal_run(uint16_t module_segment,
-	bool redirected_stdin, bool function_bar, bool cursor_shape_known,
-	uint16_t process_entry_cursor_shape,
-	const struct yt_brun_internal_fatal_ops *ops, void *context,
-	struct yt_brun_internal_fatal_state *state);
 
 struct yt_post_login_repairs {
 	bool sector;

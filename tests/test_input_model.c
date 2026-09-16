@@ -1387,76 +1387,6 @@ a8d2_case(const char *response, enum yt_confirmation_fault_site target,
 	    error_number, result);
 }
 
-struct a8d2_fatal_tape {
-	char events[16];
-	size_t event_count;
-	uint8_t local[YT_BRUN_FATAL_TEXT];
-	size_t local_length;
-	bool restored;
-	bool ended;
-};
-
-static void
-a8d2_fatal_local(void *context, const uint8_t *data, size_t length)
-{
-	struct a8d2_fatal_tape *tape = context;
-
-	tape->events[tape->event_count++] = 'L';
-	if (length <= sizeof(tape->local) - tape->local_length) {
-		memcpy(tape->local + tape->local_length, data, length);
-		tape->local_length += length;
-	}
-}
-
-static void
-a8d2_fatal_close(void *context)
-{
-	struct a8d2_fatal_tape *tape = context;
-
-	tape->events[tape->event_count++] = 'C';
-}
-
-static size_t
-a8d2_fatal_drain(void *context, uint16_t *words, size_t capacity)
-{
-	struct a8d2_fatal_tape *tape = context;
-
-	tape->events[tape->event_count++] = 'D';
-	if (capacity < 2U)
-		return capacity + 1U;
-	words[0] = 0x1E61U;
-	words[1] = 0x3062U;
-	return 2U;
-}
-
-static void
-a8d2_fatal_clear(void *context)
-{
-	struct a8d2_fatal_tape *tape = context;
-
-	tape->events[tape->event_count++] = 'F';
-}
-
-static void
-a8d2_fatal_restore(void *context, bool known, uint16_t shape)
-{
-	struct a8d2_fatal_tape *tape = context;
-
-	(void)known;
-	(void)shape;
-	tape->events[tape->event_count++] = 'R';
-	tape->restored = true;
-}
-
-static void
-a8d2_fatal_end(void *context, unsigned status)
-{
-	struct a8d2_fatal_tape *tape = context;
-
-	tape->events[tape->event_count++] = 'E';
-	tape->ended = status == 0U;
-}
-
 static void
 test_a8d2_fault_stages(void)
 {
@@ -1485,20 +1415,6 @@ test_a8d2_fault_stages(void)
 	size_t queue_length;
 	float bold;
 	size_t index;
-	static const struct yt_brun_internal_fatal_ops fatal_ops = {
-		a8d2_fatal_local,
-		a8d2_fatal_close,
-		a8d2_fatal_drain,
-		a8d2_fatal_clear,
-		a8d2_fatal_restore,
-		a8d2_fatal_end,
-	};
-	static const uint8_t fatal_expected[] =
-	    "\rString Space Corrupt during G.C. in line 40001 of module "
-	    "YT       at address 2222:A8F2\r"
-	    "\rHit any key to return to system";
-	struct yt_brun_internal_fatal_state fatal;
-	struct a8d2_fatal_tape fatal_tape;
 
 	for (index = 0U; index < YT_ARRAY_LEN(identities); ++index) {
 		const struct yt_confirmation_fault_identity *identity =
@@ -1529,30 +1445,10 @@ test_a8d2_fault_stages(void)
 	    output, prompt, queue, &queue_position, &queue_length, &bold)
 	    && result.outcome == YT_CONFIRMATION_BASIC_ERROR
 	    && result.error_number == 16U && strcmp(output, "AB") == 0);
-	CHECK(!yt_input_confirmation_internal_fatal(&result, 0x2222U, true,
-	    false, false, 0U, &fatal_ops, &fatal_tape, &fatal));
 	CHECK(a8d2_case("ab", YT_CONFIRMATION_FAULT_LEFT_ONE, 0x0AC9U, &result,
 	    output, prompt, queue, &queue_position, &queue_length, &bold)
 	    && result.outcome == YT_CONFIRMATION_INTERNAL_FATAL
 	    && result.error_number == 0x0AC9U && strcmp(output, "AB") == 0);
-	memset(&fatal_tape, 0, sizeof(fatal_tape));
-	CHECK(yt_input_confirmation_internal_fatal(&result, 0x2222U, false,
-	    true, true, 0x0607U, &fatal_ops, &fatal_tape, &fatal));
-	CHECK(fatal.entry == YT_BRUN_INTERNAL_FATAL_GC
-	    && fatal.saved_ip == 0xA8F2U && fatal.source_line == 40001
-	    && fatal.module_segment == 0x2222U
-	    && fatal.local_length == sizeof(fatal_expected) - 1U
-	    && memcmp(fatal.local_bytes, fatal_expected,
-	    sizeof(fatal_expected) - 1U) == 0
-	    && fatal_tape.local_length == sizeof(fatal_expected) - 1U
-	    && memcmp(fatal_tape.local, fatal_expected,
-	    sizeof(fatal_expected) - 1U) == 0
-	    && fatal_tape.event_count == 7U
-	    && memcmp(fatal_tape.events, "LCLDFRE", 7U) == 0
-	    && fatal.drained_word_count == 2U && fatal.input_drained
-	    && fatal.function_bar_before && !fatal.function_bar_after
-	    && fatal.terminal_restored && fatal.ended
-	    && fatal_tape.restored && fatal_tape.ended);
 
 	CHECK(a8d2_case("ab", YT_CONFIRMATION_FAULT_FIRST_COPY, 0x0ACCU,
 	    &result, output, prompt, queue, &queue_position, &queue_length,
@@ -1562,15 +1458,6 @@ test_a8d2_fault_stages(void)
 	    && !result.answer_valid && strcmp(output, "AB") == 0
 	    && strcmp(prompt, "[y/N] -=> ") == 0
 	    && queue_length == 2U && bold == 0.0f);
-	memset(&fatal_tape, 0, sizeof(fatal_tape));
-	CHECK(yt_input_confirmation_internal_fatal(&result, 0x3333U, true,
-	    false, false, 0U, &fatal_ops, &fatal_tape, &fatal)
-	    && fatal.entry == YT_BRUN_INTERNAL_FATAL_OWNER
-	    && fatal.saved_ip == 0xA8F7U && fatal.redirected_stdin
-	    && !fatal.input_drained && fatal.local_bytes[fatal.local_length - 1U]
-	    == '\r' && fatal_tape.event_count == 6U
-	    && memcmp(fatal_tape.events, "LCLLRE", 6U) == 0);
-
 	CHECK(a8d2_case("x", YT_CONFIRMATION_FAULT_INVALID_QUEUE_CLEAR, 0x0ACCU,
 	    &result, output, prompt, queue, &queue_position, &queue_length,
 	    &bold));
@@ -1580,11 +1467,6 @@ test_a8d2_fault_stages(void)
 	    && !result.queue_cleared && strcmp(output, "X") == 0
 	    && strcmp(queue, "Q\r") == 0 && queue_length == 2U
 	    && strcmp(prompt, "[y/N] -=> ") == 0 && bold == 1.0f);
-	memset(&fatal_tape, 0, sizeof(fatal_tape));
-	CHECK(yt_input_confirmation_internal_fatal(&result, 0x4444U, true,
-	    false, false, 0U, &fatal_ops, &fatal_tape, &fatal)
-	    && fatal.saved_ip == 0xA93BU);
-
 	CHECK(a8d2_case("n", YT_CONFIRMATION_FAULT_PROMPT_CLEAR, 0x0ACCU,
 	    &result, output, prompt, queue, &queue_position, &queue_length,
 	    &bold));
@@ -1594,11 +1476,6 @@ test_a8d2_fault_stages(void)
 	    && strcmp(prompt, "[y/N] -=> ") == 0
 	    && strcmp(queue, "Q\r") == 0 && queue_length == 2U
 	    && bold == 0.0f);
-	memset(&fatal_tape, 0, sizeof(fatal_tape));
-	CHECK(yt_input_confirmation_internal_fatal(&result, 0x5555U, true,
-	    false, false, 0U, &fatal_ops, &fatal_tape, &fatal)
-	    && fatal.saved_ip == 0xA946U);
-
 	CHECK(a8d2_case("x", YT_CONFIRMATION_FAULT_NONE, 0U, &result,
 	    output, prompt, queue, &queue_position, &queue_length, &bold)
 	    && result.outcome == YT_CONFIRMATION_RETRY && result.queue_cleared

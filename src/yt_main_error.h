@@ -1,7 +1,6 @@
 #ifndef YT_MAIN_ERROR_H
 #define YT_MAIN_ERROR_H
 
-#include "yt_brun_fatal.h"
 #include "yt_common.h"
 
 #define YT_MAIN_ERROR_TEXT 1024U
@@ -228,11 +227,5 @@ bool yt_main_error_append_fatal(const struct yt_main_error_result *result,
 
 bool yt_shared_error_compose(int16_t error_number, int32_t source_line,
     struct yt_shared_error_result *result);
-
-bool yt_shared_error_active_writer_fatal_run(uint8_t error_number,
-	uint16_t module_segment, bool redirected_stdin, bool function_bar,
-	bool cursor_shape_known, uint16_t process_entry_cursor_shape,
-	const struct yt_brun_internal_fatal_ops *ops, void *context,
-	struct yt_brun_runtime_fatal_state *state);
 
 #endif

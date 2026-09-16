@@ -1,7 +1,6 @@
 #ifndef YT_PORTNAME_H
 #define YT_PORTNAME_H
 
-#include "yt_brun_fatal.h"
 #include "yt_file.h"
 #include "yt_random.h"
 
@@ -23,11 +22,6 @@ enum yt_portname_output_kind {
 struct yt_portname_output {
 	uint8_t bytes[384];
 	size_t length;
-};
-
-struct yt_portname_runtime_site {
-	uint16_t address;
-	uint16_t saved_ip;
 };
 
 struct yt_portname_result {
@@ -58,15 +52,6 @@ bool yt_portname_compose_output(enum yt_portname_output_kind kind,
 uint32_t yt_portname_record_number(float port_offset, float logical_port);
 bool yt_portname_overlay_record(struct yt_record *record, const uint8_t *name,
     size_t name_length, struct yt_error *error);
-size_t yt_portname_runtime_site_count(void);
-bool yt_portname_runtime_site(size_t index,
-    struct yt_portname_runtime_site *site);
-bool yt_portname_runtime_fatal_run(uint16_t site_address, uint8_t error_number,
-    uint16_t module_segment, bool redirected_stdin, bool function_bar,
-    bool cursor_shape_known, uint16_t process_entry_cursor_shape,
-    const struct yt_brun_internal_fatal_ops *ops, void *context,
-    struct yt_brun_runtime_fatal_state *state);
-
 bool yt_portname_rename(struct yt_database *database, float port_offset,
     float planet_offset, struct yt_random *random,
     yt_portname_output_fn output, void *output_context,

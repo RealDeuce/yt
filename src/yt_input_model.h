@@ -2,7 +2,6 @@
 #define YT_INPUT_MODEL_H
 
 #include "yt_common.h"
-#include "yt_brun_fatal.h"
 #include "yt_main_error.h"
 
 #define YT_INPUT_PENDING 4096U
@@ -266,12 +265,6 @@ bool yt_input_confirmation_staged(const char *command_accumulator,
 	size_t *queue_length, float *bold,
 	enum yt_confirmation_fault_site target, uint16_t error_number,
 	struct yt_confirmation_transform *result);
-bool yt_input_confirmation_internal_fatal(
-	const struct yt_confirmation_transform *transform, uint16_t module_segment,
-	bool redirected_stdin, bool function_bar, bool cursor_shape_known,
-	uint16_t process_entry_cursor_shape,
-	const struct yt_brun_internal_fatal_ops *ops, void *context,
-	struct yt_brun_internal_fatal_state *state);
 void yt_input_numeric_response(char *text);
 bool yt_input_drain_begin(struct yt_input_drain_state *state,
     const struct yt_input_value *initial_residue);

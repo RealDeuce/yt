@@ -2857,85 +2857,6 @@ test_name_sequential_transaction(struct yt_error *error)
 	    &observation, NULL, error);
 }
 
-enum fatal_test_event {
-	FATAL_TEST_LOCAL,
-	FATAL_TEST_CLOSE_ALL,
-	FATAL_TEST_DRAIN,
-	FATAL_TEST_CLEAR_FUNCTION_BAR,
-	FATAL_TEST_RESTORE,
-	FATAL_TEST_END,
-};
-
-struct fatal_test_tape {
-	enum fatal_test_event events[12];
-	size_t event_count;
-	uint8_t local[YT_BRUN_FATAL_TEXT];
-	size_t local_length;
-	bool restored_shape_known;
-	uint16_t restored_shape;
-	unsigned exit_status;
-};
-
-static void
-fatal_test_local(void *context, const uint8_t *data, size_t length)
-{
-	struct fatal_test_tape *tape = context;
-
-	tape->events[tape->event_count++] = FATAL_TEST_LOCAL;
-	if (length <= sizeof(tape->local) - tape->local_length) {
-		memcpy(tape->local + tape->local_length, data, length);
-		tape->local_length += length;
-	}
-}
-
-static void
-fatal_test_close_all(void *context)
-{
-	struct fatal_test_tape *tape = context;
-
-	tape->events[tape->event_count++] = FATAL_TEST_CLOSE_ALL;
-}
-
-static size_t
-fatal_test_drain(void *context, uint16_t *words, size_t capacity)
-{
-	struct fatal_test_tape *tape = context;
-
-	tape->events[tape->event_count++] = FATAL_TEST_DRAIN;
-	if (capacity < 2U)
-		return capacity + 1U;
-	words[0] = 0x1E61U;
-	words[1] = 0x3062U;
-	return 2U;
-}
-
-static void
-fatal_test_clear_function_bar(void *context)
-{
-	struct fatal_test_tape *tape = context;
-
-	tape->events[tape->event_count++] = FATAL_TEST_CLEAR_FUNCTION_BAR;
-}
-
-static void
-fatal_test_restore(void *context, bool known, uint16_t shape)
-{
-	struct fatal_test_tape *tape = context;
-
-	tape->events[tape->event_count++] = FATAL_TEST_RESTORE;
-	tape->restored_shape_known = known;
-	tape->restored_shape = shape;
-}
-
-static void
-fatal_test_end(void *context, unsigned status)
-{
-	struct fatal_test_tape *tape = context;
-
-	tape->events[tape->event_count++] = FATAL_TEST_END;
-	tape->exit_status = status;
-}
-
 static bool
 test_brun_internal_fatal(void)
 {
@@ -2970,47 +2891,12 @@ test_brun_internal_fatal(void)
 		{0x4BU, "Path/file access error"},
 		{0x4CU, "Path not found"},
 	};
-	static const struct yt_brun_internal_fatal_ops ops = {
-		fatal_test_local,
-		fatal_test_close_all,
-		fatal_test_drain,
-		fatal_test_clear_function_bar,
-		fatal_test_restore,
-		fatal_test_end,
-	};
-	static const uint8_t expected[] =
+	static const uint8_t expected_diagnostic[] =
 	    "\rString Space Corrupt in module YTCONFIG at address "
-	    "2222:0EE5\r\rHit any key to return to system";
-	static const uint8_t gc_expected[] =
-	    "\rString Space Corrupt during G.C. in line 64006 of module "
-	    "YT-SUB   at address 1F42:A995\r\rHit any key to return to system\r";
-	static const uint8_t run_expected[] =
-	    "\rString Space Corrupt in module YT-INIT  at address "
-	    "4444:23DF\r\rHit any key to return to system";
-	static const uint8_t run_err67_expected[] =
-	    "\rToo many files in module YT-INIT  at address "
-	    "4444:23DF\r\rHit any key to return to system";
-	static const uint8_t run_err75_expected[] =
-	    "\rPath/file access error in module YT-INIT  at address "
-	    "4444:23DF\r\rHit any key to return to system";
-	static const uint8_t startup_expected[] =
-	    "\rString Space Corrupt in line 3 of module YT       at address "
-	    "2222:0136\r\rHit any key to return to system";
-	static const uint8_t active_err53_expected[] =
-	    "\rFile not found in line 610 of module YT-SUB   at address "
-	    "1F42:1ABB\r\rHit any key to return to system\r";
-	static const enum fatal_test_event expected_events[] = {
-		FATAL_TEST_LOCAL, FATAL_TEST_CLOSE_ALL, FATAL_TEST_LOCAL,
-		FATAL_TEST_DRAIN, FATAL_TEST_CLEAR_FUNCTION_BAR,
-		FATAL_TEST_RESTORE, FATAL_TEST_END,
-	};
+	    "2222:0EE5\r";
+	static const uint8_t expected_prompt[] =
+	    "\rHit any key to return to system";
 	struct yt_brun_internal_fatal_state state;
-	struct yt_brun_runtime_fatal_state runtime_state;
-	struct fatal_test_tape tape = {0};
-	struct yt_portname_runtime_site portname_site;
-	uint64_t portname_hash = UINT64_C(0xcbf29ce484222325);
-	size_t portname_index;
-	uint16_t previous_portname_address = 0U;
 	const uint8_t *description;
 	size_t description_length;
 	size_t name_index;
@@ -3034,240 +2920,26 @@ test_brun_internal_fatal(void)
 		    : "Unprintable error", description_length) != 0)
 			return false;
 	}
-	if (yt_brun_runtime_error_description(1U, NULL,
-	    &description_length)
-	    || yt_brun_runtime_error_description(1U, &description, NULL))
+	if (yt_brun_runtime_error_description(1U, NULL, &description_length)
+	    || yt_brun_runtime_error_description(1U, &description, NULL)
+	    || !yt_brun_internal_fatal_compose(YT_BRUN_INTERNAL_FATAL_OWNER,
+	    "YTCONFIG", false, 0, 0x2222U, 0x0EE5U, &state))
 		return false;
-	for (error_number = 1U; error_number <= 0xFFU; ++error_number) {
-		memset(&tape, 0, sizeof(tape));
-		if (!yt_brun_runtime_error_description((uint8_t)error_number,
-		    &description, &description_length)
-		    || !yt_shared_error_active_writer_fatal_run(
-		    (uint8_t)error_number, 0x1F42U, false, false, false, 0U,
-		    &ops, &tape, &runtime_state)
-		    || runtime_state.error_number != error_number
-		    || runtime_state.error_description_length != description_length
-		    || memcmp(runtime_state.error_description, description,
-		    description_length) != 0
-		    || runtime_state.terminal.local_length <= description_length
-		    || runtime_state.terminal.local_bytes[0] != '\r'
-		    || memcmp(runtime_state.terminal.local_bytes + 1U,
-		    description, description_length) != 0
-		    || tape.event_count != 6U
-		    || !runtime_state.terminal.ended)
-			return false;
-	}
-	if (yt_brun_runtime_error_fatal_run(0U, "YT-SUB  ", true, 610,
-	    0x1F42U, 0x1ABBU, false, false, false, 0U, &ops, &tape,
-	    &runtime_state))
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	if (!yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
-	    "YTCONFIG", false, 0, 0x2222U, 0x0EE5U, false, true, true,
-	    0x0607U, &ops, &tape, &state)
-	    || state.entry != YT_BRUN_INTERNAL_FATAL_OWNER
-	    || strcmp(state.module, "YTCONFIG") != 0
-	    || state.module_segment != 0x2222U || state.saved_ip != 0x0EE5U
-	    || state.has_source_line || state.source_line != 0
-	    || state.local_length != sizeof(expected) - 1U
-	    || memcmp(state.local_bytes, expected, sizeof(expected) - 1U) != 0
-	    || tape.local_length != sizeof(expected) - 1U
-	    || memcmp(tape.local, expected, sizeof(expected) - 1U) != 0
-	    || tape.event_count != YT_ARRAY_LEN(expected_events)
-	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
-	    || state.drained_word_count != 2U
-	    || state.drained_words[0] != 0x1E61U
-	    || state.drained_words[1] != 0x3062U
-	    || !state.input_drained || !state.close_all_completed
-	    || !state.function_bar_before || state.function_bar_after
-	    || !state.terminal_restored || !state.ended
-	    || state.exit_status != 0U || tape.exit_status != 0U
-	    || !tape.restored_shape_known || tape.restored_shape != 0x0607U)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	if (!yt_xannor_victory_mks_internal_fatal_run(0x1F42U, true,
-	    false, false, 0U, &ops, &tape, &state)
-	    || state.entry != YT_BRUN_INTERNAL_FATAL_GC
-	    || strcmp(state.module, "YT-SUB  ") != 0
-	    || !state.has_source_line || state.source_line != 64006
-	    || state.module_segment != 0x1F42U || state.saved_ip != 0xA995U
-	    || state.local_length != sizeof(gc_expected) - 1U
-	    || memcmp(state.local_bytes, gc_expected,
-	    sizeof(gc_expected) - 1U) != 0
-	    || state.input_drained || state.drained_word_count != 0U
-	    || state.function_bar_before || state.function_bar_after
-	    || tape.event_count != 6U
-	    || tape.events[0] != FATAL_TEST_LOCAL
-	    || tape.events[1] != FATAL_TEST_CLOSE_ALL
-	    || tape.events[2] != FATAL_TEST_LOCAL
-	    || tape.events[3] != FATAL_TEST_LOCAL
-	    || tape.events[4] != FATAL_TEST_RESTORE
-	    || tape.events[5] != FATAL_TEST_END)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	if (!yt_init_run_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
-	    0x4444U, false, false, true, 0x0506U, &ops, &tape, &state)
-	    || state.entry != YT_BRUN_INTERNAL_FATAL_OWNER
-	    || strcmp(state.module, "YT-INIT ") != 0
-	    || state.has_source_line || state.source_line != 0
-	    || state.module_segment != 0x4444U || state.saved_ip != 0x23DFU
-	    || state.local_length != sizeof(run_expected) - 1U
-	    || memcmp(state.local_bytes, run_expected,
-	    sizeof(run_expected) - 1U) != 0
-	    || tape.local_length != sizeof(run_expected) - 1U
-	    || memcmp(tape.local, run_expected, sizeof(run_expected) - 1U) != 0
-	    || tape.event_count != 6U
-	    || tape.events[0] != FATAL_TEST_LOCAL
-	    || tape.events[1] != FATAL_TEST_CLOSE_ALL
-	    || tape.events[2] != FATAL_TEST_LOCAL
-	    || tape.events[3] != FATAL_TEST_DRAIN
-	    || tape.events[4] != FATAL_TEST_RESTORE
-	    || tape.events[5] != FATAL_TEST_END
-	    || state.drained_word_count != 2U || !state.input_drained
-	    || !tape.restored_shape_known || tape.restored_shape != 0x0506U)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	if (!yt_main_startup_internal_fatal_run(0x2222U, false, false, false,
-	    0U, &ops, &tape, &state)
-	    || state.entry != YT_BRUN_INTERNAL_FATAL_OWNER
-	    || strcmp(state.module, "YT      ") != 0
-	    || !state.has_source_line || state.source_line != 3
-	    || state.module_segment != 0x2222U || state.saved_ip != 0x0136U
-	    || state.local_length != sizeof(startup_expected) - 1U
-	    || memcmp(state.local_bytes, startup_expected,
-	    sizeof(startup_expected) - 1U) != 0
-	    || tape.local_length != sizeof(startup_expected) - 1U
-	    || memcmp(tape.local, startup_expected,
-	    sizeof(startup_expected) - 1U) != 0
-	    || tape.event_count != 6U
-	    || tape.events[0] != FATAL_TEST_LOCAL
-	    || tape.events[1] != FATAL_TEST_CLOSE_ALL
-	    || tape.events[2] != FATAL_TEST_LOCAL
-	    || tape.events[3] != FATAL_TEST_DRAIN
-	    || tape.events[4] != FATAL_TEST_RESTORE
-	    || tape.events[5] != FATAL_TEST_END)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	if (!yt_init_run_preflight_fatal_run(67U, 0x4444U, false, true, true,
-	    0x0708U, &ops, &tape, &runtime_state)
-	    || runtime_state.error_number != 67U
-	    || runtime_state.error_description_length != 14U
-	    || memcmp(runtime_state.error_description, "Too many files", 14U)
-	    != 0
-	    || runtime_state.terminal.has_source_line
-	    || runtime_state.terminal.module_segment != 0x4444U
-	    || runtime_state.terminal.saved_ip != 0x23DFU
-	    || runtime_state.terminal.local_length
-	    != sizeof(run_err67_expected) - 1U
-	    || memcmp(runtime_state.terminal.local_bytes, run_err67_expected,
-	    sizeof(run_err67_expected) - 1U) != 0
-	    || tape.local_length != sizeof(run_err67_expected) - 1U
-	    || memcmp(tape.local, run_err67_expected,
-	    sizeof(run_err67_expected) - 1U) != 0
-	    || tape.event_count != YT_ARRAY_LEN(expected_events)
-	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
-	    || !runtime_state.terminal.function_bar_before
-	    || runtime_state.terminal.function_bar_after
-	    || runtime_state.terminal.drained_word_count != 2U
-	    || !runtime_state.terminal.terminal_restored
-	    || !runtime_state.terminal.ended || tape.exit_status != 0U)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	if (!yt_init_run_preflight_fatal_run(53U, 0x4444U, true, false,
-	    false, 0U, &ops, &tape, &runtime_state)
-	    || runtime_state.error_number != 53U
-	    || runtime_state.error_description_length != 14U
-	    || runtime_state.terminal.local_length != 89U
-	    || memcmp(runtime_state.terminal.local_bytes,
-	    "\rFile not found in module YT-INIT  at address 4444:23DF\r"
-	    "\rHit any key to return to system\r", 89U) != 0
-	    || tape.event_count != 6U || runtime_state.terminal.input_drained
-	    || runtime_state.terminal.local_bytes[88] != '\r')
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	if (!yt_init_run_preflight_fatal_run(75U, 0x4444U, false, false,
-	    false, 0U, &ops, &tape, &runtime_state)
-	    || runtime_state.error_number != 75U
-	    || runtime_state.error_description_length != 22U
-	    || memcmp(runtime_state.error_description,
-	    "Path/file access error", 22U) != 0
-	    || runtime_state.terminal.local_length
-	    != sizeof(run_err75_expected) - 1U
-	    || memcmp(runtime_state.terminal.local_bytes, run_err75_expected,
-	    sizeof(run_err75_expected) - 1U) != 0)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	if (!yt_brun_runtime_fatal_run(53U,
-	    (const uint8_t *)"File not found", 14U, "YT-SUB  ", true, 610,
-	    0x1F42U, 0x1ABBU, true, false, false, 0U, &ops, &tape,
-	    &runtime_state)
-	    || runtime_state.terminal.local_length
-	    != sizeof(active_err53_expected) - 1U
-	    || memcmp(runtime_state.terminal.local_bytes, active_err53_expected,
-	    sizeof(active_err53_expected) - 1U) != 0
-	    || tape.local_length != sizeof(active_err53_expected) - 1U
-	    || memcmp(tape.local, active_err53_expected,
-	    sizeof(active_err53_expected) - 1U) != 0
-	    || runtime_state.terminal.input_drained
-	    || runtime_state.terminal.drained_word_count != 0U
-	    || tape.event_count != 6U
-	    || tape.events[0] != FATAL_TEST_LOCAL
-	    || tape.events[1] != FATAL_TEST_CLOSE_ALL
-	    || tape.events[2] != FATAL_TEST_LOCAL
-	    || tape.events[3] != FATAL_TEST_LOCAL
-	    || tape.events[4] != FATAL_TEST_RESTORE
-	    || tape.events[5] != FATAL_TEST_END)
-		return false;
-	if (yt_portname_runtime_site_count() != 194U)
-		return false;
-	for (portname_index = 0U; portname_index < 194U; ++portname_index) {
-		uint16_t values[2];
-		size_t value_index;
-
-		if (!yt_portname_runtime_site(portname_index, &portname_site)
-		    || portname_site.saved_ip <= portname_site.address
-		    || (portname_index != 0U
-		    && portname_site.address <= previous_portname_address))
-			return false;
-		previous_portname_address = portname_site.address;
-		values[0] = portname_site.address;
-		values[1] = portname_site.saved_ip;
-		for (value_index = 0U; value_index < 2U; ++value_index) {
-			portname_hash ^= values[value_index] & 0xffU;
-			portname_hash *= UINT64_C(0x100000001b3);
-			portname_hash ^= values[value_index] >> 8;
-			portname_hash *= UINT64_C(0x100000001b3);
-		}
-	}
-	if (portname_hash != UINT64_C(0xf477d5b553888350)
-	    || yt_portname_runtime_site(194U, &portname_site))
-		return false;
-	memset(&tape, 0, sizeof(tape));
-	if (!yt_portname_runtime_fatal_run(0x031AU, 52U, 0x3456U, false,
-	    false, false, 0U, &ops, &tape, &runtime_state)
-	    || runtime_state.terminal.has_source_line
-	    || strcmp(runtime_state.terminal.module, "PORTNAME") != 0
-	    || runtime_state.terminal.module_segment != 0x3456U
-	    || runtime_state.terminal.saved_ip != 0x031FU
-	    || !runtime_state.terminal.close_all_completed
-	    || !runtime_state.terminal.ended
-	    || yt_portname_runtime_fatal_run(0xFFFFU, 52U, 0x3456U, false,
-	    false, false, 0U, &ops, &tape, &runtime_state))
-		return false;
-	return !yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
-	    "        ", false, 0, 0U, 0U, false, false, false, 0U,
-	    &ops, &tape, &state)
-	    && !yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
-	    "YTCONFIG", false, 0, 0U, 0U, false, false, false, 0U,
-	    NULL, &tape, &state);
+	return state.entry == YT_BRUN_INTERNAL_FATAL_OWNER
+	    && strcmp(state.module, "YTCONFIG") == 0
+	    && state.module_segment == 0x2222U && state.saved_ip == 0x0EE5U
+	    && !state.has_source_line
+	    && state.diagnostic_length == sizeof(expected_diagnostic) - 1U
+	    && memcmp(state.diagnostic, expected_diagnostic,
+	    sizeof(expected_diagnostic) - 1U) == 0
+	    && state.prompt_length == sizeof(expected_prompt) - 1U
+	    && memcmp(state.prompt, expected_prompt,
+	    sizeof(expected_prompt) - 1U) == 0
+	    && !yt_brun_internal_fatal_compose(YT_BRUN_INTERNAL_FATAL_OWNER,
+	    "        ", false, 0, 0U, 0U, &state)
+	    && !yt_brun_internal_fatal_compose(
+	    (enum yt_brun_internal_fatal_entry)0, "YTCONFIG", false, 0,
+	    0U, 0U, &state);
 }
 
 static bool

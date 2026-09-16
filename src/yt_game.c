@@ -9,32 +9,6 @@
 #include <string.h>
 
 bool
-yt_xannor_victory_mks_internal_fatal_run(uint16_t module_segment,
-    bool redirected_stdin, bool function_bar, bool cursor_shape_known,
-    uint16_t process_entry_cursor_shape,
-    const struct yt_brun_internal_fatal_ops *ops, void *context,
-    struct yt_brun_internal_fatal_state *state)
-{
-	return yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_GC,
-	    "YT-SUB  ", true, 64006, module_segment, 0xA995U,
-	    redirected_stdin, function_bar, cursor_shape_known,
-	    process_entry_cursor_shape, ops, context, state);
-}
-
-bool
-yt_main_startup_internal_fatal_run(uint16_t module_segment,
-    bool redirected_stdin, bool function_bar, bool cursor_shape_known,
-    uint16_t process_entry_cursor_shape,
-    const struct yt_brun_internal_fatal_ops *ops, void *context,
-    struct yt_brun_internal_fatal_state *state)
-{
-	return yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
-	    "YT      ", true, 3, module_segment, 0x0136U, redirected_stdin,
-	    function_bar, cursor_shape_known, process_entry_cursor_shape,
-	    ops, context, state);
-}
-
-bool
 yt_game_load_startup_configuration(struct yt_game *game, const char *path,
     bool local_mode, struct yt_player_cache *player_cache,
     float disruption_sectors[2], float *local_screen, struct yt_error *error)

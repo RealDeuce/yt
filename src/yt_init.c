@@ -2539,30 +2539,3 @@ yt_initialize_rmt_presented(const struct yt_config *config,
 
 	return yt_initialize_world(&options, random, error);
 }
-
-bool
-yt_init_run_internal_fatal_run(enum yt_brun_internal_fatal_entry entry,
-    uint16_t module_segment, bool redirected_stdin, bool function_bar,
-    bool cursor_shape_known, uint16_t process_entry_cursor_shape,
-    const struct yt_brun_internal_fatal_ops *ops, void *context,
-    struct yt_brun_internal_fatal_state *state)
-{
-	return yt_brun_internal_fatal_run(entry, "YT-INIT ", false, 0,
-	    module_segment, 0x23DFU, redirected_stdin, function_bar,
-	    cursor_shape_known, process_entry_cursor_shape, ops, context, state);
-}
-
-bool
-yt_init_run_preflight_fatal_run(uint8_t error_number,
-    uint16_t module_segment, bool redirected_stdin, bool function_bar,
-    bool cursor_shape_known, uint16_t process_entry_cursor_shape,
-    const struct yt_brun_internal_fatal_ops *ops, void *context,
-    struct yt_brun_runtime_fatal_state *state)
-{
-	if (error_number != 53U && error_number != 67U && error_number != 75U)
-		return false;
-	return yt_brun_runtime_error_fatal_run(error_number, "YT-INIT ",
-	    false, 0, module_segment,
-	    0x23DFU, redirected_stdin, function_bar, cursor_shape_known,
-	    process_entry_cursor_shape, ops, context, state);
-}

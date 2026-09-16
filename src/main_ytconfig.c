@@ -10,82 +10,34 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct ytconfig_fatal_context {
-	struct yt_game *game;
-	struct yt_text_input *names_input;
-};
-
-static void
-ytconfig_fatal_local(void *context, const uint8_t *data, size_t length)
-{
-	(void)context;
-	if (length != 0U)
-		(void)fwrite(data, 1U, length, stdout);
-}
-
-static void
-ytconfig_fatal_close_all(void *context)
-{
-	struct ytconfig_fatal_context *fatal = context;
-	struct yt_error ignored;
-
-	yt_error_clear(&ignored);
-	(void)yt_text_input_close(fatal->names_input, &ignored);
-	yt_error_clear(&ignored);
-	(void)yt_database_close_all_method(&fatal->game->database, 0, &ignored);
-	/* Physical adapters may report errors; BRUN still completes the walk. */
-	yt_text_input_destroy(fatal->names_input);
-	yt_game_close(fatal->game);
-}
-
-static size_t
-ytconfig_fatal_drain(void *context, uint16_t *words, size_t capacity)
-{
-	(void)context;
-	return yt_cli_drain_pending_keys(words, capacity);
-}
-
-static void
-ytconfig_fatal_clear_function_bar(void *context)
-{
-	(void)context;
-}
-
-static void
-ytconfig_fatal_restore(void *context, bool cursor_shape_known,
-    uint16_t cursor_shape)
-{
-	(void)context;
-	yt_cli_restore_terminal(cursor_shape_known, cursor_shape);
-}
-
-static void
-ytconfig_fatal_end(void *context, unsigned status)
-{
-	(void)context;
-	(void)status;
-}
-
 static bool
 ytconfig_complete_alias_fatal(struct yt_game *game,
-    struct yt_text_input *names_input,
-    struct yt_brun_internal_fatal_state *state)
+    struct yt_text_input *names_input)
 {
-	static const struct yt_brun_internal_fatal_ops ops = {
-		ytconfig_fatal_local,
-		ytconfig_fatal_close_all,
-		ytconfig_fatal_drain,
-		ytconfig_fatal_clear_function_bar,
-		ytconfig_fatal_restore,
-		ytconfig_fatal_end,
-	};
-	struct ytconfig_fatal_context context = {game, names_input};
+	struct yt_brun_internal_fatal_state state;
+	struct yt_error ignored;
+	uint16_t drained[16];
+	bool redirected = yt_cli_stdin_redirected();
 
 	/* The native host gives the exact renderer a logical zero load segment. */
-	return yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
-	    "YTCONFIG", false, 0, 0U, 0x0EE5U,
-	    yt_cli_stdin_redirected(), true, false, 0U,
-	    &ops, &context, state);
+	if (!yt_brun_internal_fatal_compose(YT_BRUN_INTERNAL_FATAL_OWNER,
+	    "YTCONFIG", false, 0, 0U, 0x0EE5U, &state))
+		return false;
+	(void)fwrite(state.diagnostic, 1U, state.diagnostic_length, stdout);
+	yt_error_clear(&ignored);
+	(void)yt_text_input_close(names_input, &ignored);
+	yt_error_clear(&ignored);
+	(void)yt_database_close_all_method(&game->database, 0, &ignored);
+	/* Physical close errors do not interrupt BRUN's terminal cleanup. */
+	yt_text_input_destroy(names_input);
+	yt_game_close(game);
+	(void)fwrite(state.prompt, 1U, state.prompt_length, stdout);
+	if (redirected)
+		(void)fputc('\r', stdout);
+	else
+		(void)yt_cli_drain_pending_keys(drained, YT_ARRAY_LEN(drained));
+	yt_cli_restore_terminal(false, 0U);
+	return true;
 }
 
 static bool
@@ -776,16 +728,12 @@ edit_aliases(struct yt_game *game, bool *fatal_ended,
 		return false;
 	}
 	if (load.outcome == YT_NAMES_YTCONFIG_INTERNAL_FATAL_0ACC) {
-		struct yt_brun_internal_fatal_state fatal;
-		bool completed = ytconfig_complete_alias_fatal(game, &input,
-		    &fatal);
+		bool completed = ytconfig_complete_alias_fatal(game, &input);
 
 		yt_names_input_observation_free(&observation);
 		yt_names_free(&names);
 		yt_text_input_destroy(&input);
-		*fatal_ended = completed && fatal.ended
-		    && fatal.close_all_completed && fatal.terminal_restored
-		    && fatal.exit_status == 0U;
+		*fatal_ended = completed;
 		return completed;
 	}
 	yt_names_input_observation_free(&observation);
