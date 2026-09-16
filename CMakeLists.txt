@@ -97,6 +97,7 @@ set(YT_GAME_SOURCES
     src/yt_game_salvage.c
     src/yt_game_sector.c
     src/yt_init.c
+    src/yt_init_files.c
     src/yt_init_output.c
     src/yt_maint.c
     src/yt_maint_economy.c

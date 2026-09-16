@@ -22,5 +22,12 @@ bool rmt_present_text(const struct yt_initializer_options *options,
     struct yt_error *error);
 bool rmt_present_number_line(const struct yt_initializer_options *options,
     uint16_t site, const char *label, float value, struct yt_error *error);
+bool yt_init_write_yt_auxiliary(struct yt_database *database,
+    const struct yt_initializer_options *options, struct yt_error *error);
+bool yt_init_write_rmt_auxiliary(struct yt_database *database,
+    const char *credited_name, const struct yt_initializer_options *options,
+    struct yt_error *error);
+bool yt_init_write_sequential_file(const char *path, const uint8_t *data,
+    size_t length, struct yt_error *error);
 
 #endif
