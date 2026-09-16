@@ -98,6 +98,7 @@ set(YT_GAME_SOURCES
     src/yt_game_sector.c
     src/yt_init.c
     src/yt_maint.c
+    src/yt_maint_route.c
     src/yt_names.c
     src/yt_planet_updater.c
     src/yt_player_cache.c
