@@ -366,7 +366,7 @@ write_rmt_completion(struct rmt_output_context *context,
 }
 
 static bool
-write_rmt_presentation(void *opaque, uint16_t site,
+write_rmt_presentation(void *opaque,
     enum yt_rmt_output_entry entry, const uint8_t *payload,
     size_t payload_length, struct yt_error *error)
 {
@@ -374,7 +374,7 @@ write_rmt_presentation(void *opaque, uint16_t site,
 
 	if (!write_rmt_output(context, entry, payload, payload_length, error))
 		return false;
-	if (site == 0x10f1U && !context->local_mode
+	if (entry == YT_RMT_OUTPUT_WORMHOLE && !context->local_mode
 	    && context->state.column > 50U)
 		return write_rmt_output(context, YT_RMT_OUTPUT_SERIAL_LINE, NULL,
 		    0U, error);

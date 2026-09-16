@@ -21,20 +21,21 @@ set_error(struct yt_error *error, enum yt_status status,
 }
 
 static bool
-yt_init_present_one(const struct yt_init_presenter *presenter, uint16_t site,
+yt_init_present_one(const struct yt_init_presenter *presenter,
     enum yt_init_output_entry entry, const uint8_t *payload,
     size_t payload_length, struct yt_error *error)
 {
-	if (presenter == NULL)
-		return true;
-	if (presenter->write == NULL
-	    || !presenter->write(presenter->context, site, entry, payload,
+	if (presenter == NULL || presenter->write == NULL) {
+		set_error(error, YT_INVALID, "YT-INIT output", "");
+		return false;
+	}
+	if (!presenter->write(presenter->context, entry, payload,
 	    payload_length, error)) {
 		if (error != NULL && error->status == YT_OK) {
 			error->status = YT_IO_ERROR;
 			error->system_error = 0;
 			snprintf(error->operation, sizeof(error->operation),
-			    "present YT-INIT site %04X", site);
+			    "present YT-INIT output");
 			error->path[0] = '\0';
 		}
 		return false;
@@ -43,35 +44,35 @@ yt_init_present_one(const struct yt_init_presenter *presenter, uint16_t site,
 }
 
 static bool
-yt_init_present_text(const struct yt_init_presenter *presenter, uint16_t site,
+yt_init_present_text(const struct yt_init_presenter *presenter,
     enum yt_init_output_entry entry, const char *text, struct yt_error *error)
 {
-	return yt_init_present_one(presenter, site, entry,
+	return yt_init_present_one(presenter, entry,
 	    (const uint8_t *)text, strlen(text), error);
 }
 
 bool
-yt_present(const struct yt_initializer_options *options, uint16_t site,
+yt_present(const struct yt_initializer_options *options,
     enum yt_init_output_entry entry, const uint8_t *payload,
     size_t payload_length, struct yt_error *error)
 {
 	if (options->family != YT_INITIALIZER_YT)
 		return true;
-	return yt_init_present_one(options->yt_presenter, site, entry, payload,
+	return yt_init_present_one(options->yt_presenter, entry, payload,
 	    payload_length, error);
 }
 
 bool
-yt_present_text(const struct yt_initializer_options *options, uint16_t site,
+yt_present_text(const struct yt_initializer_options *options,
     enum yt_init_output_entry entry, const char *text, struct yt_error *error)
 {
-	return yt_present(options, site, entry, (const uint8_t *)text,
+	return yt_present(options, entry, (const uint8_t *)text,
 	    strlen(text), error);
 }
 
 bool
 yt_present_number(const struct yt_initializer_options *options,
-    uint16_t site, float value, enum yt_init_output_entry entry,
+    float value, enum yt_init_output_entry entry,
     struct yt_error *error)
 {
 	char text[32];
@@ -82,13 +83,13 @@ yt_present_number(const struct yt_initializer_options *options,
 		return false;
 	}
 	text[length++] = ' ';
-	return yt_present(options, site, entry, (const uint8_t *)text,
+	return yt_present(options, entry, (const uint8_t *)text,
 	    (size_t)length, error);
 }
 
 bool
 yt_present_str_number_line(const struct yt_initializer_options *options,
-    uint16_t site, const char *label, float value, struct yt_error *error)
+    const char *label, float value, struct yt_error *error)
 {
 	uint8_t payload[192];
 	char number[32];
@@ -102,7 +103,7 @@ yt_present_str_number_line(const struct yt_initializer_options *options,
 	}
 	memcpy(payload, label, label_length);
 	memcpy(payload + label_length, number, (size_t)number_length);
-	return yt_present(options, site, YT_INIT_OUTPUT_LINE, payload,
+	return yt_present(options, YT_INIT_OUTPUT_LINE, payload,
 	    label_length + (size_t)number_length, error);
 }
 
@@ -110,26 +111,26 @@ bool
 yt_init_present_confirmation_prefix(const struct yt_init_presenter *presenter,
     struct yt_error *error)
 {
-	return yt_init_present_text(presenter, 0x060aU, YT_INIT_OUTPUT_LINE,
+	return yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "", error)
-	    && yt_init_present_text(presenter, 0x061eU, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "            Yankee Trader Initialization Program", error)
-	    && yt_init_present_text(presenter, 0x0630U, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "                     By Alan Davenport", error)
-	    && yt_init_present_text(presenter, 0x0641U, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "", error)
-	    && yt_init_present_text(presenter, 0x0653U, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "This program will initialize Yankee Trader. You must run this program at",
 	    error)
-	    && yt_init_present_text(presenter, 0x0665U, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "least once when you start up the game. If this program is run on an",
 	    error)
-	    && yt_init_present_text(presenter, 0x0677U, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "existing game, the old game will be wiped out and be replaced by a new one.",
 	    error)
-	    && yt_init_present_text(presenter, 0x0688U, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "", error)
-	    && yt_init_present_text(presenter, 0x069aU, YT_INIT_OUTPUT_INLINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
 	    "Continue (Y/N)? ", error);
 }
 
@@ -137,28 +138,31 @@ bool
 yt_init_present_opening(const struct yt_init_presenter *presenter,
     struct yt_error *error)
 {
-	return yt_init_present_text(presenter, 0x06dcU, YT_INIT_OUTPUT_LINE,
+	return yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "", error)
-	    && yt_init_present_text(presenter, 0x06eeU, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "Creating main data file: YTDATA.DAT", error);
 }
 
 bool
-rmt_present(const struct yt_initializer_options *options, uint16_t site,
+rmt_present(const struct yt_initializer_options *options,
     enum yt_rmt_output_entry entry, const uint8_t *payload,
     size_t payload_length, struct yt_error *error)
 {
-	if (options->family != YT_INITIALIZER_RMT
-	    || options->rmt_presenter == NULL)
+	if (options->family != YT_INITIALIZER_RMT)
 		return true;
-	if (options->rmt_presenter->write == NULL
-	    || !options->rmt_presenter->write(options->rmt_presenter->context,
-	    site, entry, payload, payload_length, error)) {
+	if (options->rmt_presenter == NULL
+	    || options->rmt_presenter->write == NULL) {
+		set_error(error, YT_INVALID, "RMT-INIT output", "");
+		return false;
+	}
+	if (!options->rmt_presenter->write(options->rmt_presenter->context,
+	    entry, payload, payload_length, error)) {
 		if (error != NULL && error->status == YT_OK) {
 			error->status = YT_IO_ERROR;
 			error->system_error = 0;
 			snprintf(error->operation, sizeof(error->operation),
-			    "present RMT-INIT site %04X", site);
+			    "present RMT-INIT output");
 			error->path[0] = '\0';
 		}
 		return false;
@@ -167,16 +171,16 @@ rmt_present(const struct yt_initializer_options *options, uint16_t site,
 }
 
 bool
-rmt_present_text(const struct yt_initializer_options *options, uint16_t site,
+rmt_present_text(const struct yt_initializer_options *options,
     enum yt_rmt_output_entry entry, const char *text, struct yt_error *error)
 {
-	return rmt_present(options, site, entry, (const uint8_t *)text,
+	return rmt_present(options, entry, (const uint8_t *)text,
 	    strlen(text), error);
 }
 
 bool
 rmt_present_number_line(const struct yt_initializer_options *options,
-    uint16_t site, const char *label, float value, struct yt_error *error)
+    const char *label, float value, struct yt_error *error)
 {
 	uint8_t payload[192];
 	char number[32];
@@ -190,7 +194,7 @@ rmt_present_number_line(const struct yt_initializer_options *options,
 	}
 	memcpy(payload, label, label_length);
 	memcpy(payload + label_length, number, (size_t)number_length);
-	return rmt_present(options, site, YT_RMT_OUTPUT_LINE, payload,
+	return rmt_present(options, YT_RMT_OUTPUT_LINE, payload,
 	    label_length + (size_t)number_length, error);
 }
 
@@ -285,6 +289,7 @@ yt_rmt_output_compose_state(enum yt_rmt_output_entry entry,
 	static const uint8_t lf[] = {'\n'};
 	enum rmt_punctuation punctuation;
 	bool serial_only;
+	bool wormhole;
 	size_t length = 0U;
 
 	if (state == NULL || result == NULL || final_state == NULL
@@ -296,6 +301,7 @@ yt_rmt_output_compose_state(enum yt_rmt_output_entry entry,
 		return false;
 	*final_state = *state;
 	serial_only = entry == YT_RMT_OUTPUT_SERIAL_LINE;
+	wormhole = entry == YT_RMT_OUTPUT_WORMHOLE;
 	if (local_mode && serial_only) {
 		result->length = 0U;
 		return true;
@@ -304,7 +310,7 @@ yt_rmt_output_compose_state(enum yt_rmt_output_entry entry,
 	    || entry == YT_RMT_OUTPUT_BLANK
 	    || entry == YT_RMT_OUTPUT_SERIAL_LINE
 	    ? RMT_PUNCTUATION_NEWLINE
-	    : entry == YT_RMT_OUTPUT_COMMA_SERIAL_FIRST
+	    : wormhole
 	    ? RMT_PUNCTUATION_COMMA : RMT_PUNCTUATION_SEMICOLON;
 	if (!rmt_render_value(dest, capacity, &length,
 	    &final_state->column,
@@ -521,8 +527,7 @@ yt_rmt_credited_name(const char *first, const char *last,
 
 static bool
 yt_init_present_number(const struct yt_init_presenter *presenter,
-    uint16_t site, float value, enum yt_init_output_entry entry,
-    struct yt_error *error)
+    float value, enum yt_init_output_entry entry, struct yt_error *error)
 {
 	char text[32];
 	int length = qb_str_single(text, sizeof(text), value);
@@ -531,14 +536,13 @@ yt_init_present_number(const struct yt_init_presenter *presenter,
 		set_error(error, YT_RANGE, "format YT-INIT number", "");
 		return false;
 	}
-	return yt_init_present_one(presenter, site, entry,
+	return yt_init_present_one(presenter, entry,
 	    (const uint8_t *)text, (size_t)length, error);
 }
 
 static bool
 yt_init_present_print_number(const struct yt_init_presenter *presenter,
-    uint16_t site, float value, enum yt_init_output_entry entry,
-    struct yt_error *error)
+    float value, enum yt_init_output_entry entry, struct yt_error *error)
 {
 	char text[32];
 	int length = qb_str_single(text, sizeof(text), value);
@@ -548,7 +552,7 @@ yt_init_present_print_number(const struct yt_init_presenter *presenter,
 		return false;
 	}
 	text[length++] = ' ';
-	return yt_init_present_one(presenter, site, entry,
+	return yt_init_present_one(presenter, entry,
 	    (const uint8_t *)text, (size_t)length, error);
 }
 
@@ -564,67 +568,63 @@ yt_init_present_prepared_configuration(
 		return false;
 	}
 	config = &preparation->config;
-	return yt_init_present_text(presenter, 0x0769U, YT_INIT_OUTPUT_LINE,
+	return yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "", error)
-	    && yt_init_present_text(presenter, 0x077bU,
-	    YT_INIT_OUTPUT_INLINE, "Starting year:", error)
-	    && yt_init_present_number(presenter, 0x0787U,
-	    config->epoch_year, YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, 0x0799U, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "Starting year:", error)
+	    && yt_init_present_number(presenter, config->epoch_year,
+	    YT_INIT_OUTPUT_LINE, error)
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "Starting player info:", error)
-	    && yt_init_present_text(presenter, 0x07b6U,
-	    YT_INIT_OUTPUT_INLINE, "  # of fighters at start:", error)
-	    && yt_init_present_number(presenter, 0x07c2U,
-	    config->initial_fighters, YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, 0x07ebU,
-	    YT_INIT_OUTPUT_INLINE, "  # of credits at start:", error)
-	    && yt_init_present_number(presenter, 0x07f7U,
-	    config->initial_credits, YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, 0x0820U,
-	    YT_INIT_OUTPUT_INLINE, "  # of cargo holds at start:", error)
-	    && yt_init_present_number(presenter, 0x082cU,
-	    config->initial_holds, YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, 0x0855U,
-	    YT_INIT_OUTPUT_INLINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "  # of fighters at start:", error)
+	    && yt_init_present_number(presenter, config->initial_fighters,
+	    YT_INIT_OUTPUT_LINE, error)
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "  # of credits at start:", error)
+	    && yt_init_present_number(presenter, config->initial_credits,
+	    YT_INIT_OUTPUT_LINE, error)
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "  # of cargo holds at start:", error)
+	    && yt_init_present_number(presenter, config->initial_holds,
+	    YT_INIT_OUTPUT_LINE, error)
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
 	    "  # of days inactivity until an dead player is deleted:", error)
-	    && yt_init_present_number(presenter, 0x0861U,
-	    config->retention_days, YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, 0x089cU, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_number(presenter, config->retention_days,
+	    YT_INIT_OUTPUT_LINE, error)
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "  Last day maintenance run: Yesterday", error)
-	    && yt_init_present_text(presenter, 0x08c7U,
-	    YT_INIT_OUTPUT_INLINE, "  # of turns per day:", error)
-	    && yt_init_present_number(presenter, 0x08d3U,
-	    config->turns_per_day, YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, 0x08fcU,
-	    YT_INIT_OUTPUT_INLINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "  # of turns per day:", error)
+	    && yt_init_present_number(presenter, config->turns_per_day,
+	    YT_INIT_OUTPUT_LINE, error)
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
 	    "  # of times per day a user may play the lottery:", error)
-	    && yt_init_present_number(presenter, 0x0908U,
-	    config->lottery_plays, YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, 0x0960U,
-	    YT_INIT_OUTPUT_INLINE,
+	    && yt_init_present_number(presenter, config->lottery_plays,
+	    YT_INIT_OUTPUT_LINE, error)
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
 	    "  Xannor Headquarters placed in sector:", error)
-	    && yt_init_present_print_number(presenter, 0x0967U,
-	    config->headquarters, YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, 0x0990U, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_print_number(presenter, config->headquarters,
+	    YT_INIT_OUTPUT_LINE, error)
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "  Ports needed to initiate Genesis: 450", error)
-	    && yt_init_present_text(presenter, 0x09ccU,
-	    YT_INIT_OUTPUT_INLINE, "  Maximum Cargo holds set to:", error)
-	    && yt_init_present_print_number(presenter, 0x09d3U,
-	    config->maximum_holds, YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, 0x09e5U, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "  Maximum Cargo holds set to:", error)
+	    && yt_init_present_print_number(presenter, config->maximum_holds,
+	    YT_INIT_OUTPUT_LINE, error)
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "  Local screen on with remote callers: On", error)
-	    && yt_init_present_text(presenter, 0x09f7U, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "", error)
-	    && yt_init_present_text(presenter, 0x0a18U, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "If at any time you wish to change these settings, run YTCONFIG.",
 	    error)
-	    && yt_init_present_text(presenter, 0x0a29U, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "", error)
-	    && yt_init_present_text(presenter, 0x0a3bU, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "Please input filename for the Scoreboard Bulletin.", error)
-	    && yt_init_present_text(presenter, 0x0a4dU, YT_INIT_OUTPUT_LINE,
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "Include FULL PATH and NAME of file! ([ENTER] for YTSCORE.ASC) : ",
 	    error)
-	    && yt_init_present_text(presenter, 0x0a5fU,
-	    YT_INIT_OUTPUT_INLINE, "-=> ", error);
+	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE, "-=> ", error);
 }

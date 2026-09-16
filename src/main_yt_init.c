@@ -12,14 +12,13 @@ struct console_output {
 };
 
 static bool
-console_present(void *context, uint16_t site, enum yt_init_output_entry entry,
+console_present(void *context, enum yt_init_output_entry entry,
     const uint8_t *payload, size_t payload_length, struct yt_error *error)
 {
 	struct console_output *output = context;
 	FILE *stream;
 	size_t spaces;
 
-	(void)site;
 	if (output == NULL)
 		return false;
 	stream = output->stream;

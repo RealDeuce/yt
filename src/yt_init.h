@@ -15,7 +15,7 @@ enum yt_init_output_entry {
 	YT_INIT_OUTPUT_PLAY
 };
 
-typedef bool (*yt_init_present_write)(void *context, uint16_t site,
+typedef bool (*yt_init_present_write)(void *context,
 	enum yt_init_output_entry entry, const uint8_t *payload,
 	size_t payload_length, struct yt_error *error);
 
@@ -38,7 +38,7 @@ enum yt_rmt_output_entry {
 	YT_RMT_OUTPUT_LINE,
 	YT_RMT_OUTPUT_BLANK,
 	YT_RMT_OUTPUT_INLINE,
-	YT_RMT_OUTPUT_COMMA_SERIAL_FIRST,
+	YT_RMT_OUTPUT_WORMHOLE,
 	YT_RMT_OUTPUT_SERIAL_LINE
 };
 
@@ -64,7 +64,7 @@ struct yt_rmt_completion_result {
 	bool returns_to_bbs;
 };
 
-typedef bool (*yt_rmt_present_write)(void *context, uint16_t site,
+typedef bool (*yt_rmt_present_write)(void *context,
     enum yt_rmt_output_entry entry, const uint8_t *payload,
     size_t payload_length, struct yt_error *error);
 

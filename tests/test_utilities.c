@@ -272,7 +272,7 @@ test_rmt_output_state(void)
 	struct yt_rmt_output_result result;
 	uint8_t bytes[64];
 
-	if (!yt_rmt_output_compose_state(YT_RMT_OUTPUT_COMMA_SERIAL_FIRST,
+	if (!yt_rmt_output_compose_state(YT_RMT_OUTPUT_WORMHOLE,
 	    (const uint8_t *)" 8 - 90", 7U, false, &state, bytes,
 	    sizeof(bytes), &result, &final)
 	    || result.length != 14U || final.column != 14U
@@ -285,11 +285,24 @@ test_rmt_output_state(void)
 	    || result.length != 11U || final.column != 10U
 	    || memcmp(bytes, "\r1234567890", 11U) != 0)
 		return false;
-	if (!yt_rmt_output_compose_state(YT_RMT_OUTPUT_COMMA_SERIAL_FIRST,
+	if (!yt_rmt_output_compose_state(YT_RMT_OUTPUT_WORMHOLE,
 	    (const uint8_t *)".", 1U, false, &state, bytes, sizeof(bytes),
 	    &result, &final)
 	    || result.length != 2U || final.column != 0U
 	    || memcmp(bytes, ".\r", 2U) != 0)
+		return false;
+	state.column = 42U;
+	if (!yt_rmt_output_compose_state(YT_RMT_OUTPUT_WORMHOLE,
+	    (const uint8_t *)" 8 - 90", 7U, false, &state, bytes,
+	    sizeof(bytes), &result, &final)
+	    || result.length != 14U || final.column != 56U
+	    || memcmp(bytes, " 8 - 90       ", 14U) != 0)
+		return false;
+	if (!yt_rmt_output_compose_state(YT_RMT_OUTPUT_WORMHOLE,
+	    (const uint8_t *)" 8 - 90", 7U, true, &state, bytes,
+	    sizeof(bytes), &result, &final)
+	    || result.length != 14U || final.column != 56U
+	    || memcmp(bytes, " 8 - 90       ", 14U) != 0)
 		return false;
 	state.column = 56U;
 	if (!yt_rmt_output_compose_state(YT_RMT_OUTPUT_SERIAL_LINE, NULL, 0U,
@@ -847,10 +860,10 @@ struct rmt_presentation_tape {
 	uint8_t serial[8192];
 	size_t serial_length;
 	size_t calls;
-	uint16_t sites[256];
+	size_t entries[YT_RMT_OUTPUT_SERIAL_LINE + 1U];
 	bool local_mode;
 	bool fail;
-	uint16_t fail_site;
+	size_t fail_call;
 };
 
 static bool
@@ -882,44 +895,30 @@ rmt_presentation_append(struct rmt_presentation_tape *tape,
 }
 
 static bool
-rmt_presentation_collect(void *context, uint16_t site,
+rmt_presentation_collect(void *context,
     enum yt_rmt_output_entry entry, const uint8_t *payload,
     size_t payload_length, struct yt_error *error)
 {
 	struct rmt_presentation_tape *tape = context;
 
 	(void)error;
-	if (tape == NULL || (tape->fail && tape->fail_site == site)
+	if (tape == NULL || (tape->fail && tape->calls == tape->fail_call)
 	    || !rmt_presentation_append(tape, entry, payload, payload_length))
 		return false;
-	if (tape->calls >= YT_ARRAY_LEN(tape->sites))
+	if (entry < YT_RMT_OUTPUT_LINE
+	    || entry > YT_RMT_OUTPUT_SERIAL_LINE)
 		return false;
-	tape->sites[tape->calls] = site;
+	++tape->entries[entry];
 	++tape->calls;
-	if (site == 0x10f1U && !tape->local_mode
+	if (entry == YT_RMT_OUTPUT_WORMHOLE && !tape->local_mode
 	    && tape->state.column > 50U) {
 		if (!rmt_presentation_append(tape, YT_RMT_OUTPUT_SERIAL_LINE,
 		    NULL, 0U))
 			return false;
-		if (tape->calls >= YT_ARRAY_LEN(tape->sites))
-			return false;
-		tape->sites[tape->calls] = 0x1113U;
+		++tape->entries[YT_RMT_OUTPUT_SERIAL_LINE];
 		++tape->calls;
 	}
 	return true;
-}
-
-static size_t
-rmt_presentation_site_count(const struct rmt_presentation_tape *tape,
-    uint16_t site)
-{
-	size_t count = 0U;
-
-	for (size_t index = 0U; index < tape->calls; ++index) {
-		if (tape->sites[index] == site)
-			++count;
-	}
-	return count;
 }
 
 static void
@@ -1059,7 +1058,6 @@ utility_counted_fixed_clock(void *context, struct yt_clock_value *value,
 }
 
 struct yt_init_capture_event {
-	uint16_t site;
 	enum yt_init_output_entry entry;
 	uint8_t payload[96];
 	size_t length;
@@ -1068,11 +1066,12 @@ struct yt_init_capture_event {
 struct yt_init_capture {
 	struct yt_init_capture_event events[12000];
 	size_t calls;
-	uint16_t fail_site;
+	bool fail;
+	size_t fail_call;
 };
 
 static bool
-yt_init_capture_write(void *context, uint16_t site,
+yt_init_capture_write(void *context,
     enum yt_init_output_entry entry, const uint8_t *payload,
     size_t payload_length, struct yt_error *error)
 {
@@ -1080,13 +1079,13 @@ yt_init_capture_write(void *context, uint16_t site,
 	struct yt_init_capture_event *event;
 
 	(void)error;
-	if (capture == NULL || capture->fail_site == site
+	if (capture == NULL
+	    || (capture->fail && capture->calls == capture->fail_call)
 	    || capture->calls >= YT_ARRAY_LEN(capture->events)
 	    || payload_length > sizeof(capture->events[0].payload)
 	    || (payload == NULL && payload_length != 0U))
 		return false;
 	event = &capture->events[capture->calls++];
-	event->site = site;
 	event->entry = entry;
 	event->length = payload_length;
 	if (payload_length != 0U)
@@ -1096,31 +1095,51 @@ yt_init_capture_write(void *context, uint16_t site,
 
 static bool
 yt_init_capture_is(const struct yt_init_capture *capture, size_t index,
-    uint16_t site, enum yt_init_output_entry entry, const char *text)
+    enum yt_init_output_entry entry, const char *text)
 {
 	size_t length = strlen(text);
 
-	return index < capture->calls && capture->events[index].site == site
+	return index < capture->calls
 	    && capture->events[index].entry == entry
 	    && capture->events[index].length == length
 	    && memcmp(capture->events[index].payload, text, length) == 0;
 }
 
 static bool
+discard_yt_init_output(void *context, enum yt_init_output_entry entry,
+    const uint8_t *payload, size_t payload_length, struct yt_error *error)
+{
+	(void)context;
+	(void)entry;
+	(void)payload;
+	(void)payload_length;
+	(void)error;
+	return true;
+}
+
+static bool
+discard_rmt_init_output(void *context, enum yt_rmt_output_entry entry,
+    const uint8_t *payload, size_t payload_length, struct yt_error *error)
+{
+	(void)context;
+	(void)entry;
+	(void)payload;
+	(void)payload_length;
+	(void)error;
+	return true;
+}
+
+static const struct yt_init_presenter discard_yt_presenter = {
+	.write = discard_yt_init_output,
+};
+
+static const struct yt_rmt_presenter discard_rmt_presenter = {
+	.write = discard_rmt_init_output,
+};
+
+static bool
 test_yt_init_pre_input_presentation(void)
 {
-	static const uint16_t prefix_sites[] = {
-		0x060aU, 0x061eU, 0x0630U, 0x0641U, 0x0653U,
-		0x0665U, 0x0677U, 0x0688U, 0x069aU
-	};
-	static const uint16_t prepared_sites[] = {
-		0x0769U, 0x077bU, 0x0787U, 0x0799U, 0x07b6U,
-		0x07c2U, 0x07ebU, 0x07f7U, 0x0820U, 0x082cU,
-		0x0855U, 0x0861U, 0x089cU, 0x08c7U, 0x08d3U,
-		0x08fcU, 0x0908U, 0x0960U, 0x0967U, 0x0990U,
-		0x09ccU, 0x09d3U, 0x09e5U, 0x09f7U, 0x0a18U,
-		0x0a29U, 0x0a3bU, 0x0a4dU, 0x0a5fU
-	};
 	struct utility_lcg lcg = {UINT32_C(0x89b405)};
 	struct utility_clock_count clock = {0U};
 	const struct yt_clock clock_source = {
@@ -1135,7 +1154,6 @@ test_yt_init_pre_input_presentation(void)
 		.write = yt_init_capture_write
 	};
 	struct yt_error error;
-	size_t index;
 
 	yt_error_clear(&error);
 	yt_initializer_layout_yt(&preparation);
@@ -1147,28 +1165,19 @@ test_yt_init_pre_input_presentation(void)
 	    || preparation.config.initial_fighters != 0.0f
 	    || preparation.config.maximum_holds != 0.0f
 	    || !yt_init_present_confirmation_prefix(&presenter, &error)
-	    || capture.calls != YT_ARRAY_LEN(prefix_sites))
+	    || capture.calls != 9U)
 		return false;
-	for (index = 0U; index < YT_ARRAY_LEN(prefix_sites); ++index) {
-		if (capture.events[index].site != prefix_sites[index])
-			return false;
-	}
-	if (!yt_init_capture_is(&capture, 0U, 0x060aU,
-	    YT_INIT_OUTPUT_LINE, "")
-	    || !yt_init_capture_is(&capture, 1U, 0x061eU,
-	    YT_INIT_OUTPUT_LINE,
+	if (!yt_init_capture_is(&capture, 0U, YT_INIT_OUTPUT_LINE, "")
+	    || !yt_init_capture_is(&capture, 1U, YT_INIT_OUTPUT_LINE,
 	    "            Yankee Trader Initialization Program")
-	    || !yt_init_capture_is(&capture, 8U, 0x069aU,
-	    YT_INIT_OUTPUT_INLINE, "Continue (Y/N)? "))
+	    || !yt_init_capture_is(&capture, 8U, YT_INIT_OUTPUT_INLINE, "Continue (Y/N)? "))
 		return false;
 
 	memset(&capture, 0, sizeof(capture));
 	if (!yt_init_present_opening(&presenter, &error)
 	    || capture.calls != 2U
-	    || !yt_init_capture_is(&capture, 0U, 0x06dcU,
-	    YT_INIT_OUTPUT_LINE, "")
-	    || !yt_init_capture_is(&capture, 1U, 0x06eeU,
-	    YT_INIT_OUTPUT_LINE, "Creating main data file: YTDATA.DAT"))
+	    || !yt_init_capture_is(&capture, 0U, YT_INIT_OUTPUT_LINE, "")
+	    || !yt_init_capture_is(&capture, 1U, YT_INIT_OUTPUT_LINE, "Creating main data file: YTDATA.DAT"))
 		return false;
 
 	yt_random_init(&random);
@@ -1189,26 +1198,18 @@ test_yt_init_pre_input_presentation(void)
 	memset(&capture, 0, sizeof(capture));
 	if (!yt_init_present_prepared_configuration(&preparation,
 	    &presenter, &error)
-	    || capture.calls != YT_ARRAY_LEN(prepared_sites))
+	    || capture.calls != 29U)
 		return false;
-	for (index = 0U; index < YT_ARRAY_LEN(prepared_sites); ++index) {
-		if (capture.events[index].site != prepared_sites[index])
-			return false;
-	}
-	if (!yt_init_capture_is(&capture, 2U, 0x0787U,
-	    YT_INIT_OUTPUT_LINE, " 26")
-	    || !yt_init_capture_is(&capture, 14U, 0x08d3U,
-	    YT_INIT_OUTPUT_LINE, " 500")
-	    || !yt_init_capture_is(&capture, 16U, 0x0908U,
-	    YT_INIT_OUTPUT_LINE, " 5")
-	    || !yt_init_capture_is(&capture, 18U, 0x0967U,
-	    YT_INIT_OUTPUT_LINE, " 733 ")
-	    || !yt_init_capture_is(&capture, 28U, 0x0a5fU,
-	    YT_INIT_OUTPUT_INLINE, "-=> "))
+	if (!yt_init_capture_is(&capture, 2U, YT_INIT_OUTPUT_LINE, " 26")
+	    || !yt_init_capture_is(&capture, 14U, YT_INIT_OUTPUT_LINE, " 500")
+	    || !yt_init_capture_is(&capture, 16U, YT_INIT_OUTPUT_LINE, " 5")
+	    || !yt_init_capture_is(&capture, 18U, YT_INIT_OUTPUT_LINE, " 733 ")
+	    || !yt_init_capture_is(&capture, 28U, YT_INIT_OUTPUT_INLINE, "-=> "))
 		return false;
 
 	memset(&capture, 0, sizeof(capture));
-	capture.fail_site = 0x0653U;
+	capture.fail = true;
+	capture.fail_call = 4U;
 	yt_error_clear(&error);
 	return !yt_init_present_confirmation_prefix(&presenter, &error)
 	    && error.status == YT_IO_ERROR && capture.calls == 4U
@@ -1271,8 +1272,6 @@ yt_init_capture_hash(const struct yt_init_capture *capture)
 		    &capture->events[index];
 		size_t byte;
 
-		YT_INIT_HASH_BYTE(event->site);
-		YT_INIT_HASH_BYTE(event->site >> 8);
 		YT_INIT_HASH_BYTE(event->entry);
 		YT_INIT_HASH_BYTE(event->length);
 		YT_INIT_HASH_BYTE(event->length >> 8);
@@ -1281,33 +1280,6 @@ yt_init_capture_hash(const struct yt_init_capture *capture)
 	}
 #undef YT_INIT_HASH_BYTE
 	return hash;
-}
-
-static size_t
-yt_init_capture_site_count(const struct yt_init_capture *capture,
-    uint16_t site)
-{
-	size_t count = 0U;
-	size_t index;
-
-	for (index = 0U; index < capture->calls; ++index) {
-		if (capture->events[index].site == site)
-			++count;
-	}
-	return count;
-}
-
-static size_t
-yt_init_capture_first_site(const struct yt_init_capture *capture,
-    uint16_t site)
-{
-	size_t index;
-
-	for (index = 0U; index < capture->calls; ++index) {
-		if (capture->events[index].site == site)
-			return index;
-	}
-	return SIZE_MAX;
 }
 
 static bool
@@ -1356,51 +1328,21 @@ test_yt_init_presented_world(void)
 	    && utility_fnv1a64(database, database_length)
 	    == UINT64_C(0xe1010e9fdf9998f1)
 	    && capture.calls == 8379U
-	    && tape_hash == UINT64_C(0xe72aa6db06fef26c)
-	    && yt_init_capture_site_count(&capture, 0x10f8U) == 35U
-	    && yt_init_capture_site_count(&capture, 0x1102U) == 35U
-	    && yt_init_capture_site_count(&capture, 0x110aU) == 35U
-	    && yt_init_capture_site_count(&capture, 0x1501U) == 21U
-	    && yt_init_capture_site_count(&capture, 0x15c8U) == 21U
-	    && yt_init_capture_site_count(&capture, 0x12acU) == 2003U
-	    && yt_init_capture_site_count(&capture, 0x12b9U) == 2003U
-	    && yt_init_capture_site_count(&capture, 0x12c1U) == 2003U
-	    && yt_init_capture_site_count(&capture, 0x1b1eU) == 1000U
-	    && yt_init_capture_site_count(&capture, 0x1c59U) == 1000U
-	    && yt_init_capture_site_count(&capture, 0x08d3U) == 1U
-	    && yt_init_capture_site_count(&capture, 0x0908U) == 1U
-	    && yt_init_capture_site_count(&capture, 0x0967U) == 1U
-	    && yt_init_capture_site_count(&capture, 0x0a5fU) == 1U
-	    && yt_init_capture_site_count(&capture, 0x0b09U) == 1U
-	    && yt_init_capture_site_count(&capture, 0x2339U) == 1U
-	    && yt_init_capture_site_count(&capture, 0x235cU) == 1U
-	    && yt_init_capture_site_count(&capture, 0x23c5U) == 1U
-	    && yt_init_capture_first_site(&capture, 0x08d3U)
-	    < yt_init_capture_first_site(&capture, 0x0908U)
-	    && yt_init_capture_first_site(&capture, 0x0908U)
-	    < yt_init_capture_first_site(&capture, 0x0967U)
-	    && yt_init_capture_first_site(&capture, 0x0967U)
-	    < yt_init_capture_first_site(&capture, 0x0a5fU)
-	    && yt_init_capture_first_site(&capture, 0x2339U)
-	    < yt_init_capture_first_site(&capture, 0x235cU)
-	    && yt_init_capture_first_site(&capture, 0x235cU)
-	    < yt_init_capture_first_site(&capture, 0x23c5U)
-	    && capture.events[0].site == 0x060aU
-	    && capture.events[capture.calls - 1U].site == 0x23cfU;
+	    && tape_hash == UINT64_C(0xbf9c7b9fe70cfb52);
 	free(database);
 	return ok;
 }
 
 static bool
-test_yt_init_presentation_pre_put_failure(void)
+test_yt_init_presentation_before_first_record(void)
 {
 	struct utility_lcg lcg = {UINT32_C(0x89b405)};
 	struct yt_random random;
 	struct yt_initializer_preparation preparation;
-	struct yt_init_capture capture = {.fail_site = 0x0abbU};
+	struct yt_init_capture capture = {.fail = true, .fail_call = 0U};
 	struct yt_init_presenter presenter = {
 		.context = &capture,
-		.write = yt_init_capture_write
+		.write = yt_init_capture_write,
 	};
 	struct yt_error error;
 	uint8_t *database = NULL;
@@ -1425,16 +1367,16 @@ test_yt_init_presentation_pre_put_failure(void)
 }
 
 static bool
-test_yt_init_presentation_failure_prefix(void)
+test_yt_init_presentation_after_config_record(void)
 {
 	static const uint8_t sector_offset_raw[] = {0x00U, 0x00U, 0x4cU, 0x86U};
 	struct utility_lcg lcg = {UINT32_C(0x89b405)};
 	struct yt_random random;
 	struct yt_initializer_preparation preparation;
-	struct yt_init_capture capture = {.fail_site = 0x0b1bU};
+	struct yt_init_capture capture = {.fail = true, .fail_call = 2U};
 	struct yt_init_presenter presenter = {
 		.context = &capture,
-		.write = yt_init_capture_write
+		.write = yt_init_capture_write,
 	};
 	struct yt_error error;
 	uint8_t *database = NULL;
@@ -1456,8 +1398,6 @@ test_yt_init_presentation_failure_prefix(void)
 	return !initialized && read && error.status == YT_IO_ERROR
 	    && random.draws == 1U && lcg.state == UINT32_C(0x5dd6b4)
 	    && capture.calls == 2U
-	    && capture.events[0].site == 0x0abbU
-	    && capture.events[1].site == 0x0b09U
 	    && capture.events[1].entry == YT_INIT_OUTPUT_LINE
 	    && capture.events[1].length == sizeof(sector_offset_raw)
 	    && memcmp(capture.events[1].payload, sector_offset_raw,
@@ -1596,7 +1536,8 @@ initialize_unprepared_yt(const char *scoreboard, const struct yt_clock *clock,
 	const struct yt_initializer_options options = {
 		.family = YT_INITIALIZER_YT,
 		.clock = clock,
-		.scoreboard = scoreboard
+		.scoreboard = scoreboard,
+		.yt_presenter = &discard_yt_presenter,
 	};
 
 	return yt_initialize_world(&options, random, error);
@@ -1657,6 +1598,7 @@ test_initializer_graph_retries(void)
 	memset(&options, 0, sizeof(options));
 	options.family = YT_INITIALIZER_YT;
 	options.clock = &utility_fixed_clock_source;
+	options.yt_presenter = &discard_yt_presenter;
 	rmt_small_config(&options.config);
 	options.config.epoch_year = 26.0f;
 	options.config.port_offset = 10.0f;
@@ -1725,18 +1667,6 @@ test_initializer_graph_retries(void)
 static bool
 test_rmt_initializer_world_image(void)
 {
-	static const uint16_t expected_sites[] = {
-		0x0863U, 0x0871U, 0x087fU, 0x0882U, 0x0885U, 0x089bU,
-		0x0907U, 0x0915U, 0x0930U, 0x096eU, 0x099cU, 0x09caU,
-		0x09fdU, 0x0a2bU, 0x0a59U, 0x0ab6U, 0x0ad1U, 0x0b0fU,
-		0x0b35U, 0x0b5dU, 0x0b7bU, 0x0babU, 0x0d67U, 0x0d75U,
-		0x0da0U, 0x0daeU, 0x0e22U, 0x0e30U, 0x0e33U, 0x1279U,
-		0x127cU, 0x128aU, 0x128dU, 0x12f9U, 0x1307U, 0x130aU,
-		0x1318U, 0x138eU, 0x139cU, 0x1678U, 0x167bU, 0x1689U,
-		0x17f4U, 0x1802U, 0x1c9dU, 0x1ca0U, 0x1caeU, 0x1cc9U,
-		0x1d53U, 0x1d61U, 0x1dfaU, 0x1e08U, 0x2014U, 0x2022U,
-		0x20a1U, 0x20afU, 0x20ebU, 0x20f9U, 0x227eU,
-	};
 	struct utility_lcg lcg = {UINT32_C(0x123456)};
 	struct yt_random random;
 	struct yt_config config;
@@ -1767,8 +1697,6 @@ test_rmt_initializer_world_image(void)
 	hash = utility_fnv1a64(database, length);
 	ok = length == 4110U && hash == UINT64_C(0xb7c4d78892150634)
 	    && tape.calls == 59U && tape.local_length == 1266U
-	    && tape.calls == YT_ARRAY_LEN(expected_sites)
-	    && memcmp(tape.sites, expected_sites, sizeof(expected_sites)) == 0
 	    && utility_fnv1a64(tape.local, tape.local_length)
 	    == UINT64_C(0xf8158dbf1e9c9bbf)
 	    && tape.serial_length == 0U;
@@ -1788,15 +1716,16 @@ test_rmt_presentation_failure_prefixes(void)
 {
 	static const uint8_t sentinel[] = "old-world";
 	static const struct {
-		uint16_t site;
+		const char *phase;
+		size_t fail_call;
 		size_t draws;
 		size_t file_length;
 		bool preserves_old;
 	} cases[] = {
-		{0x0863U, 0U, sizeof(sentinel) - 1U, true},
-		{0x0907U, 0U, 1U, false},
-		{0x0ab6U, 1U, 1U, false},
-		{0x0b7bU, 1U, YT_RECORD_SIZE, false},
+		{"opening", 0U, 0U, sizeof(sentinel) - 1U, true},
+		{"player configuration", 6U, 0U, 1U, false},
+		{"headquarters report", 15U, 1U, 1U, false},
+		{"player records", 20U, 1U, YT_RECORD_SIZE, false},
 	};
 	struct yt_config config;
 	size_t index;
@@ -1808,7 +1737,7 @@ test_rmt_presentation_failure_prefixes(void)
 		struct rmt_presentation_tape tape = {
 			.local_mode = true,
 			.fail = true,
-			.fail_site = cases[index].site,
+			.fail_call = cases[index].fail_call,
 		};
 		struct yt_rmt_presenter presenter = {
 			.context = &tape,
@@ -1832,8 +1761,11 @@ test_rmt_presentation_failure_prefixes(void)
 		    || length != cases[index].file_length
 		    || (cases[index].preserves_old
 		    && memcmp(database, sentinel, sizeof(sentinel) - 1U) != 0)) {
-			fprintf(stderr, "RMT presentation cut %04x: ok=%d status=%d draws=%zu length=%zu\n",
-			    cases[index].site, ok, error.status, random.draws, length);
+			fprintf(stderr,
+			    "RMT presentation cut during %s: ok=%d status=%d "
+			    "draws=%zu length=%zu\n",
+			    cases[index].phase, ok, error.status, random.draws,
+			    length);
 			free(database);
 			return false;
 		}
@@ -1853,13 +1785,11 @@ test_rmt_dynamic_presentation(void)
 		size_t serial_length;
 		uint64_t serial_hash;
 		size_t long_links;
-		size_t wraps;
-		size_t repairs;
 	} cases[] = {
 		{UINT32_C(0x286), 244U, UINT32_C(0x9eff1a), 62U, 1409U,
-		    UINT64_C(0xd32abf24cbe56624), 1U, 0U, 1U},
+		    UINT64_C(0xd32abf24cbe56624), 1U},
 		{UINT32_C(0x7485), 293U, UINT32_C(0xd3c458), 64U, 1380U,
-		    UINT64_C(0x16d71f518f97cfa2), 4U, 1U, 0U},
+		    UINT64_C(0x16d71f518f97cfa2), 4U},
 	};
 
 	for (size_t index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
@@ -1888,14 +1818,8 @@ test_rmt_dynamic_presentation(void)
 		    || tape.serial_length != cases[index].serial_length
 		    || utility_fnv1a64(tape.serial, tape.serial_length)
 		    != cases[index].serial_hash
-		    || rmt_presentation_site_count(&tape, 0x10f1U)
-		    != cases[index].long_links
-		    || rmt_presentation_site_count(&tape, 0x1113U)
-		    != cases[index].wraps
-		    || rmt_presentation_site_count(&tape, 0x2f48U)
-		    != cases[index].repairs
-		    || rmt_presentation_site_count(&tape, 0x302cU)
-		    != cases[index].repairs) {
+		    || tape.entries[YT_RMT_OUTPUT_WORMHOLE]
+		    != cases[index].long_links) {
 			fprintf(stderr, "RMT dynamic presentation seed=%06x: ok=%d status=%d draws=%zu state=%06x calls=%zu serial=%zu/%016llx\n",
 			    cases[index].seed, ok, error.status, random.draws,
 			    lcg.state, tape.calls, tape.serial_length,
@@ -1930,16 +1854,12 @@ test_rmt_dynamic_presentation(void)
 		    || tape.calls != 68U || tape.local_length != 1386U
 		    || utility_fnv1a64(tape.local, tape.local_length)
 		    != UINT64_C(0xa45455d8e52700d9)
-		    || tape.serial_length != 0U
-		    || rmt_presentation_site_count(&tape, 0x13e9U) != 2U
-		    || rmt_presentation_site_count(&tape, 0x1c46U) != 2U) {
-			fprintf(stderr, "RMT progress presentation: ok=%d status=%d draws=%zu state=%06x calls=%zu local=%zu/%016llx sector-dots=%zu port-dots=%zu\n",
+		    || tape.serial_length != 0U) {
+			fprintf(stderr, "RMT progress presentation: ok=%d status=%d draws=%zu state=%06x calls=%zu local=%zu/%016llx\n",
 			    ok, error.status, random.draws, lcg.state, tape.calls,
 			    tape.local_length,
 			    (unsigned long long)utility_fnv1a64(tape.local,
-			    tape.local_length),
-			    rmt_presentation_site_count(&tape, 0x13e9U),
-			    rmt_presentation_site_count(&tape, 0x1c46U));
+			    tape.local_length));
 			return false;
 		}
 	}
@@ -1973,7 +1893,7 @@ test_yt_clock_boundaries(void)
 	    && yt_initializer_prepare_yt(&clock, &random, &preparation, &error)
 	    && yt_initialize_yt_prepared_bound(NULL, &preparation,
 	    "YTSCORE.ASC", &clock, &random,
-	    NULL, &error);
+	    &discard_yt_presenter, &error);
 	if (!ok || sequence.calls != 17U
 	    || !read_file("YTDATA.DAT", &database, &length)
 	    || length < YT_RECORD_SIZE) {
@@ -2022,7 +1942,7 @@ test_rmt_clock_boundaries(void)
 	yt_random_init(&random);
 	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
 	ok = yt_initialize_rmt_presented(&config, "The Sysop", &clock, &random,
-	    NULL, &error);
+	    &discard_rmt_presenter, &error);
 	port_offset = ((size_t)yt_port_basic_record(&config, 1) - 1U)
 	    * YT_RECORD_SIZE;
 	if (!ok || sequence.calls != 17U
@@ -2038,7 +1958,7 @@ test_rmt_clock_boundaries(void)
 	    && yt_record_get_number(&config_record, YT_F81) == 1.0f
 	    && yt_record_get_number(&port_record, YT_F45) == 0.0f
 	    && !yt_initialize_rmt_presented(NULL, "The Sysop", &clock, &random,
-	    NULL,
+	    &discard_rmt_presenter,
 	    &error);
 }
 
@@ -5276,10 +5196,10 @@ main(void)
 		failure = "deterministic YT-INIT presentation differs";
 	else if (!test_yt_clock_boundaries())
 		failure = "YT-INIT date observation boundaries differ";
-	else if (!test_yt_init_presentation_pre_put_failure())
-		failure = "YT-INIT pre-PUT presentation failure differs";
-	else if (!test_yt_init_presentation_failure_prefix())
-		failure = "YT-INIT presentation failure prefix differs";
+	else if (!test_yt_init_presentation_before_first_record())
+		failure = "YT-INIT pre-record presentation failure differs";
+	else if (!test_yt_init_presentation_after_config_record())
+		failure = "YT-INIT post-config presentation failure differs";
 	else if (!test_yt_init_sector_prepass())
 		failure = "YT-INIT sector prepass differs";
 	else if (!test_yt_init_random_binding())
