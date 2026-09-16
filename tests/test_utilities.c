@@ -2805,7 +2805,7 @@ test_expired_player_cleanup(struct yt_error *error)
 	memset(&game, 0, sizeof(game));
 	memset(sector_cache, 0x42, sizeof(sector_cache));
 	memset(cloak_cache, 0x24, sizeof(cloak_cache));
-	if (!yt_game_open(&game, YT_OPEN_UPDATE, error)
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, NULL, error)
 	    || !yt_game_read_player(&game, 2, &victim, error)
 	    || !yt_game_read_player(&game, 3, &other, error)
 	    || !yt_game_read_player(&game, 4, &unrelated, error)
@@ -2933,7 +2933,7 @@ test_immediate_death_cleanup(struct yt_error *error)
 	bool valid = false;
 
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_UPDATE, error)
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, NULL, error)
 	    || !yt_game_read_player(&game, 2, &victim, error)
 	    || !yt_game_read_sector(&game, 10, &team, error)
 	    || !yt_game_read_sector(&game, 20, &defense, error)
@@ -3086,7 +3086,7 @@ test_xannor_player_arrival(struct yt_error *error)
 	memset(&game, 0, sizeof(game));
 	(void)remove("YTNEWS.DAT");
 	(void)remove("YTRMSG.DAT");
-	if (!yt_game_open(&game, YT_OPEN_UPDATE, error)
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, NULL, error)
 	    || !yt_game_read_player(&game, 2, &player, error))
 		goto done;
 	strcpy(player.name, "Alice");
@@ -3262,7 +3262,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 	memset(&game, 0, sizeof(game));
 	memset(&sector, 0, sizeof(sector));
 	(void)remove("YTNEWS.DAT");
-	if (!yt_game_open(&game, YT_OPEN_UPDATE, error)
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, NULL, error)
 	    || !yt_game_read_planet(&game, 1, &planet, error))
 		goto done;
 	strcpy(planet.name, "Terra");
@@ -3379,7 +3379,7 @@ test_maintenance_route_builder(struct yt_error *error)
 	bool valid = false;
 
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_UPDATE, error))
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, NULL, error))
 		goto done;
 	if (!yt_game_read_sector(&game, 1, &sector, error))
 		goto done;
@@ -3478,7 +3478,8 @@ test_ytconfig(struct yt_error *error)
 		goto done;
 	if (!yt_config_prepare_menu_working(&game.config, scoreboard, &working))
 		goto done;
-	if (!yt_current_date_serial(game.config.epoch_year, &today, &year,
+	if (!yt_current_date_serial(&game.clock, game.config.epoch_year,
+	    &today, &year,
 	    error))
 		goto done;
 	if (!yt_config_compose_menu_prompt(&game.config, &working, today, 0U,
@@ -3691,7 +3692,7 @@ test_ytconfig_headquarters(struct yt_error *error)
 	const int candidate_number = 9;
 
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_UPDATE, error))
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, NULL, error))
 		goto done;
 	original_config = game.config;
 	old_number = (int)qb_cint(original_config.headquarters, &overflow);
@@ -3729,7 +3730,7 @@ test_ytconfig_headquarters(struct yt_error *error)
 		sizeof(stored_row) - 1U))
 		goto done_closed;
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_READ, error)
+	if (!yt_game_open(&game, YT_OPEN_READ, NULL, error)
 	    || !yt_game_read_sector(&game, old_number, &actual_old, error)
 	    || !yt_game_read_sector(&game, candidate_number, &actual_candidate,
 		error)
@@ -3764,7 +3765,7 @@ done:
 done_closed:
 	if (snapshots) {
 		memset(&restore, 0, sizeof(restore));
-		if (!yt_game_open(&restore, YT_OPEN_UPDATE, error)
+		if (!yt_game_open(&restore, YT_OPEN_UPDATE, NULL, error)
 		    || !yt_database_write(&restore.database, 1,
 			&original_config.record, error)
 		    || !yt_database_write(&restore.database,
@@ -3841,7 +3842,7 @@ test_ytconfig_scalar_options(struct yt_error *error)
 	bool valid = false;
 
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_UPDATE, error))
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, NULL, error))
 		goto done;
 	original = game.config.record;
 	snapshot = true;
@@ -3891,7 +3892,7 @@ test_ytconfig_scalar_options(struct yt_error *error)
 		sizeof(ending) - 1U))
 		goto done_closed;
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_READ, error))
+	if (!yt_game_open(&game, YT_OPEN_READ, NULL, error))
 		goto done;
 	expected = baseline;
 	yt_record_set_text(&expected, (const uint8_t *)"YTSCORE.ASC", 11U);
@@ -3916,7 +3917,7 @@ done:
 done_closed:
 	if (snapshot) {
 		memset(&restore, 0, sizeof(restore));
-		if (!yt_game_open(&restore, YT_OPEN_UPDATE, error)
+		if (!yt_game_open(&restore, YT_OPEN_UPDATE, NULL, error)
 		    || !yt_database_write(&restore.database, 1, &original, error)
 		    || !yt_database_flush(&restore.database, error))
 			valid = false;
@@ -4009,7 +4010,7 @@ test_ytconfig_planet_editor(struct yt_error *error)
 	int logical;
 
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_UPDATE, error))
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, NULL, error))
 		goto done;
 	for (logical = 1; logical <= 75; ++logical) {
 		size_t record = (size_t)yt_planet_basic_record(&game.config,
@@ -4043,7 +4044,7 @@ test_ytconfig_planet_editor(struct yt_error *error)
 	free(screen);
 	screen = NULL;
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_UPDATE, error))
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, NULL, error))
 		goto done;
 #define SET_ACTIVE_PLANET(number, text) do { \
 	struct yt_record *record = &forced[(number) - 1]; \
@@ -4093,7 +4094,7 @@ test_ytconfig_planet_editor(struct yt_error *error)
 		sizeof(saved) - 1U))
 		goto done_closed;
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_READ, error)
+	if (!yt_game_open(&game, YT_OPEN_READ, NULL, error)
 	    || !yt_game_read_planet(&game, 2, &actual, error))
 		goto done;
 	expected = forced[1];
@@ -4118,7 +4119,7 @@ done:
 done_closed:
 	if (snapshots) {
 		memset(&restore, 0, sizeof(restore));
-		if (!yt_game_open(&restore, YT_OPEN_UPDATE, error))
+		if (!yt_game_open(&restore, YT_OPEN_UPDATE, NULL, error))
 			valid = false;
 		else {
 			for (logical = 1; logical <= 75; ++logical) {
@@ -4199,7 +4200,7 @@ test_ytconfig_port_editor(struct yt_error *error)
 	int logical;
 
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_UPDATE, error))
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, NULL, error))
 		goto done;
 	for (logical = 2; logical <= 300; ++logical) {
 		if (!yt_database_read(&game.database,
@@ -4262,7 +4263,7 @@ test_ytconfig_port_editor(struct yt_error *error)
 	RUN_PORT_CASE(cancel_input, cancel);
 	RUN_PORT_CASE(empty_input, empty);
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_READ, error)
+	if (!yt_game_open(&game, YT_OPEN_READ, NULL, error)
 	    || !yt_game_read_port(&game, 2, &actual, error)
 	    || memcmp(actual.record.bytes, forced[0].bytes,
 		YT_RECORD_SIZE) != 0)
@@ -4271,7 +4272,7 @@ test_ytconfig_port_editor(struct yt_error *error)
 	RUN_PORT_CASE(save_input, saved);
 #undef RUN_PORT_CASE
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_READ, error)
+	if (!yt_game_open(&game, YT_OPEN_READ, NULL, error)
 	    || !yt_game_read_port(&game, 2, &actual, error))
 		goto done;
 	expected = forced[0];
@@ -4294,7 +4295,7 @@ done:
 done_closed:
 	if (snapshots) {
 		memset(&restore, 0, sizeof(restore));
-		if (!yt_game_open(&restore, YT_OPEN_UPDATE, error))
+		if (!yt_game_open(&restore, YT_OPEN_UPDATE, NULL, error))
 			valid = false;
 		else {
 			for (logical = 2; logical <= 300; ++logical) {
@@ -4384,7 +4385,7 @@ test_ytconfig_alias_editor(struct yt_error *error)
 	if (!read_file("YTNAME.DAT", &original_names, &original_names_length))
 		goto done_closed;
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_UPDATE, error))
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, NULL, error))
 		goto done;
 	for (basic = 2; basic <= 51; ++basic) {
 		if (!yt_database_read(&game.database, (size_t)basic,
@@ -4451,7 +4452,7 @@ test_ytconfig_alias_editor(struct yt_error *error)
 	    != 0)
 		goto done_closed;
 	memset(&game, 0, sizeof(game));
-	if (!yt_game_open(&game, YT_OPEN_READ, error))
+	if (!yt_game_open(&game, YT_OPEN_READ, NULL, error))
 		goto done;
 	valid = true;
 	for (basic = 2; valid && basic <= 51; ++basic) {
@@ -4477,7 +4478,7 @@ done:
 done_closed:
 	if (snapshots) {
 		memset(&restore, 0, sizeof(restore));
-		if (!yt_game_open(&restore, YT_OPEN_UPDATE, error))
+		if (!yt_game_open(&restore, YT_OPEN_UPDATE, NULL, error))
 			valid = false;
 		else {
 			for (basic = 2; basic <= 51; ++basic) {

@@ -146,8 +146,9 @@ session_route_basic_fault(struct yt_session *session, struct yt_error *error)
 			return SESSION_FAULT_HANDLER_FAILED;
 		if (projection.disposition == YT_BASIC_FAULT_RESUME_GAMEPLAY)
 			return SESSION_FAULT_RESUME_GAMEPLAY;
-		if (!yt_platform_clock(&date_now, error)
-		    || !yt_platform_clock(&time_now, error))
+		if (!yt_clock_read(&session->door->game.clock, &date_now, error)
+		    || !yt_clock_read(&session->door->game.clock, &time_now,
+		    error))
 			return SESSION_FAULT_HANDLER_FAILED;
 		yt_format_date(&date_now, date);
 		yt_format_time(&time_now, time_text);

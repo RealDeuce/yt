@@ -47,7 +47,8 @@ test_port_update(void)
 	session.market_bases[1] = 30.0f;
 	session.market_bases[2] = 40.0f;
 	yt_error_clear(&error);
-	CHECK(yt_current_date_serial(door.game.config.epoch_year, &today,
+	CHECK(yt_current_date_serial(&door.game.clock,
+	    door.game.config.epoch_year, &today,
 	    &adjusted_year, &error));
 
 	yt_record_blank(&sector.record);
@@ -229,13 +230,15 @@ test_owned_port_purchase(void)
 	yt_record_blank(&sector.record);
 	sector.port = 3.0f;
 	yt_sector_encode(&sector);
-	CHECK(yt_current_date_serial(door.game.config.epoch_year, &today,
+	CHECK(yt_current_date_serial(&door.game.clock,
+	    door.game.config.epoch_year, &today,
 	    &adjusted_year, &error));
 	yt_record_blank(&port.record);
 	(void)snprintf(port.name, sizeof(port.name), "%s", "Old Port");
 	port.name_length = 8.0f;
 	port.last_day = (float)today;
-	port.last_minute = qb_single_divide((float)yt_platform_timer(),
+	port.last_minute = qb_single_divide((float)yt_clock_timer(
+	    &door.game.clock),
 	    60.0f);
 	port.treasury = 4.0f;
 	port.sector = 9.0f;

@@ -241,7 +241,8 @@ edit_maintenance(struct yt_game *game, struct yt_error *error)
 		    || ((unsigned char)line[0] & 0xdfU) == 'N')
 			break;
 	}
-	if (!yt_current_date_serial(game->config.epoch_year, &serial,
+	if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
+	    &serial,
 	    &adjusted, error))
 		return false;
 	if (((unsigned char)line[0] & 0xdfU) == 'Y') {
@@ -1022,7 +1023,8 @@ main(void)
 		char key;
 
 		if (!yt_config_load(&game.database, &game.config, &error)
-		    || !yt_current_date_serial(game.config.epoch_year, &today,
+		    || !yt_current_date_serial(&game.clock,
+		    game.config.epoch_year, &today,
 		        &year, &error)
 		    || !redraw_repairs(&game, working.maximum_holds, &error))
 			goto failure;

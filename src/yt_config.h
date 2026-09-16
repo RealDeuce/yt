@@ -68,8 +68,8 @@ bool yt_config_redraw_repairs(struct yt_database *database,
 
 int yt_date_serial(const struct yt_clock_value *date, float epoch_year,
     int *adjusted_year);
-bool yt_current_date_serial(float epoch, int *serial, int *adjusted_year,
-    struct yt_error *error);
+bool yt_current_date_serial(const struct yt_clock *clock, float epoch,
+    int *serial, int *adjusted_year, struct yt_error *error);
 void yt_format_date(const struct yt_clock_value *value, char dest[11]);
 void yt_format_time(const struct yt_clock_value *value, char dest[9]);
 

@@ -329,8 +329,8 @@ yt_maintenance_players_run(struct maint_state *state,
 			    || !line_output(line_context,
 			    output.screen.rows[0].data,
 			    output.screen.rows[0].length, error)
-			    || !yt_platform_clock(&time_now, error)
-			    || !yt_platform_clock(&date_now, error))
+			    || !yt_clock_read(&state->game.clock, &time_now, error)
+			    || !yt_clock_read(&state->game.clock, &date_now, error))
 				return false;
 			yt_format_time(&time_now, time_text);
 			yt_format_date(&date_now, date_text);

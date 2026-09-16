@@ -46,7 +46,8 @@ yt_session_update_planet_physical(struct yt_session *session,
 	int adjusted_year;
 	float timer_seconds;
 
-	if (!yt_current_date_serial(session->door->game.config.epoch_year,
+	if (!yt_current_date_serial(&session->door->game.clock,
+	    session->door->game.config.epoch_year,
 	    &today, &adjusted_year, error))
 		return false;
 	session->door->game.today = today;
@@ -56,7 +57,7 @@ yt_session_update_planet_physical(struct yt_session *session,
 		return false;
 	if (!yt_planet_update_prepare(&record, &update, error))
 		return false;
-	timer_seconds = (float)yt_platform_timer();
+	timer_seconds = (float)yt_clock_timer(&session->door->game.clock);
 	if (!yt_planet_update_record(&record, &update, (float)today,
 	    timer_seconds, &updated_economy, error)
 	    || !yt_database_write(&session->door->game.database,

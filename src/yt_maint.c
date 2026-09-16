@@ -147,7 +147,8 @@ store_final_marker(struct yt_game *game, struct yt_error *error)
 {
 	int serial;
 
-	if (!yt_current_date_serial(game->config.epoch_year, &serial, NULL,
+	if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
+	    &serial, NULL,
 	    error))
 		return false;
 	return yt_maintenance_store_final_marker(game, (float)serial,
@@ -204,7 +205,7 @@ yt_maintenance_run(struct yt_error *error)
 	bool result = false;
 
 	memset(&state, 0, sizeof(state));
-	if (!yt_game_open(&state.game, YT_OPEN_UPDATE, error))
+	if (!yt_game_open(&state.game, YT_OPEN_UPDATE, NULL, error))
 		return false;
 	/* The shipped 0244..0270 branch persists this before later defaults. */
 	if (yt_maintenance_default_headquarters(
@@ -266,7 +267,7 @@ yt_maintenance_run(struct yt_error *error)
 	    maintenance_stdout_line, NULL, error)
 	    || !yt_radio_compact(error)
 	    || !yt_news_rotate(error)
-	    || !yt_maintenance_write_header(error)
+	    || !yt_maintenance_write_header(&state.game.clock, error)
 	    || !maintenance_emit_output_row(&entry_output, 0x04E8U,
 	    maintenance_stdout_line, NULL, error)
 	    || !maintenance_emit_output_row(&entry_output, 0x04FCU,

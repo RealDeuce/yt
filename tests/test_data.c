@@ -279,17 +279,16 @@ test_clock(void)
 		{2099, 12, 31, 23, 59, 59, 50}
 	};
 	struct scripted_clock script = {samples, YT_ARRAY_LEN(samples), 0};
+	const struct yt_clock clock = {scripted_clock_read, &script};
 	struct yt_clock_value actual;
 	struct yt_error error;
 	yt_error_clear(&error);
-	yt_platform_set_clock_provider(scripted_clock_read, &script);
-	CHECK(yt_platform_clock(&actual, &error));
+	CHECK(yt_clock_read(&clock, &actual, &error));
 	CHECK(memcmp(&actual, &samples[0], sizeof(actual)) == 0);
-	CHECK(yt_platform_clock(&actual, &error));
+	CHECK(yt_clock_read(&clock, &actual, &error));
 	CHECK(memcmp(&actual, &samples[1], sizeof(actual)) == 0);
-	CHECK(!yt_platform_clock(&actual, &error));
+	CHECK(!yt_clock_read(&clock, &actual, &error));
 	CHECK(error.status == YT_IO_ERROR);
-	yt_platform_set_clock_provider(NULL, NULL);
 }
 
 static void

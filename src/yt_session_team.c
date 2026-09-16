@@ -119,10 +119,10 @@ session_team_audit(struct yt_session *session, int team_id,
 	size_t index;
 
 	if (event == YT_TEAM_AUDIT_JOIN || event == YT_TEAM_AUDIT_QUIT) {
-		if (!yt_platform_clock(&now, error))
+		if (!yt_clock_read(&session->door->game.clock, &now, error))
 			return false;
 		yt_format_date(&now, date);
-		if (!yt_platform_clock(&now, error))
+		if (!yt_clock_read(&session->door->game.clock, &now, error))
 			return false;
 		yt_format_time(&now, time_text);
 	}

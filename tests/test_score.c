@@ -4269,14 +4269,17 @@ check_maintenance_header_writer(void)
 		{2026, 7, 22, 22, 47, 29, 0},
 		{2031, 8, 23, 1, 2, 3, 0}
 	}, 0};
+	const struct yt_clock clock = {
+		.read = score_clock_read,
+		.context = &script,
+	};
 	struct yt_text_file text = {0};
 	struct yt_error error;
 	bool valid = false;
 
 	(void)remove("YTNEWS.DAT");
-	yt_platform_set_clock_provider(score_clock_read, &script);
 	yt_error_clear(&error);
-	if (!yt_maintenance_write_header(&error)
+	if (!yt_maintenance_write_header(&clock, &error)
 	    || script.position != 2U
 	    || !yt_text_read("YTNEWS.DAT", &text, &error))
 		goto done;
@@ -4285,7 +4288,6 @@ check_maintenance_header_writer(void)
 
 done:
 	yt_text_free(&text);
-	yt_platform_set_clock_provider(NULL, NULL);
 	(void)remove("YTNEWS.DAT");
 	return valid;
 }
@@ -4358,7 +4360,7 @@ check_maintenance_player_pass(void)
 		sector_cache[record] = -99.0f;
 		cloak_cache[record] = -99.0f;
 	}
-	yt_platform_set_clock_provider(score_clock_read, &script);
+	game.clock = (struct yt_clock){score_clock_read, &script};
 	state.game = game;
 	state.player_sector = sector_cache;
 	state.player_cloak = cloak_cache;
@@ -4417,7 +4419,6 @@ done:
 	if (file != NULL)
 		(void)fclose(file);
 	yt_text_free(&news);
-	yt_platform_set_clock_provider(NULL, NULL);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
 	(void)remove("YTNEWS.DAT");
@@ -4522,7 +4523,7 @@ check_maintenance_port_pass(void)
 		    &before[record], &error))
 			goto done;
 	}
-	yt_platform_set_clock_provider(score_clock_read, &clock_script);
+	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	if (!yt_maintenance_maintain_ports(&game,
 	    NULL, 0U, score_line_collect, &screen,
 	    &plagued, &error) || plagued != 1
@@ -4579,7 +4580,6 @@ check_maintenance_port_pass(void)
 
 done:
 	yt_text_free(&news);
-	yt_platform_set_clock_provider(NULL, NULL);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
 	(void)remove("YTNEWS.DAT");
@@ -4705,7 +4705,7 @@ check_maintenance_mercenary_rebuild_phase_pass(void)
 		if (!yt_database_write(&game.database, physical, &record, &error))
 			goto done;
 	}
-	yt_platform_set_clock_provider(score_clock_read, &clock_script);
+	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
 	    || game.random.draws != 1U
@@ -4733,7 +4733,6 @@ check_maintenance_mercenary_rebuild_phase_pass(void)
 done:
 	if (radio_file != NULL)
 		(void)fclose(radio_file);
-	yt_platform_set_clock_provider(NULL, NULL);
 	yt_text_free(&news);
 	yt_maintenance_route_cache_free(&cache);
 	yt_game_close(&game);
@@ -5291,7 +5290,7 @@ check_maintenance_mercenary_base_pass(void)
 	    || !yt_record_set_number(&planet_expected, YT_F117, 25000000.0f)
 	    || !yt_record_set_number(&planet_expected, YT_F125, 0.0f))
 		goto done;
-	yt_platform_set_clock_provider(score_clock_read, &clock_script);
+	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	if (!yt_maintenance_maintain_mercenary_base(&game, 3, 4,
 	    &rebuilt, &error) || !rebuilt || game.random.draws != 2U
 	    || script.position != sizeof(random_bytes)
@@ -5327,7 +5326,6 @@ check_maintenance_mercenary_base_pass(void)
 	valid = true;
 
 done:
-	yt_platform_set_clock_provider(NULL, NULL);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
 	return valid;
@@ -6673,7 +6671,7 @@ check_maintenance_final_suffix_pass(void)
 		goto done;
 	yt_random_init(&game.random);
 	yt_random_set_provider(&game.random, score_random_fill, &random_script);
-	yt_platform_set_clock_provider(score_clock_read, &clock_script);
+	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error)
@@ -6876,7 +6874,6 @@ done:
 	yt_database_close(&verify);
 	yt_text_free(&bulletin);
 	yt_game_close(&game);
-	yt_platform_set_clock_provider(NULL, NULL);
 	(void)remove("YTDATA.DAT");
 	(void)remove("YTTEMP");
 	(void)remove("YTNEWS.DAT");
@@ -6993,7 +6990,7 @@ check_maintenance_planet_pass(void)
 		    &before[record], &error))
 			goto done;
 	}
-	yt_platform_set_clock_provider(score_clock_read, &clock_script);
+	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	if (!yt_maintenance_maintain_planets(&game,
 	    NULL, 0U, score_line_collect, &screen,
 	    &events, &error) || events != 1 || clock_script.position != 4U
@@ -7043,7 +7040,6 @@ check_maintenance_planet_pass(void)
 
 done:
 	yt_text_free(&news);
-	yt_platform_set_clock_provider(NULL, NULL);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
 	(void)remove("YTNEWS.DAT");
@@ -7201,7 +7197,7 @@ check_maintenance_wanderer_pass(void)
 			goto done;
 	}
 	memset(&screen, 0, sizeof(screen));
-	yt_platform_set_clock_provider(score_clock_read, &clock_script);
+	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	if (!yt_maintenance_maintain_wanderer(&game,
 	    NULL, 0U, score_line_collect, &screen,
 	    &mutation, &error)
@@ -7253,7 +7249,6 @@ check_maintenance_wanderer_pass(void)
 
 done:
 	yt_text_free(&news);
-	yt_platform_set_clock_provider(NULL, NULL);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
 	(void)remove("YTNEWS.DAT");
@@ -7330,7 +7325,7 @@ check_maintenance_xannor_home_pass(void)
 	if (!yt_database_write(&game.database, 3U, &sector_before, &error)
 	    || !yt_database_write(&game.database, 7U, &planet_before, &error))
 		goto done;
-	yt_platform_set_clock_provider(score_clock_read, &clock_script);
+	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	if (!yt_maintenance_maintain_xannor_home(&game,
 	    NULL, 0U, score_line_collect, &screen,
 	    &mutation, &error)
@@ -7462,7 +7457,6 @@ check_maintenance_xannor_home_pass(void)
 
 done:
 	yt_text_free(&news);
-	yt_platform_set_clock_provider(NULL, NULL);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
 	(void)remove("YTNEWS.DAT");
@@ -9244,13 +9238,11 @@ check_date_serial(void)
 	date.year = 2028;
 	script.values[0] = date;
 	yt_error_clear(&error);
-	yt_platform_set_clock_provider(score_clock_read, &script);
-	if (!yt_current_date_serial(27.5f, &serial, &adjusted, &error)
+	const struct yt_clock clock = {score_clock_read, &script};
+	if (!yt_current_date_serial(&clock, 27.5f, &serial, &adjusted, &error)
 	    || serial != 61 || adjusted != 28 || script.position != 1U) {
-		yt_platform_set_clock_provider(NULL, NULL);
 		return false;
 	}
-	yt_platform_set_clock_provider(NULL, NULL);
 
 	return true;
 }
@@ -15362,8 +15354,8 @@ main(void)
 		goto done;
 	if (!check_maintenance_writers())
 		goto done;
-	yt_platform_set_clock_provider(score_clock_read, &clock_script);
 	memset(&game, 0, sizeof(game));
+	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -15659,7 +15651,6 @@ main(void)
 close:
 	yt_database_close(&game.database);
 done:
-	yt_platform_set_clock_provider(NULL, NULL);
 	remove("YTSCORE.ASC");
 	remove("ZERO.ASC");
 	remove("YTTEMP");

@@ -44,9 +44,6 @@ bool yt_platform_entropy(void *buffer, size_t length, struct yt_error *error);
 bool yt_clock_read(const struct yt_clock *clock, struct yt_clock_value *value,
     struct yt_error *error);
 double yt_clock_timer(const struct yt_clock *clock);
-void yt_platform_set_clock_provider(yt_clock_read_fn provider, void *context);
-bool yt_platform_clock(struct yt_clock_value *value, struct yt_error *error);
-double yt_platform_timer(void);
 bool yt_platform_executable_path(char *dest, size_t size, const char *argv0,
     struct yt_error *error);
 bool yt_platform_sibling_program(char *dest, size_t size,

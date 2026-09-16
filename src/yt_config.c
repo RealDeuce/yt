@@ -439,12 +439,12 @@ yt_date_serial(const struct yt_clock_value *date, float epoch_year,
 }
 
 bool
-yt_current_date_serial(float epoch, int *serial, int *adjusted_year,
-    struct yt_error *error)
+yt_current_date_serial(const struct yt_clock *clock, float epoch, int *serial,
+    int *adjusted_year, struct yt_error *error)
 {
 	struct yt_clock_value current;
 
-	if (!yt_platform_clock(&current, error))
+	if (!yt_clock_read(clock, &current, error))
 		return false;
 	*serial = date_serial_epoch(&current, epoch, adjusted_year);
 	return true;

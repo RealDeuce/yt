@@ -41,7 +41,8 @@ test_self_owned_planet(void)
 	door.game.config.epoch_year = 26.0f;
 	door.game.config.planet_offset = 3.0f;
 	yt_error_clear(&error);
-	CHECK(yt_current_date_serial(door.game.config.epoch_year, &today,
+	CHECK(yt_current_date_serial(&door.game.clock,
+	    door.game.config.epoch_year, &today,
 	    &adjusted_year, &error));
 	planet.last_day = (float)today;
 	planet.owner = 2.0f;
@@ -107,7 +108,8 @@ test_land_and_leave_owned_planet(void)
 	door.game.config.planet_offset = 6.0f;
 	door.game.config.total_records = 7.0f;
 	yt_error_clear(&error);
-	CHECK(yt_current_date_serial(door.game.config.epoch_year, &today,
+	CHECK(yt_current_date_serial(&door.game.clock,
+	    door.game.config.epoch_year, &today,
 	    &adjusted_year, &error));
 
 	yt_record_blank(&player.record);

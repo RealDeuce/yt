@@ -530,7 +530,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			    strlen("I'm sorry but the game is full. Try again tomorrow."),
 			    "new player full row", error))
 				return false;
-			if (!yt_platform_clock(&now, error))
+			if (!yt_clock_read(&session->door->game.clock, &now, error))
 				return false;
 			yt_format_date(&now, date);
 			if (!yt_news_append_game_full(date, full, error))
@@ -548,7 +548,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		    session->cached_player_name,
 		    &session->cached_player_name_length, error))
 			return false;
-		if (!yt_platform_clock(&now, error))
+		if (!yt_clock_read(&session->door->game.clock, &now, error))
 			return false;
 		{
 			char date[11];
@@ -583,7 +583,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			return false;
 		startup_day = qb_mbf32_decode(today_raw);
 		self_kill = killer == (float)session_record(session);
-		if (!yt_platform_clock(&now, error))
+		if (!yt_clock_read(&session->door->game.clock, &now, error))
 			return false;
 		{
 			char time_text[9];

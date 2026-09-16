@@ -295,7 +295,8 @@ done:
 }
 
 bool
-yt_maintenance_write_header(struct yt_error *error)
+yt_maintenance_write_header(const struct yt_clock *clock,
+    struct yt_error *error)
 {
 	struct yt_clock_value time_value;
 	struct yt_clock_value date_value;
@@ -303,10 +304,10 @@ yt_maintenance_write_header(struct yt_error *error)
 	char date_text[11];
 	char line[160];
 
-	if (!yt_platform_clock(&time_value, error))
+	if (!yt_clock_read(clock, &time_value, error))
 		return false;
 	yt_format_time(&time_value, time_text);
-	if (!yt_platform_clock(&date_value, error))
+	if (!yt_clock_read(clock, &date_value, error))
 		return false;
 	yt_format_date(&date_value, date_text);
 	(void)snprintf(line, sizeof(line),

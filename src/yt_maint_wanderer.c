@@ -131,7 +131,8 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	}
 	local.rebuilt = local.removed_sector == 0;
 	if (local.rebuilt) {
-		if (!yt_current_date_serial(game->config.epoch_year, &today, NULL,
+		if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
+		    &today, NULL,
 		    error)
 		    || !yt_maintenance_compose_wanderer_phase(blank,
 		    blank_length, true, &output))
@@ -181,4 +182,3 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 		*result = local;
 	return true;
 }
-

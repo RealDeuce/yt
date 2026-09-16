@@ -21,16 +21,17 @@ set_error(struct yt_error *error, enum yt_status status,
 }
 
 static bool
-current_day_minute(struct maint_state *state, float *day, float *minute,
+current_day_minute(struct yt_game *game, float *day, float *minute,
     struct yt_error *error)
 {
 	int serial;
 
-	if (!yt_current_date_serial(state->game.config.epoch_year, &serial,
+	if (!yt_current_date_serial(&game->clock,
+	    game->config.epoch_year, &serial,
 	    NULL, error))
 		return false;
 	*day = (float)serial;
-	*minute = (float)(yt_platform_timer() / 60.0);
+	*minute = (float)(yt_clock_timer(&game->clock) / 60.0);
 	return true;
 }
 
@@ -158,7 +159,6 @@ yt_maintenance_maintain_ports(struct yt_game *game,
     int *plagued_count, struct yt_error *error)
 {
 	struct yt_maintenance_output_result output;
-	struct maint_state clock_state;
 	int port_count;
 	int plagued = 0;
 	int logical;
@@ -183,8 +183,6 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 		    output.rows[logical].length, error))
 			return false;
 	}
-	memset(&clock_state, 0, sizeof(clock_state));
-	clock_state.game.config = game->config;
 	for (logical = 1; logical <= port_count; ++logical) {
 		struct yt_maintenance_port_result mutation;
 		struct yt_port port;
@@ -192,7 +190,7 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 		float minute;
 
 		if (!yt_game_read_port(game, logical, &port, error)
-		    || !current_day_minute(&clock_state, &day, &minute, error)
+		    || !current_day_minute(game, &day, &minute, error)
 		    || !yt_maintenance_update_port(&game->random, &port, day,
 		    minute, &mutation, error)
 		    || !maintenance_write_port(game, logical, &port, error))
@@ -420,7 +418,6 @@ yt_maintenance_maintain_planets(struct yt_game *game,
     int *event_count, struct yt_error *error)
 {
 	struct yt_maintenance_output_result output;
-	struct maint_state clock_state;
 	int planet_count;
 	int events = 0;
 	int logical;
@@ -445,8 +442,6 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 		    output.rows[logical].length, error))
 			return false;
 	}
-	memset(&clock_state, 0, sizeof(clock_state));
-	clock_state.game.config = game->config;
 	for (logical = 1; logical <= planet_count; ++logical) {
 		struct yt_maintenance_planet_result mutation;
 		struct yt_maintenance_text name;
@@ -473,7 +468,7 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 		name.data = planet.record.bytes;
 		name.length = (size_t)stored_length < YT_TEXT_FIELD_SIZE
 		    ? (size_t)stored_length : YT_TEXT_FIELD_SIZE;
-		if (!current_day_minute(&clock_state, &day, &minute, error)
+		if (!current_day_minute(game, &day, &minute, error)
 		    || !yt_maintenance_update_planet(&game->random, &planet, day,
 		    minute, &mutation, error)
 		    || !yt_maintenance_compose_planet_phase(blank,
@@ -496,4 +491,3 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 		*event_count = events;
 	return true;
 }
-

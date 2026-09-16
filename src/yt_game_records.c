@@ -323,17 +323,19 @@ yt_planet_encode(struct yt_planet *planet)
 
 bool
 yt_game_open(struct yt_game *game, enum yt_open_mode mode,
-    struct yt_error *error)
+    const struct yt_clock *clock, struct yt_error *error)
 {
 	memset(game, 0, sizeof(*game));
+	if (clock != NULL)
+		game->clock = *clock;
 	yt_random_init(&game->random);
 	if (!yt_database_open(&game->database, "YTDATA.DAT", mode, error)
 	    || !yt_config_load(&game->database, &game->config, error)) {
 		yt_game_close(game);
 		return false;
 	}
-	return yt_current_date_serial(game->config.epoch_year, &game->today,
-	    &game->adjusted_year, error);
+	return yt_current_date_serial(&game->clock, game->config.epoch_year,
+	    &game->today, &game->adjusted_year, error);
 }
 
 void
@@ -576,4 +578,3 @@ yt_game_post_login_repairs(struct yt_game *game, int basic_record,
 		*repairs = applied;
 	return true;
 }
-

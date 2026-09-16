@@ -351,8 +351,8 @@ yt_scoreboard_write(struct yt_scoreboard *scoreboard, struct yt_error *error)
 	    "Y a n k e e   T r a d e r   S c o r e b o a r d\r\n\r\n",
 	    error))
 		goto failure;
-	if (!yt_platform_clock(&date_now, error)
-	    || !yt_platform_clock(&time_now, error))
+	if (!yt_clock_read(&game->clock, &date_now, error)
+	    || !yt_clock_read(&game->clock, &time_now, error))
 		goto failure;
 	yt_format_date(&date_now, date);
 	yt_format_time(&time_now, time_text);

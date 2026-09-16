@@ -39,9 +39,6 @@ _Static_assert(sizeof(struct rmt_serial_private)
     <= YT_PLATFORM_RMT_SERIAL_PRIVATE,
     "RMT serial private state exceeds its public storage");
 
-static yt_clock_read_fn installed_clock_provider;
-static void *installed_clock_context;
-
 static void
 set_error(struct yt_error *error, enum yt_status status, const char *operation,
     const char *path)
@@ -102,12 +99,8 @@ yt_platform_entropy(void *buffer, size_t length, struct yt_error *error)
 #endif
 }
 
-void
-yt_platform_set_clock_provider(yt_clock_read_fn provider, void *context)
-{
-	installed_clock_provider = provider;
-	installed_clock_context = context;
-}
+static bool system_clock_read(struct yt_clock_value *value,
+    struct yt_error *error);
 
 bool
 yt_clock_read(const struct yt_clock *clock, struct yt_clock_value *value,
@@ -115,7 +108,7 @@ yt_clock_read(const struct yt_clock *clock, struct yt_clock_value *value,
 {
 	if (clock != NULL && clock->read != NULL)
 		return clock->read(clock->context, value, error);
-	return yt_platform_clock(value, error);
+	return system_clock_read(value, error);
 }
 
 double
@@ -129,11 +122,9 @@ yt_clock_timer(const struct yt_clock *clock)
 	    + (double)value.hundredth / 100.0;
 }
 
-bool
-yt_platform_clock(struct yt_clock_value *value, struct yt_error *error)
+static bool
+system_clock_read(struct yt_clock_value *value, struct yt_error *error)
 {
-	if (installed_clock_provider != NULL)
-		return installed_clock_provider(installed_clock_context, value, error);
 #ifdef _WIN32
 	SYSTEMTIME system_time;
 
@@ -168,17 +159,6 @@ yt_platform_clock(struct yt_clock_value *value, struct yt_error *error)
 	value->hundredth = (int)(now.tv_nsec / 10000000L);
 	return true;
 #endif
-}
-
-double
-yt_platform_timer(void)
-{
-	struct yt_clock_value value;
-
-	if (!yt_platform_clock(&value, NULL))
-		return 0.0;
-	return (double)(value.hour * 3600 + value.minute * 60 + value.second)
-	    + (double)value.hundredth / 100.0;
 }
 
 bool

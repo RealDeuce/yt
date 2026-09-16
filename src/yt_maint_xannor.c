@@ -976,7 +976,8 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	local.rebuilt = sector.planet == 0.0f;
 	starting_draws = game->random.draws;
 	if (local.rebuilt) {
-		if (!yt_current_date_serial(game->config.epoch_year, &today, NULL,
+		if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
+		    &today, NULL,
 		    error)
 		    || !yt_maintenance_compose_xannor_home(blank,
 		    blank_length, true, &output))
@@ -990,8 +991,8 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 		    output.rows[3].length, error)
 		    || !yt_game_read_planet(game, planet_count, &planet, error))
 			return false;
-		minute = yt_maintenance_sint(
-		    qb_single_divide((float)yt_platform_timer(), 60.0f));
+		minute = yt_maintenance_sint(qb_single_divide(
+		    (float)yt_clock_timer(&game->clock), 60.0f));
 		if (!yt_random_next(&game->random, &sample, error))
 			return false;
 		planet.ground_forces = yt_maintenance_sint(

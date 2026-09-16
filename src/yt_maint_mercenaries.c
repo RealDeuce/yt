@@ -140,7 +140,8 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 		struct yt_sector sector;
 		int today;
 
-		if (!yt_current_date_serial(game->config.epoch_year, &today, NULL,
+		if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
+		    &today, NULL,
 		    error)
 		    || !yt_game_read_planet(game, planet_number, &planet, error))
 			return false;

@@ -288,6 +288,7 @@ struct yt_game {
 	struct yt_database database;
 	struct yt_config config;
 	struct yt_random random;
+	struct yt_clock clock;
 	int today;
 	int adjusted_year;
 };
@@ -322,7 +323,7 @@ bool yt_planet_update_record(struct yt_record *record,
     struct yt_error *error);
 
 bool yt_game_open(struct yt_game *game, enum yt_open_mode mode,
-    struct yt_error *error);
+    const struct yt_clock *clock, struct yt_error *error);
 void yt_game_close(struct yt_game *game);
 bool yt_game_read_player(struct yt_game *game, int basic_record,
     struct yt_player *player, struct yt_error *error);

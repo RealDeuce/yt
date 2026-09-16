@@ -440,7 +440,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				int today;
 				int adjusted_year;
 
-				if (!yt_current_date_serial(
+				if (!yt_current_date_serial(&session->door->game.clock,
 				    session->door->game.config.epoch_year, &today,
 				    &adjusted_year, error))
 					goto done;
@@ -468,7 +468,8 @@ nearest_scan_run(struct yt_session *session, int selector,
 				if (!nearest_filter(&scan, member))
 					continue;
 			}
-			scan.timer_seconds = (float)yt_platform_timer();
+			scan.timer_seconds = (float)yt_clock_timer(
+			    &session->door->game.clock);
 			if (!nearest_single(scan.timer_seconds, &scan.timer_seconds,
 			    error, "nearest TIMER")
 			    || !yt_nearest_market_project(&scan.market, &scan.port,

@@ -99,7 +99,8 @@ profit_project(struct yt_session *session, const struct profit_report *report,
 	float current_day;
 	float timer_seconds;
 
-	if (!yt_current_date_serial(session->door->game.config.epoch_year,
+	if (!yt_current_date_serial(&session->door->game.clock,
+	    session->door->game.config.epoch_year,
 	    &today, &adjusted_year, error))
 		return false;
 	session->door->game.today = today;
@@ -108,7 +109,7 @@ profit_project(struct yt_session *session, const struct profit_report *report,
 	if (!profit_single(current_day, &current_day, error,
 	    "profit current day"))
 		return false;
-	timer_seconds = (float)yt_platform_timer();
+	timer_seconds = (float)yt_clock_timer(&session->door->game.clock);
 	if (!profit_single(timer_seconds, &timer_seconds, error,
 	    "profit TIMER")
 	    || !yt_nearest_market_project(market, port, report->base_price,

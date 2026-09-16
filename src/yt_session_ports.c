@@ -60,7 +60,8 @@ yt_session_update_port(struct yt_session *session, int sector_number,
 	if (market->port_physical_record == 0U)
 		return session_range_error(error,
 		    "ordinary port record conversion");
-	if (!yt_current_date_serial(session->door->game.config.epoch_year,
+	if (!yt_current_date_serial(&session->door->game.clock,
+	    session->door->game.config.epoch_year,
 	    &today, &adjusted_year, error))
 		return false;
 	session->door->game.today = today;
@@ -71,7 +72,7 @@ yt_session_update_port(struct yt_session *session, int sector_number,
 	    YT_BASIC_FAULT_PORT_UPDATER_PORT_GET, error))
 		return false;
 	yt_port_decode(&market->port, &record);
-	market->timer_seconds = (float)yt_platform_timer();
+	market->timer_seconds = (float)yt_clock_timer(&session->door->game.clock);
 	memcpy(market->base_price, session->market_bases,
 	    sizeof(market->base_price));
 	if (!yt_port_market_update(market, error))
@@ -175,11 +176,11 @@ yt_session_port_report(struct yt_session *session, int logical_port,
 	    YT_BASIC_FAULT_PORT_REPORT_PORT_GET, error))
 		return false;
 	yt_port_decode(&report_port, &record);
-	if (!yt_platform_clock(&now, error))
+	if (!yt_clock_read(&session->door->game.clock, &now, error))
 		return false;
 	yt_format_date(&now, rendered_date);
 	memcpy(date, rendered_date, sizeof(date));
-	if (!yt_platform_clock(&now, error))
+	if (!yt_clock_read(&session->door->game.clock, &now, error))
 		return false;
 	yt_format_time(&now, rendered_time);
 	memcpy(time_text, rendered_time, sizeof(time_text));
