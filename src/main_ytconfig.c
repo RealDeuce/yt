@@ -554,20 +554,16 @@ edit_ports(struct yt_game *game, struct yt_error *error)
 	for (logical = 2; logical <= 300; ++logical) {
 		struct yt_port port;
 		uint8_t candidate[YT_TEXT_FIELD_SIZE];
-		bool overflow;
-		int name_length;
+		size_t name_length;
 
 		if (!yt_game_read_port(game, logical, &port, error))
 			return false;
-		name_length = (int)qb_cint_mbf32(
-		    port.record.bytes + YT_F85, 0U, &overflow);
-		if (overflow || name_length < 0)
-			return false;
-		if (name_length > (int)sizeof(candidate))
-			name_length = (int)sizeof(candidate);
-		memcpy(candidate, port.record.bytes, (size_t)name_length);
-		qb_ascii_upper_n(candidate, (size_t)name_length);
-		if (!byte_string_contains(candidate, (size_t)name_length, upper,
+		name_length = port.name_length;
+		if (name_length > sizeof(candidate))
+			name_length = sizeof(candidate);
+		memcpy(candidate, port.record.bytes, name_length);
+		qb_ascii_upper_n(candidate, name_length);
+		if (!byte_string_contains(candidate, name_length, upper,
 		    search_length))
 			continue;
 		matched = true;
@@ -576,7 +572,7 @@ edit_ports(struct yt_game *game, struct yt_error *error)
 			uint8_t folded;
 
 			if (!yt_config_compose_port_match_prompt(
-			    port.record.bytes, (size_t)name_length,
+			    port.record.bytes, name_length,
 			    output.final_column, &output)
 			    || !write_output(&output, error))
 				return false;
