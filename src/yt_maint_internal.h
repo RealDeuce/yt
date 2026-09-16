@@ -66,5 +66,10 @@ bool yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
     struct yt_maintenance_route_cache *route_cache,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error);
+bool yt_maintenance_mercenary_destination(struct yt_game *game,
+    int sector_number, float moving_fighters,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_sector *arrival_sector, float *moving_after, bool *continues,
+    struct yt_error *error);
 
 #endif

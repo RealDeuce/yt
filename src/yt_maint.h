@@ -276,10 +276,6 @@ bool yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
     struct yt_sector *arrival_sector,
     struct yt_maintenance_mercenary_planet_result *result,
     struct yt_error *error);
-bool yt_maintenance_mercenary_destination(struct yt_game *game,
-    int sector_number, float moving_fighters,
-    yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_sector *arrival_sector, struct yt_error *error);
 bool yt_maintenance_super_lottery(struct yt_game *game, int player_count,
     int planet_count, int sector_count, const uint8_t *blank,
     size_t blank_length, yt_maintenance_score_line_fn line_output,

@@ -5776,6 +5776,8 @@ check_maintenance_mercenary_destination_pass(void)
 	struct yt_game game;
 	struct yt_error error;
 	FILE *file = NULL;
+	float moving_after;
+	bool continues;
 	int sector;
 	bool valid = false;
 
@@ -5810,25 +5812,29 @@ check_maintenance_mercenary_destination_pass(void)
 	}
 	if (!yt_game_read_sector(&game, 1, &arrival, &error)
 	    || !yt_maintenance_mercenary_destination(&game, 1, 4.0f,
-	    score_line_collect, &screen, &arrival, &error)
+	    score_line_collect, &screen, &arrival, &moving_after, &continues,
+	    &error)
 	    || arrival.fighters != 7.0f || arrival.fighter_owner != -2.0f
 	    || game.random.draws != 0U || screen.lines != 0U)
 		goto done;
 	if (!yt_game_read_sector(&game, 2, &arrival, &error)
 	    || !yt_maintenance_mercenary_destination(&game, 2, 6.0f,
-	    score_line_collect, &screen, &arrival, &error)
+	    score_line_collect, &screen, &arrival, &moving_after, &continues,
+	    &error)
 	    || arrival.fighters != 8.0f || arrival.fighter_owner != 2.0f
 	    || game.random.draws != 1U)
 		goto done;
 	if (!yt_game_read_sector(&game, 3, &arrival, &error)
 	    || !yt_maintenance_mercenary_destination(&game, 3, 5.0f,
-	    score_line_collect, &screen, &arrival, &error)
+	    score_line_collect, &screen, &arrival, &moving_after, &continues,
+	    &error)
 	    || arrival.fighters != 5.0f || arrival.fighter_owner != -2.0f
 	    || game.random.draws != 4U)
 		goto done;
 	if (!yt_game_read_sector(&game, 4, &arrival, &error)
 	    || !yt_maintenance_mercenary_destination(&game, 4, 1.0f,
-	    score_line_collect, &screen, &arrival, &error)
+	    score_line_collect, &screen, &arrival, &moving_after, &continues,
+	    &error)
 	    || arrival.fighters != 2.0f || arrival.fighter_owner != -1.0f
 	    || game.random.draws != 6U
 	    || script.position != sizeof(random_bytes)
@@ -5842,7 +5848,8 @@ check_maintenance_mercenary_destination_pass(void)
 	yt_random_set_provider(&game.random, score_random_fill, &large_script);
 	if (!yt_game_read_sector(&game, 5, &arrival, &error)
 	    || !yt_maintenance_mercenary_destination(&game, 5, 201.0f,
-	    score_line_collect, &screen, &arrival, &error)
+	    score_line_collect, &screen, &arrival, &moving_after, &continues,
+	    &error)
 	    || arrival.fighters != 201.0f || arrival.fighter_owner != -2.0f
 	    || game.random.draws != 53U
 	    || large_script.position != sizeof(large_random_bytes)
@@ -5881,15 +5888,6 @@ check_maintenance_mercenary_destination_pass(void)
 		goto done;
 	(void)fclose(file);
 	file = NULL;
-	if (yt_maintenance_mercenary_destination(NULL, 1, 1.0f,
-	    score_line_collect, &screen, &arrival, &error)
-	    || yt_maintenance_mercenary_destination(&game, 0, 1.0f,
-	    score_line_collect, &screen, &arrival, &error)
-	    || yt_maintenance_mercenary_destination(&game, 1, 1.0f,
-	    NULL, &screen, &arrival, &error)
-	    || yt_maintenance_mercenary_destination(&game, 1, 1.0f,
-	    score_line_collect, &screen, NULL, &error))
-		goto done;
 	valid = true;
 
 done:

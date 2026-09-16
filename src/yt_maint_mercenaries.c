@@ -708,8 +708,8 @@ mercenary_destination_join_lines(double moving, int sector_number,
 	    radio_length, (const uint8_t *)"!", 1U);
 }
 
-static bool
-mercenary_destination_impl(struct yt_game *game,
+bool
+yt_maintenance_mercenary_destination(struct yt_game *game,
     int sector_number, float moving_fighters,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_sector *arrival_sector, float *moving_after,
@@ -865,20 +865,6 @@ mercenary_destination_impl(struct yt_game *game,
 	return true;
 }
 
-bool
-yt_maintenance_mercenary_destination(struct yt_game *game,
-    int sector_number, float moving_fighters,
-    yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_sector *arrival_sector, struct yt_error *error)
-{
-	float moving_after;
-	bool continues;
-
-	return mercenary_destination_impl(game, sector_number, moving_fighters,
-	    line_output, line_context, arrival_sector, &moving_after, &continues,
-	    error);
-}
-
 enum mercenary_arrival_result {
 	MERCENARY_ARRIVAL_TERMINAL,
 	MERCENARY_ARRIVAL_CONTINUE
@@ -923,7 +909,8 @@ mercenary_arrival(struct yt_game *game, int sector_number,
 	{
 		bool continues;
 
-		if (!mercenary_destination_impl(game, sector_number, *moving,
+		if (!yt_maintenance_mercenary_destination(game, sector_number,
+		    *moving,
 		    line_output, line_context, &sector, moving, &continues, error))
 			return false;
 		*arrival_result = continues ? MERCENARY_ARRIVAL_CONTINUE
