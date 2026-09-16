@@ -3247,6 +3247,30 @@ static bool score_line_collect(void *context, const uint8_t *line,
     size_t length, struct yt_error *error);
 
 static bool
+run_mercenary_phase(struct yt_game *game,
+    struct yt_maintenance_route_cache *cache,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
+{
+	struct maint_state state = {0};
+	bool success;
+
+	state.game = *game;
+	state.route_cache = *cache;
+	state.sector_count = (int)(game->config.port_offset
+	    - game->config.sector_offset);
+	state.port_count = (int)(game->config.planet_offset
+	    - game->config.port_offset);
+	state.planet_count = (int)(game->config.total_records
+	    - game->config.planet_offset);
+	success = yt_maintenance_mercenaries_run(&state, line_output, line_context,
+	    error);
+	game->random = state.game.random;
+	*cache = state.route_cache;
+	return success;
+}
+
+static bool
 check_maintenance_mercenary_phase_pass(void)
 {
 	static const uint8_t expected_screen[] =
@@ -3303,7 +3327,7 @@ check_maintenance_mercenary_phase_pass(void)
 	    || !yt_database_write(&game.database,
 	    (size_t)yt_planet_basic_record(&game.config, 1), &record, &error))
 		goto done;
-	if (!yt_maintenance_maintain_mercenaries(&game, &cache,
+	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
 	    || game.random.draws != 0U || cache.warps != NULL
 	    || cache.successors != NULL || cache.sector_count != 0
@@ -3418,7 +3442,7 @@ check_maintenance_mercenary_active_phase_pass(void)
 	    || !yt_database_write(&game.database,
 	    (size_t)yt_planet_basic_record(&game.config, 1), &record, &error))
 		goto done;
-	if (!yt_maintenance_maintain_mercenaries(&game, &cache,
+	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
 	    || game.random.draws != 5U
 	    || script.position != sizeof(random_bytes)
@@ -3531,7 +3555,7 @@ check_maintenance_mercenary_defection_phase_pass(void)
 	    || !yt_database_write(&game.database,
 	    (size_t)yt_planet_basic_record(&game.config, 1), &record, &error))
 		goto done;
-	if (!yt_maintenance_maintain_mercenaries(&game, &cache,
+	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
 	    || game.random.draws != 2U
 	    || script.position != sizeof(random_bytes)
@@ -4661,7 +4685,7 @@ check_maintenance_mercenary_rebuild_phase_pass(void)
 			goto done;
 	}
 	yt_platform_set_clock_provider(score_clock_read, &clock_script);
-	if (!yt_maintenance_maintain_mercenaries(&game, &cache,
+	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
 	    || game.random.draws != 1U
 	    || random_script.position != sizeof(random_bytes)
@@ -4782,7 +4806,7 @@ check_maintenance_mercenary_funding_phase_pass(void)
 	    || !yt_database_write(&game.database,
 	    (size_t)yt_planet_basic_record(&game.config, 1), &record, &error))
 		goto done;
-	if (!yt_maintenance_maintain_mercenaries(&game, &cache,
+	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
 	    || game.random.draws != 30U
 	    || script.position != sizeof(random_bytes)
@@ -4902,7 +4926,7 @@ check_maintenance_mercenary_attack_phase_pass(void)
 	    || !yt_database_write(&game.database,
 	    (size_t)yt_planet_basic_record(&game.config, 1), &record, &error))
 		goto done;
-	if (!yt_maintenance_maintain_mercenaries(&game, &cache,
+	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
 	    || game.random.draws != 6U
 	    || script.position != sizeof(random_bytes)
@@ -5020,7 +5044,7 @@ check_maintenance_mercenary_mine_planet_phase_pass(void)
 	    || !yt_database_write(&game.database,
 	    (size_t)yt_planet_basic_record(&game.config, 1), &record, &error))
 		goto done;
-	if (!yt_maintenance_maintain_mercenaries(&game, &cache,
+	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
 	    || game.random.draws != 6U
 	    || script.position != sizeof(random_bytes)
@@ -5126,7 +5150,7 @@ check_maintenance_mercenary_disconnected_phase_pass(void)
 	    || !yt_database_write(&game.database,
 	    (size_t)yt_planet_basic_record(&game.config, 1), &record, &error))
 		goto done;
-	if (!yt_maintenance_maintain_mercenaries(&game, &cache,
+	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
 	    || game.random.draws != 4U
 	    || script.position != sizeof(random_bytes)

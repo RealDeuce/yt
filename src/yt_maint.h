@@ -456,10 +456,6 @@ bool yt_maintenance_route_next_hop(struct yt_game *game,
     int *next_hop, struct yt_error *error);
 void yt_maintenance_route_cache_free(
     struct yt_maintenance_route_cache *cache);
-bool yt_maintenance_maintain_mercenaries(struct yt_game *game,
-    struct yt_maintenance_route_cache *cache,
-    yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_error *error);
 bool yt_maintenance_scoreboard(struct yt_game *game,
     yt_maintenance_score_line_fn line_output, void *context,
     struct yt_error *error);

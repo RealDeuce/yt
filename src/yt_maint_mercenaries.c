@@ -1114,39 +1114,3 @@ yt_maintenance_mercenaries_run(struct maint_state *state,
 		return false;
 	return true;
 }
-
-bool
-yt_maintenance_maintain_mercenaries(struct yt_game *game,
-    struct yt_maintenance_route_cache *cache,
-    yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_error *error)
-{
-	struct maint_state state;
-	bool success;
-
-	if (game == NULL || cache == NULL || line_output == NULL) {
-		set_error(error, YT_INVALID, "Mercenary maintenance",
-		    "YTDATA.DAT");
-		return false;
-	}
-	memset(&state, 0, sizeof(state));
-	state.game = *game;
-	state.route_cache = *cache;
-	state.sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
-	state.port_count = (int)(game->config.planet_offset
-	    - game->config.port_offset);
-	state.planet_count = (int)(game->config.total_records
-	    - game->config.planet_offset);
-	if (state.sector_count < 2 || state.port_count < 0
-	    || state.planet_count < 2) {
-		set_error(error, YT_RANGE, "Mercenary maintenance layout",
-		    "YTDATA.DAT");
-		return false;
-	}
-	success = yt_maintenance_mercenaries_run(&state, line_output, line_context,
-	    error);
-	game->random = state.game.random;
-	*cache = state.route_cache;
-	return success;
-}
