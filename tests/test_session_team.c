@@ -39,7 +39,7 @@ test_teamless_exit(void)
 	yt_record_blank(&door.game.config.record);
 	yt_record_blank(&player.record);
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Teamless");
-	player.name_length = 8.0f;
+	player.name_length = 8U;
 	player.sector = 1.0f;
 	player.team = 0.0f;
 	yt_player_encode(&player);

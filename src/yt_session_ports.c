@@ -83,21 +83,6 @@ yt_session_update_port(struct yt_session *session, int sector_number,
 }
 
 static bool
-port_name_length(const uint8_t raw[4], uint8_t conversion_mode,
-    size_t *length, struct yt_error *error)
-{
-	bool overflow;
-	int32_t converted = qb_cint_mbf32(raw, conversion_mode, &overflow);
-
-	if (overflow || converted < 0)
-		return session_range_error(error, "port owner name length");
-	*length = (size_t)converted;
-	if (*length > YT_TEXT_FIELD_SIZE)
-		*length = YT_TEXT_FIELD_SIZE;
-	return true;
-}
-
-static bool
 port_report_owner(struct yt_session *session,
     const struct yt_port_market_state *market, struct yt_error *error)
 {
@@ -122,10 +107,9 @@ port_report_owner(struct yt_session *session,
 		    YT_BASIC_FAULT_PORT_OWNER_PLAYER_GET, error))
 			return false;
 		yt_player_decode(&owner, &record);
-		if (!port_name_length(owner.record.bytes + YT_F85,
-		    session->presentation.sound.conversion_mode,
-		    &owner_name_length, error))
-			return false;
+		owner_name_length = owner.name_length;
+		if (owner_name_length > YT_TEXT_FIELD_SIZE)
+			owner_name_length = YT_TEXT_FIELD_SIZE;
 		owner_name = owner.record.bytes;
 	}
 	if (!yt_port_owner_compose(kind, market->port.treasury,

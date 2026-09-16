@@ -23,7 +23,7 @@ write_player(struct yt_game *game, int record, const char *name,
 	memset(&player, 0, sizeof(player));
 	yt_record_blank(&player.record);
 	(void)snprintf(player.name, sizeof(player.name), "%s", name);
-	player.name_length = (float)strlen(name);
+	player.name_length = strlen(name);
 	player.sector = sector;
 	player.ports_owned = ports;
 	yt_player_encode(&player);

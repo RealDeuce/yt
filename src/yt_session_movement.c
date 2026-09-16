@@ -152,20 +152,16 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 		}
 		else {
 			struct yt_player owner_player;
-			int name_length;
+			size_t name_length;
 
 			if (!yt_game_read_player(&session->door->game, (int)owner,
 			    &owner_player, error))
 				return false;
-			name_length = qb_cint_mbf32(
-			    owner_player.record.bytes + YT_F85, 0U, &overflow);
-			if (overflow || name_length < 0)
-				return movement_range_error(error,
-				    "danger owner name length");
-			if ((size_t)name_length > YT_TEXT_FIELD_SIZE)
-				name_length = (int)YT_TEXT_FIELD_SIZE;
+			name_length = owner_player.name_length;
+			if (name_length > YT_TEXT_FIELD_SIZE)
+				name_length = YT_TEXT_FIELD_SIZE;
 			if (!danger_append(row, sizeof(row), &row_length,
-			    owner_player.record.bytes, (size_t)name_length))
+			    owner_player.record.bytes, name_length))
 				return movement_range_error(error, "danger owner name row");
 			if (owner_player.team != 0.0f) {
 				struct yt_sector team;

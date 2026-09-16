@@ -378,7 +378,7 @@ main(void)
 	}
 	for (basic = 2; basic <= 51; ++basic) {
 		if (!yt_game_read_player(&game, basic, &player, &error)
-		    || player.name_length != 0.0f || player.score != -1.0f) {
+		    || player.name_length != 0U || player.score != -1.0f) {
 			failure = "an initialized player slot has wrong defaults";
 			goto close;
 		}

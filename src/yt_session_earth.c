@@ -6,22 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static bool
-port_report_length(struct yt_session *session, float raw, size_t maximum,
-    size_t *length, const char *operation, struct yt_error *error)
-{
-	bool overflow;
-	int32_t converted = qb_cint_mode((double)raw,
-	    session->presentation.sound.conversion_mode, &overflow);
-
-	if (overflow || converted < 0)
-		return session_range_error(error, operation);
-	*length = (size_t)converted;
-	if (*length > maximum)
-		*length = maximum;
-	return true;
-}
-
 bool
 session_port_owner_row_capture(struct yt_session *session,
     const struct yt_port *port,
@@ -50,10 +34,9 @@ session_port_owner_row_capture(struct yt_session *session,
 		if (!yt_game_read_player(&session->door->game, owner_record,
 		    &owner, error))
 			return false;
-		if (!port_report_length(session, owner.name_length,
-		    YT_TEXT_FIELD_SIZE, &owner_name_length,
-		    "port owner name length", error))
-			return false;
+		owner_name_length = owner.name_length;
+		if (owner_name_length > YT_TEXT_FIELD_SIZE)
+			owner_name_length = YT_TEXT_FIELD_SIZE;
 		owner_name = owner.record.bytes;
 		if (captured_length != NULL) {
 			if (owner_name_length > captured_capacity

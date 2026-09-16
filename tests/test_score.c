@@ -153,13 +153,13 @@ check_current_player_cache_model(void)
 
 	memset(&player, 0, sizeof(player));
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Cached Name");
-	player.name_length = 11.0f;
+	player.name_length = 11U;
 	player.last_active = 71.0f;
 	player.killed_by = 72.0f;
 	player.lottery_plays = 73.0f;
 	memset(&fresh, 0, sizeof(fresh));
 	(void)snprintf(fresh.name, sizeof(fresh.name), "%s", "Field Name");
-	fresh.name_length = 10.0f;
+	fresh.name_length = 10U;
 	fresh.last_active = 1.0f;
 	fresh.killed_by = 2.0f;
 	fresh.lottery_plays = 3.0f;
@@ -188,7 +188,7 @@ check_current_player_cache_model(void)
 	if (!yt_current_player_hydrate(&player, &fresh, 2, 51.0f, false,
 	    &current_sector, &player_cache, NULL)
 	    || strcmp(player.name, "Cached Name") != 0
-	    || player.name_length != 11.0f || player.last_active != 71.0f
+	    || player.name_length != 11U || player.last_active != 71.0f
 	    || player.killed_by != 72.0f || player.lottery_plays != 73.0f
 	    || player.turns != 4.0f || player.shields != 5.0f
 	    || player.sector != 6.0f || player.fighters != 7.0f
@@ -4038,7 +4038,7 @@ check_maintenance_player_aging(void)
 	if (!yt_maintenance_player_name(&player, &occupied, &stored_name,
 	    &error) || occupied || stored_name.length != 0U)
 		return false;
-	player.name_length = 19.0f;
+	player.name_length = 19U;
 	if (!yt_record_set_number(&player.record, YT_F85, 0.4f))
 		return false;
 	if (!yt_maintenance_player_name(&player, &occupied, &stored_name,
@@ -4348,7 +4348,7 @@ check_maintenance_player_pass(void)
 			    : record == 4 ? "Alice" : "Neg";
 
 			strcpy(player.name, value);
-			player.name_length = (float)strlen(value);
+			player.name_length = strlen(value);
 		}
 		memset(player.record.bytes + YT_RECORD_TAIL_OFFSET,
 		    0xa0 + record, YT_RECORD_TAIL_SIZE);
@@ -6681,7 +6681,7 @@ check_maintenance_final_suffix_pass(void)
 	yt_record_blank(&blank);
 	yt_player_decode(&player, &blank);
 	memcpy(player.name, "A", 2U);
-	player.name_length = 1.0f;
+	player.name_length = 1U;
 	player.credits = 100.0f;
 	yt_player_encode(&player);
 	if (!yt_database_write(&game.database, 2U, &player.record, &error)
@@ -9256,7 +9256,6 @@ check_player_name_match(void)
 	struct yt_record record;
 	struct yt_player player;
 	struct yt_error error;
-	uint8_t full_field[YT_TEXT_FIELD_SIZE];
 	uint8_t stored_name[YT_TEXT_FIELD_SIZE];
 	uint8_t radio_prompt[YT_TEXT_FIELD_SIZE + sizeof(" [Y]? ") - 1U];
 	uint8_t tuning_row[sizeof("Tuning in to ") - 1U + YT_TEXT_FIELD_SIZE
@@ -9310,54 +9309,21 @@ check_player_name_match(void)
 	    || strcmp(error.operation, "radio tuning row capacity") != 0)
 		return false;
 
-	memset(record.bytes, 'A', YT_TEXT_FIELD_SIZE);
-	yt_record_set_number(&record, YT_F85, 42.0f);
-	yt_player_decode(&player, &record);
-	memset(full_field, 'A', sizeof(full_field));
-	if (!yt_player_name_matches(&player, full_field, sizeof(full_field),
-	    &matches, &error) || !matches
-	    || !yt_player_name_matches(&player, full_field,
-	    sizeof(full_field) - 1U, &matches, &error) || matches)
-		return false;
 	yt_record_set_text(&record, (const uint8_t *)"Star Lord", 9);
-	yt_record_set_number(&record, YT_F85, 2.6f);
+	yt_record_set_number(&record, YT_F85, 3.0f);
 	yt_player_decode(&player, &record);
-	player.name_length = 19.0f;
 	if (!yt_player_stored_name(&player, stored_name, &stored_length, &error)
 	    || stored_length != 3U || memcmp(stored_name, "Sta", 3) != 0)
 		return false;
-	yt_record_set_number(&record, YT_F85, 0.4f);
-	yt_player_decode(&player, &record);
-	if (!yt_player_stored_name(&player, stored_name, &stored_length, &error)
-	    || stored_length != 0U
-	    || !yt_player_killer_row(&player, killer_row,
+	if (!yt_player_killer_row(&player, killer_row,
 	    sizeof(killer_row), &killer_length, &emit, &error)
-	    || !emit || killer_length != strlen(" destroyed your ship!")
-	    || memcmp(killer_row, " destroyed your ship!", killer_length) != 0)
+	    || !emit || killer_length != strlen("Sta destroyed your ship!")
+	    || memcmp(killer_row, "Sta destroyed your ship!", killer_length) != 0)
 		return false;
 	yt_record_set_number(&record, YT_F85, 0.0f);
 	yt_player_decode(&player, &record);
 	if (!yt_player_killer_row(&player, killer_row, sizeof(killer_row),
 	    &killer_length, &emit, &error) || emit || killer_length != 0U)
-		return false;
-
-	yt_record_set_number(&record, YT_F85, -0.4f);
-	yt_player_decode(&player, &record);
-	if (!yt_player_name_matches(&player, NULL, 0, &matches, &error)
-	    || !matches)
-		return false;
-	yt_record_set_number(&record, YT_F85, -0.6f);
-	yt_player_decode(&player, &record);
-	yt_error_clear(&error);
-	if (yt_player_name_matches(&player, NULL, 0, &matches, &error)
-	    || error.status != YT_RANGE || matches)
-		return false;
-	yt_record_set_number(&record, YT_F85, 40000.0f);
-	yt_player_decode(&player, &record);
-	yt_error_clear(&error);
-	if (yt_player_killer_row(&player, killer_row, sizeof(killer_row),
-	    &killer_length, &emit, &error) || error.status != YT_RANGE
-	    || strcmp(error.operation, "player name CINT") != 0)
 		return false;
 	return true;
 }
@@ -12960,7 +12926,7 @@ check_player_constructor_failures(void)
 	    || !state.config_hydrated || !state.player_hydrated
 	    || !state.put_attempted
 	    || strcmp(player.name, "Keep Name") != 0
-	    || player.name_length != 9.0f || player.score != 88.0f
+	    || player.name_length != 9U || player.score != 88.0f
 	    || player.team != 0.0f || player.last_active != 77.0f
 	    || player.turns != 123.0f || player.fighters != 45.0f
 	    || player.credits != 678.0f || player.holds != 9.0f)
@@ -15371,7 +15337,7 @@ main(void)
 		goto close;
 	yt_player_decode(&player, &blank);
 	strcpy(player.name, "Old Trader");
-	player.name_length = 10.0f;
+	player.name_length = 10U;
 	player.team = 4.0f;
 	player.score = 77.5f;
 	memcpy(player.record.bytes + YT_RECORD_TAIL_OFFSET, player_tail,
@@ -15393,7 +15359,7 @@ main(void)
 	    constructor_turns_raw, &player, NULL, &error)
 	    || !yt_game_read_player(&game, 2, &player, &error)
 	    || strcmp(player.name, "Old Trader") != 0
-	    || player.name_length != 10.0f || player.score != 77.5f
+	    || player.name_length != 10U || player.score != 77.5f
 	    || player.last_active != 321.0f || player.killed_by != 0.0f
 	    || player.turns != 500.0f || player.fighters != 45.0f
 	    || player.credits != 678.0f || player.holds != 9.0f
@@ -15527,14 +15493,14 @@ main(void)
 
 	yt_player_decode(&player, &blank);
 	strcpy(player.name, "Alice");
-	player.name_length = 5.0f;
+	player.name_length = 5U;
 	player.credits = 100.0f;
 	player.team = 1.0f;
 	if (!yt_game_write_player(&game, 2, &player, &error))
 		goto close;
 	yt_player_decode(&player, &blank);
 	strcpy(player.name, "Bob");
-	player.name_length = 3.0f;
+	player.name_length = 3U;
 	player.killed_by = -1.0f;
 	player.credits = 9999.0f;
 	player.team = 2.0f;

@@ -337,7 +337,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		if (!session_read_planet(session, logical_planet, &persistence,
 		    error))
 			return false;
-		persistence.name_length = 0.0f;
+		persistence.name_length = 0U;
 		if (!yt_record_set_number(&persistence.record, YT_F85, 0.0f)
 		    || !yt_database_write(&session->door->game.database,
 		    (size_t)session_planet_basic_record(session,

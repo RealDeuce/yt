@@ -114,7 +114,7 @@ test_land_and_leave_owned_planet(void)
 
 	yt_record_blank(&player.record);
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Owner");
-	player.name_length = 5.0f;
+	player.name_length = 5U;
 	player.sector = 1.0f;
 	player.holds = 20.0f;
 	player.credits = 1000.0f;

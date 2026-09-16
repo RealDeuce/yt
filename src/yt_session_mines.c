@@ -339,7 +339,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 		return false;
 	player = session->player;
 	if (!yt_sector_mine_entry_news(player.record.bytes,
-	    (size_t)player.name_length, current_sector, row, sizeof(row),
+	    player.name_length, current_sector, row, sizeof(row),
 	    &row_length)
 	    || !yt_news_append_bytes(row, row_length, error))
 		return false;

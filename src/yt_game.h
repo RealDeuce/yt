@@ -22,7 +22,7 @@ struct yt_player {
 	float organics;
 	float equipment;
 	float credits;
-	float name_length;
+	size_t name_length;
 	float team;
 	float danger_scanner;
 	float missiles;

@@ -50,7 +50,7 @@ test_one_sector_all_ports(void)
 
 	yt_record_blank(&player.record);
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Scanner");
-	player.name_length = 7.0f;
+	player.name_length = 7U;
 	player.sector = 1.0f;
 	yt_player_encode(&player);
 	yt_record_blank(&sector.record);

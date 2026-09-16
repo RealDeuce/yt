@@ -83,7 +83,7 @@ direct_attack_finish_kill(struct yt_session *session, int target_record,
 	    &target, error))
 		return false;
 	saved_mines = target.mines;
-	saved_name_length = (size_t)target.name_length;
+	saved_name_length = target.name_length;
 	if (saved_name_length != 0U)
 		memcpy(saved_name, target.record.bytes, saved_name_length);
 	if (!yt_session_kill_player(session, target_record,

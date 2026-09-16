@@ -66,7 +66,7 @@ test_shielded_encounter(void)
 
 	yt_record_blank(&player.record);
 	memcpy(player.name, "Ada", 4U);
-	player.name_length = 3.0f;
+	player.name_length = 3U;
 	player.sector = 42.0f;
 	player.shields = 100.0f;
 	player.holds = 20.0f;
@@ -143,7 +143,7 @@ test_unshielded_missile_draw(void)
 
 	yt_record_blank(&player.record);
 	memcpy(player.name, "Max", 4U);
-	player.name_length = 3.0f;
+	player.name_length = 3U;
 	player.sector = 42.0f;
 	player.missiles = 3.0f;
 	yt_player_encode(&player);

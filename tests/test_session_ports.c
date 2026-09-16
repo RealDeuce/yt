@@ -216,14 +216,14 @@ test_owned_port_purchase(void)
 
 	yt_record_blank(&buyer.record);
 	(void)snprintf(buyer.name, sizeof(buyer.name), "%s", "Pat");
-	buyer.name_length = 3.0f;
+	buyer.name_length = 3U;
 	buyer.sector = 9.0f;
 	buyer.credits = 1000.0f;
 	buyer.ports_owned = 1.0f;
 	yt_player_encode(&buyer);
 	yt_record_blank(&seller.record);
 	(void)snprintf(seller.name, sizeof(seller.name), "%s", "Seller");
-	seller.name_length = 6.0f;
+	seller.name_length = 6U;
 	seller.credits = 10.0f;
 	seller.ports_owned = 3.0f;
 	yt_player_encode(&seller);

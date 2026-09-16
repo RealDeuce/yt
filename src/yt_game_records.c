@@ -117,7 +117,7 @@ yt_player_decode(struct yt_player *player, const struct yt_record *record)
 	player->organics = yt_record_get_number(record, YT_F73);
 	player->equipment = yt_record_get_number(record, YT_F77);
 	player->credits = yt_record_get_number(record, YT_F81);
-	player->name_length = yt_record_get_number(record, YT_F85);
+	player->name_length = (size_t)yt_record_get_number(record, YT_F85);
 	player->team = yt_record_get_number(record, YT_F89);
 	player->danger_scanner = yt_record_get_number(record, YT_F93);
 	player->missiles = yt_record_get_number(record, YT_F97);
@@ -152,7 +152,7 @@ yt_player_encode(struct yt_player *player)
 	    player->equipment);
 	yt_record_set_number_if_changed(&player->record, YT_F81, player->credits);
 	yt_record_set_number_if_changed(&player->record, YT_F85,
-	    player->name_length);
+	    (float)player->name_length);
 	yt_record_set_number_if_changed(&player->record, YT_F89, player->team);
 	yt_record_set_number_if_changed(&player->record, YT_F93,
 	    player->danger_scanner);

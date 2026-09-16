@@ -38,7 +38,7 @@ test_genesis_decline(void)
 	door.game.config.genesis_ports = 300.0f;
 	yt_record_blank(&player.record);
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Baron");
-	player.name_length = 5.0f;
+	player.name_length = 5U;
 	player.ports_owned = 300.0f;
 	yt_player_encode(&player);
 	yt_error_clear(&error);

@@ -514,7 +514,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			if (!yt_game_read_player(&session->door->game, basic,
 			    &candidate, error))
 				return false;
-			if (candidate.name_length < 1.0f) {
+			if (candidate.name_length < 1U) {
 				vacant = basic;
 				break;
 			}

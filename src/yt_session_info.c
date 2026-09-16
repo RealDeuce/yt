@@ -121,7 +121,7 @@ yt_session_info_team_lines(struct yt_session *session,
 		if (!yt_game_read_player(&session->door->game, captain_record,
 		    &captain, error))
 			return false;
-		if (captain.name_length > 0.0f) {
+		if (captain.name_length > 0U) {
 			if (!yt_player_stored_name(&captain, captain_name,
 			    &captain_name_length, error))
 				return false;

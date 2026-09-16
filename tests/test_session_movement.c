@@ -23,7 +23,7 @@ write_player(struct yt_game *game, int record, const char *name, float team,
 	memset(&player, 0, sizeof(player));
 	yt_record_blank(&player.record);
 	(void)snprintf(player.name, sizeof(player.name), "%s", name);
-	player.name_length = (float)strlen(name);
+	player.name_length = strlen(name);
 	player.team = team;
 	yt_player_encode(&player);
 	CHECK(yt_database_write_durable(&game->database, (size_t)record,

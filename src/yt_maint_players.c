@@ -213,7 +213,7 @@ expire_player_impl(struct maint_state *state, int player_record,
 				return false;
 		}
 	}
-	player->name_length = 0.0f;
+	player->name_length = 0U;
 	player->team = 0.0f;
 	if (!yt_game_write_player(&state->game, player_record, player, error))
 		return false;

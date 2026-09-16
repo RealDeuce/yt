@@ -51,7 +51,7 @@ write_player(struct yt_game *game, int record, const char *name,
 	memset(&player, 0, sizeof(player));
 	yt_record_blank(&player.record);
 	(void)snprintf(player.name, sizeof(player.name), "%s", name);
-	player.name_length = (float)strlen(name);
+	player.name_length = strlen(name);
 	player.sector = 1.0f;
 	player.fighters = fighters;
 	player.shields = shields;
@@ -82,7 +82,7 @@ test_no_fighters(void)
 	yt_record_blank(&door.game.config.record);
 	yt_record_blank(&source.record);
 	(void)snprintf(source.name, sizeof(source.name), "%s", "Unarmed");
-	source.name_length = 7.0f;
+	source.name_length = 7U;
 	source.sector = 1.0f;
 	source.fighters = 0.0f;
 	yt_player_encode(&source);

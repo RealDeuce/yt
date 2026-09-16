@@ -448,7 +448,7 @@ yt_player_killer_row(const struct yt_player *player, uint8_t *row,
 		*emit = false;
 	if (player == NULL || row == NULL || length == NULL || emit == NULL)
 		return false;
-	if (player->name_length == 0.0f)
+	if (player->name_length == 0U)
 		return true;
 	if (!yt_player_stored_name(player, row, &prefix, error))
 		return false;

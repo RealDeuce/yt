@@ -62,7 +62,7 @@ test_same_sector_plasma_route(void)
 
 	yt_record_blank(&player.record);
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Launcher");
-	player.name_length = 8.0f;
+	player.name_length = 8U;
 	player.sector = 1.0f;
 	player.turns = 10.0f;
 	player.plasma = 1.0f;

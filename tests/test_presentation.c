@@ -2681,7 +2681,6 @@ test_sector_scanner_rows(void)
 	sector.fighters = 123.0f;
 	sector.fighter_owner = 3.0f;
 	player.team = -4.0f;
-	player.name_length = 19.0f;
 	yt_record_blank(&record);
 	memcpy(record.bytes, raw_team_name, sizeof(raw_team_name));
 	yt_record_set_number(&record, YT_F73, 3.0f);
@@ -13151,7 +13150,7 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 		if (fixture.team_route == NORMAL_EXIT_INFO_TEAM_OTHER) {
 			memcpy(fixture.team_captain.name, valid_captain_name,
 			    sizeof(valid_captain_name) - 1U);
-			fixture.team_captain.name_length = 4.0f;
+			fixture.team_captain.name_length = 4U;
 			fixture.team_captain.team = 7.0f;
 		}
 		else if (fixture.team_route
@@ -13159,11 +13158,11 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 			memcpy(fixture.team_captain.name, stale_captain_name,
 			    sizeof(stale_captain_name) - 1U);
 			fixture.team_captain.name_length =
-			    (float)(sizeof(stale_captain_name) - 1U);
+			    sizeof(stale_captain_name) - 1U;
 			fixture.team_captain.team = 8.0f;
 		}
 		(void)yt_record_set_number(&fixture.team_captain.record, YT_F85,
-		    fixture.team_captain.name_length);
+		    (float)fixture.team_captain.name_length);
 		memset(fixture.overlay.record.bytes, 0xa5,
 		    sizeof(fixture.overlay.record.bytes));
 		(void)yt_record_set_number(&fixture.team.overlay.record, YT_F77,
@@ -18332,7 +18331,7 @@ main_buy_cycle_fixture_initialize(struct main_buy_cycle_fixture *fixture,
 	fixture->confirmation_length = sizeof(confirmation) - 1U;
 	fixture->name_write_is_accept_event = true;
 	memcpy(fixture->buyer_entry.record.bytes, "Pat", 3U);
-	fixture->buyer_entry.name_length = 3.0f;
+	fixture->buyer_entry.name_length = 3U;
 	(void)yt_record_set_number(&fixture->buyer_entry.record, YT_F85, 3.0f);
 	fixture->buyer_entry.credits = 1000.0f;
 	fixture->buyer_entry.sector = 9.0f;
