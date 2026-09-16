@@ -593,11 +593,9 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		return true;
 	}
 	if (host.fighter_owner > 0.0f) {
-		int32_t record = qb_cint_mbf32(host.record.bytes + YT_F85, 0U,
-		    &overflow);
+		int record = (int)host.fighter_owner;
 
-		if (overflow || record < 1
-		    || !yt_game_read_player(game, record, &player, error)) {
+		if (!yt_game_read_player(game, record, &player, error)) {
 			if (error != NULL && error->status == YT_OK)
 				set_error(error, YT_RANGE,
 				    "Xannor headquarters defender", "YTDATA.DAT");
@@ -1237,7 +1235,6 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 	size_t length;
 	int first_length;
 	int second_length;
-	bool overflow;
 
 	if (game == NULL || group_size == NULL || sector == NULL
 	    || line_output == NULL || sector_number < 0) {
@@ -1326,11 +1323,9 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 		return true;
 	remaining_defenders = sector->fighters;
 	if (initial_owner > 0.0f) {
-		int32_t record = qb_cint_mbf32(sector->record.bytes + YT_F85,
-		    0U, &overflow);
+		int record = (int)initial_owner;
 
-		if (overflow || record < 1
-		    || !yt_game_read_player(game, record, &player, error)) {
+		if (!yt_game_read_player(game, record, &player, error)) {
 			if (error != NULL && error->status == YT_OK)
 				set_error(error, YT_RANGE,
 				    "Xannor defense owner", "YTDATA.DAT");

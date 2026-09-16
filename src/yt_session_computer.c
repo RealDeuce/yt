@@ -232,7 +232,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 		}
 		if (!session_read_sector(session, (int)selected, &sector, error))
 			return false;
-		link = qb_mbf32_decode(sector.record.bytes + YT_F93);
+		link = sector.planet;
 		{
 			float maximum_planet = qb_single_subtract(
 			    session->door->game.config.total_records,
@@ -251,8 +251,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 
 			session->combat.deployed_fighters =
 			    (double)sector.fighters;
-			session->shared_target_record = qb_mbf32_decode(
-			    sector.record.bytes + YT_F85);
+			session->shared_target_record = sector.fighter_owner;
 			fighter_owner = session->shared_target_record;
 			if (!yt_session_computer_owner_is_friendly(session,
 			    fighter_owner, &fighter_friendly, error))

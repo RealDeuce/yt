@@ -362,7 +362,7 @@ yt_session_attack_deployed(struct yt_session *session,
 	    sizeof(cached_player_name_text), "%s", session->player.name);
 	if (!session_read_sector(session, current_sector, &opened_sector, error))
 		return false;
-	old_owner = qb_mbf32_decode(&opened_sector.record.bytes[YT_F85]);
+	old_owner = opened_sector.fighter_owner;
 	if (!session_read_combat_player(session, current_player_record,
 	    &current, error))
 		return false;
