@@ -564,8 +564,7 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 	struct yt_player player;
 	uint64_t starting_draws;
 	double defenders;
-	bool overflow;
-	int32_t hq;
+	int hq;
 
 	if (game == NULL || location == NULL || size == NULL
 	    || line_output == NULL) {
@@ -573,9 +572,8 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		    "YTDATA.DAT");
 		return false;
 	}
-	hq = qb_cint_mbf32(game->config.record.bytes + YT_F117, 0U,
-	    &overflow);
-	if (overflow || hq < 1
+	hq = (int)game->config.headquarters;
+	if (hq < 1
 	    || !yt_game_read_sector(game, hq, &host, error)) {
 		if (error != NULL && error->status == YT_OK)
 			set_error(error, YT_RANGE, "Xannor headquarters",
@@ -673,8 +671,7 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 	struct yt_sector sector;
 	uint64_t starting_draws;
 	float planet_number;
-	bool overflow;
-	int32_t old_logical;
+	int old_logical;
 	int sector_count;
 	int candidate;
 
@@ -716,9 +713,8 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 			break;
 	}
 	local.draws_consumed = game->random.draws - starting_draws;
-	old_logical = qb_cint_mbf32(game->config.record.bytes + YT_F117,
-	    0U, &overflow);
-	local.old_headquarters = overflow ? 0 : old_logical;
+	old_logical = (int)game->config.headquarters;
+	local.old_headquarters = old_logical;
 	local.target_sector = candidate;
 	game->config.headquarters = (float)candidate;
 	location[1] = (float)candidate;
@@ -732,7 +728,7 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 		return false;
 	}
 	game->config.record = config_record;
-	if (overflow || old_logical < 1
+	if (old_logical < 1
 	    || !yt_game_read_sector(game, old_logical, &sector, error)) {
 		if (error != NULL && error->status == YT_OK)
 			set_error(error, YT_RANGE, "old Xannor headquarters",
@@ -789,8 +785,7 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 	struct yt_maintenance_output_result output;
 	struct yt_sector metadata;
 	float slot_value;
-	bool overflow;
-	int32_t record;
+	int record;
 
 	if (game == NULL || player_sector == NULL || line_output == NULL
 	    || (blank == NULL && blank_length != 0U)) {
@@ -801,13 +796,12 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 		memset(result, 0, sizeof(*result));
 	if (!yt_game_read_sector(game, 21, &metadata, error))
 		return false;
-	slot_value = yt_record_get_number(&metadata.record, YT_F105);
+	slot_value = metadata.metadata;
 	if (slot_value > 0.0f) {
 		struct yt_player player;
 
-		record = qb_cint_mbf32(metadata.record.bytes + YT_F105, 0U,
-		    &overflow);
-		if (overflow || record < 0 || (size_t)record >= cache_count) {
+		record = (int)slot_value;
+		if (record < 0 || (size_t)record >= cache_count) {
 			set_error(error, YT_RANGE, "Xannor revenge player",
 			    "YTDATA.DAT");
 			return false;
@@ -815,20 +809,8 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 		if (!yt_game_read_player(game, record, &player, error))
 			return false;
 		if (player.sector > 7.0f) {
-			local.live_sector = qb_cint_mbf32(player.record.bytes + YT_F57,
-			    0U, &overflow);
-			if (overflow) {
-				set_error(error, YT_RANGE, "Xannor revenge sector",
-				    "YTDATA.DAT");
-				return false;
-			}
-			local.cached_target = qb_cint(player_sector[record],
-			    &overflow);
-			if (overflow) {
-				set_error(error, YT_RANGE, "Xannor revenge cache",
-				    "YTDATA.DAT");
-				return false;
-			}
+			local.live_sector = (int)player.sector;
+			local.cached_target = (int)player_sector[record];
 			local.eligible = true;
 			if (!yt_maintenance_compose_xannor_revenge(blank,
 			    blank_length, &output)

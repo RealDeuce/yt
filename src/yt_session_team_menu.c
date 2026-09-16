@@ -41,7 +41,6 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 		float numeric;
 		int32_t captain_cint;
 		int32_t team_cint;
-		bool overflow;
 		bool invalid;
 
 		session_set_foreground(session, 6.0f);
@@ -123,26 +122,8 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 			return false;
 		}
 		numeric = qb_mbf32_decode(numeric_raw);
-		captain_cint = qb_cint(captain ? -1.0 : 0.0, &overflow);
-		if (overflow) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s",
-				    "team:captain-cint");
-			}
-			return false;
-		}
-		team_cint = qb_cint_mbf32(session->player.record.bytes + YT_F89, 0U,
-		    &overflow);
-		if (overflow) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s", "team:team-cint");
-			}
-			return false;
-		}
+		captain_cint = captain ? -1 : 0;
+		team_cint = (int)session->player.team;
 		invalid = yt_team_choice_rejected(numeric, session->player.team,
 		    captain_cint, team_cint);
 		if (invalid) {
