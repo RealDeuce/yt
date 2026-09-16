@@ -1653,71 +1653,9 @@ test_platform_rmt_serial(void)
 }
 #endif
 
-
-static uint64_t
-input_fault_inventory_hash(enum yt_input_fault_family family, size_t *live)
-{
-	uint64_t hash = UINT64_C(0xcbf29ce484222325);
-	struct yt_input_fault_site site;
-	size_t count = yt_input_fault_site_count(family);
-	size_t index;
-
-	*live = 0U;
-	for (index = 0U; index < count; ++index) {
-		uint32_t line;
-		uint8_t bytes[13];
-		size_t byte;
-
-		CHECK(yt_input_fault_site(family, index, &site));
-		if (site.live)
-			++*live;
-		line = (uint32_t)site.source_line;
-		bytes[0] = (uint8_t)site.module;
-		bytes[1] = (uint8_t)site.address;
-		bytes[2] = (uint8_t)(site.address >> 8);
-		bytes[3] = (uint8_t)site.saved_ip;
-		bytes[4] = (uint8_t)(site.saved_ip >> 8);
-		bytes[5] = (uint8_t)site.statement;
-		bytes[6] = (uint8_t)(site.statement >> 8);
-		bytes[7] = (uint8_t)line;
-		bytes[8] = (uint8_t)(line >> 8);
-		bytes[9] = (uint8_t)(line >> 16);
-		bytes[10] = (uint8_t)(line >> 24);
-		bytes[11] = site.error_number;
-		bytes[12] = site.live ? 1U : 0U;
-		for (byte = 0U; byte < sizeof(bytes); ++byte) {
-			hash ^= bytes[byte];
-			hash *= UINT64_C(0x100000001b3);
-		}
-	}
-	CHECK(!yt_input_fault_site(family, count, &site));
-	return hash;
-}
-
-static void
-test_input_fault_inventories(void)
-{
-	size_t live;
-
-	CHECK(yt_input_fault_site_count(YT_INPUT_FAULT_PAGED_OUTPUT) == 25U);
-	CHECK(input_fault_inventory_hash(YT_INPUT_FAULT_PAGED_OUTPUT, &live)
-	    == UINT64_C(0x940d9f30a70df56e));
-	CHECK(live == 25U);
-	CHECK(yt_input_fault_site_count(YT_INPUT_FAULT_PAGER) == 11U);
-	CHECK(input_fault_inventory_hash(YT_INPUT_FAULT_PAGER, &live)
-	    == UINT64_C(0x0f5f94d6b6b0c8b1));
-	CHECK(live == 11U);
-	CHECK(yt_input_fault_site_count(YT_INPUT_FAULT_LINE_EDITOR) == 77U);
-	CHECK(input_fault_inventory_hash(YT_INPUT_FAULT_LINE_EDITOR, &live)
-	    == UINT64_C(0x202c87484e372728));
-	CHECK(live == 75U);
-	CHECK(yt_input_fault_site_count((enum yt_input_fault_family)99) == 0U);
-}
-
 int
 main(void)
 {
-	test_input_fault_inventories();
 	test_ab36_queued_input();
 	test_radio_body_key_classification();
 	test_ab36_repeat_recognition();

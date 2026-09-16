@@ -6,27 +6,6 @@
 
 #define YT_INPUT_PENDING 4096U
 
-enum yt_input_fault_family {
-	YT_INPUT_FAULT_PAGED_OUTPUT,
-	YT_INPUT_FAULT_PAGER,
-	YT_INPUT_FAULT_LINE_EDITOR,
-};
-
-enum yt_input_fault_module {
-	YT_INPUT_FAULT_MODULE_YT,
-	YT_INPUT_FAULT_MODULE_YT_SUB,
-};
-
-struct yt_input_fault_site {
-	enum yt_input_fault_module module;
-	uint16_t address;
-	uint16_t saved_ip;
-	uint16_t statement;
-	int32_t source_line;
-	uint8_t error_number;
-	bool live;
-};
-
 enum yt_radio_body_key_action {
 	YT_RADIO_BODY_KEY_IGNORE,
 	YT_RADIO_BODY_KEY_COMMIT,
@@ -199,9 +178,6 @@ struct yt_input_drain_state {
 	bool expect_paired_local;
 };
 
-size_t yt_input_fault_site_count(enum yt_input_fault_family family);
-bool yt_input_fault_site(enum yt_input_fault_family family, size_t index,
-    struct yt_input_fault_site *site);
 enum yt_radio_body_key_action yt_input_radio_body_key(uint8_t key,
     size_t current_length);
 bool yt_input_queue_pop(char *queue, size_t capacity,
