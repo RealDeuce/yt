@@ -156,8 +156,8 @@ store_final_marker(struct yt_game *game, struct yt_error *error)
 
 static bool maintenance_close_all(struct yt_game *, struct yt_error *);
 
-static bool
-maintenance_finish_impl(struct yt_game *game, int player_count,
+bool
+yt_maintenance_finish(struct yt_game *game, int player_count,
     int planet_count, int sector_count,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error)
@@ -185,28 +185,6 @@ maintenance_finish_impl(struct yt_game *game, int player_count,
 	    line_output, line_context, error))
 		return false;
 	return true;
-}
-
-bool
-yt_maintenance_finish(struct yt_game *game,
-    yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_error *error)
-{
-	int player_count;
-	int planet_count;
-	int sector_count;
-
-	if (game == NULL) {
-		set_error(error, YT_INVALID, "maintenance finish", "YTDATA.DAT");
-		return false;
-	}
-	player_count = (int)game->config.sector_offset - 1;
-	sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
-	planet_count = (int)(game->config.total_records
-	    - game->config.planet_offset);
-	return maintenance_finish_impl(game, player_count, planet_count,
-	    sector_count, line_output, line_context, error);
 }
 
 static bool
@@ -307,7 +285,7 @@ yt_maintenance_run(struct yt_error *error)
 	    NULL, 0U,
 	    maintenance_stdout_line, NULL, NULL, error)
 	    || !maintain_factions(&state, error)
-	    || !maintenance_finish_impl(&state.game, state.player_count,
+	    || !yt_maintenance_finish(&state.game, state.player_count,
 	    state.planet_count, state.sector_count, maintenance_stdout_line,
 	    NULL, error))
 		goto done;

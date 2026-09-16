@@ -71,5 +71,9 @@ bool yt_maintenance_mercenary_destination(struct yt_game *game,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_sector *arrival_sector, float *moving_after, bool *continues,
     struct yt_error *error);
+bool yt_maintenance_finish(struct yt_game *game, int player_count,
+    int planet_count, int sector_count,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error);
 
 #endif

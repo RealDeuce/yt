@@ -6689,8 +6689,8 @@ check_maintenance_final_suffix_pass(void)
 	    || !yt_database_write(&game.database, 3U, &blank, &error)
 	    || !yt_database_write(&game.database, 4U, &blank, &error)
 	    || !yt_database_write(&game.database, 5U, &blank, &error)
-	    || !yt_maintenance_finish(&game, maintenance_final_suffix_collect,
-	    &tape,
+	    || !yt_maintenance_finish(&game, 1, 1, 1,
+	    maintenance_final_suffix_collect, &tape,
 	    &error)
 	    || game.database.file != NULL || game.random.draws != 1U
 	    || random_script.position != sizeof(coin_draw)
@@ -6763,8 +6763,8 @@ check_maintenance_final_suffix_pass(void)
 			goto done;
 		yt_error_clear(&error);
 		if (cut_rows != fail_at
-		    || yt_maintenance_finish(&game, maintenance_final_output_fail,
-		    &output_fault, &error)
+		    || yt_maintenance_finish(&game, 1, 1, 1,
+		    maintenance_final_output_fail, &output_fault, &error)
 		    || error.status != YT_IO_ERROR
 		    || strcmp(error.operation, "maintenance final output") != 0
 		    || output_fault.calls != fail_at + 1U
@@ -6799,8 +6799,8 @@ check_maintenance_final_suffix_pass(void)
 	    &error))
 		goto done;
 	yt_error_clear(&error);
-	if (yt_maintenance_finish(&game, maintenance_final_output_fail,
-	    &output_fault, &error)
+	if (yt_maintenance_finish(&game, 1, 1, 1,
+	    maintenance_final_output_fail, &output_fault, &error)
 	    || error.status != YT_IO_ERROR
 	    || strcmp(error.operation, "maintenance final output") != 0
 	    || output_fault.calls != 24U
@@ -6829,8 +6829,8 @@ check_maintenance_final_suffix_pass(void)
 	    &error))
 		goto done;
 	yt_error_clear(&error);
-	if (yt_maintenance_finish(&game, maintenance_final_output_fail,
-	    &output_fault, &error)
+	if (yt_maintenance_finish(&game, 1, 1, 1,
+	    maintenance_final_output_fail, &output_fault, &error)
 	    || error.status != YT_IO_ERROR
 	    || strcmp(error.operation, "maintenance final output") != 0
 	    || output_fault.calls != 25U
@@ -6858,8 +6858,8 @@ check_maintenance_final_suffix_pass(void)
 		.first_closed_line = (size_t)-1
 	};
 	yt_error_clear(&error);
-	if (yt_maintenance_finish(&game, maintenance_final_suffix_collect,
-	    &tape, &error)
+	if (yt_maintenance_finish(&game, 1, 1, 1,
+	    maintenance_final_suffix_collect, &tape, &error)
 	    || error.status != YT_IO_ERROR
 	    || game.database.file == NULL || game.random.draws != 1U
 	    || random_script.position != sizeof(coin_draw)
