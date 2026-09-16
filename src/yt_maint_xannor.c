@@ -380,33 +380,6 @@ xannor_player_shield_phase(struct yt_random *random, float player_fighters,
 }
 
 bool
-yt_maintenance_xannor_player_combat(struct yt_random *random,
-    float *player_fighters, float *player_shields, float *xannor_fighters,
-    struct yt_maintenance_xannor_player_result *result,
-    struct yt_error *error)
-{
-	float original_xannor;
-
-	if (random == NULL || player_fighters == NULL || player_shields == NULL
-	    || xannor_fighters == NULL || result == NULL) {
-		set_error(error, YT_INVALID, "Xannor player combat", "");
-		return false;
-	}
-	original_xannor = *xannor_fighters;
-	result->player_fighter_losses = 0.0f;
-	result->xannor_losses = 0.0f;
-	if (!xannor_player_fighter_phase(random, player_fighters,
-	    original_xannor, result, error)
-	    || !xannor_player_shield_phase(random, *player_fighters,
-	    player_shields, original_xannor, result, error))
-		return false;
-	if (*player_fighters < 0.0f)
-		*player_fighters = 0.0f;
-	*xannor_fighters = qb_single_subtract(original_xannor, result->xannor_losses);
-	return true;
-}
-
-bool
 yt_maintenance_xannor_player_line_bytes(const uint8_t *player_name,
     size_t player_name_length,
     const struct yt_maintenance_xannor_player_result *result,
@@ -463,26 +436,6 @@ yt_maintenance_xannor_player_line_bytes(const uint8_t *player_name,
 	*line_length = length;
 	return true;
 }
-
-bool
-yt_maintenance_xannor_player_line(const char *player_name,
-    const struct yt_maintenance_xannor_player_result *result,
-    float xannor_fighters, float player_shields, bool player_killed,
-    char *line, size_t line_size)
-{
-	size_t length;
-
-	if (player_name == NULL || line == NULL || line_size == 0U
-	    || !yt_maintenance_xannor_player_line_bytes(
-	    (const uint8_t *)player_name, strlen(player_name), result,
-	    xannor_fighters, player_shields, player_killed, (uint8_t *)line,
-	    line_size - 1U, &length))
-		return false;
-	line[length] = '\0';
-	return true;
-}
-
-
 
 bool
 yt_maintenance_xannor_groups_extract(struct yt_game *game,

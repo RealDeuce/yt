@@ -412,14 +412,6 @@ bool yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 bool yt_maintenance_mercenary_stays(float planet_link, float draw);
 
 bool yt_maintenance_mercenary_attacks(float defense_owner, float draw);
-bool yt_maintenance_xannor_player_combat(struct yt_random *random,
-    float *player_fighters, float *player_shields, float *xannor_fighters,
-    struct yt_maintenance_xannor_player_result *result,
-    struct yt_error *error);
-bool yt_maintenance_xannor_player_line(const char *player_name,
-    const struct yt_maintenance_xannor_player_result *result,
-    float xannor_fighters, float player_shields, bool player_killed,
-    char *line, size_t line_size);
 bool yt_maintenance_xannor_player_line_bytes(const uint8_t *player_name,
     size_t player_name_length,
     const struct yt_maintenance_xannor_player_result *result,

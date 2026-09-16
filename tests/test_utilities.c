@@ -859,60 +859,6 @@ test_maintenance_xannor_defense(void)
 	    && script.position == sizeof(high_draw);
 }
 
-static bool
-test_maintenance_xannor_player(void)
-{
-	static const uint8_t kill_draws[] = {
-		0x00, 0x00, 0x80,
-		0x00, 0x00, 0x80
-	};
-	static const uint8_t xannor_loss[] = {0xff, 0xff, 0xff};
-	struct utility_random_script script = {
-		kill_draws, sizeof(kill_draws), 0
-	};
-	struct yt_random random;
-	struct yt_maintenance_xannor_player_result result;
-	struct yt_error error;
-	float fighters = 1.0f;
-	float shields = 1.0f;
-	float xannor = 1.0f;
-	char line[160];
-
-	yt_error_clear(&error);
-	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_random_fill, &script);
-	if (!yt_maintenance_xannor_player_combat(&random, &fighters,
-	    &shields, &xannor, &result, &error)
-	    || fighters != 0.0f || shields != 0.0f || xannor != 1.0f
-	    || result.player_fighter_losses != 1.0f
-	    || result.xannor_losses != 0.0f || random.draws != 2U
-	    || script.position != sizeof(kill_draws)
-	    || !yt_maintenance_xannor_player_line("Alice", &result,
-	    xannor, shields, true, line, sizeof(line))
-	    || strcmp(line,
-	    " *** Alice: lost 1, dstrd 0 (Player Killed)") != 0)
-		return false;
-
-	script = (struct utility_random_script){xannor_loss,
-	    sizeof(xannor_loss), 0};
-	yt_random_set_provider(&random, utility_random_fill, &script);
-	fighters = 1.0f;
-	shields = 10.0f;
-	xannor = 1.0f;
-	if (!yt_maintenance_xannor_player_combat(&random, &fighters,
-	    &shields, &xannor, &result, &error)
-	    || fighters != 1.0f || shields != 10.0f || xannor != 0.0f
-	    || result.player_fighter_losses != 0.0f
-	    || result.xannor_losses != 1.0f || random.draws != 1U
-	    || !yt_maintenance_xannor_player_line("Bob", &result,
-	    xannor, shields, false, line, sizeof(line))
-	    || strcmp(line,
-	    " *** Bob: lost 0, dstrd 1 (Xannor Lost) - Shields: 10") != 0)
-		return false;
-	return !yt_maintenance_xannor_player_line("Alice", &result,
-	    xannor, shields, false, line, 1U);
-}
-
 struct utility_lcg {
 	uint32_t state;
 };
@@ -5353,8 +5299,6 @@ main(void)
 		failure = "maintenance random helper vectors differ";
 	else if (!test_maintenance_xannor_defense())
 		failure = "maintenance Xannor defense gate differs";
-	else if (!test_maintenance_xannor_player())
-		failure = "maintenance Xannor player combat differs";
 	else if (!test_yt_init_presented_world())
 		failure = "deterministic YT-INIT presentation differs";
 	else if (!test_yt_clock_boundaries())
