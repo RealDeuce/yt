@@ -223,8 +223,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 
 		if (!scanner_read_port(session, sector.port, &port,
 		    &physical_port, error)
-		    || !yt_sector_port_row(&port, row, sizeof(row), &row_length,
-		    error)
+		    || !yt_sector_port_row(&port, row, sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "sector port row", error))
 			return false;
@@ -247,7 +246,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 		    || !scanner_read_planet(session, physical_planet, &planet,
 		    error)
 		    || !yt_sector_planet_row(&planet, row, sizeof(row),
-		    &row_length, error))
+		    &row_length))
 			return false;
 		saved_foreground = session->presentation.foreground;
 		session_set_foreground(session, 3.0f);

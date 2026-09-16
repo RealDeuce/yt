@@ -117,10 +117,9 @@ yt_session_planet_permission(struct yt_session *session,
 	if (!yt_session_update_planet_physical(session, physical_planet_record,
 	    &(struct yt_planet){0}, NULL, error)
 	    || !read_planet_physical(session, physical_planet_record,
-	    &planet, error)
-	    || !yt_planet_stored_name(&planet, cached_name,
-	    &cached_name_length, error))
+	    &planet, error))
 		return false;
+	cached_name_length = yt_planet_stored_name(&planet, cached_name);
 	cached_owner = planet.owner;
 	cached_ground_forces = planet.ground_forces;
 	if (floorf(cached_ground_forces) <= 0.0f

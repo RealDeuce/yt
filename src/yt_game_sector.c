@@ -37,52 +37,33 @@ yt_player_stored_name(const struct yt_player *player,
 	return true;
 }
 
-static bool
-stored_record_name(const struct yt_record *record,
-    const char *operation, uint8_t name[YT_TEXT_FIELD_SIZE], size_t *length,
-    struct yt_error *error)
+static size_t
+stored_record_name(const struct yt_record *record, size_t requested,
+    uint8_t name[YT_TEXT_FIELD_SIZE])
 {
-	bool overflow;
-	int requested = (int)qb_cint_mbf32(
-	    record->bytes + YT_F85, 0U, &overflow);
-	size_t stored;
+	size_t stored = requested;
 
-	if (length != NULL)
-		*length = 0U;
-	if (overflow || requested < 0) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			snprintf(error->operation, sizeof(error->operation), "%s",
-			    operation);
-		}
-		return false;
-	}
-	stored = (size_t)requested;
 	if (stored > YT_TEXT_FIELD_SIZE)
 		stored = YT_TEXT_FIELD_SIZE;
 	if (stored > 0U && name != NULL)
 		memcpy(name, record->bytes, stored);
-	if (length != NULL)
-		*length = stored;
-	return true;
+	return stored;
 }
 
-bool
+size_t
 yt_port_stored_name(const struct yt_port *port,
-    uint8_t name[YT_TEXT_FIELD_SIZE], size_t *length,
-    struct yt_error *error)
+    uint8_t name[YT_TEXT_FIELD_SIZE])
 {
-	return stored_record_name(&port->record,
-	    "port name LEFT$ length", name, length, error);
+	return port == NULL ? 0U
+	    : stored_record_name(&port->record, port->name_length, name);
 }
 
-bool
+size_t
 yt_planet_stored_name(const struct yt_planet *planet,
-    uint8_t name[YT_TEXT_FIELD_SIZE], size_t *length,
-    struct yt_error *error)
+    uint8_t name[YT_TEXT_FIELD_SIZE])
 {
-	return stored_record_name(&planet->record,
-	    "planet name LEFT$ length", name, length, error);
+	return planet == NULL ? 0U
+	    : stored_record_name(&planet->record, planet->name_length, name);
 }
 
 bool
@@ -135,7 +116,7 @@ yt_sector_sensor_targets(const float caller_warps[6], float targets[6])
 
 bool
 yt_sector_port_row(const struct yt_port *port, uint8_t *row,
-    size_t capacity, size_t *length, struct yt_error *error)
+    size_t capacity, size_t *length)
 {
 	static const uint8_t prefix[] = "Port: ";
 	static const uint8_t separator[] = ", Selling: ";
@@ -149,9 +130,9 @@ yt_sector_port_row(const struct yt_port *port, uint8_t *row,
 
 	if (length != NULL)
 		*length = 0U;
-	if (port == NULL || !yt_port_stored_name(port, name, &name_length,
-	    error))
+	if (port == NULL)
 		return false;
+	name_length = yt_port_stored_name(port, name);
 	if (port->commodity_class == 1.0f)
 		commodity = equipment;
 	else if (port->commodity_class == 2.0f)
@@ -168,7 +149,7 @@ yt_sector_port_row(const struct yt_port *port, uint8_t *row,
 
 bool
 yt_sector_planet_row(const struct yt_planet *planet, uint8_t *row,
-    size_t capacity, size_t *length, struct yt_error *error)
+    size_t capacity, size_t *length)
 {
 	static const uint8_t prefix[] = "Planet: ";
 	static const uint8_t separator[] = " * Forces:";
@@ -179,9 +160,9 @@ yt_sector_planet_row(const struct yt_planet *planet, uint8_t *row,
 
 	if (length != NULL)
 		*length = 0U;
-	if (planet == NULL || !yt_planet_stored_name(planet, name,
-	    &name_length, error))
+	if (planet == NULL)
 		return false;
+	name_length = yt_planet_stored_name(planet, name);
 	forces = (float)qb_int((double)planet->ground_forces);
 	if (!yt_game_row_append(&builder, prefix, sizeof(prefix) - 1U)
 	    || !yt_game_row_append(&builder, name, name_length)

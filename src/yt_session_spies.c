@@ -245,7 +245,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				    error)
 				    || !spy_first_finding(session, spy, sector_number, error)
 				    || !yt_sector_planet_row(&planet, row, sizeof(row),
-				    &length, error)
+				    &length)
 				    || !spy_line(session, row, length,
 				    SESSION_PRESENT_BOLD_LINE, error)
 				    || !session_read_sector(session, sector_number, &sector,

@@ -1438,9 +1438,7 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 		return true;
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
-	if (!yt_planet_stored_name(&planet, stored_name,
-	    &stored_name_length, error))
-		return false;
+	stored_name_length = yt_planet_stored_name(&planet, stored_name);
 	number_length = qb_str_single(number, sizeof(number), *group_size);
 	line_length = 0U;
 	if (number_length < 0

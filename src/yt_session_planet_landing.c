@@ -36,10 +36,10 @@ yt_session_planet_assault(struct yt_session *session,
 	saved_foreground = session->presentation.foreground;
 	if (!yt_session_update_planet_physical(session, physical_planet, &planet,
 	    NULL, error)
-	    || !read_planet_physical(session, physical_planet, &planet, error)
-	    || !yt_planet_stored_name(&planet, planet_name,
-	    &planet_name_length, error)
-	    || !session_reload_player(session, error))
+	    || !read_planet_physical(session, physical_planet, &planet, error))
+		return false;
+	planet_name_length = yt_planet_stored_name(&planet, planet_name);
+	if (!session_reload_player(session, error))
 		return false;
 	defenders = floorf(planet.ground_forces);
 	if (!yt_player_stored_name(&session->player, player_name,

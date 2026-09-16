@@ -269,9 +269,8 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	}
 	original_ground = planet.ground_forces;
 	remaining_ground = original_ground;
-	if (!yt_planet_stored_name(&planet, planet_name, &planet_name_length,
-	    error)
-	    || !yt_projectile_planet_attack_rows(true, attacker, attacker_length,
+	planet_name_length = yt_planet_stored_name(&planet, planet_name);
+	if (!yt_projectile_planet_attack_rows(true, attacker, attacker_length,
 	    planet_name, planet_name_length, (float)sector_number, direct_row,
 	    sizeof(direct_row), &direct_length, news_row, sizeof(news_row),
 	    &news_length)
@@ -745,4 +744,3 @@ plasma_reload_sector:
 	return plasma_planet_impact(session, sector_number, &sector, attacker,
 	    launch_attacker_length, energy, error);
 }
-

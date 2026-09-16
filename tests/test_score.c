@@ -1503,10 +1503,10 @@ check_projectile_parent_model(void)
 		return false;
 	memset(&planet, 0, sizeof(planet));
 	memcpy(planet.record.bytes, planet_binary, sizeof(planet_binary));
-	planet.name_length = 19U;
+	planet.name_length = sizeof(planet_binary);
 	(void)yt_record_set_number(&planet.record, YT_F85, 3.0f);
-	if (!yt_planet_stored_name(&planet, defense, &defense_length, NULL)
-	    || defense_length != sizeof(planet_binary)
+	defense_length = yt_planet_stored_name(&planet, defense);
+	if (defense_length != sizeof(planet_binary)
 	    || memcmp(defense, planet_binary, defense_length) != 0)
 		return false;
 	return debit.missiles == 7.0f

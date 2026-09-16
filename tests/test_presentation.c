@@ -2646,25 +2646,23 @@ test_sector_scanner_rows(void)
 	yt_record_set_number(&record, YT_F41, 1.0f);
 	yt_record_set_number(&record, YT_F85, 3.0f);
 	yt_port_decode(&port, &record);
-	port.name_length = 19U;
-	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length, &error)
+	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length)
 	    && length == sizeof(port_equ_expected)
 	    && memcmp(row, port_equ_expected, length) == 0);
 	port.commodity_class = 2.0f;
-	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length, &error)
+	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length)
 	    && memcmp(row + length - 3U, "Org", 3U) == 0);
 	port.commodity_class = -7.0f;
-	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length, &error)
+	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length)
 	    && memcmp(row + length - 3U, "Ore", 3U) == 0);
-	CHECK(!yt_sector_port_row(&port, row, length - 1U, &length, &error));
+	CHECK(!yt_sector_port_row(&port, row, length - 1U, &length));
 
 	yt_record_blank(&record);
 	memcpy(record.bytes, raw_name, sizeof(raw_name));
 	yt_record_set_number(&record, YT_F77, -1.25f);
 	yt_record_set_number(&record, YT_F85, 3.0f);
 	yt_planet_decode(&planet, &record);
-	planet.name_length = 19U;
-	CHECK(yt_sector_planet_row(&planet, row, sizeof(row), &length, &error)
+	CHECK(yt_sector_planet_row(&planet, row, sizeof(row), &length)
 	    && length == sizeof(planet_expected)
 	    && memcmp(row, planet_expected, length) == 0);
 

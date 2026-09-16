@@ -126,10 +126,10 @@ planet_move_hop(struct yt_session *session, int source_number,
 	    (float)source_number);
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)source_record, &source.record, error)
-	    || !read_planet_physical(session, moving_record, &planet, error)
-	    || !yt_planet_stored_name(&planet, planet_name,
-	    &planet_name_length, error)
-	    || !yt_random_next(&session->door->game.random, &draw, error))
+	    || !read_planet_physical(session, moving_record, &planet, error))
+		return false;
+	planet_name_length = yt_planet_stored_name(&planet, planet_name);
+	if (!yt_random_next(&session->door->game.random, &draw, error))
 		return false;
 	if (draw > 0.9950000047683716f || *stop) {
 		float loss = 0.0f;

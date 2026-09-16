@@ -49,9 +49,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	original_ore = updater_planet.production[0];
 	if (!read_planet_physical(session, physical_planet, &planet, error))
 		return false;
-	if (!yt_planet_stored_name(&planet, planet_name, &planet_name_length,
-	    error))
-		return false;
+	planet_name_length = yt_planet_stored_name(&planet, planet_name);
 	if (planet.owner == (float)session_record(session))
 		friendly = true;
 	else if (planet.owner > 1.0f
