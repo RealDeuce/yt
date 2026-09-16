@@ -11,23 +11,14 @@ yt_player_stored_name(const struct yt_player *player,
     uint8_t name[YT_TEXT_FIELD_SIZE], size_t *length,
     struct yt_error *error)
 {
-	bool overflow;
-	int requested = (int)qb_cint_mbf32(
-	    player->record.bytes + YT_F85, 0U, &overflow);
 	size_t stored;
 
 	if (length != NULL)
-		*length = 0;
-	if (overflow || requested < 0) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			snprintf(error->operation, sizeof(error->operation),
-			    "%s", overflow ? "player name CINT"
-			    : "player name LEFT$ length");
-		}
+		*length = 0U;
+	if (player == NULL)
 		return false;
-	}
-	stored = (size_t)requested;
+	(void)error;
+	stored = player->name_length;
 	if (stored > YT_TEXT_FIELD_SIZE)
 		stored = YT_TEXT_FIELD_SIZE;
 	if (stored > 0 && name != NULL)
