@@ -29,6 +29,5 @@ bool yt_random_nested_integer(struct yt_random *random, int count, int range,
     int *value, struct yt_error *error);
 bool yt_random_market_bases(struct yt_random *random, float bases[3],
     struct yt_error *error);
-float yt_random_last(const struct yt_random *random);
 
 #endif

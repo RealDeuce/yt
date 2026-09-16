@@ -168,9 +168,3 @@ yt_random_market_bases(struct yt_random *random, float bases[3],
 	}
 	return true;
 }
-
-float
-yt_random_last(const struct yt_random *random)
-{
-	return random->has_last ? random->last : 0.0f;
-}

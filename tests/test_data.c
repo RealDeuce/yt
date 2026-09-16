@@ -350,7 +350,7 @@ test_random(void)
 	yt_random_set_provider(&random, scripted_fill, &script);
 	CHECK(yt_random_next(&random, &value, NULL));
 	CHECK(value == 0.16776585578918457f);
-	CHECK(yt_random_last(&random) == value);
+	CHECK(random.has_last && random.last == value);
 	CHECK(yt_random_next(&random, &value, NULL));
 	CHECK(value == 0.1780800223350525f);
 	CHECK(random.draws == 2);
