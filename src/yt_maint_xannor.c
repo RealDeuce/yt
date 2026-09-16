@@ -1765,7 +1765,7 @@ yt_maintenance_xannor_route_arrivals(struct maint_state *state, int group,
 
 				if (!yt_maintenance_compose_xannor_path_error(
 				    (float)source, (float)target, &output)
-				    || !maintenance_emit_output_row(&output, 0x38A8U,
+				    || !maintenance_emit_output_row(&output, YT_MAINT_ROW_XANNOR_PATH_ERROR,
 				    line_output, line_context, error))
 					return false;
 			}
@@ -1970,7 +1970,7 @@ yt_maintenance_xannor_roaming_groups(struct maint_state *state, float score,
 				    || !yt_maintenance_compose_xannor_group(group,
 				    size[group], &group_output)
 				    || !maintenance_emit_output_row(&group_output,
-				    0x34B2U, line_output, line_context, error))
+				    YT_MAINT_ROW_XANNOR_GROUP_REPORT, line_output, line_context, error))
 					return false;
 				if (!yt_maintenance_xannor_route_arrivals(state, group,
 				    target, (float)top_target, location, size,

@@ -37,10 +37,10 @@ yt_maintenance_mercenary_attacks(float defense_owner, float draw)
 
 static bool
 maintenance_news_output_row(const struct yt_maintenance_output_result *output,
-    uint16_t address, struct yt_error *error)
+    enum yt_maintenance_output_row_id id, struct yt_error *error)
 {
 	const struct yt_maintenance_output_row *row =
-	    maintenance_find_output_row(output, address);
+	    maintenance_find_output_row(output, id);
 	char line[YT_MAINTENANCE_OUTPUT_ROW_SIZE + 1U];
 
 	if (row == NULL || row->length > YT_MAINTENANCE_OUTPUT_ROW_SIZE) {
@@ -963,7 +963,7 @@ yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
 		    route_cache, origin, target, &next, error)
 		    || !yt_maintenance_compose_mercenary_movement((double)moving,
 		    (float)origin, &output)
-		    || !maintenance_emit_output_row(&output, 0x4911U,
+		    || !maintenance_emit_output_row(&output, YT_MAINT_ROW_MERCENARY_MOVEMENT,
 		    line_output, line_context, error))
 			return false;
 		if (route_cache->successors == NULL) {
@@ -1027,9 +1027,11 @@ yt_maintenance_mercenaries_run(struct maint_state *state,
 	if (!yt_maintenance_compose_mercenary_phase(
 	    NULL, 0U,
 	    0.0f, false, 0.0f, &output)
-	    || !maintenance_emit_output_row(&output, 0x3F86U,
+	    || !maintenance_emit_output_row(&output,
+	    YT_MAINT_ROW_MERCENARY_START_BLANK,
 	    line_output, line_context, error)
-	    || !maintenance_emit_output_row(&output, 0x3F95U,
+	    || !maintenance_emit_output_row(&output,
+	    YT_MAINT_ROW_MERCENARY_START_SEPARATOR,
 	    line_output, line_context, error)
 	    || !yt_maintenance_collect_mercenary_tax(&state->game,
 	    state->port_count, &tax, error)
@@ -1038,18 +1040,22 @@ yt_maintenance_mercenaries_run(struct maint_state *state,
 	    tax.tax_pool, false, 0.0f, &output))
 		return false;
 	if (tax.tax_pool != 0.0f
-	    && (!maintenance_emit_output_row(&output, 0x40BCU,
+	    && (!maintenance_emit_output_row(&output,
+	    YT_MAINT_ROW_MERCENARY_TAX_REPORT,
 	    line_output, line_context, error)
-	    || !maintenance_news_output_row(&output, 0x40BCU, error)))
+	    || !maintenance_news_output_row(&output,
+	    YT_MAINT_ROW_MERCENARY_TAX_REPORT, error)))
 		return false;
-	if (!maintenance_emit_output_row(&output, 0x40DEU,
+	if (!maintenance_emit_output_row(&output, YT_MAINT_ROW_MERCENARY_PHASE_BLANK,
 	    line_output, line_context, error)
-	    || !maintenance_emit_output_row(&output, 0x40F2U,
+	    || !maintenance_emit_output_row(&output,
+	    YT_MAINT_ROW_MERCENARY_PHASE_HEADER,
 	    line_output, line_context, error)
-	    || !maintenance_emit_output_row(&output, 0x4103U,
+	    || !maintenance_emit_output_row(&output,
+	    YT_MAINT_ROW_MERCENARY_PHASE_SEPARATOR,
 	    line_output, line_context, error)
 	    || !yt_news_append(report, error)
-	    || !maintenance_emit_output_row(&output, 0x4130U,
+	    || !maintenance_emit_output_row(&output, YT_MAINT_ROW_MERCENARY_BASE_CHECK,
 	    line_output, line_context, error)
 	    || !yt_maintenance_maintain_mercenary_base(&state->game,
 	    state->sector_count, state->planet_count - 1, &rebuilt, error))
@@ -1058,11 +1064,13 @@ yt_maintenance_mercenaries_run(struct maint_state *state,
 		if (!yt_maintenance_compose_mercenary_phase(
 		    NULL, 0U, tax.tax_pool, true, 0.0f,
 		    &output)
-		    || !maintenance_emit_output_row(&output, 0x41DEU,
+		    || !maintenance_emit_output_row(&output,
+		    YT_MAINT_ROW_MERCENARY_REBUILD_BLANK,
 		    line_output, line_context, error)
-		    || !maintenance_emit_output_row(&output, 0x41FAU,
+		    || !maintenance_emit_output_row(&output, YT_MAINT_ROW_MERCENARY_REBUILT,
 		    line_output, line_context, error)
-		    || !maintenance_news_output_row(&output, 0x41FAU, error))
+		    || !maintenance_news_output_row(&output,
+		    YT_MAINT_ROW_MERCENARY_REBUILT, error))
 			return false;
 	}
 	if (!yt_maintenance_place_mercenary_fleets(&state->game,
@@ -1072,9 +1080,10 @@ yt_maintenance_mercenaries_run(struct maint_state *state,
 	    && (!yt_maintenance_compose_mercenary_phase(
 	    NULL, 0U,
 	    tax.tax_pool, rebuilt, hired, &output)
-	    || !maintenance_emit_output_row(&output, 0x4631U,
+	    || !maintenance_emit_output_row(&output, YT_MAINT_ROW_MERCENARY_HIRED,
 	    line_output, line_context, error)
-	    || !maintenance_news_output_row(&output, 0x4631U, error)))
+	    || !maintenance_news_output_row(&output,
+	    YT_MAINT_ROW_MERCENARY_HIRED, error)))
 		return false;
 	if (!yt_maintenance_mercenary_defections(&state->game,
 	    state->sector_count, line_output, line_context, &defections,

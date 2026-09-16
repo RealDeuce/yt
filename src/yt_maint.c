@@ -180,9 +180,11 @@ yt_maintenance_finish(struct yt_game *game, int player_count,
 	    || !maintenance_close_all(game, error))
 		return false;
 	if (!yt_maintenance_compose_wrapper(&wrapper_output)
-	    || !maintenance_emit_output_row(&wrapper_output, 0x004FU,
+	    || !maintenance_emit_output_row(&wrapper_output,
+	    YT_MAINT_ROW_WRAPPER_BLANK,
 	    line_output, line_context, error)
-	    || !maintenance_emit_output_row(&wrapper_output, 0x0061U,
+	    || !maintenance_emit_output_row(&wrapper_output,
+	    YT_MAINT_ROW_WRAPPER_COMPLETED,
 	    line_output, line_context, error))
 		return false;
 	return true;
@@ -239,40 +241,51 @@ yt_maintenance_run(struct yt_error *error)
 	}
 	if (!yt_maintenance_compose_entry(same_day, &entry_output)
 	    || (same_day
-	    && (!maintenance_emit_output_row(&entry_output, 0x036DU,
+	    && (!maintenance_emit_output_row(&entry_output,
+	    YT_MAINT_ROW_ENTRY_SAME_DAY_BLANK,
 	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, 0x037FU,
+	    || !maintenance_emit_output_row(&entry_output,
+	    YT_MAINT_ROW_ENTRY_SAME_DAY_MESSAGE,
 	    maintenance_stdout_line, NULL, error)))
-	    || !maintenance_emit_output_row(&entry_output, 0x0399U,
+	    || !maintenance_emit_output_row(&entry_output,
+	    YT_MAINT_ROW_ENTRY_BANNER_BLANK,
 	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, 0x03ADU,
+	    || !maintenance_emit_output_row(&entry_output, YT_MAINT_ROW_ENTRY_TITLE,
 	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, 0x03BFU,
+	    || !maintenance_emit_output_row(&entry_output, YT_MAINT_ROW_ENTRY_BYLINE,
 	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, 0x03D3U,
+	    || !maintenance_emit_output_row(&entry_output,
+	    YT_MAINT_ROW_ENTRY_REVISION_LEADING_BLANK,
 	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, 0x03E5U,
+	    || !maintenance_emit_output_row(&entry_output,
+	    YT_MAINT_ROW_ENTRY_REVISION_INDENT,
 	    maintenance_stdout_semi, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, 0x03ECU,
+	    || !maintenance_emit_output_row(&entry_output, YT_MAINT_ROW_ENTRY_REVISION,
 	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, 0x03FDU,
+	    || !maintenance_emit_output_row(&entry_output,
+	    YT_MAINT_ROW_ENTRY_WARNING_BLANK,
 	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, 0x040CU,
+	    || !maintenance_emit_output_row(&entry_output, YT_MAINT_ROW_ENTRY_WARNING,
 	    maintenance_stdout_line, NULL, error)
 	    || !yt_maintenance_clear_protected_mines(&state.game, error)
 	    || !yt_maintenance_compose_message_compaction(&compaction_output)
-	    || !maintenance_emit_output_row(&compaction_output, 0x673AU,
+	    || !maintenance_emit_output_row(&compaction_output,
+	    YT_MAINT_ROW_MESSAGE_COMPACTION_BLANK,
 	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&compaction_output, 0x674CU,
+	    || !maintenance_emit_output_row(&compaction_output,
+	    YT_MAINT_ROW_MESSAGE_COMPACTION_HEADER,
 	    maintenance_stdout_line, NULL, error)
 	    || !yt_radio_compact(error)
 	    || !yt_news_rotate(error)
 	    || !yt_maintenance_write_header(&state.game.clock, error)
-	    || !maintenance_emit_output_row(&entry_output, 0x04E8U,
+	    || !maintenance_emit_output_row(&entry_output,
+	    YT_MAINT_ROW_ENTRY_PLAYER_PHASE_BLANK,
 	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, 0x04FCU,
+	    || !maintenance_emit_output_row(&entry_output,
+	    YT_MAINT_ROW_ENTRY_PLAYER_PHASE,
 	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, 0x050DU,
+	    || !maintenance_emit_output_row(&entry_output,
+	    YT_MAINT_ROW_ENTRY_PLAYER_PHASE_TRAILING_BLANK,
 	    maintenance_stdout_line, NULL, error)
 	    || !yt_maintenance_players_run(&state, maintenance_stdout_line, NULL,
 	    error)
@@ -302,23 +315,24 @@ done:
 
 const struct yt_maintenance_output_row *
 maintenance_find_output_row(const struct yt_maintenance_output_result *output,
-    uint16_t address)
+    enum yt_maintenance_output_row_id id)
 {
 	size_t index;
 
 	for (index = 0U; index < output->row_count; ++index)
-		if (output->rows[index].address == address)
+		if (output->rows[index].id == id)
 			return &output->rows[index];
 	return NULL;
 }
 
 bool
 maintenance_emit_output_row(const struct yt_maintenance_output_result *output,
-    uint16_t address, yt_maintenance_score_line_fn line_output,
+    enum yt_maintenance_output_row_id id,
+    yt_maintenance_score_line_fn line_output,
     void *line_context, struct yt_error *error)
 {
 	const struct yt_maintenance_output_row *row =
-	    maintenance_find_output_row(output, address);
+	    maintenance_find_output_row(output, id);
 
 	if (row == NULL || line_output == NULL) {
 		set_error(error, YT_INVALID, "maintenance output row", "");

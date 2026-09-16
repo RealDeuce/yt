@@ -3007,10 +3007,10 @@ check_maintenance_entry_output(void)
 	    || result.output_length != sizeof(expected_common) - 1U
 	    || memcmp(result.output, expected_common,
 	    sizeof(expected_common) - 1U) != 0
-	    || result.rows[0].address != 0x0399U
-	    || result.rows[4].address != 0x03E5U
+	    || result.rows[0].id != YT_MAINT_ROW_ENTRY_BANNER_BLANK
+	    || result.rows[4].id != YT_MAINT_ROW_ENTRY_REVISION_INDENT
 	    || result.rows[4].newline
-	    || result.rows[10].address != 0x050DU)
+	    || result.rows[10].id != YT_MAINT_ROW_ENTRY_PLAYER_PHASE_TRAILING_BLANK)
 		return false;
 	if (!yt_maintenance_compose_entry(true, &result)
 	    || result.row_count != 13U
@@ -3019,24 +3019,24 @@ check_maintenance_entry_output(void)
 	    || memcmp(result.output, expected_same_day, prefix_length) != 0
 	    || memcmp(result.output + prefix_length, expected_common,
 	    sizeof(expected_common) - 1U) != 0
-	    || result.rows[0].address != 0x036DU
-	    || result.rows[1].address != 0x037FU)
+	    || result.rows[0].id != YT_MAINT_ROW_ENTRY_SAME_DAY_BLANK
+	    || result.rows[1].id != YT_MAINT_ROW_ENTRY_SAME_DAY_MESSAGE)
 		return false;
 	if (!yt_maintenance_compose_wrapper(&result)
 	    || result.row_count != 2U
 	    || result.output_length != sizeof(expected_wrapper) - 1U
 	    || memcmp(result.output, expected_wrapper,
 	    sizeof(expected_wrapper) - 1U) != 0
-	    || result.rows[0].address != 0x004FU
-	    || result.rows[1].address != 0x0061U)
+	    || result.rows[0].id != YT_MAINT_ROW_WRAPPER_BLANK
+	    || result.rows[1].id != YT_MAINT_ROW_WRAPPER_COMPLETED)
 		return false;
 	if (!yt_maintenance_compose_message_compaction(&result)
 	    || result.row_count != 2U
 	    || result.output_length != sizeof(expected_compaction) - 1U
 	    || memcmp(result.output, expected_compaction,
 	    sizeof(expected_compaction) - 1U) != 0
-	    || result.rows[0].address != 0x673AU
-	    || result.rows[1].address != 0x674CU)
+	    || result.rows[0].id != YT_MAINT_ROW_MESSAGE_COMPACTION_BLANK
+	    || result.rows[1].id != YT_MAINT_ROW_MESSAGE_COMPACTION_HEADER)
 		return false;
 	return !yt_maintenance_compose_entry(false, NULL)
 	    && !yt_maintenance_compose_wrapper(NULL)
@@ -3090,16 +3090,16 @@ check_maintenance_port_model(void)
 	    0U, 0, &output) || output.row_count != 2U
 	    || output.output_length != sizeof(zero_output) - 1U
 	    || memcmp(output.output, zero_output, sizeof(zero_output) - 1U) != 0
-	    || output.rows[0].address != 0x07A3U
-	    || output.rows[1].address != 0x07B5U
+	    || output.rows[0].id != YT_MAINT_ROW_PORT_PHASE_BLANK
+	    || output.rows[1].id != YT_MAINT_ROW_PORT_PHASE_HEADER
 	    || !yt_maintenance_compose_port_phase(
 	    NULL, 0U, 3, &output)
 	    || output.row_count != 4U
 	    || output.output_length != sizeof(plague_output) - 1U
 	    || memcmp(output.output, plague_output,
 	    sizeof(plague_output) - 1U) != 0
-	    || output.rows[2].address != 0x0F62U
-	    || output.rows[3].address != 0x0F94U
+	    || output.rows[2].id != YT_MAINT_ROW_PORT_PLAGUE_BLANK
+	    || output.rows[3].id != YT_MAINT_ROW_PORT_PLAGUE_REPORT
 	    || yt_maintenance_compose_port_phase(NULL, 1U, 0, &output)
 	    || yt_maintenance_compose_port_phase(NULL, 0U, -1, &output)
 	    || yt_maintenance_compose_port_phase(NULL, 0U, 1001, &output))
@@ -3190,25 +3190,25 @@ check_maintenance_mercenary_output(void)
 	    || output.output_length != sizeof(expected) - 1U
 	    || memcmp(output.output, expected, sizeof(expected) - 1U) != 0
 	    || output.final_column != 0U
-	    || output.rows[0].address != 0x3F86U
-	    || output.rows[1].address != 0x3F95U
-	    || output.rows[2].address != 0x40BCU
-	    || output.rows[3].address != 0x40DEU
-	    || output.rows[4].address != 0x40F2U
-	    || output.rows[5].address != 0x4103U
-	    || output.rows[6].address != 0x4130U
-	    || output.rows[7].address != 0x41DEU
-	    || output.rows[8].address != 0x41FAU
-	    || output.rows[9].address != 0x4631U)
+	    || output.rows[0].id != YT_MAINT_ROW_MERCENARY_START_BLANK
+	    || output.rows[1].id != YT_MAINT_ROW_MERCENARY_START_SEPARATOR
+	    || output.rows[2].id != YT_MAINT_ROW_MERCENARY_TAX_REPORT
+	    || output.rows[3].id != YT_MAINT_ROW_MERCENARY_PHASE_BLANK
+	    || output.rows[4].id != YT_MAINT_ROW_MERCENARY_PHASE_HEADER
+	    || output.rows[5].id != YT_MAINT_ROW_MERCENARY_PHASE_SEPARATOR
+	    || output.rows[6].id != YT_MAINT_ROW_MERCENARY_BASE_CHECK
+	    || output.rows[7].id != YT_MAINT_ROW_MERCENARY_REBUILD_BLANK
+	    || output.rows[8].id != YT_MAINT_ROW_MERCENARY_REBUILT
+	    || output.rows[9].id != YT_MAINT_ROW_MERCENARY_HIRED)
 		return false;
 	if (!yt_maintenance_compose_mercenary_phase(NULL, 0U, 0.0f,
 	    false, 0.0f, &output) || output.row_count != 6U
-	    || output.rows[2].address != 0x40DEU
-	    || output.rows[5].address != 0x4130U)
+	    || output.rows[2].id != YT_MAINT_ROW_MERCENARY_PHASE_BLANK
+	    || output.rows[5].id != YT_MAINT_ROW_MERCENARY_BASE_CHECK)
 		return false;
 	if (!yt_maintenance_compose_mercenary_movement(10.0, 8.0f, &output)
 	    || output.row_count != 1U
-	    || output.rows[0].address != 0x4911U
+	    || output.rows[0].id != YT_MAINT_ROW_MERCENARY_MOVEMENT
 	    || output.output_length != sizeof(movement) - 1U
 	    || memcmp(output.output, movement, sizeof(movement) - 1U) != 0
 	    || output.final_column != 0U
@@ -3656,11 +3656,11 @@ check_maintenance_planet_model(void)
 	    || output.output_length != sizeof(civil_output) - 1U
 	    || memcmp(output.output, civil_output,
 	    sizeof(civil_output) - 1U) != 0
-	    || output.rows[2].address != 0x1899U
-	    || output.rows[3].address != 0x196AU
-	    || output.rows[4].address != 0x19FBU
-	    || output.rows[5].address != 0x1AB6U
-	    || output.rows[6].address != 0x1B0BU)
+	    || output.rows[2].id != YT_MAINT_ROW_PLANET_EVENT_BLANK
+	    || output.rows[3].id != YT_MAINT_ROW_PLANET_EVENT_SUMMARY
+	    || output.rows[4].id != YT_MAINT_ROW_PLANET_EVENT_PRODUCTION
+	    || output.rows[5].id != YT_MAINT_ROW_PLANET_EVENT_GROUND
+	    || output.rows[6].id != YT_MAINT_ROW_PLANET_EVENT_EXPENSE)
 		return false;
 
 	memset(&planet, 0, sizeof(planet));
@@ -3739,7 +3739,7 @@ check_maintenance_planet_model(void)
 	    || output.rows[3].length < sizeof("  -  A PLAGUE") - 1U
 	    || memcmp(output.rows[3].data, "  -  A PLAGUE",
 	    sizeof("  -  A PLAGUE") - 1U) != 0
-	    || output.rows[4].address != 0x19FBU)
+	    || output.rows[4].id != YT_MAINT_ROW_PLANET_EVENT_PRODUCTION)
 		return false;
 	return !yt_maintenance_update_planet(NULL, &planet, 1.0f, 0.0f,
 	    &mutation, &error);
@@ -3763,17 +3763,17 @@ check_maintenance_wanderer_model(void)
 	    || output.row_count != 4U
 	    || output.output_length != sizeof(existing) - 1U
 	    || memcmp(output.output, existing, sizeof(existing) - 1U) != 0
-	    || output.rows[0].address != 0x1CEBU
-	    || output.rows[1].address != 0x1CFDU
-	    || output.rows[2].address != 0x1F6CU
-	    || output.rows[3].address != 0x1F93U
+	    || output.rows[0].id != YT_MAINT_ROW_WANDERER_PHASE_BLANK
+	    || output.rows[1].id != YT_MAINT_ROW_WANDERER_PHASE_HEADER
+	    || output.rows[2].id != YT_MAINT_ROW_WANDERER_RESULT_BLANK
+	    || output.rows[3].id != YT_MAINT_ROW_WANDERER_WARPED
 	    || !yt_maintenance_compose_wanderer_phase(
 	    NULL, 0U, true, &output)
 	    || output.row_count != 6U
 	    || output.output_length != sizeof(rebuilt) - 1U
 	    || memcmp(output.output, rebuilt, sizeof(rebuilt) - 1U) != 0
-	    || output.rows[2].address != 0x1DC4U
-	    || output.rows[3].address != 0x1F37U)
+	    || output.rows[2].id != YT_MAINT_ROW_WANDERER_MISSING
+	    || output.rows[3].id != YT_MAINT_ROW_WANDERER_REGENERATED)
 		return false;
 	return !yt_maintenance_compose_wanderer_phase(NULL, 1U, false,
 	    &output)
@@ -3796,16 +3796,16 @@ check_maintenance_xannor_home_model(void)
 	    || output.row_count != 2U
 	    || output.output_length != sizeof(existing) - 1U
 	    || memcmp(output.output, existing, sizeof(existing) - 1U) != 0
-	    || output.rows[0].address != 0x2073U
-	    || output.rows[1].address != 0x2085U
+	    || output.rows[0].id != YT_MAINT_ROW_XANNOR_HOME_PHASE_BLANK
+	    || output.rows[1].id != YT_MAINT_ROW_XANNOR_HOME_PHASE_HEADER
 	    || !yt_maintenance_compose_xannor_home(
 	    NULL, 0U, true, &output)
 	    || output.row_count != 5U
 	    || output.output_length != sizeof(rebuilt) - 1U
 	    || memcmp(output.output, rebuilt, sizeof(rebuilt) - 1U) != 0
-	    || output.rows[2].address != 0x2107U
-	    || output.rows[3].address != 0x2123U
-	    || output.rows[4].address != 0x22C4U)
+	    || output.rows[2].id != YT_MAINT_ROW_XANNOR_HOME_REBUILD_BLANK
+	    || output.rows[3].id != YT_MAINT_ROW_XANNOR_HOME_CREATED
+	    || output.rows[4].id != YT_MAINT_ROW_XANNOR_HOME_LINKED)
 		return false;
 	return !yt_maintenance_compose_xannor_home(NULL, 1U, false, &output)
 	    && !yt_maintenance_compose_xannor_home(NULL, 0U, false, NULL);
@@ -3829,17 +3829,17 @@ check_maintenance_xannor_hunt_model(void)
 	    || output.row_count != 4U
 	    || output.output_length != sizeof(ordinary) - 1U
 	    || memcmp(output.output, ordinary, sizeof(ordinary) - 1U) != 0
-	    || output.rows[0].address != 0x23EAU
-	    || output.rows[1].address != 0x23FEU
-	    || output.rows[2].address != 0x240FU
-	    || output.rows[3].address != 0x2421U
+	    || output.rows[0].id != YT_MAINT_ROW_XANNOR_HUNT_PHASE_BLANK
+	    || output.rows[1].id != YT_MAINT_ROW_XANNOR_HUNT_PROCESSING
+	    || output.rows[2].id != YT_MAINT_ROW_XANNOR_HUNT_SEPARATOR
+	    || output.rows[3].id != YT_MAINT_ROW_XANNOR_HUNT_LOCATING
 	    || !yt_maintenance_compose_xannor_hunt(
 	    NULL, 0U, &name, &output)
 	    || output.row_count != 6U
 	    || output.output_length != sizeof(selected) - 1U
 	    || memcmp(output.output, selected, sizeof(selected) - 1U) != 0
-	    || output.rows[4].address != 0x25D6U
-	    || output.rows[5].address != 0x2604U)
+	    || output.rows[4].id != YT_MAINT_ROW_XANNOR_HUNT_TARGET_BLANK
+	    || output.rows[5].id != YT_MAINT_ROW_XANNOR_HUNT_TARGET)
 		return false;
 	return !yt_maintenance_compose_xannor_hunt(NULL, 1U, NULL, &output)
 	    && !yt_maintenance_compose_xannor_hunt(NULL, 0U, &name, NULL);
@@ -3911,9 +3911,9 @@ check_maintenance_xannor_regeneration_model(void)
 	    || output.row_count != 3U
 	    || output.output_length != sizeof(expected) - 1U
 	    || memcmp(output.output, expected, sizeof(expected) - 1U) != 0
-	    || output.rows[0].address != 0x2A47U
-	    || output.rows[1].address != 0x2A7AU
-	    || output.rows[2].address != 0x2A9CU)
+	    || output.rows[0].id != YT_MAINT_ROW_XANNOR_REGENERATION_BLANK
+	    || output.rows[1].id != YT_MAINT_ROW_XANNOR_REGENERATION_REPORT
+	    || output.rows[2].id != YT_MAINT_ROW_XANNOR_REGENERATION_TRAILING_BLANK)
 		return false;
 	size[1] = 1001.0f;
 	if (!yt_maintenance_xannor_regeneration(100000.0f, size, &mutation)
@@ -4077,7 +4077,7 @@ check_maintenance_player_aging(void)
 	    || !yt_maintenance_compose_player_aging(&name, &time_text,
 	    &date_text, true, true, &output)
 	    || output.screen.row_count != 1U
-	    || output.screen.rows[0].address != 0x067AU
+	    || output.screen.rows[0].id != YT_MAINT_ROW_PLAYER_CLOAK_EXPIRED
 	    || output.screen.output_length != sizeof(expiry_screen) - 1U
 	    || memcmp(output.screen.output, expiry_screen,
 	    sizeof(expiry_screen) - 1U) != 0
@@ -4089,7 +4089,7 @@ check_maintenance_player_aging(void)
 	if (!yt_maintenance_compose_player_aging(&name, &time_text,
 	    &date_text, false, true, &output)
 	    || output.screen.row_count != 1U
-	    || output.screen.rows[0].address != 0x0749U
+	    || output.screen.rows[0].id != YT_MAINT_ROW_PLAYER_DELETED
 	    || output.screen.output_length != sizeof(deletion_screen) - 1U
 	    || memcmp(output.screen.output, deletion_screen,
 	    sizeof(deletion_screen) - 1U) != 0
@@ -8847,14 +8847,15 @@ check_maintenance_xannor_roaming_split(void)
 	if (!yt_maintenance_compose_xannor_roaming(
 	    NULL, 0U, &output)
 	    || output.row_count != 2U
-	    || output.rows[0].address != 0x30F7U
-	    || output.rows[1].address != 0x3109U
+	    || output.rows[0].id != YT_MAINT_ROW_XANNOR_ROAMING_MESSAGE
+	    || output.rows[1].id != YT_MAINT_ROW_XANNOR_ROAMING_BLANK
 	    || output.output_length != sizeof(expected_output) - 1U
 	    || memcmp(output.output, expected_output,
 	    sizeof(expected_output) - 1U) != 0
 	    || yt_maintenance_compose_xannor_roaming(NULL, 1U, &output)
 	    || !yt_maintenance_compose_xannor_group(2, 1.0f, &output)
-	    || output.row_count != 1U || output.rows[0].address != 0x34B2U
+	    || output.row_count != 1U
+	    || output.rows[0].id != YT_MAINT_ROW_XANNOR_GROUP_REPORT
 	    || output.output_length != sizeof(expected_group_two) - 1U
 	    || output.final_column != 0U
 	    || memcmp(output.output, expected_group_two,
@@ -8865,7 +8866,8 @@ check_maintenance_xannor_roaming_split(void)
 	    sizeof(expected_group_sixteen) - 1U) != 0
 	    || yt_maintenance_compose_xannor_group(1, 1.0f, &output)
 	    || !yt_maintenance_compose_xannor_path_error(1.0f, 5.0f, &output)
-	    || output.row_count != 1U || output.rows[0].address != 0x38A8U
+	    || output.row_count != 1U
+	    || output.rows[0].id != YT_MAINT_ROW_XANNOR_PATH_ERROR
 	    || output.output_length != sizeof(expected_path_error) - 1U
 	    || output.final_column != 0U
 	    || memcmp(output.output, expected_path_error,
