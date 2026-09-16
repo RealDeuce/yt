@@ -510,6 +510,8 @@ bool yt_maintenance_immediate_death(struct yt_game *game,
     float *player_sector, float *player_cloak, size_t cache_count,
     int victim_record, float killer, struct yt_player *victim,
     struct yt_error *error);
+bool yt_radio_append_maintenance_bytes(const uint8_t *text, size_t length,
+    float sender, float recipient, struct yt_error *error);
 bool yt_radio_append_maintenance(const char *text, float sender,
     float recipient, struct yt_error *error);
 bool yt_radio_compact(struct yt_error *error);
