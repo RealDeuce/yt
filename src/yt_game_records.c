@@ -496,28 +496,6 @@ yt_game_construct_player(struct yt_game *game, int basic_record,
 }
 
 bool
-yt_game_set_player_identity(struct yt_game *game, int basic_record,
-    const uint8_t *name, size_t length, struct yt_player *player,
-    struct yt_error *error)
-{
-	static const uint8_t zero[4] = {0x00, 0x00, 0x00, 0x00};
-	struct yt_record identity;
-	uint8_t length_raw[4];
-
-	if ((name == NULL && length != 0)
-	    || !yt_game_read_player(game, basic_record, player, error))
-		return false;
-	identity = player->record;
-	yt_record_set_text(&identity, name, length);
-	(void)qb_mbf32_encode((float)length, length_raw);
-	(void)yt_record_set_raw_number(&identity, YT_F85, length_raw);
-	(void)yt_record_set_raw_number(&identity, YT_F89, zero);
-	yt_player_decode(player, &identity);
-	return yt_database_write(&game->database, (size_t)basic_record,
-	    &identity, error);
-}
-
-bool
 yt_game_post_login_repairs(struct yt_game *game, int basic_record,
     const uint8_t one_raw[4], const uint8_t zero_raw[4],
     const uint8_t maximum_holds_raw[4], struct yt_player *player,

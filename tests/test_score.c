@@ -12965,13 +12965,6 @@ check_player_constructor_failures(void)
 	    || player.turns != 123.0f || player.fighters != 45.0f
 	    || player.credits != 678.0f || player.holds != 9.0f)
 		goto close;
-	yt_error_clear(&error);
-	if (yt_game_set_player_identity(&game, 2, (const uint8_t *)"New", 3,
-	    &player, &error) || error.status != YT_IO_ERROR
-	    || strcmp(error.operation, "write record") != 0
-	    || strcmp(player.name, "New") != 0 || player.name_length != 3.0f
-	    || player.team != 0.0f || player.score != 88.0f)
-		goto close;
 	yt_database_close(&game.database);
 	if (!yt_database_open(&game.database, "CONSTRUCT.DAT", YT_OPEN_READ,
 	    &error) || !yt_database_read(&game.database, 2, &after, &error)
@@ -15101,15 +15094,11 @@ main(void)
 	struct yt_player player;
 	static const uint8_t player_tail[YT_RECORD_TAIL_SIZE] =
 	    {0xde, 0xad, 0xbe, 0xef};
-	static const uint8_t long_identity[] =
-	    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx";
-	static const uint8_t dirty_zero[4] = {0x11, 0x22, 0x33, 0x00};
 	uint8_t constructor_date_raw[4];
 	uint8_t constructor_turns_raw[4];
 	uint8_t constructor_fighters_raw[4];
 	uint8_t constructor_credits_raw[4];
 	uint8_t constructor_holds_raw[4];
-	uint8_t identity_length_raw[4];
 	FILE *score;
 	unsigned char bytes[1024];
 	unsigned char expected_screen[1024];
@@ -15433,23 +15422,6 @@ main(void)
 	    "\0\0\0\0", 4U) != 0
 	    || memcmp(player.record.bytes + YT_F125,
 	    "\0\0\0\x81", 4U) != 0
-	    || memcmp(player.record.bytes + YT_RECORD_TAIL_OFFSET,
-	    player_tail, sizeof(player_tail)) != 0
-	    || sizeof(long_identity) - 1U != 50U
-	    || qb_mbf32_encode(50.0f, identity_length_raw) != QB_MBF_OK
-	    || !yt_record_set_raw_number(&player.record, YT_F89, dirty_zero)
-	    || !yt_database_write(&game.database, 2, &player.record, &error)
-	    || !yt_game_set_player_identity(&game, 2, long_identity,
-	    sizeof(long_identity) - 1U, &player, &error)
-	    || !yt_game_read_player(&game, 2, &player, &error)
-	    || memcmp(player.record.bytes, long_identity,
-	    YT_TEXT_FIELD_SIZE) != 0 || player.name_length != 50.0f
-	    || player.team != 0.0f || player.score != 77.5f
-	    || player.turns != 500.0f || player.fighters != 45.0f
-	    || memcmp(player.record.bytes + YT_F85,
-	    identity_length_raw, 4U) != 0
-	    || memcmp(player.record.bytes + YT_F89,
-	    "\0\0\0\0", 4U) != 0
 	    || memcmp(player.record.bytes + YT_RECORD_TAIL_OFFSET,
 	    player_tail, sizeof(player_tail)) != 0
 	    || !yt_database_write(&game.database, 2, &blank, &error))

@@ -350,9 +350,6 @@ bool yt_game_construct_player(struct yt_game *game, int basic_record,
     const uint8_t today_raw[4], const uint8_t turns_raw[4],
     struct yt_player *player, struct yt_player_constructor_state *state,
     struct yt_error *error);
-bool yt_game_set_player_identity(struct yt_game *game, int basic_record,
-    const uint8_t *name, size_t length, struct yt_player *player,
-    struct yt_error *error);
 bool yt_game_post_login_repairs(struct yt_game *game, int basic_record,
 	const uint8_t one_raw[4], const uint8_t zero_raw[4],
 	const uint8_t maximum_holds_raw[4], struct yt_player *player,
