@@ -61,7 +61,6 @@ endfunction()
 set(YT_CORE_SOURCES
     src/qb.c
     src/qb_format.c
-    src/yt_brun_fatal.c
     src/yt_cli.c
     src/yt_data.c
     src/yt_file.c

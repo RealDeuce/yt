@@ -1,5 +1,4 @@
 #include "qb.h"
-#include "yt_brun_fatal.h"
 #include "yt_config.h"
 #include "yt_config_output.h"
 #include "yt_file.h"
@@ -2253,91 +2252,6 @@ test_name_sequential_transaction(struct yt_error *error)
 	    &observation, &state, error)
 	    && !yt_names_load_sequential(&input, "names.in", &names,
 	    &observation, NULL, error);
-}
-
-static bool
-test_brun_internal_fatal(void)
-{
-	static const struct {
-		uint8_t number;
-		const char *name;
-	} error_names[] = {
-		{0x02U, "Syntax error"}, {0x03U, "RETURN without GOSUB"},
-		{0x04U, "Out of data"}, {0x05U, "Illegal function call"},
-		{0x06U, "Overflow"}, {0x07U, "Out of memory"},
-		{0x09U, "Subscript out of range"},
-		{0x0AU, "Redimensioned array"},
-		{0x0BU, "Division by zero"}, {0x0DU, "Type mismatch"},
-		{0x0EU, "Out of string space"},
-		{0x10U, "String formula too complex"},
-		{0x14U, "RESUME without error"},
-		{0x18U, "Device timeout"}, {0x19U, "Device fault"},
-		{0x1BU, "Out of paper"}, {0x27U, "CASE ELSE expected"},
-		{0x32U, "FIELD overflow"}, {0x33U, "Internal error"},
-		{0x34U, "Bad file number"}, {0x35U, "File not found"},
-		{0x36U, "Bad file mode"}, {0x37U, "File already open"},
-		{0x39U, "Device I/O error"},
-		{0x3AU, "File already exists"}, {0x3DU, "Disk full"},
-		{0x3EU, "Input past end"}, {0x3FU, "Bad record number"},
-		{0x40U, "Bad file name"}, {0x43U, "Too many files"},
-		{0x44U, "Device unavailable"},
-		{0x45U, "Communication buffer overflow"},
-		{0x46U, "Permission denied"}, {0x47U, "Disk not ready"},
-		{0x48U, "Disk media error"},
-		{0x49U, "Advanced feature error"},
-		{0x4AU, "Rename across disks"},
-		{0x4BU, "Path/file access error"},
-		{0x4CU, "Path not found"},
-	};
-	static const uint8_t expected_diagnostic[] =
-	    "\rString Space Corrupt in module YTCONFIG at address "
-	    "2222:0EE5\r";
-	static const uint8_t expected_prompt[] =
-	    "\rHit any key to return to system";
-	struct yt_brun_internal_fatal_state state;
-	const uint8_t *description;
-	size_t description_length;
-	size_t name_index;
-	unsigned error_number;
-	bool named;
-
-	for (error_number = 0U; error_number <= 0xFFU; ++error_number) {
-		named = false;
-		for (name_index = 0U; name_index < YT_ARRAY_LEN(error_names);
-		    ++name_index) {
-			if (error_names[name_index].number == error_number) {
-				named = true;
-				break;
-			}
-		}
-		if (!yt_brun_runtime_error_description((uint8_t)error_number,
-		    &description, &description_length)
-		    || description_length != strlen(named
-		    ? error_names[name_index].name : "Unprintable error")
-		    || memcmp(description, named ? error_names[name_index].name
-		    : "Unprintable error", description_length) != 0)
-			return false;
-	}
-	if (yt_brun_runtime_error_description(1U, NULL, &description_length)
-	    || yt_brun_runtime_error_description(1U, &description, NULL)
-	    || !yt_brun_internal_fatal_compose(YT_BRUN_INTERNAL_FATAL_OWNER,
-	    "YTCONFIG", false, 0, 0x2222U, 0x0EE5U, &state))
-		return false;
-	return state.entry == YT_BRUN_INTERNAL_FATAL_OWNER
-	    && strcmp(state.module, "YTCONFIG") == 0
-	    && state.module_segment == 0x2222U && state.saved_ip == 0x0EE5U
-	    && !state.has_source_line
-	    && state.diagnostic_length == sizeof(expected_diagnostic) - 1U
-	    && memcmp(state.diagnostic, expected_diagnostic,
-	    sizeof(expected_diagnostic) - 1U) == 0
-	    && state.prompt_length == sizeof(expected_prompt) - 1U
-	    && memcmp(state.prompt, expected_prompt,
-	    sizeof(expected_prompt) - 1U) == 0
-	    && !yt_brun_internal_fatal_compose(YT_BRUN_INTERNAL_FATAL_OWNER,
-	    "        ", false, 0, 0U, 0U, &state)
-	    && !yt_brun_internal_fatal_compose(
-	    (enum yt_brun_internal_fatal_entry)0, "YTCONFIG", false, 0,
-	    0U, 0U, &state);
 }
 
 static bool
@@ -5142,8 +5056,6 @@ main(void)
 		failure = "YTNAME INPUT# grammar differs";
 	else if (!test_name_sequential_transaction(&error))
 		failure = "YTNAME sequential transaction differs";
-	else if (!test_brun_internal_fatal())
-		failure = "BRUN internal-fatal transaction differs";
 	else if (!test_name_sequential_output_transaction(&error))
 		failure = "YTNAME sequential output transaction differs";
 	else if (!test_name_append(&error))
