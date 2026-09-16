@@ -1,3 +1,4 @@
+#include "qb.h"
 #include "yt_cli.h"
 #include "yt_game.h"
 #include "yt_init.h"
@@ -26,12 +27,71 @@ write_output(void *context, const uint8_t *data, size_t length,
 }
 
 static bool
-write_composed(enum yt_portname_output_kind kind, struct yt_error *error)
+write_composed_values(enum yt_portname_output_kind kind, float logical_port,
+    const uint8_t *name, size_t name_length, struct yt_error *error)
 {
 	struct yt_portname_output output;
 
-	return yt_portname_compose_output(kind, 0.0f, NULL, 0U, &output)
+	return yt_portname_compose_output(kind, logical_port, name, name_length,
+	    &output)
 	    && write_output(stdout, output.bytes, output.length, error);
+}
+
+static bool
+write_composed(enum yt_portname_output_kind kind, struct yt_error *error)
+{
+	return write_composed_values(kind, 0.0f, NULL, 0U, error);
+}
+
+static bool
+rename_ports(struct yt_game *game, struct yt_random *random,
+    struct yt_error *error)
+{
+	float logical = 1.0f;
+	float loop_bound = qb_single_subtract(game->config.planet_offset,
+	    game->config.port_offset);
+
+	if (!write_composed(YT_PORTNAME_OUTPUT_RENAMING, error))
+		return false;
+	while (logical <= loop_bound) {
+		struct yt_record record;
+		char generated[42];
+		const uint8_t *name = (const uint8_t *)"Earth";
+		size_t name_length = 5U;
+		uint32_t physical;
+		float next;
+
+		if (logical != 1.0f) {
+			if (!yt_generate_port_name(random, generated, error))
+				return false;
+			name = (const uint8_t *)generated;
+			name_length = strlen(generated);
+		}
+		if (!write_composed_values(YT_PORTNAME_OUTPUT_PROGRESS, logical,
+		    name, name_length, error))
+			return false;
+		physical = yt_portname_record_number(game->config.port_offset,
+		    logical);
+		if (!yt_database_read(&game->database, (size_t)physical, &record,
+		    error)
+		    || !yt_portname_overlay_record(&record, name, name_length, error)
+		    || !yt_database_write(&game->database, (size_t)physical,
+		    &record, error))
+			return false;
+		next = qb_single_add(logical, 1.0f);
+		if (next == logical) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation, sizeof(error->operation),
+				    "PORTNAME FOR variable stalled");
+				error->path[0] = '\0';
+			}
+			return false;
+		}
+		logical = next;
+	}
+	return write_composed(YT_PORTNAME_OUTPUT_COMPLETE, error)
+	    && yt_database_random_close(&game->database, error);
 }
 
 static bool
@@ -88,7 +148,6 @@ main(void)
 	struct yt_error error;
 	struct yt_game game;
 	struct yt_random random;
-	struct yt_portname_result rename_result;
 	uint8_t answer[256];
 	size_t answer_length;
 	uint32_t file_size;
@@ -173,9 +232,7 @@ main(void)
 		yt_cli_error("PORTNAME", &error);
 		return EXIT_FAILURE;
 	}
-	if (!yt_portname_rename(&game.database, game.config.port_offset,
-	    game.config.planet_offset, &random, write_output, stdout,
-	    &rename_result, &error))
+	if (!rename_ports(&game, &random, &error))
 		goto failure;
 	/* 02A3 CLOSE-all sees the database already closed, then reaches PLAY. */
 	if (!portname_close_all(&game, &error))

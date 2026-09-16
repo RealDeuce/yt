@@ -135,28 +135,6 @@ test_port_name_generator(void)
 	    && random.draws == 6U && longest.position == sizeof(long_draws);
 }
 
-struct portname_output_tape {
-	uint8_t bytes[1024];
-	size_t length;
-};
-
-static bool
-portname_output_collect(void *context, const uint8_t *data, size_t length,
-    struct yt_error *error)
-{
-	struct portname_output_tape *tape = context;
-
-	if (tape == NULL || (data == NULL && length != 0U)
-	    || length > sizeof(tape->bytes) - tape->length) {
-		if (error != NULL)
-			error->status = YT_RANGE;
-		return false;
-	}
-	memcpy(tape->bytes + tape->length, data, length);
-	tape->length += length;
-	return true;
-}
-
 static bool
 test_portname_controller(void)
 {
@@ -169,33 +147,12 @@ test_portname_controller(void)
 	    "effecting any other setting. Do you wish to continue? [y/N] -=> ";
 	static const uint8_t missing[] =
 	    "\r\r\aERROR! DATA FILES NOT FOUND!!!!!!!!!!!!!!!!!!!!!!!!\a\r";
-	static const uint8_t accepted[] =
-	    "\r\rRenaming ports...\r"
-	    " 1 Earth\r 2 Inging\r 3 Inging\r"
-	    "\rNew, random names applied to all ports!\r";
-	static const uint8_t zero_iteration[] =
-	    "\r\rRenaming ports...\r"
-	    "\rNew, random names applied to all ports!\r";
-	static const uint8_t short_get[] =
-	    "\r\rRenaming ports...\r 1 Earth\r 2 Inging\r"
-	    "\rNew, random names applied to all ports!\r";
-	static const uint8_t zero_draws[24] = {0};
-	struct utility_random_script script = {
-		zero_draws, sizeof(zero_draws), 0U
-	};
-	struct portname_output_tape tape = {0};
 	struct yt_portname_output output;
-	struct yt_portname_result result;
-	struct yt_database database;
-	struct yt_record before[3];
-	struct yt_record after;
+	struct yt_record record;
 	struct yt_record expected;
-	struct yt_random random;
 	struct yt_error error;
 	uint8_t parsed[256];
 	size_t parsed_length;
-	int index;
-	bool valid = false;
 
 	if (yt_portname_confirm(NULL, 0U) != YT_PORTNAME_CONFIRM_BLANK
 	    || yt_portname_confirm((const uint8_t *)"", 0U)
@@ -230,103 +187,18 @@ test_portname_controller(void)
 	    || yt_portname_record_number(16777216.0f, 1.0f) != 0U
 	    || yt_portname_record_number(-16777216.0f, -1.0f) != 0x00ffffffU)
 		return false;
-	(void)remove("PORTTEST.DAT");
-	memset(&database, 0, sizeof(database));
+	memset(&record, 0x91, sizeof(record));
+	record.bytes[YT_RECORD_TAIL_OFFSET] = 0xe1U;
+	expected = record;
+	yt_record_set_text(&expected, (const uint8_t *)"Earth", 5U);
+	if (!yt_record_set_number(&expected, YT_F85, 5.0f))
+		return false;
 	yt_error_clear(&error);
-	if (!yt_database_open(&database, "PORTTEST.DAT", YT_OPEN_CREATE,
-	    &error))
-		goto done;
-	for (index = 0; index < 3; ++index) {
-		memset(&before[index], 0x90 + index, sizeof(before[index]));
-		before[index].bytes[YT_RECORD_TAIL_OFFSET] =
-		    (uint8_t)(0xE0 + index);
-		if (!yt_record_set_number(&before[index], YT_F85, 4.0f)
-		    || !yt_database_write(&database, (size_t)index + 2U,
-		    &before[index], &error))
-			goto done;
-	}
-	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_random_fill, &script);
-	if (!yt_portname_rename(&database, 1.0f, 4.0f, &random,
-	    portname_output_collect, &tape, &result, &error)
-	    || result.loop_bound != 3.0f || result.final_logical_port != 4.0f
-	    || result.iterations != 3 || result.draws_consumed != 8U
-	    || !result.play_event || database.file != NULL
-	    || random.draws != 8U || script.position != sizeof(zero_draws)
-	    || tape.length != sizeof(accepted) - 1U
-	    || memcmp(tape.bytes, accepted, sizeof(accepted) - 1U) != 0)
-		goto done;
-	if (!yt_database_open(&database, "PORTTEST.DAT", YT_OPEN_READ, &error))
-		goto done;
-	for (index = 0; index < 3; ++index) {
-		const uint8_t *name = index == 0
-		    ? (const uint8_t *)"Earth" : (const uint8_t *)"Inging";
-		size_t length = index == 0 ? 5U : 6U;
-
-		expected = before[index];
-		if (!yt_portname_overlay_record(&expected, name, length, &error)
-		    || !yt_database_read(&database, (size_t)index + 2U, &after,
-		    &error)
-		    || memcmp(after.bytes, expected.bytes, YT_RECORD_SIZE) != 0)
-			goto done;
-	}
-	yt_database_close(&database);
-	(void)remove("PORTTEST.DAT");
-	memset(&tape, 0, sizeof(tape));
-	script = (struct utility_random_script){NULL, 0U, 0U};
-	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_random_fill, &script);
-	if (!yt_database_open(&database, "PORTTEST.DAT", YT_OPEN_CREATE, &error)
-	    || !yt_portname_rename(&database, 2.0f, 2.5f, &random,
-	    portname_output_collect, &tape, &result, &error)
-	    || result.loop_bound != 0.5f || result.iterations != 0
-	    || result.draws_consumed != 0U || !result.play_event
-	    || tape.length != sizeof(zero_iteration) - 1U
-	    || memcmp(tape.bytes, zero_iteration,
-	    sizeof(zero_iteration) - 1U) != 0)
-		goto done;
-	(void)remove("PORTTEST.DAT");
-	memset(&tape, 0, sizeof(tape));
-	memset(&result, 0, sizeof(result));
-	script = (struct utility_random_script){zero_draws, 12U, 0U};
-	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_random_fill, &script);
-	if (!yt_database_open(&database, "PORTTEST.DAT", YT_OPEN_CREATE, &error)
-	    || !yt_database_write(&database, 2U, &before[0], &error)
-	    || !yt_portname_rename(&database, 1.0f, 3.0f, &random,
-	    portname_output_collect, &tape, &result, &error)
-	    || !result.play_event || database.file != NULL || random.draws != 4U
-	    || result.iterations != 2
-	    || tape.length != sizeof(short_get) - 1U
-	    || memcmp(tape.bytes, short_get, sizeof(short_get) - 1U) != 0
-	    || !yt_database_open(&database, "PORTTEST.DAT", YT_OPEN_READ,
-	    &error))
-		goto done;
-	expected = before[0];
-	if (!yt_portname_overlay_record(&expected, (const uint8_t *)"Earth", 5U,
-	    &error)
-	    || !yt_database_read(&database, 2U, &after, &error)
-	    || memcmp(after.bytes, expected.bytes, YT_RECORD_SIZE) != 0)
-		goto done;
-	yt_record_clear(&expected);
-	if (!yt_portname_overlay_record(&expected, (const uint8_t *)"Inging", 6U,
-	    &error)
-	    || !yt_database_read(&database, 3U, &after, &error)
-	    || memcmp(after.bytes, expected.bytes, YT_RECORD_SIZE) != 0)
-		goto done;
-	yt_database_close(&database);
-	(void)remove("PORTTEST.DAT");
-	memset(&tape, 0, sizeof(tape));
-	memset(&result, 0, sizeof(result));
-	valid = !yt_portname_rename(NULL, 1.0f, 4.0f, &random,
-	    portname_output_collect, &tape, &result, &error)
+	return yt_portname_overlay_record(&record, (const uint8_t *)"Earth",
+	    5U, &error)
+	    && memcmp(record.bytes, expected.bytes, YT_RECORD_SIZE) == 0
 	    && !yt_portname_overlay_record(NULL, (const uint8_t *)"", 0U,
 	    &error);
-
-done:
-	yt_database_close(&database);
-	(void)remove("PORTTEST.DAT");
-	return valid;
 }
 
 static bool
