@@ -27,7 +27,7 @@ ytconfig_complete_alias_fatal(struct yt_game *game,
 	yt_error_clear(&ignored);
 	(void)yt_text_input_close(names_input, &ignored);
 	yt_error_clear(&ignored);
-	(void)yt_database_close_all_method(&game->database, 0, &ignored);
+	(void)yt_database_close_all_single(&game->database, &ignored);
 	/* Physical close errors do not interrupt BRUN's terminal cleanup. */
 	yt_text_input_destroy(names_input);
 	yt_game_close(game);
@@ -43,16 +43,8 @@ ytconfig_complete_alias_fatal(struct yt_game *game,
 static bool
 ytconfig_close_all(struct yt_game *game, struct yt_error *error)
 {
-	struct yt_close_all_control control = {
-		.heap_type = YT_CLOSE_ALL_HEAP_FILE,
-		.file_class = 0,
-		.method = yt_database_close_all_method,
-		.context = &game->database,
-	};
-	size_t control_count = game->database.file != NULL ? 1U : 0U;
-
-	return yt_close_all_run(control_count != 0U ? &control : NULL,
-	    control_count, NULL, NULL, error);
+	return game->database.file == NULL
+	    || yt_database_close_all_single(&game->database, error);
 }
 
 static bool

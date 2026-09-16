@@ -233,8 +233,6 @@ bool yt_text_output_close(struct yt_text_output *output,
 	struct yt_error *error);
 bool yt_text_output_close_all(struct yt_text_output *output,
 	struct yt_error *error);
-bool yt_text_output_close_all_method(void *context, int8_t file_class,
-	struct yt_error *error);
 void yt_text_output_destroy(struct yt_text_output *output);
 
 int yt_file_viewer_line_foreground(const uint8_t *line, size_t length);

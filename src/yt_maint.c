@@ -3054,16 +3054,8 @@ yt_maintenance_finish(struct yt_game *game,
 static bool
 maintenance_close_all(struct yt_game *game, struct yt_error *error)
 {
-	struct yt_close_all_control control = {
-		.heap_type = YT_CLOSE_ALL_HEAP_FILE,
-		.file_class = 0,
-		.method = yt_database_close_all_method,
-		.context = &game->database,
-	};
-	size_t control_count = game->database.file != NULL ? 1U : 0U;
-
-	return yt_close_all_run(control_count != 0U ? &control : NULL,
-	    control_count, NULL, NULL, error);
+	return game->database.file == NULL
+	    || yt_database_close_all_single(&game->database, error);
 }
 
 bool

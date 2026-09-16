@@ -5242,7 +5242,7 @@ test_genesis_rmt_producer_consumer(struct yt_error *error)
 	result = yt_text_output_open(&handoff, "RMTINIT.TMP", error)
 	    && yt_text_output_write(&handoff, command, sizeof(command) - 1U,
 	    error)
-	    && yt_text_output_close_all_method(&handoff, 0, error);
+	    && yt_text_output_close_all(&handoff, error);
 	yt_text_output_destroy(&handoff);
 	if (!result)
 		return false;

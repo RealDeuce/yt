@@ -2249,18 +2249,6 @@ yt_text_output_close_all(struct yt_text_output *output,
 	return text_output_close_execute(output, true, error);
 }
 
-bool
-yt_text_output_close_all_method(void *context, int8_t file_class,
-    struct yt_error *error)
-{
-	if (file_class < 0) {
-		errno = 0;
-		set_error(error, YT_INVALID, "CLOSE all class", NULL);
-		return false;
-	}
-	return text_output_close_execute(context, true, error);
-}
-
 void
 yt_text_output_destroy(struct yt_text_output *output)
 {

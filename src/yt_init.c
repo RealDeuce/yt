@@ -2030,21 +2030,13 @@ static bool
 clear_yt_radio_messages(struct yt_error *error)
 {
 	struct yt_text_output output;
-	struct yt_close_all_control control;
 	bool result = false;
 
 	yt_text_output_init(&output);
 	if (!yt_text_output_open(&output, "YTRMSG.DAT", error))
 		goto done;
-	control = (struct yt_close_all_control){
-		.heap_type = YT_CLOSE_ALL_HEAP_FILE,
-		.file_class = 0,
-		.method = yt_text_output_close_all_method,
-		.context = &output,
-	};
-	if (!yt_close_all_run(&control, 1U, NULL, NULL, error)
-	    || !yt_file_kill("YTRMSG.DAT", error)
-	    || !yt_close_all_run(NULL, 0U, NULL, NULL, error))
+	if (!yt_text_output_close_all(&output, error)
+	    || !yt_file_kill("YTRMSG.DAT", error))
 		goto done;
 	result = true;
 
