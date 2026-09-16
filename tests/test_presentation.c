@@ -20,6 +20,25 @@
 
 static unsigned failures;
 
+struct yt_gameplay_hazard_error_request {
+	uint8_t error_number;
+	uint16_t saved_ip;
+	uint16_t handler;
+};
+
+static bool
+yt_gameplay_hazard_error_project(unsigned error_number, unsigned saved_ip,
+    struct yt_gameplay_hazard_error_request *request)
+{
+	if (request == NULL || error_number == 0U || error_number > UINT8_MAX
+	    || saved_ip > UINT16_MAX)
+		return false;
+	request->error_number = (uint8_t)error_number;
+	request->saved_ip = (uint16_t)saved_ip;
+	request->handler = 0x45F7U;
+	return true;
+}
+
 #define CHECK(expr) do { \
 	if (!(expr)) { \
 		fprintf(stderr, "%s:%d: check failed: %s\n", \
