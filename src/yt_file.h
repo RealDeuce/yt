@@ -200,7 +200,6 @@ bool yt_radio_file_put(struct yt_radio_file *radio, uint32_t basic_record,
 bool yt_radio_file_next_record(struct yt_radio_file *radio,
     uint32_t *basic_record, struct yt_error *error);
 bool yt_file_kill(const char *path, struct yt_error *error);
-bool yt_file_delete(const char *path, bool missing_ok, struct yt_error *error);
 bool yt_file_rename(const char *old_path, const char *new_path,
     struct yt_error *error);
 bool yt_file_size(const char *path, size_t *size, struct yt_error *error);

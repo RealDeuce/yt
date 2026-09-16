@@ -6,6 +6,7 @@
 #include "yt_text.h"
 #include "file_viewer_test_model.h"
 
+#include <errno.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,6 +38,15 @@ struct scripted_random {
 };
 
 static bool write_bytes(const char *path, const uint8_t *bytes, size_t length);
+
+static bool
+yt_file_delete(const char *path, bool missing_ok, struct yt_error *error)
+{
+	(void)error;
+	if (remove(path) == 0)
+		return true;
+	return missing_ok && errno == ENOENT;
+}
 
 struct main_error_present_capture {
 	const char *path;

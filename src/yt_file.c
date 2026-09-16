@@ -1014,26 +1014,6 @@ yt_file_kill(const char *path, struct yt_error *error)
 }
 
 bool
-yt_file_delete(const char *path, bool missing_ok, struct yt_error *error)
-{
-	char resolved[512];
-	struct yt_error local_error;
-	struct yt_error *active_error = error != NULL ? error : &local_error;
-
-	yt_error_clear(active_error);
-	if (!yt_resolve_case_path(path, false, resolved, sizeof(resolved),
-	    active_error))
-		return missing_ok && active_error->status == YT_NOT_FOUND;
-	if (remove(resolved) != 0) {
-		if (missing_ok && errno == ENOENT)
-			return true;
-		set_error(error, YT_IO_ERROR, "delete", resolved);
-		return false;
-	}
-	return true;
-}
-
-bool
 yt_file_rename(const char *old_path, const char *new_path,
     struct yt_error *error)
 {
