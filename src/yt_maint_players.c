@@ -365,40 +365,6 @@ yt_maintenance_players_run(struct maint_state *state,
 }
 
 bool
-yt_maintenance_maintain_players(struct yt_game *game, float *player_sector,
-    float *player_cloak, size_t cache_count, int today,
-    yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_error *error)
-{
-	struct maint_state state;
-
-	if (game == NULL || player_sector == NULL || player_cloak == NULL
-	    || line_output == NULL) {
-		set_error(error, YT_INVALID, "maintain players", "YTDATA.DAT");
-		return false;
-	}
-	memset(&state, 0, sizeof(state));
-	state.game = *game;
-	state.player_count = (int)game->config.sector_offset - 1;
-	state.sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
-	state.port_count = (int)(game->config.planet_offset
-	    - game->config.port_offset);
-	state.planet_count = (int)(game->config.total_records
-	    - game->config.planet_offset);
-	if (state.player_count < 1
-	    || cache_count < (size_t)state.player_count + 2U) {
-		set_error(error, YT_RANGE, "maintain players", "YTDATA.DAT");
-		return false;
-	}
-	state.player_sector = player_sector;
-	state.player_cloak = player_cloak;
-	state.today = today;
-	return yt_maintenance_players_run(&state, line_output, line_context,
-	    error);
-}
-
-bool
 yt_maintenance_age_player(float cloak, float last_active,
     float killer_status, float today, float retention_days,
     struct yt_maintenance_player_aging_result *result)

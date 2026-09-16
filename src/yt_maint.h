@@ -235,10 +235,6 @@ bool yt_maintenance_default_headquarters(float *headquarters);
 bool yt_maintenance_clear_protected_mines(struct yt_game *game,
     struct yt_error *error);
 bool yt_maintenance_write_header(struct yt_error *error);
-bool yt_maintenance_maintain_players(struct yt_game *game,
-    float *player_sector, float *player_cloak, size_t cache_count, int today,
-    yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_error *error);
 bool yt_maintenance_same_day(float stored_marker, float computed_serial);
 bool yt_maintenance_compose_entry(bool same_day,
     struct yt_maintenance_output_result *result);

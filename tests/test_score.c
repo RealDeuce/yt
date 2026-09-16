@@ -4291,6 +4291,7 @@ check_maintenance_player_pass(void)
 		{2031, 8, 23, 1, 2, 3, 0}
 	}, 0};
 	struct score_line_tape screen = {0};
+	struct maint_state state = {0};
 	struct yt_game game;
 	struct yt_player player;
 	struct yt_record seed;
@@ -4345,8 +4346,15 @@ check_maintenance_player_pass(void)
 		cloak_cache[record] = -99.0f;
 	}
 	yt_platform_set_clock_provider(score_clock_read, &script);
-	if (!yt_maintenance_maintain_players(&game, sector_cache, cloak_cache,
-	    YT_ARRAY_LEN(sector_cache), 204, score_line_collect, &screen,
+	state.game = game;
+	state.player_sector = sector_cache;
+	state.player_cloak = cloak_cache;
+	state.player_count = 4;
+	state.sector_count = 7;
+	state.port_count = 1;
+	state.planet_count = 1;
+	state.today = 204;
+	if (!yt_maintenance_players_run(&state, score_line_collect, &screen,
 	    &error) || script.position != 2U
 	    || screen.length != sizeof(expected_line) - 1U
 	    || memcmp(screen.data, expected_line,
