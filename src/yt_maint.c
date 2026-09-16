@@ -30,21 +30,6 @@ set_error(struct yt_error *error, enum yt_status status,
 	    path != NULL ? path : "");
 }
 
-/* RANDOMIZE changes the original runtime state but adds no RND callsite. */
-bool
-yt_maintenance_random_integer(struct yt_random *random, int range, int *value,
-    struct yt_error *error)
-{
-	return yt_random_integer(random, range, value, error);
-}
-
-bool
-yt_maintenance_nested_integer(struct yt_random *random, int count, int range,
-    int *value, struct yt_error *error)
-{
-	return yt_random_nested_integer(random, count, range, value, error);
-}
-
 bool
 yt_maintenance_scoreboard(struct yt_game *game,
     yt_maintenance_score_line_fn line_output, void *context,

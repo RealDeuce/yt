@@ -156,7 +156,7 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	}
 	starting_draws = game->random.draws;
 	for (;;) {
-		if (!yt_maintenance_random_integer(&game->random, sector_count,
+		if (!yt_random_integer(&game->random, sector_count,
 		    &logical, error))
 			return false;
 		++local.candidate_attempts;

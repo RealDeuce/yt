@@ -162,7 +162,7 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 		    &planet, error))
 			return false;
 		do {
-			if (!yt_maintenance_random_integer(&game->random,
+			if (!yt_random_integer(&game->random,
 			    sector_count, &sector_number, error)
 			    || !yt_game_read_sector(game, sector_number, &sector,
 			    error))
@@ -248,7 +248,7 @@ yt_maintenance_place_mercenary_fleets(struct yt_game *game,
 		struct yt_sector sector;
 
 		do {
-			if (!yt_maintenance_random_integer(&game->random,
+			if (!yt_random_integer(&game->random,
 			    sector_count - 1, &sector_number, error))
 				return false;
 			++sector_number;
@@ -459,7 +459,7 @@ yt_maintenance_mercenary_mines(struct yt_game *game, int sector_number,
 		*result = local;
 		return true;
 	}
-	if (!yt_maintenance_nested_integer(&game->random, 2, 10000, &damage,
+	if (!yt_random_nested_integer(&game->random, 2, 10000, &damage,
 	    error))
 		return false;
 	if ((float)damage > moving_fighters)
@@ -967,7 +967,7 @@ move_mercenaries_impl(struct yt_game *game, int sector_count,
 		if (!yt_game_write_sector(game, origin, &sector, error))
 			return false;
 		do {
-			if (!yt_maintenance_random_integer(&game->random,
+			if (!yt_random_integer(&game->random,
 			    sector_count, &target, error))
 				return false;
 		} while (target == origin);

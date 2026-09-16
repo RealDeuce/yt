@@ -67,7 +67,7 @@ yt_maintenance_xannor_roaming_split(struct yt_random *random,
 	else {
 		range = qb_cint(*group_one, &overflow);
 		if (overflow || range < 1
-		    || !yt_maintenance_nested_integer(random, 4, range, &split,
+		    || !yt_random_nested_integer(random, 4, range, &split,
 		    error)) {
 			if (error != NULL && error->status == YT_OK)
 				set_error(error, YT_RANGE,
@@ -115,7 +115,7 @@ yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
 	}
 	starting_draws = game->random.draws;
 	do {
-		if (!yt_maintenance_random_integer(&game->random, sector_count,
+		if (!yt_random_integer(&game->random, sector_count,
 		    &local.initial_target, error))
 			return false;
 		++local.initial_draws;
@@ -127,7 +127,7 @@ yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
 		int candidate;
 		size_t player;
 
-		if (!yt_maintenance_random_integer(&game->random, sector_count,
+		if (!yt_random_integer(&game->random, sector_count,
 		    &candidate, error)
 		    || !yt_game_read_sector(game, candidate, &sector, error))
 			return false;
@@ -266,7 +266,7 @@ yt_maintenance_xannor_target(struct yt_random *random, int sector_count,
 	starting_draws = random->draws;
 	if (target_sector < 8 || target_sector > sector_count
 	    || hunt_player == 0) {
-		if (!yt_maintenance_random_integer(random, sector_count - 7,
+		if (!yt_random_integer(random, sector_count - 7,
 		    &selected, error))
 			return false;
 		local.hunt_player = 0;
@@ -752,7 +752,7 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 	}
 	starting_draws = game->random.draws;
 	for (;;) {
-		if (!yt_maintenance_random_integer(&game->random,
+		if (!yt_random_integer(&game->random,
 		    sector_count - 7, &candidate, error))
 			return false;
 		candidate += 7;
@@ -1306,7 +1306,7 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 	while (sector->mines > 0.0f && *group_size > 0.0f) {
 		int damage;
 
-		if (!yt_maintenance_random_integer(&game->random, 1000,
+		if (!yt_random_integer(&game->random, 1000,
 		    &damage, error))
 			return false;
 		if ((float)damage > *group_size)

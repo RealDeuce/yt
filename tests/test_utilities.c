@@ -754,27 +754,27 @@ test_maintenance_random_helpers(void)
 	yt_error_clear(&error);
 	yt_random_init(&random);
 	yt_random_set_provider(&random, utility_random_fill, &script);
-	if (!yt_maintenance_random_integer(&random, 10, &value, &error)
+	if (!yt_random_integer(&random, 10, &value, &error)
 	    || value != 1
-	    || !yt_maintenance_random_integer(&random, 10, &value, &error)
+	    || !yt_random_integer(&random, 10, &value, &error)
 	    || value != 6
-	    || !yt_maintenance_random_integer(&random, 1000, &value, &error)
+	    || !yt_random_integer(&random, 1000, &value, &error)
 	    || value != 1000
-	    || !yt_maintenance_nested_integer(&random, 2, 100, &value, &error)
+	    || !yt_random_nested_integer(&random, 2, 100, &value, &error)
 	    || value != 1 || random.draws != 5U
 	    || script.position != sizeof(draws))
 		return false;
 	yt_error_clear(&error);
-	if (yt_maintenance_random_integer(&random, 0, &value, &error)
+	if (yt_random_integer(&random, 0, &value, &error)
 	    || error.status != YT_RANGE || random.draws != 5U)
 		return false;
 	yt_error_clear(&error);
 	value = 37;
-	if (!yt_maintenance_nested_integer(&random, 0, 100, &value, &error)
+	if (!yt_random_nested_integer(&random, 0, 100, &value, &error)
 	    || error.status != YT_OK || value != 37 || random.draws != 5U)
 		return false;
 	yt_error_clear(&error);
-	if (!yt_maintenance_nested_integer(&random, 2, 0, &value, &error)
+	if (!yt_random_nested_integer(&random, 2, 0, &value, &error)
 	    || error.status != YT_OK || value != 37 || random.draws != 5U)
 		return false;
 	script.position = 0;
@@ -782,7 +782,7 @@ test_maintenance_random_helpers(void)
 	yt_random_set_provider(&random, utility_random_fill, &script);
 	value = 37;
 	yt_error_clear(&error);
-	return !yt_maintenance_nested_integer(&random, 2, 100, &value, &error)
+	return !yt_random_nested_integer(&random, 2, 100, &value, &error)
 	    && error.status == YT_RANDOM_ERROR && value == 1
 	    && random.draws == 1U && script.position == 3U;
 }

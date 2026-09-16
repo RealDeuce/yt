@@ -425,10 +425,6 @@ bool yt_maintenance_xannor_target_override(int group_number,
     int discovered_target, float group_one, float top_score,
     int headquarters, int revenge_live_sector, int top_player_target,
     int *target, struct yt_error *error);
-bool yt_maintenance_random_integer(struct yt_random *random, int range,
-    int *value, struct yt_error *error);
-bool yt_maintenance_nested_integer(struct yt_random *random, int count,
-    int range, int *value, struct yt_error *error);
 bool yt_maintenance_xannor_defense(struct yt_random *random,
     float *group_size, float *defense_fighters, float *defense_owner,
     struct yt_error *error);

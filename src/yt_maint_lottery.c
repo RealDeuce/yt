@@ -88,7 +88,7 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 		return lottery_fail(line_output, line_context,
 		    YT_MAINTENANCE_LOTTERY_COIN, starting_draws, game, result,
 		    error);
-	if (!yt_maintenance_random_integer(&game->random, player_count,
+	if (!yt_random_integer(&game->random, player_count,
 	    &player_slot, error))
 		return false;
 	local.player_record = player_slot + 1;
@@ -111,7 +111,7 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	memcpy(working_name, player.record.bytes, (size_t)player_name_length);
 	memcpy(working_name + player_name_length, name_suffix,
 	    sizeof(name_suffix) - 1U);
-	if (!yt_maintenance_random_integer(&game->random, planet_count,
+	if (!yt_random_integer(&game->random, planet_count,
 	    &local.planet_number, error)
 	    || !yt_game_read_planet(game, local.planet_number, &planet, error))
 		return false;
@@ -121,7 +121,7 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 		return lottery_fail(line_output, line_context, local.failure,
 		    starting_draws, game, result, error);
 	}
-	if (!yt_maintenance_random_integer(&game->random, sector_count,
+	if (!yt_random_integer(&game->random, sector_count,
 	    &local.sector_number, error)
 	    || !yt_game_read_sector(game, local.sector_number, &sector, error))
 		return false;
