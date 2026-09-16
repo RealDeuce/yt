@@ -28,7 +28,7 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 		return false;
 	*local_screen = config->local_screen;
 	qb_compat_upper_n((uint8_t *)config->scoreboard,
-	    (size_t)config->scoreboard_length);
+	    config->scoreboard_length);
 
 	if (config->headquarters == 0.0f) {
 		static const uint8_t headquarters_default[4] = {
@@ -45,7 +45,7 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 	if (config->genesis_ports < 20.0f) {
 		config->genesis_ports = 200.0f;
 	}
-	if (config->scoreboard_length == 0.0f) {
+	if (config->scoreboard_length == 0U) {
 		static const char default_path[] = "YTSCORE.ASC";
 
 		memcpy(config->scoreboard, default_path, sizeof(default_path));

@@ -8,25 +8,16 @@ bool
 yt_config_decode(struct yt_config *config, const struct yt_record *record,
     struct yt_error *error)
 {
-	int stored_length;
-	bool overflow;
+	size_t stored_length;
 
 	memset(config, 0, sizeof(*config));
 	config->record = *record;
-	config->scoreboard_length = yt_record_get_number(record, YT_F41);
-	stored_length = (int)qb_cint_mbf32(record->bytes + YT_F41, 0U,
-	    &overflow);
-	if (overflow || stored_length < 0) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			snprintf(error->operation, sizeof(error->operation),
-			    "configuration scoreboard length");
-		}
-		return false;
-	}
-	if (stored_length > 41)
-		stored_length = 41;
-	memcpy(config->scoreboard, record->bytes, (size_t)stored_length);
+	(void)error;
+	stored_length = (size_t)yt_record_get_number(record, YT_F41);
+	if (stored_length > 41U)
+		stored_length = 41U;
+	config->scoreboard_length = stored_length;
+	memcpy(config->scoreboard, record->bytes, stored_length);
 	config->scoreboard[stored_length] = '\0';
 	config->epoch_year = yt_record_get_number(record, YT_F45);
 	config->turns_per_day = yt_record_get_number(record, YT_F49);

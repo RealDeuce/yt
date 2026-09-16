@@ -1494,7 +1494,7 @@ test_yt_init_random_binding(void)
 			goto done;
 	}
 	if (binding.loaded.scoreboard[0] != '\0'
-	    || binding.loaded.scoreboard_length != 0.0f
+	    || binding.loaded.scoreboard_length != 0U
 	    || binding.loaded.epoch_year != 0.0f
 	    || binding.loaded.total_records != 0.0f)
 		goto done;

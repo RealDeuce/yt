@@ -106,7 +106,7 @@ check_startup_configuration_transaction(void)
 	    disruption_sectors, &local_screen, &error)
 	    || game.database.file == NULL
 	    || strcmp(game.config.scoreboard, "YTSCORE.ASC") != 0
-	    || game.config.scoreboard_length != 11.0f
+	    || game.config.scoreboard_length != 11U
 	    || game.config.headquarters != 3.0f
 	    || game.config.maximum_planets != 100.0f
 	    || game.config.maximum_holds != 1000.0f
@@ -3941,7 +3941,7 @@ check_maintenance_config_defaults(void)
 	memset(&config, 0, sizeof(config));
 	memset(config.scoreboard, 0xa5, sizeof(config.scoreboard));
 	config.scoreboard[0] = '\0';
-	config.scoreboard_length = 0.0f;
+	config.scoreboard_length = 0U;
 	config.epoch_year = 26.0f;
 	config.turns_per_day = 777.0f;
 	config.sector_offset = 51.0f;
@@ -15364,7 +15364,7 @@ main(void)
 	    &error))
 		goto done;
 	strcpy(game.config.scoreboard, "YTSCORE.ASC");
-	game.config.scoreboard_length = 11.0f;
+	game.config.scoreboard_length = 11U;
 	game.config.epoch_year = 0.0f;
 	game.config.sector_offset = 3.0f;
 	game.config.port_offset = 5.0f;

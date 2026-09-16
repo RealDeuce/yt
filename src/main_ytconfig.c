@@ -285,7 +285,7 @@ edit_scoreboard(struct yt_game *game, uint8_t working_path[41],
 	game->config.record = updated;
 	snprintf(game->config.scoreboard, sizeof(game->config.scoreboard), "%s",
 	    stored);
-	game->config.scoreboard_length = (float)length;
+	game->config.scoreboard_length = length;
 	memcpy(working_path, stored, length);
 	*working_path_length = length;
 	return true;

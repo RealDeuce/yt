@@ -157,14 +157,15 @@ yt_initializer_prepare_yt(const struct yt_clock *clock,
 }
 
 static void
-make_config_record(struct yt_config *config, float stored_scoreboard_length)
+make_config_record(struct yt_config *config, size_t stored_scoreboard_length)
 {
 	size_t length = strlen(config->scoreboard);
 
 	yt_record_clear(&config->record);
 	yt_record_set_text(&config->record,
 	    (const uint8_t *)config->scoreboard, length);
-	yt_record_set_number(&config->record, YT_F41, stored_scoreboard_length);
+	yt_record_set_number(&config->record, YT_F41,
+	    (float)stored_scoreboard_length);
 	yt_record_set_number(&config->record, YT_F45, config->epoch_year);
 	yt_record_set_number(&config->record, YT_F49, config->turns_per_day);
 	yt_record_set_number(&config->record, YT_F53, config->sector_offset);
@@ -623,7 +624,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			goto done;
 		}
 		config = options->config;
-		config.scoreboard_length = (float)strlen(config.scoreboard);
+		config.scoreboard_length = strlen(config.scoreboard);
 		world.sectors = (int)(config.port_offset - config.sector_offset);
 		world.ports = (int)(config.planet_offset - config.port_offset);
 		if (world.sectors < 7 || world.ports < 4) {
@@ -675,8 +676,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 				goto done;
 			}
 			config = options->config;
-			config.scoreboard_length =
-			    (float)strlen(config.scoreboard);
+			config.scoreboard_length = strlen(config.scoreboard);
 			world.sectors = (int)(config.port_offset
 			    - config.sector_offset);
 			world.ports = (int)(config.planet_offset
@@ -686,8 +686,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			goto done;
 		else if (options->use_existing_config) {
 			config = options->config;
-			config.scoreboard_length =
-			    (float)strlen(config.scoreboard);
+			config.scoreboard_length = strlen(config.scoreboard);
 			world.sectors = (int)(config.port_offset
 			    - config.sector_offset);
 			world.ports = (int)(config.planet_offset
@@ -705,7 +704,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			config.scoreboard[scoreboard_length
 			    < sizeof(config.scoreboard) - 1U
 			    ? scoreboard_length : sizeof(config.scoreboard) - 1U] = '\0';
-			config.scoreboard_length = (float)scoreboard_length;
+			config.scoreboard_length = scoreboard_length;
 			config.epoch_year = (float)(current.year % 100);
 			config.turns_per_day = 500.0f;
 			config.sector_offset = YT_INIT_PLAYERS + 1.0f;
@@ -843,7 +842,7 @@ yt_initialize_yt_prepared_bound(struct yt_database *database,
 	    ? length : sizeof(options.config.scoreboard) - 1U;
 	memcpy(options.config.scoreboard, selected, retained);
 	options.config.scoreboard[retained] = '\0';
-	options.config.scoreboard_length = (float)length;
+	options.config.scoreboard_length = length;
 	options.use_existing_config = true;
 	options.database_already_truncated = true;
 	options.yt_presenter = presenter;

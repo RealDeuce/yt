@@ -7,7 +7,7 @@
 struct yt_config {
 	struct yt_record record;
 	char scoreboard[42];
-	float scoreboard_length;
+	size_t scoreboard_length;
 	float epoch_year;
 	float turns_per_day;
 	float sector_offset;
