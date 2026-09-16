@@ -2210,28 +2210,6 @@ yt_initialize_bind_yt(struct yt_database *database,
 }
 
 bool
-yt_initialize_yt(const char *scoreboard, struct yt_random *random,
-    struct yt_error *error)
-{
-	struct yt_initializer_options options = {
-	    .family = YT_INITIALIZER_YT,
-	    .scoreboard = scoreboard
-	};
-
-	return yt_initialize_world(&options, random, error);
-}
-
-bool
-yt_initialize_yt_prepared(
-    const struct yt_initializer_preparation *preparation,
-    const char *scoreboard, struct yt_random *random,
-    const struct yt_init_presenter *presenter, struct yt_error *error)
-{
-	return yt_initialize_yt_prepared_bound(NULL, preparation, scoreboard,
-	    random, presenter, error);
-}
-
-bool
 yt_initialize_yt_prepared_bound(struct yt_database *database,
     const struct yt_initializer_preparation *preparation,
     const char *scoreboard, struct yt_random *random,
@@ -2263,15 +2241,6 @@ yt_initialize_yt_prepared_bound(struct yt_database *database,
 	options.prepared_yt = true;
 	options.bound_database = database;
 	return yt_initialize_world(&options, random, error);
-}
-
-bool
-yt_initialize_rmt(const struct yt_config *config,
-    const char *credited_name, struct yt_random *random,
-    struct yt_error *error)
-{
-	return yt_initialize_rmt_presented(config, credited_name, random, NULL,
-	    error);
 }
 
 bool

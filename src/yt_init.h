@@ -144,20 +144,11 @@ bool yt_initialize_bind_yt(struct yt_database *database,
     struct yt_init_binding *binding, struct yt_error *error);
 bool yt_initialize_world(const struct yt_initializer_options *options,
     struct yt_random *random, struct yt_error *error);
-bool yt_initialize_yt(const char *scoreboard, struct yt_random *random,
-    struct yt_error *error);
-bool yt_initialize_yt_prepared(
-	const struct yt_initializer_preparation *preparation,
-	const char *scoreboard, struct yt_random *random,
-	const struct yt_init_presenter *presenter, struct yt_error *error);
 /* Consumes and closes the successfully bound database. */
 bool yt_initialize_yt_prepared_bound(struct yt_database *database,
 	const struct yt_initializer_preparation *preparation,
 	const char *scoreboard, struct yt_random *random,
 	const struct yt_init_presenter *presenter, struct yt_error *error);
-bool yt_initialize_rmt(const struct yt_config *config,
-    const char *credited_name, struct yt_random *random,
-    struct yt_error *error);
 bool yt_initialize_rmt_presented(const struct yt_config *config,
     const char *credited_name, struct yt_random *random,
     const struct yt_rmt_presenter *presenter, struct yt_error *error);
