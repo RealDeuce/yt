@@ -167,21 +167,6 @@ spy_read_player(struct yt_session *session, float record,
 	return true;
 }
 
-static bool
-spy_read_team(struct yt_session *session, float team,
-    struct yt_sector *overlay, struct yt_error *error)
-{
-	struct yt_record raw;
-	uint32_t physical = (uint32_t)yt_sector_basic_record(
-	    &session->door->game.config, (int)team);
-
-	if (!yt_database_read(&session->door->game.database, physical, &raw,
-	    error))
-		return false;
-	yt_sector_decode(overlay, &raw);
-	return true;
-}
-
 bool
 yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 {
@@ -322,9 +307,9 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				struct yt_sector refreshed;
 				struct yt_sector displayed;
 				struct yt_player owner_player;
-				struct yt_sector team_overlay;
+				struct yt_team team;
 				const struct yt_player *owner_pointer = NULL;
-				const struct yt_sector *team_pointer = NULL;
+				const struct yt_team *team_pointer = NULL;
 				uint8_t row[256];
 				uint8_t scratch[160];
 				size_t length;
@@ -348,16 +333,16 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 						return false;
 					owner_pointer = &owner_player;
 					if (owner_player.team != 0.0f) {
-						if (!spy_read_team(session,
-						    owner_player.team, &team_overlay, error))
+						if (!yt_game_read_team(&session->door->game,
+						    (int)owner_player.team, &team, error))
 							return false;
-						team_pointer = &team_overlay;
+						team_pointer = &team;
 					}
 				}
 				if (!yt_sector_fighter_row(&displayed,
 				    current_player_record, owner_pointer, team_pointer,
 				    row, sizeof(row), &length, scratch, sizeof(scratch),
-				    &scratch_length, &scratch_changed, error)
+				    &scratch_length, &scratch_changed)
 				    || !spy_line(session, row, length,
 				    SESSION_PRESENT_LINE, error))
 					return false;

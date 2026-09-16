@@ -137,28 +137,12 @@ session_read_player_expression(struct yt_session *session,
 	return true;
 }
 
-static bool
-scanner_read_team_overlay(struct yt_session *session, float team,
-    struct yt_sector *overlay, struct yt_error *error)
-{
-	struct yt_record record;
-	uint32_t physical = session_sector_basic_record(session, team);
-
-	if (!yt_database_read(&session->door->game.database, (size_t)physical,
-	    &record, error))
-		return false;
-	yt_sector_decode(overlay, &record);
-	return true;
-}
-
 static void
 scanner_cache_hostile_sector(struct yt_session *session,
     const struct yt_sector *sector)
 {
-	session->combat.deployed_fighters = (double)qb_mbf32_decode(
-	    &sector->record.bytes[YT_F81]);
-	session->combat.hostile_owner = qb_mbf32_decode(
-	    &sector->record.bytes[YT_F85]);
+	session->combat.deployed_fighters = (double)sector->fighters;
+	session->combat.hostile_owner = sector->fighter_owner;
 }
 
 static bool
@@ -326,9 +310,9 @@ display_sector_one(struct yt_session *session, float logical_sector,
 	if (sector.fighters != 0.0f) {
 		static const uint8_t heading[] = "Fighters in sector:";
 		struct yt_player owner;
-		struct yt_sector team_overlay;
+		struct yt_team team;
 		const struct yt_player *owner_pointer = NULL;
-		const struct yt_sector *team_pointer = NULL;
+		const struct yt_team *team_pointer = NULL;
 		bool scratch_changed;
 		bool owner_team_nonzero = false;
 		size_t scratch_length = session->combat.hostile_owner_label_length;
@@ -374,17 +358,17 @@ display_sector_one(struct yt_session *session, float logical_sector,
 				scratch_length += (size_t)team_number_length - 1U;
 				session->combat.hostile_owner_label[scratch_length++] = ']';
 				session->combat.hostile_owner_label_length = scratch_length;
-				if (!scanner_read_team_overlay(session, owner.team,
-				    &team_overlay, error))
+				if (!yt_game_read_team(&session->door->game,
+				    (int)owner.team, &team, error))
 					return false;
-				team_pointer = &team_overlay;
+				team_pointer = &team;
 			}
 		}
 		if (!yt_sector_fighter_row(&sector, session_record(session),
 		    owner_pointer, team_pointer, row, sizeof(row), &row_length,
 		    session->combat.hostile_owner_label,
 		    sizeof(session->combat.hostile_owner_label), &scratch_length,
-		    &scratch_changed, error)
+		    &scratch_changed)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "sector fighter owner row", error))
 			return false;

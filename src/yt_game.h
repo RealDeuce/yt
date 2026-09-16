@@ -297,6 +297,8 @@ void yt_player_decode(struct yt_player *player, const struct yt_record *record);
 void yt_player_encode(struct yt_player *player);
 void yt_sector_decode(struct yt_sector *sector, const struct yt_record *record);
 void yt_sector_encode(struct yt_sector *sector);
+void yt_team_decode(struct yt_team *team, int id,
+    const struct yt_record *record);
 void yt_port_decode(struct yt_port *port, const struct yt_record *record);
 void yt_port_encode(struct yt_port *port);
 void yt_planet_decode(struct yt_planet *planet, const struct yt_record *record);
@@ -333,6 +335,8 @@ bool yt_game_read_sector(struct yt_game *game, int logical_sector,
     struct yt_sector *sector, struct yt_error *error);
 bool yt_game_write_sector(struct yt_game *game, int logical_sector,
     struct yt_sector *sector, struct yt_error *error);
+bool yt_game_read_team(struct yt_game *game, int id,
+    struct yt_team *team, struct yt_error *error);
 bool yt_game_read_port(struct yt_game *game, int logical_port,
     struct yt_port *port, struct yt_error *error);
 bool yt_game_write_port(struct yt_game *game, int logical_port,
@@ -743,9 +747,9 @@ bool yt_sector_player_row(const struct yt_player *player, uint8_t *row,
     size_t capacity, size_t *length);
 bool yt_sector_fighter_row(const struct yt_sector *sector,
     int current_player_record, const struct yt_player *owner,
-    const struct yt_sector *team_overlay, uint8_t *row, size_t capacity,
+    const struct yt_team *team, uint8_t *row, size_t capacity,
     size_t *length, uint8_t *scratch, size_t scratch_capacity,
-    size_t *scratch_length, bool *scratch_changed, struct yt_error *error);
+    size_t *scratch_length, bool *scratch_changed);
 bool yt_projectile_defense_row(float sector, const uint8_t *owner,
     size_t owner_length, double fighters, uint8_t *row, size_t capacity,
     size_t *length);

@@ -2617,8 +2617,7 @@ test_sector_scanner_rows(void)
 	struct yt_planet planet;
 	struct yt_player player;
 	struct yt_sector sector;
-	struct yt_sector overlay;
-	struct yt_error error;
+	struct yt_team team;
 	uint8_t row[256];
 	uint8_t scratch[160] = {'k', 'e', 'e', 'p'};
 	float caller_warps[6] = {9.0f, 0.0f, 9.0f, 42.0f, 0.0f, 7.0f};
@@ -2627,7 +2626,6 @@ test_sector_scanner_rows(void)
 	size_t scratch_length = 4U;
 	bool changed;
 
-	yt_error_clear(&error);
 	CHECK(yt_sector_mine_warning_row(3.0f, row, sizeof(row), &length)
 	    && length == sizeof(mine_expected) - 1U
 	    && memcmp(row, mine_expected, length) == 0);
@@ -2684,10 +2682,11 @@ test_sector_scanner_rows(void)
 	yt_record_blank(&record);
 	memcpy(record.bytes, raw_team_name, sizeof(raw_team_name));
 	yt_record_set_number(&record, YT_F73, 3.0f);
-	yt_sector_decode(&overlay, &record);
-	CHECK(yt_sector_fighter_row(&sector, 2, &player, &overlay,
+	yt_record_set_number(&record, YT_F109, 2.0f);
+	yt_team_decode(&team, 4, &record);
+	CHECK(yt_sector_fighter_row(&sector, 2, &player, &team,
 	    row, sizeof(row), &length, scratch, sizeof(scratch),
-	    &scratch_length, &changed, &error)
+	    &scratch_length, &changed)
 	    && changed && length == sizeof(owner_expected)
 	    && memcmp(row, owner_expected, length) == 0
 	    && scratch_length == sizeof(scratch_expected)
@@ -2696,7 +2695,7 @@ test_sector_scanner_rows(void)
 	sector.fighter_owner = -1.0f;
 	CHECK(yt_sector_fighter_row(&sector, 2, NULL, NULL,
 	    row, sizeof(row), &length, scratch, sizeof(scratch),
-	    &scratch_length, &changed, &error)
+	    &scratch_length, &changed)
 	    && changed && length == sizeof(xannor_expected) - 1U
 	    && memcmp(row, xannor_expected, length) == 0
 	    && scratch_length == strlen("The Xannor")
@@ -2704,7 +2703,7 @@ test_sector_scanner_rows(void)
 	sector.fighter_owner = -2.0f;
 	CHECK(yt_sector_fighter_row(&sector, 2, NULL, NULL,
 	    row, sizeof(row), &length, scratch, sizeof(scratch),
-	    &scratch_length, &changed, &error)
+	    &scratch_length, &changed)
 	    && changed && length == sizeof(mercenary_expected) - 1U
 	    && memcmp(row, mercenary_expected, length) == 0);
 	memcpy(scratch, "keep", 4U);
@@ -2712,7 +2711,7 @@ test_sector_scanner_rows(void)
 	sector.fighter_owner = 2.0f;
 	CHECK(yt_sector_fighter_row(&sector, 2, NULL, NULL,
 	    row, sizeof(row), &length, scratch, sizeof(scratch),
-	    &scratch_length, &changed, &error)
+	    &scratch_length, &changed)
 	    && !changed && scratch_length == 4U
 	    && memcmp(scratch, "keep", 4U) == 0
 	    && length == sizeof(self_expected) - 1U

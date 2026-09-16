@@ -196,9 +196,9 @@ yt_sector_player_row(const struct yt_player *player, uint8_t *row,
 bool
 yt_sector_fighter_row(const struct yt_sector *sector,
     int current_player_record, const struct yt_player *owner,
-    const struct yt_sector *team_overlay, uint8_t *row, size_t capacity,
+    const struct yt_team *team, uint8_t *row, size_t capacity,
     size_t *length, uint8_t *scratch, size_t scratch_capacity,
-    size_t *scratch_length, bool *scratch_changed, struct yt_error *error)
+    size_t *scratch_length, bool *scratch_changed)
 {
 	static const uint8_t belonging[] = " (Belong to ";
 	static const uint8_t xannor[] = "The Xannor";
@@ -243,9 +243,6 @@ yt_sector_fighter_row(const struct yt_sector *sector,
 		else {
 			char number[64];
 			int number_length;
-			bool overflow;
-			int team_name_length;
-			size_t stored_team_length;
 
 			if (owner == NULL)
 				return false;
@@ -257,33 +254,18 @@ yt_sector_fighter_row(const struct yt_sector *sector,
 			if (owner->team != 0.0f) {
 				number_length = qb_str_single(number, sizeof(number),
 				    owner->team);
-				if (number_length < 1 || team_overlay == NULL
+				if (number_length < 1 || team == NULL
 				    || !yt_game_row_append(&scratch_builder,
 				    team_prefix, sizeof(team_prefix) - 1U)
 				    || !yt_game_row_append(&scratch_builder,
 				    number + 1, (size_t)number_length - 1U)
 				    || !yt_game_row_append(&scratch_builder, "]", 1U))
 					return false;
-				team_name_length = (int)qb_cint_mbf32(
-				    team_overlay->record.bytes + YT_F73, 0U,
-				    &overflow);
-				if (overflow || team_name_length < 0) {
-					if (error != NULL) {
-						error->status = YT_RANGE;
-						snprintf(error->operation,
-						    sizeof(error->operation), "%s",
-						    "team name LEFT$ length");
-					}
-					return false;
-				}
-				stored_team_length = (size_t)team_name_length;
-				if (stored_team_length > YT_TEXT_FIELD_SIZE)
-					stored_team_length = YT_TEXT_FIELD_SIZE;
-				if (stored_team_length > 0U
+				if (team->name_length > 0U
 				    && (!yt_game_row_append(&scratch_builder,
 				    overlay_prefix, sizeof(overlay_prefix) - 1U)
 				    || !yt_game_row_append(&scratch_builder,
-				    team_overlay->record.bytes, stored_team_length)
+				    team->name, team->name_length)
 				    || !yt_game_row_append(&scratch_builder, "]", 1U)))
 					return false;
 			}

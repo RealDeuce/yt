@@ -43,33 +43,18 @@ session_load_team(struct yt_session *session, int id, struct yt_team *team,
 {
 	struct yt_record overlay;
 	bool overlay_loaded;
-	bool live;
-	size_t index;
 
 	if (team != NULL) {
 		memset(team, 0, sizeof(*team));
 		team->id = id;
 	}
 	if (!yt_session_load_team_cache(session, id, session_record(session),
-	    &overlay, &overlay_loaded, &live, error))
+	    &overlay, &overlay_loaded, NULL, error))
 		return false;
 	if (team == NULL)
 		return true;
 	if (overlay_loaded)
-		yt_sector_decode(&team->overlay, &overlay);
-	memcpy(team->name, session->team_cache.name,
-	    sizeof(team->name));
-	team->name_length = session->team_cache.name_length;
-	memcpy(team->password, session->team_cache.password,
-	    sizeof(team->password));
-	team->captain = session->team_cache.captain;
-	team->live = live;
-	team->full = team->live;
-	for (index = 0; index < 4; ++index) {
-		team->roster[index] = session->team_cache.roster[index];
-		if (team->roster[index] <= 0)
-			team->full = false;
-	}
+		yt_team_decode(team, id, &overlay);
 	return true;
 }
 bool

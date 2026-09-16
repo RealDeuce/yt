@@ -120,40 +120,25 @@ void
 yt_team_cache_load(struct yt_team_cache *cache,
     const struct yt_record *record, int current_player_record, bool *live)
 {
-	static const size_t roster_offsets[4] = {
-		YT_F109, YT_F117, YT_F121, YT_F125,
-	};
-	float roster[4];
-	size_t name_length;
+	struct yt_team team;
 	size_t index;
-	bool any_member = false;
 
 	if (live != NULL)
 		*live = false;
 	if (cache == NULL || record == NULL)
 		return;
 	memset(cache, 0, sizeof(*cache));
-	for (index = 0U; index < YT_ARRAY_LEN(roster); ++index) {
-		roster[index] = yt_record_get_number(record,
-		    roster_offsets[index]);
-		if (roster[index] != 0.0f)
-			any_member = true;
-	}
-	if (!any_member)
+	yt_team_decode(&team, 0, record);
+	if (!team.live)
 		return;
-	name_length = (size_t)yt_record_get_number(record, YT_F73);
-	if (name_length > YT_TEXT_FIELD_SIZE)
-		name_length = YT_TEXT_FIELD_SIZE;
-	memcpy(cache->name, record->bytes, name_length);
-	cache->name[name_length] = '\0';
-	cache->name_length = name_length;
-	memcpy(cache->password, record->bytes + YT_F113, 4U);
-	cache->password[4] = '\0';
-	cache->captain = (int)yt_record_get_number(record, YT_F77);
+	memcpy(cache->name, team.name, sizeof(cache->name));
+	cache->name_length = team.name_length;
+	memcpy(cache->password, team.password, sizeof(cache->password));
+	cache->captain = team.captain;
 	cache->current_player_is_captain =
 	    cache->captain == current_player_record;
-	for (index = 0U; index < YT_ARRAY_LEN(roster); ++index)
-		cache->roster[index] = (int)roster[index];
+	for (index = 0U; index < YT_ARRAY_LEN(cache->roster); ++index)
+		cache->roster[index] = team.roster[index];
 	if (live != NULL)
 		*live = true;
 }

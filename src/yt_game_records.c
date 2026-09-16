@@ -209,6 +209,40 @@ yt_sector_encode(struct yt_sector *sector)
 }
 
 void
+yt_team_decode(struct yt_team *team, int id, const struct yt_record *record)
+{
+	static const size_t roster_offsets[4] = {
+		YT_F109, YT_F117, YT_F121, YT_F125,
+	};
+	size_t index;
+
+	memset(team, 0, sizeof(*team));
+	team->id = id;
+	yt_sector_decode(&team->overlay, record);
+	team->full = true;
+	for (index = 0U; index < YT_ARRAY_LEN(team->roster); ++index) {
+		team->roster[index] = (int)yt_record_get_number(record,
+		    roster_offsets[index]);
+		if (team->roster[index] != 0)
+			team->live = true;
+		else
+			team->full = false;
+	}
+	if (!team->live) {
+		team->full = false;
+		return;
+	}
+	team->name_length = (size_t)yt_record_get_number(record, YT_F73);
+	if (team->name_length > YT_TEXT_FIELD_SIZE)
+		team->name_length = YT_TEXT_FIELD_SIZE;
+	memcpy(team->name, record->bytes, team->name_length);
+	team->name[team->name_length] = '\0';
+	memcpy(team->password, record->bytes + YT_F113, 4U);
+	team->password[4] = '\0';
+	team->captain = (int)yt_record_get_number(record, YT_F77);
+}
+
+void
 yt_port_decode(struct yt_port *port, const struct yt_record *record)
 {
 	size_t index;
@@ -376,6 +410,19 @@ yt_game_read_sector(struct yt_game *game, int logical_sector,
 	    &record, error))
 		return false;
 	yt_sector_decode(sector, &record);
+	return true;
+}
+
+bool
+yt_game_read_team(struct yt_game *game, int id, struct yt_team *team,
+    struct yt_error *error)
+{
+	struct yt_record record;
+
+	if (!yt_database_read(&game->database,
+	    (size_t)yt_sector_basic_record(&game->config, id), &record, error))
+		return false;
+	yt_team_decode(team, id, &record);
 	return true;
 }
 

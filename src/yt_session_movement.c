@@ -84,7 +84,6 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 	uint8_t row[256];
 	char number[80];
 	size_t row_length;
-	bool overflow;
 
 	if (session == NULL || dangerous == NULL)
 		return false;
@@ -164,9 +163,8 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 			    owner_player.record.bytes, name_length))
 				return movement_range_error(error, "danger owner name row");
 			if (owner_player.team != 0.0f) {
-				struct yt_sector team;
+				struct yt_team team;
 				bool friendly;
-				int team_name_length;
 
 				session->shared_status = 0.0f;
 				if (!yt_session_players_are_friendly(session,
@@ -184,24 +182,15 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 				    closing_bracket, sizeof(closing_bracket) - 1U))
 					return movement_range_error(error,
 					    "danger team number row");
-				if (!session_read_sector(session, (int)owner_player.team,
-				    &team, error))
+				if (!yt_game_read_team(&session->door->game,
+				    (int)owner_player.team, &team, error))
 					return false;
-				team_name_length = qb_cint_mbf32(
-				    team.record.bytes + YT_F73, 0U, &overflow);
-				if (overflow || team_name_length < 0)
-					return movement_range_error(error,
-					    "danger team name length");
-				if (team_name_length > 0) {
-					size_t amount = (size_t)team_name_length;
-
-					if (amount > YT_TEXT_FIELD_SIZE)
-						amount = YT_TEXT_FIELD_SIZE;
+				if (team.name_length > 0U) {
 					if (!danger_append(row, sizeof(row), &row_length,
 					    team_name_prefix,
 					    sizeof(team_name_prefix) - 1U)
 					    || !danger_append(row, sizeof(row), &row_length,
-					    team.record.bytes, amount)
+					    team.name, team.name_length)
 					    || !danger_append(row, sizeof(row), &row_length,
 					    closing_bracket,
 					    sizeof(closing_bracket) - 1U))
