@@ -446,28 +446,17 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 		struct yt_maintenance_planet_result mutation;
 		struct yt_maintenance_text name;
 		struct yt_planet planet;
-		bool overflow;
-		int32_t stored_length;
-		float raw_name_length;
 		float day;
 		float minute;
 		size_t row;
 
 		if (!yt_game_read_planet(game, logical, &planet, error))
 			return false;
-		raw_name_length = qb_mbf32_decode(planet.record.bytes + YT_F85);
-		if (raw_name_length <= 0.0f)
+		if (planet.name_length == 0U)
 			continue;
-		stored_length = qb_cint_mbf32(planet.record.bytes + YT_F85, 0U,
-		    &overflow);
-		if (overflow || stored_length < 0) {
-			set_error(error, YT_RANGE, "maintenance planet name",
-			    "YTDATA.DAT");
-			return false;
-		}
 		name.data = planet.record.bytes;
-		name.length = (size_t)stored_length < YT_TEXT_FIELD_SIZE
-		    ? (size_t)stored_length : YT_TEXT_FIELD_SIZE;
+		name.length = planet.name_length < YT_TEXT_FIELD_SIZE
+		    ? planet.name_length : YT_TEXT_FIELD_SIZE;
 		if (!current_day_minute(game, &day, &minute, error)
 		    || !yt_maintenance_update_planet(&game->random, &planet, day,
 		    minute, &mutation, error)
