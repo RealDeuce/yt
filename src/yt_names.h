@@ -34,7 +34,6 @@ enum yt_names_sequential_operation {
 	YT_NAMES_SEQUENTIAL_STORE_TOKEN,
 	YT_NAMES_SEQUENTIAL_STORE_ROW,
 	YT_NAMES_SEQUENTIAL_CLOSE,
-	YT_NAMES_SEQUENTIAL_INTERNAL_FATAL,
 };
 
 struct yt_names_sequential_state {
@@ -46,34 +45,6 @@ struct yt_names_sequential_state {
 	bool close_attempted;
 	bool file_closed;
 	bool complete;
-};
-
-#define YT_NAMES_YTCONFIG_ARRAY_BASE 0x18E6U
-#define YT_NAMES_YTCONFIG_ARRAY_COUNT 51U
-#define YT_NAMES_YTCONFIG_ARRAY_STRIDE 0x00CCU
-
-enum yt_names_ytconfig_outcome {
-	YT_NAMES_YTCONFIG_NONE,
-	YT_NAMES_YTCONFIG_RETURNED,
-	YT_NAMES_YTCONFIG_INTERNAL_FATAL_0ACC,
-};
-
-struct yt_names_ytconfig_store_site {
-	uint16_t instruction;
-	uint16_t saved_ip;
-	uint16_t destination;
-};
-
-struct yt_names_ytconfig_state {
-	struct yt_names_sequential_state sequential;
-	enum yt_names_ytconfig_outcome outcome;
-	int16_t counter;
-	size_t stores_attempted;
-	size_t stores_committed;
-	size_t current_group_stores_committed;
-	size_t overflow_stores_committed;
-	struct yt_names_ytconfig_store_site attempted_site;
-	uint8_t fourth_destination[4];
 };
 
 enum yt_names_output_operation {
@@ -123,19 +94,6 @@ bool yt_names_load_sequential(struct yt_text_input *input, const char *path,
 	struct yt_name_file *names,
 	struct yt_name_input_observation *observation,
 	struct yt_names_sequential_state *state, struct yt_error *error);
-/*
- * Executes YTCONFIG:0E4E..0EE5 over its four physical 51-descriptor
- * arrays.  Stores commit one token at a time.  On the canonical 52nd group,
- * the first three stores replace row-zero fields in the following arrays;
- * the fourth retains its staged temporary in observation and reports the
- * shared nonreturning BRUN:0ACC boundary without closing the input file.
- */
-bool yt_names_load_ytconfig_sequential(struct yt_text_input *input,
-	const char *path, struct yt_name_file *names,
-	struct yt_name_input_observation *observation,
-	struct yt_names_ytconfig_state *state, struct yt_error *error);
-bool yt_names_ytconfig_store_site(int16_t counter, size_t ordinal,
-	struct yt_names_ytconfig_store_site *site);
 /*
  * On incomplete input, names retains every completed group and observation
  * owns the successfully staged fields from the interrupted group.  Release
