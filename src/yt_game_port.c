@@ -360,7 +360,7 @@ yt_port_name_overlay(struct yt_port *port, const uint8_t *candidate,
 	if (!yt_record_set_number(&port->record, YT_F85,
 	    (float)candidate_length))
 		return false;
-	port->name_length = (float)candidate_length;
+	port->name_length = candidate_length;
 	copied = candidate_length < YT_TEXT_FIELD_SIZE
 	    ? candidate_length : YT_TEXT_FIELD_SIZE;
 	if (copied != 0U)

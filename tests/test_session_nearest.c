@@ -58,7 +58,7 @@ test_one_sector_all_ports(void)
 	yt_sector_encode(&sector);
 	yt_record_blank(&port.record);
 	(void)snprintf(port.name, sizeof(port.name), "%s", "Earth");
-	port.name_length = 5.0f;
+	port.name_length = 5U;
 	port.commodity_class = 1.0f;
 	port.sector = 1.0f;
 	port.production[0] = 10.0f;

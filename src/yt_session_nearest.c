@@ -549,11 +549,9 @@ nearest_scan_run(struct yt_session *session, int selector,
 				(void)snprintf((char *)equipment, sizeof(equipment),
 				    " Equ @%c%s", scan.port.commodity_class
 				    == 1.0f ? 'S' : 'B', price);
-				if (!nearest_stock_cell(&scan.market, stock, error)
-				    || !nearest_cint(&scan, scan.port.name_length,
-				    &rendered, error, "nearest name-length CINT"))
+				if (!nearest_stock_cell(&scan.market, stock, error))
 					goto done;
-				name_length = (size_t)rendered;
+				name_length = scan.port.name_length;
 				if (name_length > YT_TEXT_FIELD_SIZE)
 					name_length = YT_TEXT_FIELD_SIZE;
 				memcpy(name, scan.port.record.bytes, name_length);

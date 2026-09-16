@@ -2646,7 +2646,7 @@ test_sector_scanner_rows(void)
 	yt_record_set_number(&record, YT_F41, 1.0f);
 	yt_record_set_number(&record, YT_F85, 3.0f);
 	yt_port_decode(&port, &record);
-	port.name_length = 19.0f;
+	port.name_length = 19U;
 	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length, &error)
 	    && length == sizeof(port_equ_expected)
 	    && memcmp(row, port_equ_expected, length) == 0);
@@ -18019,7 +18019,7 @@ main_buy_report(void *context, int logical_port, bool earth,
 	memset(terminal_port, 0, sizeof(*terminal_port));
 	early_port->owner = 7.0f;
 	terminal_port->owner = 99.0f;
-	terminal_port->name_length = 8.0f;
+	terminal_port->name_length = 8U;
 	(void)yt_record_set_number(&terminal_port->record, YT_F85, 8.0f);
 	memcpy(terminal_port->record.bytes, "Old Port", 8U);
 	production[0] = 20.0f;
@@ -18350,7 +18350,7 @@ main_buy_cycle_fixture_initialize(struct main_buy_cycle_fixture *fixture,
 	fixture->sector.port = 3.0f;
 	(void)yt_record_set_number(&fixture->sector.record, YT_F65, 3.0f);
 	memcpy(fixture->port.record.bytes, "Old Port", 8U);
-	fixture->port.name_length = 8.0f;
+	fixture->port.name_length = 8U;
 	fixture->port.treasury = 4.0f;
 	fixture->port.owner = 7.0f;
 	(void)yt_record_set_number(&fixture->port.record, YT_F85, 8.0f);
@@ -18458,7 +18458,7 @@ test_main_buy_cycle_presentation(void)
 		    && fixture.written_buyer.ports_owned == 2.0f
 		    && fixture.written_port.owner == 2.0f
 		    && fixture.written_port.treasury == 0.0f
-		    && fixture.written_port.name_length == 4.0f
+		    && fixture.written_port.name_length == 4U
 		    && memcmp(fixture.written_port.record.bytes, "Nova", 4U) == 0);
 		CHECK(viewer.join.presentation.foreground == 2.0f
 		    && viewer.join.presentation.background == 0.0f
@@ -18608,7 +18608,7 @@ main_rename_cycle_fixture_initialize(struct main_rename_cycle_fixture *fixture,
 	(void)yt_record_set_number(&fixture->sector.record, YT_F65, 3.0f);
 	memcpy(fixture->port.record.bytes, "Old Port", 8U);
 	fixture->port.owner = 2.0f;
-	fixture->port.name_length = 8.0f;
+	fixture->port.name_length = 8U;
 	(void)yt_record_set_number(&fixture->port.record, YT_F85, 8.0f);
 	(void)yt_record_set_number(&fixture->port.record, YT_F97, 2.0f);
 }
@@ -18707,7 +18707,7 @@ test_main_rename_cycle_presentation(void)
 		    && fixture.cached_name_length == 8U
 		    && memcmp(fixture.cached_name, "Old Port", 8U) == 0);
 		CHECK(fixture.presentation.name_write_count == 1U
-		    && fixture.port.name_length == 4.0f
+		    && fixture.port.name_length == 4U
 		    && memcmp(fixture.port.record.bytes, "Nova", 4U) == 0
 		    && memcmp(fixture.presentation.written_name_record.bytes,
 		    fixture.port.record.bytes, YT_RECORD_SIZE) == 0);

@@ -224,7 +224,7 @@ yt_port_decode(struct yt_port *port, const struct yt_record *record)
 		    yt_record_get_number(record, YT_F61 + index * 4U);
 		port->factor[index] = yt_record_get_number(record, YT_F73 + index * 4U);
 	}
-	port->name_length = yt_record_get_number(record, YT_F85);
+	port->name_length = (size_t)yt_record_get_number(record, YT_F85);
 	port->treasury = yt_record_get_number(record, YT_F89);
 	port->sector = yt_record_get_number(record, YT_F93);
 	port->owner = yt_record_get_number(record, YT_F97);
@@ -253,7 +253,7 @@ yt_port_encode(struct yt_port *port)
 		    port->factor[index]);
 	}
 	yt_record_set_number_if_changed(&port->record, YT_F85,
-	    port->name_length);
+	    (float)port->name_length);
 	yt_record_set_number_if_changed(&port->record, YT_F89, port->treasury);
 	yt_record_set_number_if_changed(&port->record, YT_F93, port->sector);
 	yt_record_set_number_if_changed(&port->record, YT_F97, port->owner);

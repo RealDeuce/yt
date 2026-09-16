@@ -639,7 +639,7 @@ replace_port_name:
 				}
 			}
 			snprintf(port.name, sizeof(port.name), "%s", name);
-			port.name_length = (float)strlen(name);
+			port.name_length = strlen(name);
 			if (!yt_game_write_port(game, logical, &port, error)
 			    || !yt_config_compose_port_saved(output.final_column,
 				&output)

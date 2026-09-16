@@ -71,7 +71,7 @@ struct yt_port {
 	float stock[3];
 	float production[3];
 	float factor[3];
-	float name_length;
+	size_t name_length;
 	float treasury;
 	float sector;
 	float owner;

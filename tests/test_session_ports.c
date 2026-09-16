@@ -235,7 +235,7 @@ test_owned_port_purchase(void)
 	    &adjusted_year, &error));
 	yt_record_blank(&port.record);
 	(void)snprintf(port.name, sizeof(port.name), "%s", "Old Port");
-	port.name_length = 8.0f;
+	port.name_length = 8U;
 	port.last_day = (float)today;
 	port.last_minute = qb_single_divide((float)yt_clock_timer(
 	    &door.game.clock),
@@ -274,7 +274,7 @@ test_owned_port_purchase(void)
 	yt_port_decode(&port, &persisted);
 	CHECK(port.owner == 2.0f);
 	CHECK(port.treasury == 0.0f);
-	CHECK(port.name_length == 4.0f);
+	CHECK(port.name_length == 4U);
 	CHECK(memcmp(port.record.bytes, "Nova", 4U) == 0);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);

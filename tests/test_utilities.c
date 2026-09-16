@@ -4314,7 +4314,7 @@ test_portname(struct yt_error *error)
 		size_t byte;
 
 		if (!yt_game_read_port(&game, logical, &port, error)
-		    || port.name_length < 1.0f || port.name_length > 41.0f
+		    || port.name_length < 1U || port.name_length > 41U
 		    || (logical == 1 && strcmp(port.name, "Earth") != 0)) {
 			yt_game_close(&game);
 			free(before);

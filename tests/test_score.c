@@ -1711,7 +1711,7 @@ check_port_name_editor_model(void)
 	before = port.record;
 	if (!yt_port_name_overlay(&port, embedded, sizeof(embedded))
 	    || memcmp(port.record.bytes, embedded, sizeof(embedded)) != 0
-	    || port.name_length != 3.0f
+	    || port.name_length != 3U
 	    || yt_record_get_number(&port.record, YT_F85) != 3.0f)
 		return false;
 	for (index = sizeof(embedded); index < YT_TEXT_FIELD_SIZE; ++index) {
