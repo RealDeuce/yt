@@ -13,8 +13,8 @@ bool yt_rmt_door_prepare(struct yt_rmt_door *door, int port,
     const struct yt_startup_framing *framing, struct yt_error *error);
 bool yt_rmt_door_start(struct yt_rmt_door *door, int port,
     struct yt_error *error);
-void yt_rmt_door_sink(struct yt_rmt_door *door,
-    struct yt_rmt_output_sink *sink);
+bool yt_rmt_door_write(struct yt_rmt_door *door,
+    const uint8_t *data, size_t length);
 bool yt_rmt_door_local_write(struct yt_rmt_door *door,
     const uint8_t *data, size_t length);
 void yt_rmt_door_finish(struct yt_rmt_door *door, int errorlevel);

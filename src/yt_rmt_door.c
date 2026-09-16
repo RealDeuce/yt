@@ -15,29 +15,10 @@ rmt_door_cleanup(void)
 		yt_platform_rmt_serial_close(&current_door->serial);
 }
 
-static bool
-rmt_door_local_sink(void *context, const uint8_t *data, size_t length,
-    size_t *accepted)
+bool
+yt_rmt_door_write(struct yt_rmt_door *door, const uint8_t *data,
+    size_t length)
 {
-	struct yt_rmt_door *door = context;
-
-	*accepted = 0U;
-	if (door == NULL || !door->initialized
-	    || (data == NULL && length != 0U))
-		return false;
-	/* The serial sink uses OpenDoors' combined remote/local path.  The
-	 * separately composed local tape is retained as logical state only. */
-	*accepted = length;
-	return true;
-}
-
-static bool
-rmt_door_serial_sink(void *context, const uint8_t *data, size_t length,
-    size_t *accepted)
-{
-	struct yt_rmt_door *door = context;
-
-	*accepted = 0U;
 	if (door == NULL || !door->initialized
 	    || (data == NULL && length != 0U))
 		return false;
@@ -47,7 +28,6 @@ rmt_door_serial_sink(void *context, const uint8_t *data, size_t length,
 		od_disp((const char *)data, amount, TRUE);
 		data += (size_t)amount;
 		length -= (size_t)amount;
-		*accepted += (size_t)amount;
 	}
 	return true;
 }
@@ -133,16 +113,6 @@ yt_rmt_door_start(struct yt_rmt_door *door, int port,
 		return false;
 	}
 	return true;
-}
-
-void
-yt_rmt_door_sink(struct yt_rmt_door *door, struct yt_rmt_output_sink *sink)
-{
-	if (sink == NULL)
-		return;
-	sink->context = door;
-	sink->local = rmt_door_local_sink;
-	sink->serial = rmt_door_serial_sink;
 }
 
 bool

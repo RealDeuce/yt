@@ -241,280 +241,85 @@ test_initializer_confirmation(void)
 	    && !yt_initializer_confirm_response(NULL);
 }
 
+
 static bool
 test_rmt_output_helpers(void)
 {
 	static const uint8_t missing[] =
 	    "\aERROR! OLD DATA FILES NOT FOUND!!!!!!!!!!!!!!!!!!!!!!!!\a";
 	struct yt_rmt_output_result result;
-	uint8_t local[80];
-	uint8_t serial[80];
+	uint8_t bytes[80];
 
-	memset(local, 0xcc, sizeof(local));
-	memset(serial, 0xdd, sizeof(serial));
 	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_LINE,
-	    (const uint8_t *)"ABC", 3U, false, local, sizeof(local), serial,
-	    sizeof(serial), &result)
-	    || result.local_length != 4U || result.serial_length != 5U
-	    || !result.serial_first || memcmp(local, "ABC\r", 4U) != 0
-	    || memcmp(serial, "\nABC\r", 5U) != 0)
+	    (const uint8_t *)"ABC", 3U, false, bytes, sizeof(bytes), &result)
+	    || result.length != 5U || memcmp(bytes, "\nABC\r", 5U) != 0)
 		return false;
 	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_BLANK, NULL, 0U, false,
-	    local, sizeof(local), serial, sizeof(serial), &result)
-	    || result.local_length != 1U || result.serial_length != 2U
-	    || !result.serial_first || local[0] != '\r'
-	    || memcmp(serial, "\n\r", 2U) != 0)
+	    bytes, sizeof(bytes), &result)
+	    || result.length != 2U || memcmp(bytes, "\n\r", 2U) != 0)
 		return false;
 	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_INLINE,
-	    (const uint8_t *)".", 1U, false, local, sizeof(local), serial,
-	    sizeof(serial), &result)
-	    || result.local_length != 1U || result.serial_length != 1U
-	    || result.serial_first || local[0] != '.' || serial[0] != '.')
+	    (const uint8_t *)".", 1U, false, bytes, sizeof(bytes), &result)
+	    || result.length != 1U || bytes[0] != '.')
 		return false;
 	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_LINE,
-	    (const uint8_t *)"ABC", 3U, true, local, sizeof(local), NULL, 0U,
-	    &result) || result.local_length != 4U || result.serial_length != 0U
-	    || memcmp(local, "ABC\r", 4U) != 0)
+	    (const uint8_t *)"ABC", 3U, true, bytes, sizeof(bytes), &result)
+	    || result.length != 4U || memcmp(bytes, "ABC\r", 4U) != 0)
 		return false;
 	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_LINE, missing,
-	    sizeof(missing) - 1U, false, local + 2U, sizeof(local) - 2U,
-	    serial, sizeof(serial), &result)
-	    || result.local_length != sizeof(missing)
-	    || result.serial_length != sizeof(missing) + 1U
-	    || !result.serial_first)
-		return false;
-	local[0] = '\r';
-	local[1] = '\r';
-	if (memcmp(local, "\r\r\aERROR! OLD DATA FILES NOT FOUND!!!!!!!!!!!!!!!!!!!!!!!!\a\r",
-	    sizeof(missing) + 2U) != 0
-	    || memcmp(serial,
+	    sizeof(missing) - 1U, false, bytes, sizeof(bytes), &result)
+	    || result.length != sizeof(missing) + 1U
+	    || memcmp(bytes,
 	    "\n\aERROR! OLD DATA FILES NOT FOUND!!!!!!!!!!!!!!!!!!!!!!!!\a\r",
 	    sizeof(missing) + 1U) != 0)
 		return false;
 	return !yt_rmt_output_compose(YT_RMT_OUTPUT_BLANK,
-	    (const uint8_t *)"X", 1U, false, local, sizeof(local), serial,
-	    sizeof(serial), &result)
+	    (const uint8_t *)"X", 1U, false, bytes, sizeof(bytes), &result)
 	    && !yt_rmt_output_compose(YT_RMT_OUTPUT_LINE,
-	    (const uint8_t *)"ABC", 3U, false, local, 3U, serial,
-	    sizeof(serial), &result);
+	    (const uint8_t *)"ABC", 3U, false, bytes, 4U, &result);
 }
 
 static bool
 test_rmt_output_state(void)
 {
-	struct yt_rmt_output_state state = {0U, 0U};
+	struct yt_rmt_output_state state = {0U};
 	struct yt_rmt_output_state final;
 	struct yt_rmt_output_result result;
-	uint8_t local[64];
-	uint8_t serial[64];
+	uint8_t bytes[64];
 
 	if (!yt_rmt_output_compose_state(YT_RMT_OUTPUT_COMMA_SERIAL_FIRST,
-	    (const uint8_t *)" 8 - 90", 7U, false, &state, local,
-	    sizeof(local), serial, sizeof(serial), &result, &final)
-	    || result.local_length != 14U || result.serial_length != 14U
-	    || !result.serial_first || final.local_column != 14U
-	    || final.serial_column != 14U
-	    || memcmp(local, " 8 - 90       ", 14U) != 0
-	    || memcmp(serial, local, 14U) != 0)
+	    (const uint8_t *)" 8 - 90", 7U, false, &state, bytes,
+	    sizeof(bytes), &result, &final)
+	    || result.length != 14U || final.column != 14U
+	    || memcmp(bytes, " 8 - 90       ", 14U) != 0)
 		return false;
-	state.local_column = 70U;
-	state.serial_column = 70U;
+	state.column = 70U;
 	if (!yt_rmt_output_compose_state(YT_RMT_OUTPUT_INLINE,
-	    (const uint8_t *)"1234567890", 10U, false, &state, local,
-	    sizeof(local), serial, sizeof(serial), &result, &final)
-	    || result.local_length != 11U || result.serial_length != 11U
-	    || result.serial_first || final.local_column != 10U
-	    || final.serial_column != 10U
-	    || memcmp(local, "\r1234567890", 11U) != 0
-	    || memcmp(serial, local, 11U) != 0)
+	    (const uint8_t *)"1234567890", 10U, false, &state, bytes,
+	    sizeof(bytes), &result, &final)
+	    || result.length != 11U || final.column != 10U
+	    || memcmp(bytes, "\r1234567890", 11U) != 0)
 		return false;
 	if (!yt_rmt_output_compose_state(YT_RMT_OUTPUT_COMMA_SERIAL_FIRST,
-	    (const uint8_t *)".", 1U, false, &state, local, sizeof(local),
-	    serial, sizeof(serial), &result, &final)
-	    || result.local_length != 2U || result.serial_length != 2U
-	    || final.local_column != 0U || final.serial_column != 0U
-	    || memcmp(local, ".\r", 2U) != 0
-	    || memcmp(serial, local, 2U) != 0)
+	    (const uint8_t *)".", 1U, false, &state, bytes, sizeof(bytes),
+	    &result, &final)
+	    || result.length != 2U || final.column != 0U
+	    || memcmp(bytes, ".\r", 2U) != 0)
 		return false;
-	state.local_column = 11U;
-	state.serial_column = 56U;
+	state.column = 56U;
 	if (!yt_rmt_output_compose_state(YT_RMT_OUTPUT_SERIAL_LINE, NULL, 0U,
-	    false, &state, local, sizeof(local), serial, sizeof(serial), &result,
-	    &final) || result.local_length != 0U || result.serial_length != 2U
-	    || !result.serial_first || final.local_column != 11U
-	    || final.serial_column != 0U || memcmp(serial, "\n\r", 2U) != 0)
+	    false, &state, bytes, sizeof(bytes), &result, &final)
+	    || result.length != 2U || final.column != 0U
+	    || memcmp(bytes, "\n\r", 2U) != 0)
 		return false;
 	if (!yt_rmt_output_compose_state(YT_RMT_OUTPUT_SERIAL_LINE, NULL, 0U,
-	    true, &state, local, sizeof(local), NULL, 0U, &result, &final)
-	    || result.local_length != 0U || result.serial_length != 0U
-	    || final.local_column != 11U || final.serial_column != 56U)
+	    true, &state, bytes, sizeof(bytes), &result, &final)
+	    || result.length != 0U || final.column != 56U)
 		return false;
-	state.local_column = 80U;
+	state.column = 80U;
 	return !yt_rmt_output_compose_state(YT_RMT_OUTPUT_LINE,
-	    (const uint8_t *)"X", 1U, false, &state, local, sizeof(local),
-	    serial, sizeof(serial), &result, &final);
-}
-
-struct rmt_output_tape {
-	uint8_t bytes[32];
-	size_t length;
-	enum yt_rmt_output_endpoint endpoints[2];
-	size_t endpoint_count;
-	enum yt_rmt_output_endpoint failure_endpoint;
-	size_t failure_prefix;
-	bool fail;
-	bool overaccept;
-};
-
-static bool
-rmt_output_tape_write(struct rmt_output_tape *tape,
-    enum yt_rmt_output_endpoint endpoint, const uint8_t *data, size_t length,
-    size_t *accepted)
-{
-	size_t amount = length;
-
-	if (tape->endpoint_count >= 2U || length > sizeof(tape->bytes) - tape->length)
-		return false;
-	tape->endpoints[tape->endpoint_count++] = endpoint;
-	if (tape->overaccept) {
-		*accepted = length + 1U;
-		return true;
-	}
-	if (tape->fail && tape->failure_endpoint == endpoint
-	    && tape->failure_prefix < amount)
-		amount = tape->failure_prefix;
-	if (amount != 0U)
-		memcpy(tape->bytes + tape->length, data, amount);
-	tape->length += amount;
-	*accepted = amount;
-	return !(tape->fail && tape->failure_endpoint == endpoint);
-}
-
-static bool
-rmt_output_tape_local(void *context, const uint8_t *data, size_t length,
-    size_t *accepted)
-{
-	return rmt_output_tape_write(context, YT_RMT_OUTPUT_ENDPOINT_LOCAL, data,
-	    length, accepted);
-}
-
-static bool
-rmt_output_tape_serial(void *context, const uint8_t *data, size_t length,
-    size_t *accepted)
-{
-	return rmt_output_tape_write(context, YT_RMT_OUTPUT_ENDPOINT_SERIAL, data,
-	    length, accepted);
-}
-
-static bool
-test_rmt_output_adapter(void)
-{
-	struct yt_rmt_output_apply_result applied;
-	struct yt_rmt_output_result output;
-	struct rmt_output_tape tape;
-	struct yt_rmt_output_sink sink = {
-		.context = &tape,
-		.local = rmt_output_tape_local,
-		.serial = rmt_output_tape_serial,
-	};
-	uint8_t local[8];
-	uint8_t serial[8];
-
-	memset(&tape, 0, sizeof(tape));
-	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_LINE,
-	    (const uint8_t *)"ABC", 3U, false, local, sizeof(local), serial,
-	    sizeof(serial), &output)
-	    || !yt_rmt_output_apply(local, serial, &output, &sink, &applied)
-	    || applied.outcome != YT_RMT_OUTPUT_APPLY_SUCCESS
-	    || applied.attempt_count != 2U
-	    || applied.attempts[0].endpoint != YT_RMT_OUTPUT_ENDPOINT_SERIAL
-	    || applied.attempts[0].requested != 5U
-	    || applied.attempts[0].accepted != 5U
-	    || applied.attempts[1].endpoint != YT_RMT_OUTPUT_ENDPOINT_LOCAL
-	    || applied.attempts[1].requested != 4U
-	    || applied.attempts[1].accepted != 4U
-	    || tape.endpoint_count != 2U
-	    || tape.endpoints[0] != YT_RMT_OUTPUT_ENDPOINT_SERIAL
-	    || tape.endpoints[1] != YT_RMT_OUTPUT_ENDPOINT_LOCAL
-	    || tape.length != 9U || memcmp(tape.bytes, "\nABC\rABC\r", 9U) != 0)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_INLINE,
-	    (const uint8_t *)".", 1U, false, local, sizeof(local), serial,
-	    sizeof(serial), &output)
-	    || !yt_rmt_output_apply(local, serial, &output, &sink, &applied)
-	    || applied.outcome != YT_RMT_OUTPUT_APPLY_SUCCESS
-	    || applied.attempt_count != 2U
-	    || tape.endpoints[0] != YT_RMT_OUTPUT_ENDPOINT_LOCAL
-	    || tape.endpoints[1] != YT_RMT_OUTPUT_ENDPOINT_SERIAL
-	    || tape.length != 2U || memcmp(tape.bytes, "..", 2U) != 0)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.fail = true;
-	tape.failure_endpoint = YT_RMT_OUTPUT_ENDPOINT_SERIAL;
-	tape.failure_prefix = 2U;
-	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_LINE,
-	    (const uint8_t *)"ABC", 3U, false, local, sizeof(local), serial,
-	    sizeof(serial), &output)
-	    || !yt_rmt_output_apply(local, serial, &output, &sink, &applied)
-	    || applied.outcome != YT_RMT_OUTPUT_APPLY_SERIAL_FAILURE
-	    || applied.attempt_count != 1U || applied.attempts[0].accepted != 2U
-	    || tape.endpoint_count != 1U || tape.length != 2U
-	    || memcmp(tape.bytes, "\nA", 2U) != 0)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.fail = true;
-	tape.failure_endpoint = YT_RMT_OUTPUT_ENDPOINT_LOCAL;
-	tape.failure_prefix = 2U;
-	if (!yt_rmt_output_apply(local, serial, &output, &sink, &applied)
-	    || applied.outcome != YT_RMT_OUTPUT_APPLY_LOCAL_FAILURE
-	    || applied.attempt_count != 2U
-	    || applied.attempts[0].endpoint != YT_RMT_OUTPUT_ENDPOINT_SERIAL
-	    || applied.attempts[0].accepted != 5U
-	    || applied.attempts[1].endpoint != YT_RMT_OUTPUT_ENDPOINT_LOCAL
-	    || applied.attempts[1].accepted != 2U
-	    || tape.endpoint_count != 2U || tape.length != 7U
-	    || memcmp(tape.bytes, "\nABC\rAB", 7U) != 0)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.fail = true;
-	tape.failure_endpoint = YT_RMT_OUTPUT_ENDPOINT_LOCAL;
-	tape.failure_prefix = 0U;
-	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_INLINE,
-	    (const uint8_t *)".", 1U, false, local, sizeof(local), serial,
-	    sizeof(serial), &output)
-	    || !yt_rmt_output_apply(local, serial, &output, &sink, &applied)
-	    || applied.outcome != YT_RMT_OUTPUT_APPLY_LOCAL_FAILURE
-	    || applied.attempt_count != 1U || tape.endpoint_count != 1U
-	    || tape.endpoints[0] != YT_RMT_OUTPUT_ENDPOINT_LOCAL
-	    || tape.length != 0U)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_LINE,
-	    (const uint8_t *)"ABC", 3U, true, local, sizeof(local), NULL, 0U,
-	    &output))
-		return false;
-	sink.serial = NULL;
-	if (!yt_rmt_output_apply(local, NULL, &output, &sink, &applied)
-	    || applied.outcome != YT_RMT_OUTPUT_APPLY_SUCCESS
-	    || applied.attempt_count != 1U
-	    || applied.attempts[0].endpoint != YT_RMT_OUTPUT_ENDPOINT_LOCAL)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.overaccept = true;
-	sink.serial = rmt_output_tape_serial;
-	if (yt_rmt_output_apply(local, NULL, &output, &sink, &applied)
-	    || yt_rmt_output_apply(NULL, NULL, NULL, &sink, &applied)
-	    || yt_rmt_output_apply(NULL, NULL, &output, &sink, &applied))
-		return false;
-	sink.local = NULL;
-	return !yt_rmt_output_apply(local, NULL, &output, &sink, &applied);
+	    (const uint8_t *)"X", 1U, false, &state, bytes, sizeof(bytes),
+	    &result, &final);
 }
 
 static bool
@@ -1129,23 +934,23 @@ rmt_presentation_append(struct rmt_presentation_tape *tape,
 {
 	struct yt_rmt_output_result output;
 	struct yt_rmt_output_state final;
-	uint8_t local[256];
-	uint8_t serial[256];
+	uint8_t bytes[256];
+	uint8_t *dest;
+	size_t *length;
+	size_t capacity;
 
 	if (!yt_rmt_output_compose_state(entry, payload, payload_length,
-	    tape->local_mode, &tape->state, local, sizeof(local), serial,
-	    sizeof(serial), &output, &final)
-	    || output.local_length > sizeof(tape->local) - tape->local_length
-	    || output.serial_length > sizeof(tape->serial) - tape->serial_length)
+	    tape->local_mode, &tape->state, bytes, sizeof(bytes), &output,
+	    &final))
 		return false;
-	if (output.local_length != 0U)
-		memcpy(tape->local + tape->local_length, local,
-		    output.local_length);
-	if (output.serial_length != 0U)
-		memcpy(tape->serial + tape->serial_length, serial,
-		    output.serial_length);
-	tape->local_length += output.local_length;
-	tape->serial_length += output.serial_length;
+	dest = tape->local_mode ? tape->local : tape->serial;
+	length = tape->local_mode ? &tape->local_length : &tape->serial_length;
+	capacity = tape->local_mode ? sizeof(tape->local) : sizeof(tape->serial);
+	if (output.length > capacity - *length)
+		return false;
+	if (output.length != 0U)
+		memcpy(dest + *length, bytes, output.length);
+	*length += output.length;
 	tape->state = final;
 	return true;
 }
@@ -1166,7 +971,7 @@ rmt_presentation_collect(void *context, uint16_t site,
 	tape->sites[tape->calls] = site;
 	++tape->calls;
 	if (site == 0x10f1U && !tape->local_mode
-	    && tape->state.serial_column > 50U) {
+	    && tape->state.column > 50U) {
 		if (!rmt_presentation_append(tape, YT_RMT_OUTPUT_SERIAL_LINE,
 		    NULL, 0U))
 			return false;
@@ -2102,19 +1907,15 @@ test_rmt_dynamic_presentation(void)
 		size_t draws;
 		uint32_t final_state;
 		size_t calls;
-		size_t local_length;
-		uint64_t local_hash;
 		size_t serial_length;
 		uint64_t serial_hash;
 		size_t long_links;
 		size_t wraps;
 		size_t repairs;
 	} cases[] = {
-		{UINT32_C(0x286), 244U, UINT32_C(0x9eff1a), 62U, 1350U,
-		    UINT64_C(0xf0d1593bad8f2f96), 1409U,
+		{UINT32_C(0x286), 244U, UINT32_C(0x9eff1a), 62U, 1409U,
 		    UINT64_C(0xd32abf24cbe56624), 1U, 0U, 1U},
-		{UINT32_C(0x7485), 293U, UINT32_C(0xd3c458), 64U, 1321U,
-		    UINT64_C(0x23714298d909f079), 1380U,
+		{UINT32_C(0x7485), 293U, UINT32_C(0xd3c458), 64U, 1380U,
 		    UINT64_C(0x16d71f518f97cfa2), 4U, 1U, 0U},
 	};
 
@@ -2142,9 +1943,7 @@ test_rmt_dynamic_presentation(void)
 		if (!ok || random.draws != cases[index].draws
 		    || lcg.state != cases[index].final_state
 		    || tape.calls != cases[index].calls
-		    || tape.local_length != cases[index].local_length
-		    || utility_fnv1a64(tape.local, tape.local_length)
-		    != cases[index].local_hash
+		    || tape.local_length != 0U
 		    || tape.serial_length != cases[index].serial_length
 		    || utility_fnv1a64(tape.serial, tape.serial_length)
 		    != cases[index].serial_hash
@@ -2156,11 +1955,9 @@ test_rmt_dynamic_presentation(void)
 		    != cases[index].repairs
 		    || rmt_presentation_site_count(&tape, 0x302cU)
 		    != cases[index].repairs) {
-			fprintf(stderr, "RMT dynamic presentation seed=%06x: ok=%d status=%d draws=%zu state=%06x calls=%zu local=%zu/%016llx serial=%zu/%016llx\n",
+			fprintf(stderr, "RMT dynamic presentation seed=%06x: ok=%d status=%d draws=%zu state=%06x calls=%zu serial=%zu/%016llx\n",
 			    cases[index].seed, ok, error.status, random.draws,
-			    lcg.state, tape.calls, tape.local_length,
-			    (unsigned long long)utility_fnv1a64(tape.local,
-			    tape.local_length), tape.serial_length,
+			    lcg.state, tape.calls, tape.serial_length,
 			    (unsigned long long)utility_fnv1a64(tape.serial,
 			    tape.serial_length));
 			return false;
@@ -5512,8 +5309,6 @@ main(void)
 		failure = "RMT shared output helper vectors differ";
 	else if (!test_rmt_output_state())
 		failure = "RMT stateful output vectors differ";
-	else if (!test_rmt_output_adapter())
-		failure = "RMT ordered output adapter vectors differ";
 	else if (!test_rmt_completion_output())
 		failure = "RMT completion output vectors differ";
 	else if (!test_rmt_standalone_entry())

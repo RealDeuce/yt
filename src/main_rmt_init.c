@@ -266,17 +266,14 @@ write_rmt_output(struct rmt_output_context *context,
     enum yt_rmt_output_entry entry, const uint8_t *payload,
     size_t payload_length, struct yt_error *error)
 {
-	struct yt_rmt_output_apply_result applied;
 	struct yt_rmt_output_result output;
 	struct yt_rmt_output_state final_state;
-	struct yt_rmt_output_sink sink;
-	uint8_t local[256];
-	uint8_t serial[256];
+	uint8_t bytes[256];
 
 	if (context == NULL
 	    || !yt_rmt_output_compose_state(entry, payload, payload_length,
-	    context->local_mode, &context->state, local, sizeof(local), serial,
-	    sizeof(serial), &output, &final_state)) {
+	    context->local_mode, &context->state, bytes, sizeof(bytes), &output,
+	    &final_state)) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
 			error->system_error = 0;
@@ -286,34 +283,20 @@ write_rmt_output(struct rmt_output_context *context,
 		return false;
 	}
 	if (context->local_mode) {
-		if (!write_local_bytes(context->door, local, output.local_length,
-		    error))
+		if (!write_local_bytes(context->door, bytes, output.length, error))
 			return false;
-		context->state = final_state;
-		return true;
 	}
-	yt_rmt_door_sink(context->door, &sink);
-	if (!yt_rmt_output_apply(local, serial, &output, &sink, &applied)) {
+	else if (!yt_rmt_door_write(context->door, bytes, output.length)) {
 		if (error != NULL) {
-			error->status = YT_INVALID;
+			error->status = YT_IO_ERROR;
+			error->system_error = 0;
 			snprintf(error->operation, sizeof(error->operation),
-			    "apply RMT-INIT output row");
+			    "write RMT-INIT serial endpoint");
 		}
 		return false;
 	}
-	if (applied.outcome == YT_RMT_OUTPUT_APPLY_SUCCESS) {
-		context->state = final_state;
-		return true;
-	}
-	if (error != NULL) {
-		error->status = YT_IO_ERROR;
-		error->system_error = 0;
-		snprintf(error->operation, sizeof(error->operation),
-		    "write RMT-INIT %s endpoint",
-		    applied.outcome == YT_RMT_OUTPUT_APPLY_SERIAL_FAILURE
-		    ? "serial" : "local");
-	}
-	return false;
+	context->state = final_state;
+	return true;
 }
 
 static bool
@@ -400,7 +383,7 @@ write_rmt_presentation(void *opaque, uint16_t site,
 	if (!write_rmt_output(context, entry, payload, payload_length, error))
 		return false;
 	if (site == 0x10f1U && !context->local_mode
-	    && context->state.serial_column > 50U)
+	    && context->state.column > 50U)
 		return write_rmt_output(context, YT_RMT_OUTPUT_SERIAL_LINE, NULL,
 		    0U, error);
 	return true;

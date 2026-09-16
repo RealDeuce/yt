@@ -43,47 +43,11 @@ enum yt_rmt_output_entry {
 };
 
 struct yt_rmt_output_state {
-	size_t local_column;
-	size_t serial_column;
+	size_t column;
 };
 
 struct yt_rmt_output_result {
-	size_t local_length;
-	size_t serial_length;
-	bool serial_first;
-};
-
-enum yt_rmt_output_endpoint {
-	YT_RMT_OUTPUT_ENDPOINT_LOCAL,
-	YT_RMT_OUTPUT_ENDPOINT_SERIAL
-};
-
-enum yt_rmt_output_apply_outcome {
-	YT_RMT_OUTPUT_APPLY_SUCCESS,
-	YT_RMT_OUTPUT_APPLY_LOCAL_FAILURE,
-	YT_RMT_OUTPUT_APPLY_SERIAL_FAILURE
-};
-
-/* A writer reports its exact accepted prefix and true only for completion. */
-typedef bool (*yt_rmt_output_write)(void *context, const uint8_t *data,
-    size_t length, size_t *accepted);
-
-struct yt_rmt_output_sink {
-	void *context;
-	yt_rmt_output_write local;
-	yt_rmt_output_write serial;
-};
-
-struct yt_rmt_output_attempt {
-	enum yt_rmt_output_endpoint endpoint;
-	size_t requested;
-	size_t accepted;
-};
-
-struct yt_rmt_output_apply_result {
-	enum yt_rmt_output_apply_outcome outcome;
-	struct yt_rmt_output_attempt attempts[2];
-	size_t attempt_count;
+	size_t length;
 };
 
 #define YT_RMT_COMPLETION_LINES 6U
@@ -159,18 +123,13 @@ bool yt_initializer_bounded(struct yt_random *random, int bound, int *value,
     struct yt_error *error);
 bool yt_rmt_output_compose(enum yt_rmt_output_entry entry,
     const uint8_t *payload, size_t payload_length, bool local_mode,
-    uint8_t *local, size_t local_capacity, uint8_t *serial,
-    size_t serial_capacity, struct yt_rmt_output_result *result);
+    uint8_t *dest, size_t capacity, struct yt_rmt_output_result *result);
 bool yt_rmt_output_compose_state(enum yt_rmt_output_entry entry,
     const uint8_t *payload, size_t payload_length, bool local_mode,
-    const struct yt_rmt_output_state *state, uint8_t *local,
-    size_t local_capacity, uint8_t *serial, size_t serial_capacity,
+    const struct yt_rmt_output_state *state, uint8_t *dest,
+    size_t capacity,
     struct yt_rmt_output_result *result,
     struct yt_rmt_output_state *final_state);
-bool yt_rmt_output_apply(const uint8_t *local, const uint8_t *serial,
-    const struct yt_rmt_output_result *output,
-    const struct yt_rmt_output_sink *sink,
-    struct yt_rmt_output_apply_result *result);
 bool yt_rmt_completion_compose(bool local_mode, const char *credited_name,
     struct yt_rmt_completion_result *result);
 bool yt_rmt_completion_delay(struct yt_rmt_delay_result *result);

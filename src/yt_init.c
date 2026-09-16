@@ -181,15 +181,13 @@ yt_init_present_opening(const struct yt_init_presenter *presenter,
 bool
 yt_rmt_output_compose(enum yt_rmt_output_entry entry,
     const uint8_t *payload, size_t payload_length, bool local_mode,
-    uint8_t *local, size_t local_capacity, uint8_t *serial,
-    size_t serial_capacity, struct yt_rmt_output_result *result)
+    uint8_t *dest, size_t capacity, struct yt_rmt_output_result *result)
 {
-	const struct yt_rmt_output_state state = {0U, 0U};
+	const struct yt_rmt_output_state state = {0U};
 	struct yt_rmt_output_state final_state;
 
 	return yt_rmt_output_compose_state(entry, payload, payload_length,
-	    local_mode, &state, local, local_capacity, serial, serial_capacity,
-	    result, &final_state);
+	    local_mode, &state, dest, capacity, result, &final_state);
 }
 
 enum rmt_punctuation {
@@ -275,109 +273,47 @@ rmt_render_value(uint8_t *dest, size_t capacity, size_t *length,
 bool
 yt_rmt_output_compose_state(enum yt_rmt_output_entry entry,
     const uint8_t *payload, size_t payload_length, bool local_mode,
-    const struct yt_rmt_output_state *state, uint8_t *local,
-    size_t local_capacity, uint8_t *serial, size_t serial_capacity,
+    const struct yt_rmt_output_state *state, uint8_t *dest,
+    size_t capacity,
     struct yt_rmt_output_result *result,
     struct yt_rmt_output_state *final_state)
 {
 	static const uint8_t lf[] = {'\n'};
 	enum rmt_punctuation punctuation;
 	bool serial_only;
-	size_t local_length = 0U;
-	size_t serial_length = 0U;
+	size_t length = 0U;
 
 	if (state == NULL || result == NULL || final_state == NULL
 	    || (payload == NULL && payload_length != 0U)
 	    || entry < YT_RMT_OUTPUT_LINE
 	    || entry > YT_RMT_OUTPUT_SERIAL_LINE
-	    || state->local_column >= 80U || state->serial_column >= 80U
+	    || state->column >= 80U
 	    || (entry == YT_RMT_OUTPUT_BLANK && payload_length != 0U))
 		return false;
 	*final_state = *state;
 	serial_only = entry == YT_RMT_OUTPUT_SERIAL_LINE;
+	if (local_mode && serial_only) {
+		result->length = 0U;
+		return true;
+	}
 	punctuation = entry == YT_RMT_OUTPUT_LINE
 	    || entry == YT_RMT_OUTPUT_BLANK
 	    || entry == YT_RMT_OUTPUT_SERIAL_LINE
 	    ? RMT_PUNCTUATION_NEWLINE
 	    : entry == YT_RMT_OUTPUT_COMMA_SERIAL_FIRST
 	    ? RMT_PUNCTUATION_COMMA : RMT_PUNCTUATION_SEMICOLON;
-	if (!serial_only
-	    && !rmt_render_value(local, local_capacity, &local_length,
-	    &final_state->local_column, NULL, 0U, payload, payload_length,
-	    punctuation))
-		return false;
-	if (!local_mode
-	    && !rmt_render_value(serial, serial_capacity, &serial_length,
-	    &final_state->serial_column,
-	    entry == YT_RMT_OUTPUT_LINE || entry == YT_RMT_OUTPUT_BLANK
-	    || entry == YT_RMT_OUTPUT_SERIAL_LINE ? lf : NULL,
-	    entry == YT_RMT_OUTPUT_LINE || entry == YT_RMT_OUTPUT_BLANK
-	    || entry == YT_RMT_OUTPUT_SERIAL_LINE ? 1U : 0U,
+	if (!rmt_render_value(dest, capacity, &length,
+	    &final_state->column,
+	    !local_mode && (entry == YT_RMT_OUTPUT_LINE
+	    || entry == YT_RMT_OUTPUT_BLANK
+	    || entry == YT_RMT_OUTPUT_SERIAL_LINE) ? lf : NULL,
+	    !local_mode && (entry == YT_RMT_OUTPUT_LINE
+	    || entry == YT_RMT_OUTPUT_BLANK
+	    || entry == YT_RMT_OUTPUT_SERIAL_LINE) ? 1U : 0U,
 	    payload, payload_length, punctuation))
 		return false;
-	result->local_length = local_length;
-	result->serial_length = serial_length;
-	result->serial_first = entry != YT_RMT_OUTPUT_INLINE;
+	result->length = length;
 	return true;
-}
-
-static bool
-rmt_output_apply_one(enum yt_rmt_output_endpoint endpoint,
-    const uint8_t *bytes, size_t length, yt_rmt_output_write write,
-    const struct yt_rmt_output_sink *sink,
-    struct yt_rmt_output_apply_result *result)
-{
-	struct yt_rmt_output_attempt *attempt;
-	bool complete;
-
-	if (length == 0U)
-		return true;
-	attempt = &result->attempts[result->attempt_count++];
-	attempt->endpoint = endpoint;
-	attempt->requested = length;
-	attempt->accepted = 0U;
-	complete = write(sink->context, bytes, length, &attempt->accepted);
-	if (attempt->accepted > length)
-		return false;
-	if (!complete || attempt->accepted != length) {
-		result->outcome = endpoint == YT_RMT_OUTPUT_ENDPOINT_SERIAL
-		    ? YT_RMT_OUTPUT_APPLY_SERIAL_FAILURE
-		    : YT_RMT_OUTPUT_APPLY_LOCAL_FAILURE;
-	}
-	return true;
-}
-
-bool
-yt_rmt_output_apply(const uint8_t *local, const uint8_t *serial,
-    const struct yt_rmt_output_result *output,
-    const struct yt_rmt_output_sink *sink,
-    struct yt_rmt_output_apply_result *result)
-{
-	if (output == NULL || sink == NULL || result == NULL)
-		return false;
-	if ((local == NULL && output->local_length != 0U)
-	    || (serial == NULL && output->serial_length != 0U)
-	    || (sink->local == NULL && output->local_length != 0U)
-	    || (sink->serial == NULL && output->serial_length != 0U))
-		return false;
-	memset(result, 0, sizeof(*result));
-	result->outcome = YT_RMT_OUTPUT_APPLY_SUCCESS;
-	if (output->serial_first) {
-		if (!rmt_output_apply_one(YT_RMT_OUTPUT_ENDPOINT_SERIAL, serial,
-		    output->serial_length, sink->serial, sink, result))
-			return false;
-		if (result->outcome != YT_RMT_OUTPUT_APPLY_SUCCESS)
-			return true;
-		return rmt_output_apply_one(YT_RMT_OUTPUT_ENDPOINT_LOCAL, local,
-		    output->local_length, sink->local, sink, result);
-	}
-	if (!rmt_output_apply_one(YT_RMT_OUTPUT_ENDPOINT_LOCAL, local,
-	    output->local_length, sink->local, sink, result))
-		return false;
-	if (result->outcome != YT_RMT_OUTPUT_APPLY_SUCCESS)
-		return true;
-	return rmt_output_apply_one(YT_RMT_OUTPUT_ENDPOINT_SERIAL, serial,
-	    output->serial_length, sink->serial, sink, result);
 }
 
 static bool
