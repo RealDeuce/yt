@@ -62,12 +62,11 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	size_t line_length;
 	size_t radio_length;
 	uint64_t starting_draws;
-	int32_t player_name_length;
+	size_t player_name_length;
 	int player_slot;
 	int index;
 	int sector_length;
 	float gate;
-	bool overflow;
 
 	if (game == NULL || player_count < 1 || planet_count < 1
 	    || sector_count < 1 || (blank == NULL
@@ -94,28 +93,22 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	local.player_record = player_slot + 1;
 	if (!yt_game_read_player(game, local.player_record, &player, error))
 		return false;
-	if (qb_mbf32_decode(player.record.bytes + YT_F85) == 0.0f) {
+	if (player.name_length == 0U) {
 		local.failure = YT_MAINTENANCE_LOTTERY_BLANK_PLAYER;
 		*result = local;
 		return lottery_fail(line_output, line_context, local.failure,
 		    starting_draws, game, result, error);
 	}
-	player_name_length = qb_cint_mbf32(player.record.bytes + YT_F85, 0U,
-	    &overflow);
-	if (overflow || player_name_length < 0 || player_name_length > 41) {
-		set_error(error, YT_RANGE, "Super Lottery player name",
-		    "YTDATA.DAT");
-		return false;
-	}
-	working_length = (size_t)player_name_length + sizeof(name_suffix) - 1U;
-	memcpy(working_name, player.record.bytes, (size_t)player_name_length);
+	player_name_length = player.name_length;
+	working_length = player_name_length + sizeof(name_suffix) - 1U;
+	memcpy(working_name, player.record.bytes, player_name_length);
 	memcpy(working_name + player_name_length, name_suffix,
 	    sizeof(name_suffix) - 1U);
 	if (!yt_random_integer(&game->random, planet_count,
 	    &local.planet_number, error)
 	    || !yt_game_read_planet(game, local.planet_number, &planet, error))
 		return false;
-	if (qb_mbf32_decode(planet.record.bytes + YT_F85) != 0.0f) {
+	if (planet.name_length != 0U) {
 		local.failure = YT_MAINTENANCE_LOTTERY_OCCUPIED_PLANET;
 		*result = local;
 		return lottery_fail(line_output, line_context, local.failure,
@@ -183,7 +176,7 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	if (!maintenance_copy_part(line, sizeof(line), &line_length,
 	    winner_prefix, sizeof(winner_prefix) - 1U)
 	    || !maintenance_copy_part(line, sizeof(line), &line_length,
-	    player.record.bytes, (size_t)player_name_length)
+	    player.record.bytes, player_name_length)
 	    || !maintenance_copy_part(line, sizeof(line), &line_length,
 	    winner_suffix, sizeof(winner_suffix) - 1U)
 	    || !line_output(line_context, line, line_length, error)
