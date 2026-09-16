@@ -345,7 +345,7 @@ edit_planets(struct yt_game *game, struct yt_error *error)
 
 		if (!yt_game_read_planet(game, logical, &planet, error))
 			return false;
-		if (planet.name_length == 0.0f)
+		if (planet.name_length == 0U)
 			continue;
 		active[logical] = true;
 		++active_count;
@@ -495,7 +495,7 @@ save_planet_name:
 				if (!yt_game_read_planet(game, selected, &planet, error))
 					return false;
 				snprintf(planet.name, sizeof(planet.name), "%s", name);
-				planet.name_length = (float)strlen(name);
+				planet.name_length = strlen(name);
 				if (!yt_game_write_planet(game, selected, &planet, error))
 					return false;
 			}

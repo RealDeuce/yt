@@ -456,6 +456,5 @@ yt_planet_rename_overlay(struct yt_planet *planet, const char *name,
 		length = YT_TEXT_FIELD_SIZE;
 	memcpy(planet->name, name, length);
 	planet->name[length] = '\0';
-	planet->name_length = (float)length;
+	planet->name_length = length;
 }
-

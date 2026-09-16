@@ -801,7 +801,7 @@ yt_planet_move_explosion_overlay(struct yt_planet *planet)
 	if (planet == NULL)
 		return;
 	planet->name[0] = '\0';
-	planet->name_length = 0.0f;
+	planet->name_length = 0U;
 	memcpy(planet->record.bytes, zero_raw, sizeof(zero_raw));
 	memset(planet->record.bytes + sizeof(zero_raw), ' ',
 	    YT_TEXT_FIELD_SIZE - sizeof(zero_raw));

@@ -1509,7 +1509,7 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 	    && planet.production[2] == 0.0f;
 	if (destroyed) {
 		sector->planet = 0.0f;
-		planet.name_length = 0.0f;
+		planet.name_length = 0U;
 	}
 	if (*group_size <= 0.0f) {
 		*group_size = 0.0f;
@@ -1551,7 +1551,7 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 		    error)
 		    || !yt_game_read_planet(game, planet_number, &planet, error))
 			return false;
-		planet.name_length = 0.0f;
+		planet.name_length = 0U;
 		if (!yt_record_set_number(&planet.record, YT_F85, 0.0f)) {
 			set_error(error, YT_RANGE,
 			    "encode destroyed Xannor planet", "YTDATA.DAT");

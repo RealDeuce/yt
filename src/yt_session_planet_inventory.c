@@ -6,22 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static bool
-planet_name_length(struct yt_session *session, float raw, size_t *length,
-    struct yt_error *error)
-{
-	bool overflow;
-	int32_t converted = qb_cint_mode((double)raw,
-	    session->presentation.sound.conversion_mode, &overflow);
-
-	if (overflow || converted < 0)
-		return session_range_error(error, "planet inventory name length");
-	*length = (size_t)converted;
-	if (*length > YT_TEXT_FIELD_SIZE)
-		*length = YT_TEXT_FIELD_SIZE;
-	return true;
-}
-
 bool
 yt_session_planet_inventory(struct yt_session *session, int logical_planet,
     struct yt_error *error)
@@ -47,10 +31,11 @@ yt_session_planet_inventory(struct yt_session *session, int logical_planet,
 	    || !yt_session_update_planet(session, logical_planet, &planet,
 	    &economy, error)
 	    || !session_read_planet(session, logical_planet,
-	    &planet, error)
-	    || !planet_name_length(session, planet.name_length,
-	    &name_length, error))
+	    &planet, error))
 		return false;
+	name_length = planet.name_length;
+	if (name_length > YT_TEXT_FIELD_SIZE)
+		name_length = YT_TEXT_FIELD_SIZE;
 	snprintf(session->planet.name, sizeof(session->planet.name), "%s",
 	    planet.name);
 	held[0] = (double)session->player.ore;
@@ -301,4 +286,3 @@ yt_session_planet_take_all(struct yt_session *session, int logical_planet,
 	}
 	return true;
 }
-

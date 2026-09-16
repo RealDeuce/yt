@@ -207,7 +207,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 		    (size_t)physical, &raw, error))
 			return false;
 		yt_planet_decode(&planet, &raw);
-		if (planet.name_length == 0.0f) {
+		if (planet.name_length == 0U) {
 			selected_expression = scan;
 			selected_physical = physical;
 			break;

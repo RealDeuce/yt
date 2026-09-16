@@ -76,7 +76,7 @@ maintenance_write_mercenary_rebuild(struct yt_game *game,
 	    || !yt_record_set_number(&planet->record, YT_F77,
 	    planet->ground_forces)
 	    || !yt_record_set_number(&planet->record, YT_F85,
-	    planet->name_length)
+	    (float)planet->name_length)
 	    || !yt_record_set_number(&planet->record, YT_F117, planet->bank)
 	    || !yt_record_set_number(&planet->record, YT_F125, planet->mines))
 		goto range;
@@ -148,7 +148,7 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 		yt_record_set_text(&planet.record,
 		    (const uint8_t *)"Mercenary Base", 14);
 		strcpy(planet.name, "Mercenary Base");
-		planet.name_length = 14.0f;
+		planet.name_length = 14U;
 		planet.last_day = (float)(today - 10);
 		planet.production[0] = 100000.0f;
 		planet.production[1] = 100000.0f;

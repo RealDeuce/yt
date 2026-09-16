@@ -2969,7 +2969,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 	    || !yt_game_read_planet(&game, 1, &planet, error))
 		goto done;
 	strcpy(planet.name, "Terra");
-	planet.name_length = 5.0f;
+	planet.name_length = 5U;
 	planet.owner = -1.0f;
 	planet.ground_forces = 1.0f;
 	planet.production[0] = 501.0f;
@@ -3008,7 +3008,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 	    || sector.planet != 1.0f || planet.owner != 0.0f
 	    || planet.ground_forces != 0.0f
 	    || planet.production[0] != 501.0f
-	    || planet.stock[0] != 5010.0f || planet.name_length != 5.0f
+	    || planet.stock[0] != 5010.0f || planet.name_length != 5U
 	    || game.random.draws != 2U
 	    || script.position != sizeof(high_draws) || tape.calls != 2U
 	    || strcmp(tape.line[0], attack_line) != 0
@@ -3022,7 +3022,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 	(void)remove("YTNEWS.DAT");
 	memset(&tape, 0, sizeof(tape));
 	strcpy(planet.name, "Terra");
-	planet.name_length = 5.0f;
+	planet.name_length = 5U;
 	planet.owner = 7.0f;
 	planet.ground_forces = 0.0f;
 	planet.production[0] = 0.0f;
@@ -3049,7 +3049,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 		goto done;
 	valid = location == 733.0f && group_size == 2.0f
 	    && sector.planet == 0.0f && planet.owner == 0.0f
-	    && planet.ground_forces == 0.0f && planet.name_length == 0.0f
+	    && planet.ground_forces == 0.0f && planet.name_length == 0U
 	    && planet.stock[0] == 0.0f && game.random.draws == 0U
 	    && script.position == 0U && tape.calls == 2U
 	    && strcmp(tape.line[0], attack_line) == 0

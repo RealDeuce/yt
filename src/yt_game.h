@@ -87,7 +87,7 @@ struct yt_planet {
 	float missiles;
 	float owner;
 	float ground_forces;
-	float name_length;
+	size_t name_length;
 	float last_minute;
 	float plasma;
 	float bank;

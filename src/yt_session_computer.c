@@ -174,22 +174,6 @@ computer_planet_relation_cint(struct yt_session *session, float relationship,
 	return true;
 }
 
-static bool
-computer_field_length(struct yt_session *session, float raw, size_t maximum,
-    size_t *length, const char *operation, struct yt_error *error)
-{
-	bool overflow;
-	int32_t converted = qb_cint_mode((double)raw,
-	    session->presentation.sound.conversion_mode, &overflow);
-
-	if (overflow || converted < 0)
-		return session_computer_error(error, YT_RANGE, operation);
-	*length = (size_t)converted;
-	if (*length > maximum)
-		*length = maximum;
-	return true;
-}
-
 bool
 yt_session_computer_planet_report(struct yt_session *session,
     struct yt_error *error)
@@ -278,11 +262,11 @@ yt_session_computer_planet_report(struct yt_session *session,
 			scratch = qb_single_add(
 			    session_planet_offset(session), link);
 			session->planet.current_physical_record = scratch;
-			if (!session_read_planet(session, (int)link, &planet, error)
-			    || !computer_field_length(session, planet.name_length,
-			    YT_TEXT_FIELD_SIZE, &name_length,
-			    "computer planet name length", error))
+			if (!session_read_planet(session, (int)link, &planet, error))
 				return false;
+			name_length = planet.name_length;
+			if (name_length > YT_TEXT_FIELD_SIZE)
+				name_length = YT_TEXT_FIELD_SIZE;
 			if (!computer_planet_relation_cint(session,
 			    last_relationship, &relation_cint,
 			    "computer planet fighter relationship CINT", error))

@@ -394,7 +394,7 @@ yt_projectile_planet_destroy_overlay(struct yt_planet *planet)
 
 	if (planet == NULL)
 		return false;
-	planet->name_length = 0.0f;
+	planet->name_length = 0U;
 	return yt_record_set_raw_number(&planet->record, YT_F85, link_zero);
 }
 

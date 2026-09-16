@@ -1503,7 +1503,7 @@ check_projectile_parent_model(void)
 		return false;
 	memset(&planet, 0, sizeof(planet));
 	memcpy(planet.record.bytes, planet_binary, sizeof(planet_binary));
-	planet.name_length = 19.0f;
+	planet.name_length = 19U;
 	(void)yt_record_set_number(&planet.record, YT_F85, 3.0f);
 	if (!yt_planet_stored_name(&planet, defense, &defense_length, NULL)
 	    || defense_length != sizeof(planet_binary)
@@ -2156,7 +2156,7 @@ check_planet_move_model(void)
 			return false;
 	before = planet.record;
 	yt_planet_move_explosion_overlay(&planet);
-	if (planet.name_length != 0.0f || planet.name[0] != '\0'
+	if (planet.name_length != 0U || planet.name[0] != '\0'
 	    || memcmp(planet.record.bytes, "\0\0\0\0", 4U) != 0)
 		return false;
 	for (index = 4U; index < YT_TEXT_FIELD_SIZE; ++index)
@@ -4725,7 +4725,7 @@ check_maintenance_mercenary_rebuild_phase_pass(void)
 	    || sector.planet != 1.0f
 	    || !yt_game_read_planet(&game, 1, &planet, &error)
 	    || planet.owner != -2.0f || planet.ground_forces != 150000.0f
-	    || planet.bank != 25000000.0f || planet.name_length != 14.0f
+	    || planet.bank != 25000000.0f || planet.name_length != 14U
 	    || memcmp(planet.record.bytes, "Mercenary Base", 14U) != 0)
 		goto done;
 	radio_file = fopen("YTRMSG.DAT", "rb");
@@ -8404,7 +8404,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 			goto done;
 	}
 	if (!yt_game_read_planet(&game, 1, &planet, &error)
-	    || planet.name_length != 0.0f || planet.owner != 0.0f)
+	    || planet.name_length != 0U || planet.owner != 0.0f)
 		goto done;
 	for (size_t offset = 0U; offset < YT_RECORD_SIZE; ++offset) {
 		bool changed_lane = (offset >= YT_F73 && offset < YT_F73 + 4U)
@@ -12375,7 +12375,7 @@ check_planet_rename_model(void)
 	if (!yt_record_set_number(&expected, YT_F85, 4.0f)
 	    || memcmp(&planet.record, &expected, sizeof(expected)) != 0
 	    || strcmp(planet.name, "Nova") != 0
-	    || planet.name_length != 4.0f)
+	    || planet.name_length != 4U)
 		return false;
 	return true;
 }

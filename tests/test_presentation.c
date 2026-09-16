@@ -2663,7 +2663,7 @@ test_sector_scanner_rows(void)
 	yt_record_set_number(&record, YT_F77, -1.25f);
 	yt_record_set_number(&record, YT_F85, 3.0f);
 	yt_planet_decode(&planet, &record);
-	planet.name_length = 19.0f;
+	planet.name_length = 19U;
 	CHECK(yt_sector_planet_row(&planet, row, sizeof(row), &length, &error)
 	    && length == sizeof(planet_expected)
 	    && memcmp(row, planet_expected, length) == 0);

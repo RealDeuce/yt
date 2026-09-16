@@ -124,7 +124,7 @@ test_land_and_leave_owned_planet(void)
 	yt_sector_encode(&sector);
 	yt_record_blank(&planet.record);
 	(void)snprintf(planet.name, sizeof(planet.name), "%s", "Home");
-	planet.name_length = 4.0f;
+	planet.name_length = 4U;
 	planet.last_day = (float)today;
 	planet.owner = 2.0f;
 	planet.ground_forces = 5.0f;
