@@ -14,9 +14,7 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
     float disruption_sectors[2], float *local_screen, struct yt_error *error)
 {
 	struct yt_config *config;
-	bool overflow;
-	int32_t path_count;
-	float counter;
+	int basic;
 	size_t index;
 
 	if (game == NULL || path == NULL || player_cache == NULL
@@ -28,20 +26,9 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 	    YT_OPEN_UPDATE_CREATE, error)
 	    || !yt_config_load(&game->database, config, error))
 		return false;
-	path_count = qb_cint_mbf32(config->record.bytes + YT_F41, 0U,
-	    &overflow);
-	if (overflow || path_count < 0)
-		return yt_game_error(error, YT_RANGE,
-		    "startup scoreboard LEFT$");
-	config->scoreboard_length = (float)path_count;
-	if (config->scoreboard_length > YT_TEXT_FIELD_SIZE)
-		config->scoreboard_length = YT_TEXT_FIELD_SIZE;
-	memcpy(config->scoreboard, config->record.bytes,
-	    (size_t)config->scoreboard_length);
 	*local_screen = config->local_screen;
 	qb_compat_upper_n((uint8_t *)config->scoreboard,
 	    (size_t)config->scoreboard_length);
-	config->scoreboard[(size_t)config->scoreboard_length] = '\0';
 
 	if (config->headquarters == 0.0f) {
 		static const uint8_t headquarters_default[4] = {
@@ -83,12 +70,10 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 		config->turns_per_day = 500.0f;
 	}
 
-	counter = 2.0f;
-	while (counter <= config->sector_offset) {
+	for (basic = 2; basic <= (int)config->sector_offset; ++basic) {
 		struct yt_player player;
-		int32_t basic = qb_cint(counter, &overflow);
 
-		if (overflow || !yt_player_cache_contains(basic))
+		if (!yt_player_cache_contains(basic))
 			return yt_game_error(error, YT_RANGE,
 			    "startup player-cache index");
 		if (!yt_game_read_player(game, basic, &player, error))
@@ -110,7 +95,6 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 			    (size_t)basic, &player.record, error))
 				return false;
 		}
-		counter = qb_single_add(counter, 1.0f);
 	}
 	for (index = 0U; index < 2U; ++index) {
 		float draw;
