@@ -1,11 +1,43 @@
 #include "yt_portname.h"
 
 #include "qb.h"
-#include "yt_init.h"
+#include "yt_random.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+
+#define YT_NAME_TOKENS 908
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Woverlength-strings"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Woverlength-strings"
+#endif
+
+static const char port_name_blob[] =
+#include "yt_portnames.inc"
+;
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+struct port_name_token {
+	const char *text;
+	size_t length;
+	bool leading;
+};
+
+struct port_name_pool {
+	bool ready;
+	struct port_name_token tokens[YT_NAME_TOKENS];
+};
+
+static struct port_name_pool prepared_port_names;
 
 static const uint8_t portname_intro[] =
     "\r"
@@ -33,6 +65,86 @@ set_error(struct yt_error *error, enum yt_status status,
 	snprintf(error->operation, sizeof(error->operation), "%s", operation);
 	snprintf(error->path, sizeof(error->path), "%s",
 	    path != NULL ? path : "");
+}
+
+static bool
+prepare_port_name_pool(void)
+{
+	const char *cursor = port_name_blob;
+	size_t index;
+
+	if (prepared_port_names.ready)
+		return true;
+	for (index = 0; index < YT_NAME_TOKENS; ++index) {
+		size_t length;
+
+		if (*cursor == '\0')
+			return false;
+		length = strlen(cursor);
+		prepared_port_names.tokens[index].text = cursor;
+		prepared_port_names.tokens[index].length = length;
+		prepared_port_names.tokens[index].leading = length > 4U;
+		cursor += length + 1U;
+	}
+	if (*cursor != '\0')
+		return false;
+	prepared_port_names.ready = true;
+	return true;
+}
+
+bool
+yt_generate_port_name(struct yt_random *random, char name[42],
+    struct yt_error *error)
+{
+	float first;
+	float second;
+	int parts;
+	int part;
+	size_t used = 0;
+
+	if (!prepare_port_name_pool()) {
+		set_error(error, YT_INVALID, "compiled port-name pool", "");
+		return false;
+	}
+	if (!yt_random_next(random, &first, error)
+	    || !yt_random_next(random, &second, error))
+		return false;
+	parts = (int)floorf(qb_single_multiply(qb_single_multiply(first, second),
+	    3.0f)) + 2;
+	name[0] = '\0';
+	for (part = 0; part < parts; ++part) {
+		const struct port_name_token *token;
+		const char *cursor;
+		float sample;
+		int selected;
+		size_t length;
+
+		if (!yt_random_next(random, &sample, error))
+			return false;
+		selected = (int)floorf(qb_single_multiply(sample,
+		    (float)YT_NAME_TOKENS));
+		token = &prepared_port_names.tokens[selected];
+		cursor = token->text;
+		length = token->length;
+		if (token->leading && used < 41U)
+			name[used++] = ' ';
+		if (length > 0U && used < 41U) {
+			name[used++] = token->leading
+			    ? (char)((uint8_t)cursor[0] & 0xdfU) : cursor[0];
+			++cursor;
+			--length;
+		}
+		while (length-- > 0U && used < 41U)
+			name[used++] = *cursor++;
+	}
+	if (used > 0U && name[0] == ' ') {
+		--used;
+		memmove(name, name + 1, used);
+	}
+	name[used] = '\0';
+	if (used > 0U)
+		name[0] = (char)((uint8_t)name[0] & 0xdfU);
+	return true;
 }
 
 

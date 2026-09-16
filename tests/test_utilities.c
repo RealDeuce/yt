@@ -202,33 +202,6 @@ test_portname_controller(void)
 }
 
 static bool
-test_initializer_bounded(void)
-{
-	static const uint8_t draws[] = {
-		0x00, 0x00, 0x00,
-		0x00, 0x00, 0x80,
-		0xff, 0xff, 0xff
-	};
-	struct utility_random_script script = {draws, sizeof(draws), 0};
-	struct yt_random random;
-	struct yt_error error;
-	int value;
-
-	yt_error_clear(&error);
-	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_random_fill, &script);
-	if (!yt_initializer_bounded(&random, 10, &value, &error) || value != 1
-	    || !yt_initializer_bounded(&random, 10, &value, &error) || value != 6
-	    || !yt_initializer_bounded(&random, 2004, &value, &error)
-	    || value != 2004 || random.draws != 3U
-	    || script.position != sizeof(draws))
-		return false;
-	yt_error_clear(&error);
-	return !yt_initializer_bounded(&random, 0, &value, &error)
-	    && error.status == YT_RANGE && random.draws == 3U;
-}
-
-static bool
 test_initializer_confirmation(void)
 {
 	return yt_initializer_confirm_response("Y")
@@ -5269,8 +5242,6 @@ main(void)
 		failure = "PORTNAME generator vectors differ";
 	else if (!test_portname_controller())
 		failure = "PORTNAME controller vectors differ";
-	else if (!test_initializer_bounded())
-		failure = "initializer bounded random vectors differ";
 	else if (!test_initializer_confirmation())
 		failure = "initializer confirmation predicate differs";
 	else if (!test_yt_init_pre_input_presentation())

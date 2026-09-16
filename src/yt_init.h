@@ -99,8 +99,6 @@ struct yt_init_binding {
 	size_t second_accepted;
 };
 
-bool yt_generate_port_name(struct yt_random *random, char name[42],
-    struct yt_error *error);
 bool yt_initializer_confirm_response(const char *response);
 void yt_initializer_layout_yt(
 	struct yt_initializer_preparation *preparation);
@@ -114,8 +112,6 @@ bool yt_initializer_prepare_yt(struct yt_random *random,
 bool yt_init_present_prepared_configuration(
 	const struct yt_initializer_preparation *preparation,
 	const struct yt_init_presenter *presenter, struct yt_error *error);
-bool yt_initializer_bounded(struct yt_random *random, int bound, int *value,
-    struct yt_error *error);
 bool yt_rmt_output_compose_state(enum yt_rmt_output_entry entry,
     const uint8_t *payload, size_t payload_length, bool local_mode,
     const struct yt_rmt_output_state *state, uint8_t *dest,

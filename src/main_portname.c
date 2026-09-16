@@ -1,7 +1,6 @@
 #include "qb.h"
 #include "yt_cli.h"
 #include "yt_game.h"
-#include "yt_init.h"
 #include "yt_portname.h"
 
 #include <stdio.h>

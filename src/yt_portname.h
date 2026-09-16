@@ -3,6 +3,8 @@
 
 #include "yt_file.h"
 
+struct yt_random;
+
 enum yt_portname_confirmation {
 	YT_PORTNAME_CONFIRM_BLANK,
 	YT_PORTNAME_CONFIRM_ACCEPT,
@@ -31,6 +33,8 @@ enum yt_portname_parse_result {
 
 enum yt_portname_confirmation yt_portname_confirm(const uint8_t *response,
     size_t length);
+bool yt_generate_port_name(struct yt_random *random, char name[42],
+    struct yt_error *error);
 enum yt_portname_parse_result yt_portname_parse_confirmation(
     const uint8_t *input, size_t input_length, uint8_t *value,
     size_t value_capacity, size_t *value_length);
