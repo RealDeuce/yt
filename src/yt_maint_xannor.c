@@ -1047,10 +1047,8 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 	struct yt_maintenance_text name;
 	struct yt_player player;
 	uint64_t starting_draws;
-	bool overflow;
 	float gate;
 	float selection;
-	int32_t stored_length;
 	int player_count;
 	int candidate;
 	size_t row;
@@ -1078,7 +1076,7 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 	for (candidate = 2; candidate <= player_count + 1; ++candidate) {
 		if (!yt_game_read_player(game, candidate, &player, error))
 			return false;
-		if (qb_mbf32_decode(player.record.bytes + YT_F85) != 0.0f
+		if (player.name_length != 0U
 		    && player.score > local.top_score) {
 			local.top_record = candidate;
 			local.top_score = player.score;
@@ -1103,15 +1101,9 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 			*result = local;
 		return true;
 	}
-	stored_length = qb_cint_mbf32(player.record.bytes + YT_F85, 0U,
-	    &overflow);
-	if (overflow || stored_length < 0) {
-		set_error(error, YT_RANGE, "Xannor hunt name", "YTDATA.DAT");
-		return false;
-	}
 	name.data = player.record.bytes;
-	name.length = (size_t)stored_length < YT_TEXT_FIELD_SIZE
-	    ? (size_t)stored_length : YT_TEXT_FIELD_SIZE;
+	name.length = player.name_length < YT_TEXT_FIELD_SIZE
+	    ? player.name_length : YT_TEXT_FIELD_SIZE;
 	if (!yt_maintenance_compose_xannor_hunt(blank,
 	    blank_length, &name, &output))
 		return false;
@@ -1432,7 +1424,7 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 	planet_number = (int)sector->planet;
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
-	if (qb_mbf32_decode(planet.record.bytes + YT_F85) <= 0.0f
+	if (planet.name_length == 0U
 	    || planet.owner == -1.0f)
 		return true;
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
@@ -1618,7 +1610,7 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	}
 	if (!yt_game_read_player(game, player_record, &player, error))
 		return false;
-	if (qb_mbf32_decode(player.record.bytes + YT_F85) == 0.0f
+	if (player.name_length == 0U
 	    || player.killed_by != 0.0f)
 		return true;
 	player_sector[player_record] = player.sector;
