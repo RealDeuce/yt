@@ -98,6 +98,7 @@ set(YT_GAME_SOURCES
     src/yt_game_sector.c
     src/yt_init.c
     src/yt_maint.c
+    src/yt_maint_economy.c
     src/yt_maint_messages.c
     src/yt_maint_output.c
     src/yt_maint_players.c

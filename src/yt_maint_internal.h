@@ -3,6 +3,8 @@
 
 #include "yt_maint.h"
 
+#include <math.h>
+
 struct maint_state {
 	struct yt_game game;
 	float *player_sector;
@@ -14,6 +16,13 @@ struct maint_state {
 	int today;
 	struct yt_maintenance_route_cache route_cache;
 };
+
+static inline float
+yt_maintenance_sint(float value)
+{
+	volatile float result = floorf(value);
+	return result;
+}
 
 bool maintenance_copy_part(uint8_t *dest, size_t capacity, size_t *length,
     const uint8_t *data, size_t data_length);
