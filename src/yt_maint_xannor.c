@@ -564,7 +564,6 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 	struct yt_player player;
 	uint64_t starting_draws;
 	double defenders;
-	bool occupied;
 	bool overflow;
 	int32_t hq;
 
@@ -598,14 +597,15 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		    &overflow);
 
 		if (overflow || record < 1
-		    || !yt_game_read_player(game, record, &player, error)
-		    || !yt_maintenance_player_name(&player, &occupied,
-		    &opponent, error)) {
+		    || !yt_game_read_player(game, record, &player, error)) {
 			if (error != NULL && error->status == YT_OK)
 				set_error(error, YT_RANGE,
 				    "Xannor headquarters defender", "YTDATA.DAT");
 			return false;
 		}
+		opponent.data = player.record.bytes;
+		opponent.length = player.name_length < YT_TEXT_FIELD_SIZE
+		    ? player.name_length : YT_TEXT_FIELD_SIZE;
 	}
 	if (!yt_maintenance_compose_xannor_reclaim_attempt(&opponent, &output)
 	    || !yt_news_append_bytes(output.rows[0].data,

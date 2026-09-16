@@ -293,15 +293,14 @@ yt_maintenance_players_run(struct maint_state *state,
 		struct yt_maintenance_player_output_result output;
 		struct yt_maintenance_text name;
 		struct yt_maintenance_text empty = {NULL, 0U};
-		bool occupied;
 
 		if (!yt_game_read_player(&state->game, record, &player, error))
 			return false;
-		if (!yt_maintenance_player_name(&player, &occupied, &name,
-		    error))
-			return false;
-		if (!occupied)
+		if (player.name_length == 0U)
 			continue;
+		name.data = player.record.bytes;
+		name.length = player.name_length < YT_TEXT_FIELD_SIZE
+		    ? player.name_length : YT_TEXT_FIELD_SIZE;
 		if (!yt_maintenance_age_player(player.cloak, player.last_active,
 		    player.killed_by, (float)state->today,
 		    state->game.config.retention_days, &aging))
@@ -391,37 +390,6 @@ yt_maintenance_age_player(float cloak, float last_active,
 	result->cutoff = qb_single_subtract(today, retention_days);
 	result->delete_player = !result->cloak_expired
 	    && last_active <= result->cutoff && killer_status != 0.0f;
-	return true;
-}
-
-bool
-yt_maintenance_player_name(const struct yt_player *player, bool *occupied,
-    struct yt_maintenance_text *name, struct yt_error *error)
-{
-	bool overflow;
-	int32_t stored_length;
-	float raw_length;
-
-	if (player == NULL || occupied == NULL || name == NULL) {
-		set_error(error, YT_INVALID, "maintenance player name",
-		    "YTDATA.DAT");
-		return false;
-	}
-	name->data = player->record.bytes;
-	name->length = 0U;
-	raw_length = qb_mbf32_decode(player->record.bytes + YT_F85);
-	*occupied = raw_length != 0.0f;
-	if (!*occupied)
-		return true;
-	stored_length = qb_cint_mbf32(player->record.bytes + YT_F85, 0U,
-	    &overflow);
-	if (overflow || stored_length < 0) {
-		set_error(error, YT_RANGE, "maintenance player name",
-		    "YTDATA.DAT");
-		return false;
-	}
-	name->length = (size_t)stored_length < YT_TEXT_FIELD_SIZE
-	    ? (size_t)stored_length : YT_TEXT_FIELD_SIZE;
 	return true;
 }
 

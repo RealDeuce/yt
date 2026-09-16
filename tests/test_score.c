@@ -4027,34 +4027,6 @@ check_maintenance_player_aging(void)
 	    (const uint8_t *)"07/23/26", 8U};
 	struct yt_maintenance_player_aging_result aging;
 	struct yt_maintenance_player_output_result output;
-	struct yt_player player;
-	struct yt_maintenance_text stored_name;
-	struct yt_error error;
-	bool occupied;
-
-	memset(&player, 0, sizeof(player));
-	memcpy(player.record.bytes, "Alice", 5U);
-	yt_error_clear(&error);
-	if (!yt_maintenance_player_name(&player, &occupied, &stored_name,
-	    &error) || occupied || stored_name.length != 0U)
-		return false;
-	player.name_length = 19U;
-	if (!yt_record_set_number(&player.record, YT_F85, 0.4f))
-		return false;
-	if (!yt_maintenance_player_name(&player, &occupied, &stored_name,
-	    &error) || !occupied || stored_name.length != 0U)
-		return false;
-	if (!yt_record_set_number(&player.record, YT_F85, 5.0f))
-		return false;
-	if (!yt_maintenance_player_name(&player, &occupied, &stored_name,
-	    &error) || !occupied || stored_name.length != 5U
-	    || memcmp(stored_name.data, "Alice", 5U) != 0)
-		return false;
-	if (!yt_record_set_number(&player.record, YT_F85, -1.0f))
-		return false;
-	if (yt_maintenance_player_name(&player, &occupied, &stored_name,
-	    &error) || error.status != YT_RANGE)
-		return false;
 
 	if (!yt_maintenance_age_player(0.0f, 100.0f, 0.0f, 204.0f,
 	    14.0f, &aging)

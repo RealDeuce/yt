@@ -362,9 +362,6 @@ bool yt_maintenance_store_final_marker(struct yt_game *game, float serial,
 bool yt_maintenance_age_player(float cloak, float last_active,
     float killer_status, float today, float retention_days,
     struct yt_maintenance_player_aging_result *result);
-bool yt_maintenance_player_name(const struct yt_player *player,
-    bool *occupied, struct yt_maintenance_text *name,
-    struct yt_error *error);
 bool yt_maintenance_compose_player_aging(
     const struct yt_maintenance_text *name,
     const struct yt_maintenance_text *time_text,
