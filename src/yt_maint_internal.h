@@ -62,5 +62,9 @@ bool yt_maintenance_xannor_roaming_groups(struct maint_state *state,
 bool yt_maintenance_mercenaries_run(struct maint_state *state,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error);
+bool yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
+    struct yt_maintenance_route_cache *route_cache,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error);
 
 #endif

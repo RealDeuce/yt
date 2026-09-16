@@ -932,8 +932,8 @@ mercenary_arrival(struct yt_game *game, int sector_number,
 	return true;
 }
 
-static bool
-move_mercenaries_impl(struct yt_game *game, int sector_count,
+bool
+yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
     struct yt_maintenance_route_cache *route_cache,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error)
@@ -1025,24 +1025,6 @@ move_mercenaries_impl(struct yt_game *game, int sector_count,
 }
 
 bool
-yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
-    yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_error *error)
-{
-	struct yt_maintenance_route_cache route_cache = {0};
-	bool result;
-
-	if (game == NULL || sector_count < 1 || line_output == NULL) {
-		set_error(error, YT_INVALID, "Mercenary movement", "YTDATA.DAT");
-		return false;
-	}
-	result = move_mercenaries_impl(game, sector_count, &route_cache,
-	    line_output, line_context, error);
-	yt_maintenance_route_cache_free(&route_cache);
-	return result;
-}
-
-bool
 yt_maintenance_mercenaries_run(struct maint_state *state,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error)
@@ -1109,7 +1091,8 @@ yt_maintenance_mercenaries_run(struct maint_state *state,
 	if (!yt_maintenance_mercenary_defections(&state->game,
 	    state->sector_count, line_output, line_context, &defections,
 	    error)
-	    || !move_mercenaries_impl(&state->game, state->sector_count,
+	    || !yt_maintenance_move_mercenaries(&state->game,
+	    state->sector_count,
 	    &state->route_cache, line_output, line_context, error))
 		return false;
 	return true;

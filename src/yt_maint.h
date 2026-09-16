@@ -250,9 +250,6 @@ bool yt_maintenance_compose_mercenary_phase(const uint8_t *blank,
     float hired_fighters, struct yt_maintenance_output_result *result);
 bool yt_maintenance_compose_mercenary_movement(double moving_fighters,
     float origin_sector, struct yt_maintenance_output_result *result);
-bool yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
-    yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_error *error);
 bool yt_maintenance_collect_mercenary_tax(struct yt_game *game,
     int port_count, struct yt_maintenance_mercenary_tax_result *result,
     struct yt_error *error);

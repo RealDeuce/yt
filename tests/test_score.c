@@ -3271,6 +3271,19 @@ run_mercenary_phase(struct yt_game *game,
 }
 
 static bool
+run_mercenary_movement(struct yt_game *game, int sector_count,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
+{
+	struct yt_maintenance_route_cache route_cache = {0};
+	bool success = yt_maintenance_move_mercenaries(game, sector_count,
+	    &route_cache, line_output, line_context, error);
+
+	yt_maintenance_route_cache_free(&route_cache);
+	return success;
+}
+
+static bool
 check_maintenance_mercenary_phase_pass(void)
 {
 	static const uint8_t expected_screen[] =
@@ -5578,7 +5591,7 @@ check_maintenance_mercenary_movement_pass(void)
 		    &before[sector - 1], &error))
 			goto done;
 	}
-	if (!yt_maintenance_move_mercenaries(&game, 4, score_line_collect,
+	if (!run_mercenary_movement(&game, 4, score_line_collect,
 	    &screen, &error)
 	    || game.random.draws != 4U
 	    || script.position != sizeof(random_bytes)
@@ -5606,13 +5619,6 @@ check_maintenance_mercenary_movement_pass(void)
 		    || memcmp(after.bytes, expected.bytes, YT_RECORD_SIZE) != 0)
 			goto done;
 	}
-	if (yt_maintenance_move_mercenaries(NULL, 4, score_line_collect,
-	    &screen, &error)
-	    || yt_maintenance_move_mercenaries(&game, 0, score_line_collect,
-	    &screen, &error)
-	    || yt_maintenance_move_mercenaries(&game, 4, NULL, &screen,
-	    &error))
-		goto done;
 	valid = true;
 
 done:
@@ -5686,7 +5692,7 @@ check_maintenance_mercenary_lower_reentry_pass(void)
 		    &before[sector - 1], &error))
 			goto done;
 	}
-	if (!yt_maintenance_move_mercenaries(&game, 4, score_line_collect,
+	if (!run_mercenary_movement(&game, 4, score_line_collect,
 	    &screen, &error)
 	    || game.random.draws != 7U
 	    || script.position != sizeof(random_bytes)
