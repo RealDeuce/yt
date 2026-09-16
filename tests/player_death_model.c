@@ -44,10 +44,10 @@ test_player_death_run(struct test_player_death_state *state,
 	state->matched_ports = 0;
 	ops->clear_active_cache(context, state->victim_record,
 	    active_cache_zero);
-	if (!ops->read_player(context, state->victim_record, &player, error)
-	    || !yt_player_stored_name(&player, state->victim_name,
-	    &state->victim_name_length, error))
+	if (!ops->read_player(context, state->victim_record, &player, error))
 		return false;
+	state->victim_name_length = yt_player_stored_name(&player,
+	    state->victim_name);
 	state->old_ports_owned = player.ports_owned;
 	yt_death_player_overlay(&player, state->killer);
 	state->victim = player;

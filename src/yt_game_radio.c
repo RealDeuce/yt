@@ -59,8 +59,7 @@ yt_radio_player_prompt(const struct yt_player *player, uint8_t *prompt,
 		*length = 0;
 	if (player == NULL || prompt == NULL || length == NULL)
 		return false;
-	if (!yt_player_stored_name(player, prompt, &stored, error))
-		return false;
+	stored = yt_player_stored_name(player, prompt);
 	if (stored + sizeof(suffix) - 1U > capacity) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -89,8 +88,7 @@ yt_radio_tuning_row(const struct yt_player *player, uint8_t *row,
 		*length = 0U;
 	if (player == NULL || row == NULL || length == NULL)
 		return false;
-	if (!yt_player_stored_name(player, stored, &stored_length, error))
-		return false;
+	stored_length = yt_player_stored_name(player, stored);
 	needed = sizeof(prefix) - 1U + stored_length + sizeof(suffix) - 1U;
 	if (needed > capacity) {
 		if (error != NULL) {
@@ -109,4 +107,3 @@ yt_radio_tuning_row(const struct yt_player *player, uint8_t *row,
 	*length = needed;
 	return true;
 }
-

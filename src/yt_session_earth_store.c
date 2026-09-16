@@ -352,13 +352,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 		field_loaded = true;
 		if (field_player.killed_by != 0.0f)
 			continue;
-		if (!yt_player_stored_name(&field_player, row, &name_length,
-		    error)) {
-			if (session->presentation.foreground != 6.0f)
-				session_set_color(session, 6);
-			session->player.record = field_player.record;
-			return false;
-		}
+		name_length = yt_player_stored_name(&field_player, row);
 		memcpy(row + name_length, uncloaked, sizeof(uncloaked) - 1U);
 		if (session->presentation.foreground != 6.0f)
 			session_set_color(session, 6);

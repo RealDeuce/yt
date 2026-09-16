@@ -306,7 +306,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 					if (!spy_read_player(session, (float)candidate,
 					    &player, error)
 					    || !yt_sector_player_row(&player, row,
-					    sizeof(row), &length, error))
+					    sizeof(row), &length))
 						return false;
 					yt_present_set_bold(&session->presentation, 1.0f);
 					if (!spy_line(session, row, length,
@@ -343,13 +343,8 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				displayed = refreshed;
 				displayed.fighter_owner = owner;
 				if (owner != -1.0f && owner != -2.0f) {
-					uint8_t ignored_name[YT_TEXT_FIELD_SIZE];
-					size_t ignored_length;
-
 					if (!spy_read_player(session, owner, &owner_player,
-					    error)
-					    || !yt_player_stored_name(&owner_player,
-					    ignored_name, &ignored_length, error))
+					    error))
 						return false;
 					owner_pointer = &owner_player;
 					if (owner_player.team != 0.0f) {

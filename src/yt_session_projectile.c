@@ -51,9 +51,8 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 	size_t row_length;
 	float firing_counter;
 
-	if (!yt_player_stored_name(&session->player, player_name,
-	    &player_name_length, error))
-		return false;
+	player_name_length = yt_player_stored_name(&session->player,
+	    player_name);
 	if (player_name_length > attacker_capacity)
 		return false;
 	if (player_name_length != 0U)
@@ -536,9 +535,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		    YT_PLAYER_CACHE_CLOAK, zero);
 	}
 	session->active_player_record = *counterattacker;
-	if (!yt_player_stored_name(&attacker, stored_name,
-	    &stored_name_length, error))
-		return false;
+	stored_name_length = yt_player_stored_name(&attacker, stored_name);
 	memset(attacker_name, 0, sizeof(attacker_name));
 	memcpy(attacker_name, stored_name, stored_name_length);
 	memcpy(session->player.name, attacker_name, sizeof(session->player.name));

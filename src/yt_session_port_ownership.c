@@ -576,9 +576,8 @@ yt_session_command_buy_port(struct yt_session *session,
 	buyer = session->player;
 	cached_buyer_credits = buyer.credits;
 	cached_buyer_sector = buyer.sector;
-	if (!yt_player_stored_name(&buyer, cached_trader,
-	    &cached_trader_length, error)
-	    || !session_read_sector(session, (int)cached_buyer_sector,
+	cached_trader_length = yt_player_stored_name(&buyer, cached_trader);
+	if (!session_read_sector(session, (int)cached_buyer_sector,
 	    &sector, error))
 		return false;
 	if (!qb_mbf32_truth(sector.record.bytes + YT_F65))

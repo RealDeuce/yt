@@ -70,9 +70,9 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		    SESSION_PRESENT_LINE,
 		    "cruise missile friendly-planet row", error);
 	}
-	if (!yt_player_stored_name(&session->player, attacker_name,
-	    &attacker_name_length, error)
-	    || !yt_projectile_planet_attack_rows(false, attacker_name,
+	attacker_name_length = yt_player_stored_name(&session->player,
+	    attacker_name);
+	if (!yt_projectile_planet_attack_rows(false, attacker_name,
 	    attacker_name_length, planet_name, planet_name_length,
 	    (float)sector_number, direct_row, sizeof(direct_row),
 	    &direct_length, news_row, sizeof(news_row), &news_length)
@@ -293,11 +293,10 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 			    sector.fighter_owner);
 
 			if (!yt_game_read_player(&session->door->game,
-			    (int)owner_record, &defender, error)
-			    || !yt_player_stored_name(&defender, owner_name,
-			    &owner_length, error)
-			    || owner_length > sizeof(owner_name)
-			    || !yt_session_players_are_friendly(session,
+			    (int)owner_record, &defender, error))
+				return false;
+			owner_length = yt_player_stored_name(&defender, owner_name);
+			if (!yt_session_players_are_friendly(session,
 			    (int)sector.fighter_owner, &friendly, error))
 				return false;
 		}
@@ -510,11 +509,11 @@ missile_mines:
 		qb_str_single(shield_text, sizeof(shield_text), target.shields);
 		qb_str_double(fighter_text, sizeof(fighter_text),
 		    damage.fighters);
-		if (!yt_player_stored_name(&session->player, attacker_name,
-		    &attacker_length, error)
-		    || !yt_player_stored_name(&presentation_target, victim_name,
-		    &victim_length, error)
-		    || !yt_projectile_attack_first_rows(false,
+		attacker_length = yt_player_stored_name(&session->player,
+		    attacker_name);
+		victim_length = yt_player_stored_name(&presentation_target,
+		    victim_name);
+		if (!yt_projectile_attack_first_rows(false,
 		    attacker_name, attacker_length, victim_name, victim_length,
 		    (float)sector_number, first_news, sizeof(first_news),
 		    &first_news_length, first_direct, sizeof(first_direct),
@@ -546,9 +545,9 @@ missile_mines:
 			if (!yt_game_read_player(&session->door->game, basic,
 			    &target, error))
 				return false;
-			if (!yt_player_stored_name(&target, killed_name,
-			    &killed_name_length, error)
-			    || !yt_projectile_destroyed_rows(killed_name,
+			killed_name_length = yt_player_stored_name(&target,
+			    killed_name);
+			if (!yt_projectile_destroyed_rows(killed_name,
 			    killed_name_length, destroyed_row, sizeof(destroyed_row),
 			    &destroyed_length, warning_row, sizeof(warning_row),
 			    &warning_length))

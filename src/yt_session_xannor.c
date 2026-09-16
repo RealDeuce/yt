@@ -194,9 +194,9 @@ yt_session_xannor_victory(struct yt_session *session, struct yt_error *error)
 	}
 
 	memset(banner, '*', sizeof(banner));
-	if (!yt_player_stored_name(&session->player, player_name,
-	    &player_name_length, error)
-	    || !yt_xannor_victory_winner(player_name, player_name_length,
+	player_name_length = yt_player_stored_name(&session->player,
+	    player_name);
+	if (!yt_xannor_victory_winner(player_name, player_name_length,
 	    winner, sizeof(winner), &winner_length)
 	    || !yt_news_append_bytes(banner, sizeof(banner), error)
 	    || !yt_news_append_bytes(winner, winner_length, error)

@@ -197,9 +197,8 @@ yt_session_attack_player(struct yt_session *session, int target_record,
 	    current.cloak, &attacker_loss, &defender_loss, error))
 		return false;
 	if (defender_loss > 0.0) {
-		if (!yt_player_stored_name(&current, stored_name, &name_length,
-		    error)
-		    || !yt_direct_attack_radio_text(stored_name, name_length,
+		name_length = yt_player_stored_name(&current, stored_name);
+		if (!yt_direct_attack_radio_text(stored_name, name_length,
 		    defender_loss, radio, sizeof(radio), &radio_length)
 		    || !session_append_radio_bytes(radio, radio_length, -2.0f,
 		    (float)target_record, error))
@@ -345,10 +344,10 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		(void)qb_mbf32_encode(candidate, target_record_raw);
 		session->shared_target_record = qb_mbf32_decode(target_record_raw);
 		if (!session_read_combat_player(session, record,
-		    &candidate_player, error)
-		    || !yt_player_stored_name(&candidate_player, target_name,
-		    &target_name_length, error))
+		    &candidate_player, error))
 			return false;
+		target_name_length = yt_player_stored_name(&candidate_player,
+		    target_name);
 		positive_team = candidate_player.team > 0.0f;
 		same_team = candidate_player.team == current.team;
 		if (positive_team && same_team) {

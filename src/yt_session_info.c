@@ -122,9 +122,8 @@ yt_session_info_team_lines(struct yt_session *session,
 		    &captain, error))
 			return false;
 		if (captain.name_length > 0U) {
-			if (!yt_player_stored_name(&captain, captain_name,
-			    &captain_name_length, error))
-				return false;
+			captain_name_length = yt_player_stored_name(&captain,
+			    captain_name);
 			valid_captain = captain.team == (float)team_id;
 		}
 	}

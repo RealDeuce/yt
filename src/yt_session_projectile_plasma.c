@@ -408,11 +408,9 @@ yt_session_plasma_sector(struct yt_session *session, int sector_number,
 			struct yt_player defender;
 
 			if (!yt_game_read_player(&session->door->game,
-			    (int)sector.fighter_owner, &defender, error)
-			    || !yt_player_stored_name(&defender, owner_name,
-			    &owner_length, error)
-			    || owner_length > sizeof(owner_name))
+			    (int)sector.fighter_owner, &defender, error))
 				return false;
+			owner_length = yt_player_stored_name(&defender, owner_name);
 		}
 		if (sector.fighter_owner == (float)session_record(session)) {
 			memcpy(owner_name, you, sizeof(you) - 1U);
@@ -600,10 +598,10 @@ plasma_reload_sector:
 			remaining_shields = qb_single_subtract(original_shields,
 			    destroyed_shields);
 			if (!yt_game_read_player(&session->door->game, basic, &target,
-			    error)
-			    || !yt_player_stored_name(&target, victim, &victim_length,
-			    error)
-			    || !yt_projectile_attack_first_rows(true, attacker,
+			    error))
+				return false;
+			victim_length = yt_player_stored_name(&target, victim);
+			if (!yt_projectile_attack_first_rows(true, attacker,
 			    launch_attacker_length, victim, victim_length,
 			    (float)sector_number, news_row, sizeof(news_row),
 			    &news_length, direct_row, sizeof(direct_row), &direct_length)
@@ -661,9 +659,9 @@ plasma_reload_sector:
 			    error))
 				return false;
 			if (!self_hit) {
-				if (!yt_player_stored_name(&victim, victim_name,
-				    &victim_name_length, error)
-				    || !yt_projectile_destroyed_rows(victim_name,
+				victim_name_length = yt_player_stored_name(&victim,
+				    victim_name);
+				if (!yt_projectile_destroyed_rows(victim_name,
 				    victim_name_length, destroyed_row,
 				    sizeof(destroyed_row), &destroyed_length, warning_row,
 				    sizeof(warning_row), &warning_length))
@@ -692,14 +690,16 @@ plasma_reload_sector:
 				return false;
 
 			if (saved_mines != 0.0f) {
-				if (!rows_ready
-				    && (!yt_player_stored_name(&victim, victim_name,
-				    &victim_name_length, error)
-				    || !yt_projectile_destroyed_rows(victim_name,
-				    victim_name_length, destroyed_row,
-				    sizeof(destroyed_row), &destroyed_length, warning_row,
-				    sizeof(warning_row), &warning_length)))
-					return false;
+				if (!rows_ready) {
+					victim_name_length = yt_player_stored_name(&victim,
+					    victim_name);
+					if (!yt_projectile_destroyed_rows(victim_name,
+					    victim_name_length, destroyed_row,
+					    sizeof(destroyed_row), &destroyed_length,
+					    warning_row, sizeof(warning_row),
+					    &warning_length))
+						return false;
+				}
 				yt_present_set_blink(&session->presentation, 1.0f);
 				if (!session_present_text(session, warning_row,
 				    warning_length, SESSION_PRESENT_BOLD_LINE,

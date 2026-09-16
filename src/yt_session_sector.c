@@ -314,7 +314,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 			if (!yt_game_read_player(&session->door->game, basic,
 			    &other, error)
 			    || !yt_sector_player_row(&other, row, sizeof(row),
-			    &row_length, error)
+			    &row_length)
 			    || !session_present_text(session, row, row_length,
 			    SESSION_PRESENT_LINE, "sector visible-player row", error))
 				return false;
@@ -353,9 +353,8 @@ display_sector_one(struct yt_session *session, float logical_sector,
 				int team_number_length;
 				static const uint8_t team_prefix[] = " Team [";
 
-				if (!yt_player_stored_name(&owner, owner_name,
-				    &owner_name_length, error))
-					return false;
+				owner_name_length = yt_player_stored_name(&owner,
+				    owner_name);
 				team_number_length = qb_str_single(team_number,
 				    sizeof(team_number), owner.team);
 				if (team_number_length < 1

@@ -9271,15 +9271,13 @@ check_player_name_match(void)
 	size_t tuning_row_length;
 	size_t killer_length;
 	bool emit;
-	bool matches;
 
 	yt_record_blank(&record);
 	yt_record_set_text(&record, (const uint8_t *)"Solo ", 5);
 	yt_record_set_number(&record, YT_F85, 5.0f);
 	yt_player_decode(&player, &record);
 	yt_error_clear(&error);
-	if (!yt_player_name_matches(&player, (const uint8_t *)"Solo ", 5,
-	    &matches, &error) || !matches)
+	if (!yt_player_name_matches(&player, (const uint8_t *)"Solo ", 5))
 		return false;
 
 	memset(record.bytes, ' ', YT_TEXT_FIELD_SIZE);
@@ -9312,8 +9310,8 @@ check_player_name_match(void)
 	yt_record_set_text(&record, (const uint8_t *)"Star Lord", 9);
 	yt_record_set_number(&record, YT_F85, 3.0f);
 	yt_player_decode(&player, &record);
-	if (!yt_player_stored_name(&player, stored_name, &stored_length, &error)
-	    || stored_length != 3U || memcmp(stored_name, "Sta", 3) != 0)
+	stored_length = yt_player_stored_name(&player, stored_name);
+	if (stored_length != 3U || memcmp(stored_name, "Sta", 3) != 0)
 		return false;
 	if (!yt_player_killer_row(&player, killer_row,
 	    sizeof(killer_row), &killer_length, &emit, &error)

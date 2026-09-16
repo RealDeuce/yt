@@ -478,17 +478,16 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 
 		session->planet.inherited_record_index = (float)basic;
 		if (!yt_game_read_player(&session->door->game, basic, &candidate,
-		    error)
-		    || !yt_player_name_matches(&candidate, (const uint8_t *)full,
-		    strlen(full), &matches, error))
+		    error))
 			return false;
+		matches = yt_player_name_matches(&candidate,
+		    (const uint8_t *)full, strlen(full));
 		if (matches) {
 			session->active_player_record = basic;
 			session->player = candidate;
-			if (!yt_player_stored_name(&candidate,
-			    session->cached_player_name,
-			    &session->cached_player_name_length, error))
-				return false;
+			session->cached_player_name_length =
+			    yt_player_stored_name(&candidate,
+			    session->cached_player_name);
 			returning = true;
 			break;
 		}
@@ -543,11 +542,11 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			return false;
 		if (!construct_player_visible(session, error)
 		    || !set_new_player_identity(session, vacant,
-		    (const uint8_t *)full, strlen(full), error)
-		    || !yt_player_stored_name(&session->player,
-		    session->cached_player_name,
-		    &session->cached_player_name_length, error))
+		    (const uint8_t *)full, strlen(full), error))
 			return false;
+		session->cached_player_name_length =
+		    yt_player_stored_name(&session->player,
+		    session->cached_player_name);
 		if (!yt_clock_read(&session->door->game.clock, &now, error))
 			return false;
 		{
@@ -653,20 +652,8 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 					return false;
 				}
 				if (!yt_player_killer_row(&attacker, attacker_row,
-				    sizeof(attacker_row), &attacker_length, &emit, error)) {
-					if (error != NULL && strcmp(error->operation,
-					    "player name CINT") == 0)
-						(void)yt_error_attach_basic_fault_number(error,
-						    YT_BASIC_FAULT_RETURNING_KILLER_CINT,
-						    6U);
-					else if (error != NULL && strcmp(error->operation,
-					    "player name LEFT$ length") == 0)
-						(void)yt_error_attach_basic_fault_number(error,
-						    YT_BASIC_FAULT_RETURNING_KILLER_LEFT,
-						    5U);
-					(void)session_route_basic_fault(session, error);
+				    sizeof(attacker_row), &attacker_length, &emit, error))
 					return false;
-				}
 				if (emit && !session_present_text(session, attacker_row,
 				    attacker_length, SESSION_PRESENT_BOLD_LINE,
 				    "returning player death row", error))

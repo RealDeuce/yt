@@ -356,9 +356,8 @@ yt_session_attack_deployed(struct yt_session *session,
 	bool surrendered = false;
 	bool child_result;
 
-	if (!yt_player_stored_name(&session->player, cached_player_name,
-	    &cached_player_name_length, error))
-		return false;
+	cached_player_name_length = yt_player_stored_name(&session->player,
+	    cached_player_name);
 	(void)snprintf(cached_player_name_text,
 	    sizeof(cached_player_name_text), "%s", session->player.name);
 	if (!session_read_sector(session, current_sector, &opened_sector, error))

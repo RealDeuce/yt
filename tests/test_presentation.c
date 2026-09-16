@@ -2673,7 +2673,7 @@ test_sector_scanner_rows(void)
 	yt_record_set_number(&record, YT_F85, 3.0f);
 	yt_record_set_number(&record, YT_F89, 4.0f);
 	yt_player_decode(&player, &record);
-	CHECK(yt_sector_player_row(&player, row, sizeof(row), &length, &error)
+	CHECK(yt_sector_player_row(&player, row, sizeof(row), &length)
 	    && length == sizeof(player_expected)
 	    && memcmp(row, player_expected, length) == 0);
 
@@ -3459,10 +3459,6 @@ test_basic_fault_registry(void)
 		    0x45F7U, 4U},
 		{YT_BASIC_FAULT_SHARED, 0x17E7U, 0x17EAU, 0x17DFU, 0,
 		    0x45F7U, 3U},
-		{YT_BASIC_FAULT_SHARED, 0x180AU, 0x180DU, 0x1804U, 0,
-		    0x45F7U, 2U},
-		{YT_BASIC_FAULT_SHARED, 0x1812U, 0x1815U, 0x1804U, 0,
-		    0x45F7U, 5U},
 		{YT_BASIC_FAULT_SHARED, 0x35A2U, 0x35A5U, 0x359CU, 35450,
 		    0x45F7U, 3U},
 		{YT_BASIC_FAULT_SHARED, 0x35D4U, 0x35D7U, 0x35C9U, 35450,
@@ -18213,9 +18209,10 @@ main_buy_cycle_purchase(void *context, struct yt_error *error)
 		return false;
 	fixture->purchase_complete = false;
 	fixture->accept_complete = false;
-	if (!main_buy_hydrate(fixture, 2, &buyer, error)
-	    || !yt_player_stored_name(&buyer, trader, &trader_length, error)
-	    || !main_buy_read_sector(fixture, (int)buyer.sector, &sector,
+	if (!main_buy_hydrate(fixture, 2, &buyer, error))
+		return false;
+	trader_length = yt_player_stored_name(&buyer, trader);
+	if (!main_buy_read_sector(fixture, (int)buyer.sector, &sector,
 	    error)
 	    || !main_buy_report(fixture, (int)sector.port, false, &early_port,
 	    &terminal_port, production, error))

@@ -68,9 +68,8 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 	if (killer_record < YT_PLAYER_FIRST_RECORD
 	    || (float)killer_record > session->door->game.config.sector_offset)
 		return true;
-	if (!yt_player_stored_name(&victim, victim_name, &victim_name_length,
-	    error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	victim_name_length = yt_player_stored_name(&victim, victim_name);
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "salvage result row", error)
 	    || !session_present_text(session, title, sizeof(title) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "salvage title", error)

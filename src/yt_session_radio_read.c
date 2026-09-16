@@ -25,8 +25,7 @@ radio_name_bytes(struct yt_session *session, float record, uint8_t *dest,
 		if (!session_read_player_expression(session, record, &player,
 		    error))
 			return false;
-		if (!yt_player_stored_name(&player, stored, &stored_length, error))
-			return false;
+		stored_length = yt_player_stored_name(&player, stored);
 		if (stored_length > capacity)
 			goto capacity_error;
 		if (stored_length != 0)
@@ -247,4 +246,3 @@ abort:
 	(void)yt_radio_file_close(&file, NULL);
 	return false;
 }
-

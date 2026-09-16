@@ -134,10 +134,9 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 	(void)yt_player_cache_set_raw(&session->player_cache, victim_record,
 	    YT_PLAYER_CACHE_SECTOR, active_cache_zero);
 	if (!yt_game_read_player(&session->door->game, victim_record, &victim,
-	    error)
-	    || !yt_player_stored_name(&victim, victim_name,
-	    &victim_name_length, error))
+	    error))
 		return false;
+	victim_name_length = yt_player_stored_name(&victim, victim_name);
 	old_ports_owned = victim.ports_owned;
 	yt_death_player_overlay(&victim, killer);
 	if (!yt_game_write_player(&session->door->game, victim_record, &victim,

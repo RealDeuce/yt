@@ -146,10 +146,11 @@ planet_move_hop(struct yt_session *session, int source_number,
 			return false;
 		yt_present_set_bold(&session->presentation, 1.0f);
 		if (!session_present_text(session, row, row_length,
-		    SESSION_PRESENT_BOLD_LINE, "planet move explosion row", error)
-		    || !yt_player_stored_name(&session->player, player_name,
-		    &player_name_length, error)
-		    || !yt_planet_move_explosion_news(planet_name,
+		    SESSION_PRESENT_BOLD_LINE, "planet move explosion row", error))
+			return false;
+		player_name_length = yt_player_stored_name(&session->player,
+		    player_name);
+		if (!yt_planet_move_explosion_news(planet_name,
 		    planet_name_length, player_name, player_name_length,
 		    row, sizeof(row), &row_length)
 		    || !yt_news_append_bytes(row, row_length, error)

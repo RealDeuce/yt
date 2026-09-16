@@ -177,9 +177,8 @@ test_direct_attack_combat_run(
 	    context, error))
 		return false;
 	if (state->attrition.defender_loss > 0.0) {
-		if (!yt_player_stored_name(&state->current, stored_name,
-		    &name_length, error)
-		    || !yt_direct_attack_radio_text(stored_name, name_length,
+		name_length = yt_player_stored_name(&state->current, stored_name);
+		if (!yt_direct_attack_radio_text(stored_name, name_length,
 		    state->attrition.defender_loss, radio, sizeof(radio),
 		    &radio_length)
 		    || !ops->radio(context, radio, radio_length,
@@ -348,10 +347,10 @@ test_direct_attack_run(struct test_direct_attack_state *state,
 			ops->store_target_record(context, target_record_raw);
 		}
 		if (!ops->read_player(context, record,
-		    &state->candidate_player, error)
-		    || !yt_player_stored_name(&state->candidate_player,
-		    target_name, &target_name_length, error))
+		    &state->candidate_player, error))
 			return false;
+		target_name_length = yt_player_stored_name(
+		    &state->candidate_player, target_name);
 		positive_team = state->candidate_player.team > 0.0f;
 		same_team = state->candidate_player.team == state->current.team;
 		if (positive_team && same_team) {

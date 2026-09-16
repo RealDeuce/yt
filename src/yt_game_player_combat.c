@@ -450,8 +450,7 @@ yt_player_killer_row(const struct yt_player *player, uint8_t *row,
 		return false;
 	if (player->name_length == 0U)
 		return true;
-	if (!yt_player_stored_name(player, row, &prefix, error))
-		return false;
+	prefix = yt_player_stored_name(player, row);
 	if (prefix + sizeof(suffix) - 1U > capacity) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -469,20 +468,13 @@ yt_player_killer_row(const struct yt_player *player, uint8_t *row,
 
 bool
 yt_player_name_matches(const struct yt_player *player, const uint8_t *name,
-    size_t length, bool *matches, struct yt_error *error)
+    size_t length)
 {
 	uint8_t stored_name[YT_TEXT_FIELD_SIZE];
-	size_t stored;
+	size_t stored = yt_player_stored_name(player, stored_name);
 
-	if (matches != NULL)
-		*matches = false;
-	if (!yt_player_stored_name(player, stored_name, &stored, error))
-		return false;
-	if (matches != NULL)
-		*matches = length == stored
-		    && (stored == 0 || memcmp(stored_name, name,
-		    stored) == 0);
-	return true;
+	return length == stored
+	    && (stored == 0U || memcmp(stored_name, name, stored) == 0);
 }
 
 void

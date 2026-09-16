@@ -6,26 +6,20 @@
 #include <stdio.h>
 #include <string.h>
 
-bool
+size_t
 yt_player_stored_name(const struct yt_player *player,
-    uint8_t name[YT_TEXT_FIELD_SIZE], size_t *length,
-    struct yt_error *error)
+    uint8_t name[YT_TEXT_FIELD_SIZE])
 {
 	size_t stored;
 
-	if (length != NULL)
-		*length = 0U;
 	if (player == NULL)
-		return false;
-	(void)error;
+		return 0U;
 	stored = player->name_length;
 	if (stored > YT_TEXT_FIELD_SIZE)
 		stored = YT_TEXT_FIELD_SIZE;
 	if (stored > 0 && name != NULL)
 		memcpy(name, player->record.bytes, stored);
-	if (length != NULL)
-		*length = stored;
-	return true;
+	return stored;
 }
 
 static size_t
@@ -167,7 +161,7 @@ yt_sector_planet_row(const struct yt_planet *planet, uint8_t *row,
 
 bool
 yt_sector_player_row(const struct yt_player *player, uint8_t *row,
-    size_t capacity, size_t *length, struct yt_error *error)
+    size_t capacity, size_t *length)
 {
 	static const uint8_t indent[] = "    ";
 	static const uint8_t team[] = " - Team:";
@@ -179,9 +173,9 @@ yt_sector_player_row(const struct yt_player *player, uint8_t *row,
 
 	if (length != NULL)
 		*length = 0U;
-	if (player == NULL || !yt_player_stored_name(player, name,
-	    &name_length, error))
+	if (player == NULL)
 		return false;
+	name_length = yt_player_stored_name(player, name);
 	if (!yt_game_row_append(&builder, indent, sizeof(indent) - 1U)
 	    || !yt_game_row_append(&builder, name, name_length))
 		return false;
@@ -253,9 +247,10 @@ yt_sector_fighter_row(const struct yt_sector *sector,
 			int team_name_length;
 			size_t stored_team_length;
 
-			if (owner == NULL || !yt_player_stored_name(owner,
-			    owner_name, &owner_name_length, error)
-			    || !yt_game_row_append(&scratch_builder, owner_name,
+			if (owner == NULL)
+				return false;
+			owner_name_length = yt_player_stored_name(owner, owner_name);
+			if (!yt_game_row_append(&scratch_builder, owner_name,
 			    owner_name_length))
 				return false;
 			changed = true;

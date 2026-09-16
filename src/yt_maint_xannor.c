@@ -1338,14 +1338,13 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 		    0U, &overflow);
 
 		if (overflow || record < 1
-		    || !yt_game_read_player(game, record, &player, error)
-		    || !yt_player_stored_name(&player, defender_name,
-		    &defender.length, error)) {
+		    || !yt_game_read_player(game, record, &player, error)) {
 			if (error != NULL && error->status == YT_OK)
 				set_error(error, YT_RANGE,
 				    "Xannor defense owner", "YTDATA.DAT");
 			return false;
 		}
+		defender.length = yt_player_stored_name(&player, defender_name);
 		defender.data = defender_name;
 	}
 	if (!yt_game_read_sector(game, sector_number, sector, error))
@@ -1680,10 +1679,10 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	}
 	if (*xannor_fighters <= 0.0f)
 		*xannor_fighters = 0.0f;
-	if (!yt_game_read_player(game, player_record, &player, error)
-	    || !yt_player_stored_name(&player, stored_name,
-	    &stored_name_length, error)
-	    || !yt_maintenance_xannor_player_line_bytes(stored_name,
+	if (!yt_game_read_player(game, player_record, &player, error))
+		return false;
+	stored_name_length = yt_player_stored_name(&player, stored_name);
+	if (!yt_maintenance_xannor_player_line_bytes(stored_name,
 	    stored_name_length, &combat, *xannor_fighters, player.shields,
 	    killed, line, sizeof(line), &line_length)
 	    || !yt_news_append_bytes(line, line_length, error)

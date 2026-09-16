@@ -721,11 +721,9 @@ int yt_lottery_match_count(const int winning[6], const char ticket[6],
     bool matched_winning[6]);
 float yt_lottery_award(int matches);
 bool yt_player_name_matches(const struct yt_player *player,
-    const uint8_t *name, size_t length, bool *matches,
-    struct yt_error *error);
-bool yt_player_stored_name(const struct yt_player *player,
-    uint8_t name[YT_TEXT_FIELD_SIZE], size_t *length,
-    struct yt_error *error);
+    const uint8_t *name, size_t length);
+size_t yt_player_stored_name(const struct yt_player *player,
+    uint8_t name[YT_TEXT_FIELD_SIZE]);
 size_t yt_port_stored_name(const struct yt_port *port,
     uint8_t name[YT_TEXT_FIELD_SIZE]);
 size_t yt_planet_stored_name(const struct yt_planet *planet,
@@ -742,7 +740,7 @@ bool yt_sector_port_row(const struct yt_port *port, uint8_t *row,
 bool yt_sector_planet_row(const struct yt_planet *planet, uint8_t *row,
     size_t capacity, size_t *length);
 bool yt_sector_player_row(const struct yt_player *player, uint8_t *row,
-    size_t capacity, size_t *length, struct yt_error *error);
+    size_t capacity, size_t *length);
 bool yt_sector_fighter_row(const struct yt_sector *sector,
     int current_player_record, const struct yt_player *owner,
     const struct yt_sector *team_overlay, uint8_t *row, size_t capacity,

@@ -42,9 +42,8 @@ yt_session_planet_assault(struct yt_session *session,
 	if (!session_reload_player(session, error))
 		return false;
 	defenders = floorf(planet.ground_forces);
-	if (!yt_player_stored_name(&session->player, player_name,
-	    &player_name_length, error))
-		return false;
+	player_name_length = yt_player_stored_name(&session->player,
+	    player_name);
 	yt_planet_assault_player_overlay(&session->player, commitment);
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)session_record(session), &session->player.record, error)
@@ -182,10 +181,11 @@ create_planet(struct yt_session *session, struct yt_error *error)
 
 	if (!session_present_paged_line(session, no_planet, sizeof(no_planet) - 1U,
 	    "planet creation opening", error)
-	    || !session_present_paged_fragment(session, price, sizeof(price) - 1U)
-	    || !yt_player_stored_name(&session->player, cached_trader,
-	    &cached_trader_length, error)
-	    || !session_reload_player(session, error)
+	    || !session_present_paged_fragment(session, price, sizeof(price) - 1U))
+		return false;
+	cached_trader_length = yt_player_stored_name(&session->player,
+	    cached_trader);
+	if (!session_reload_player(session, error)
 	    || !yt_planet_creation_credit_row((double)session->player.credits,
 	    row, sizeof(row), &row_length)
 	    || !session_present_paged_fragment(session, row, row_length))

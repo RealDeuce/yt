@@ -147,9 +147,8 @@ session_team_banish(struct yt_session *session, struct yt_team *team,
 		memcpy(prompt + prompt_length, prompt_prefix,
 		    sizeof(prompt_prefix) - 1U);
 		prompt_length += sizeof(prompt_prefix) - 1U;
-		if (!yt_player_stored_name(&member, prompt + prompt_length,
-		    &name_length, error))
-			return false;
+		name_length = yt_player_stored_name(&member,
+		    prompt + prompt_length);
 		prompt_length += name_length;
 		memcpy(prompt + prompt_length, prompt_suffix,
 		    sizeof(prompt_suffix) - 1U);
@@ -176,4 +175,3 @@ session_team_banish(struct yt_session *session, struct yt_team *team,
 	}
 	return session_present_paged_fragment(session, end, sizeof(end) - 1U);
 }
-
