@@ -362,22 +362,14 @@ yt_rmt_completion_compose(bool local_mode, const char *credited_name,
 	return true;
 }
 
-bool
-yt_rmt_completion_delay(struct yt_rmt_delay_result *result)
+void
+yt_rmt_completion_delay(void)
 {
 	/* RMT-INIT:2305..232D: FOR scratch = 1 TO 2222, with no body. */
 	volatile float scratch = 1.0f;
-	size_t admitted = 0U;
 
-	if (result == NULL)
-		return false;
-	while (scratch <= 2222.0f) {
-		++admitted;
+	while (scratch <= 2222.0f)
 		scratch += 1.0f;
-	}
-	result->admitted_values = admitted;
-	result->final_value = scratch;
-	return true;
 }
 
 static bool

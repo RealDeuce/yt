@@ -334,7 +334,6 @@ write_rmt_completion(struct rmt_output_context *context,
     const char *credited, struct yt_error *error)
 {
 	struct yt_rmt_completion_result completion;
-	struct yt_rmt_delay_result delay;
 
 	if (!yt_rmt_completion_compose(context->local_mode, credited,
 	    &completion)) {
@@ -361,15 +360,8 @@ write_rmt_completion(struct rmt_output_context *context,
 		if (!written)
 			return false;
 	}
-	if (completion.returns_to_bbs && !yt_rmt_completion_delay(&delay)) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			error->system_error = 0;
-			snprintf(error->operation, sizeof(error->operation),
-			    "execute RMT-INIT completion delay");
-		}
-		return false;
-	}
+	if (completion.returns_to_bbs)
+		yt_rmt_completion_delay();
 	return true;
 }
 

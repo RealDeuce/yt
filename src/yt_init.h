@@ -64,11 +64,6 @@ struct yt_rmt_completion_result {
 	bool returns_to_bbs;
 };
 
-struct yt_rmt_delay_result {
-	size_t admitted_values;
-	float final_value;
-};
-
 typedef bool (*yt_rmt_present_write)(void *context, uint16_t site,
     enum yt_rmt_output_entry entry, const uint8_t *payload,
     size_t payload_length, struct yt_error *error);
@@ -129,7 +124,7 @@ bool yt_rmt_output_compose_state(enum yt_rmt_output_entry entry,
     struct yt_rmt_output_state *final_state);
 bool yt_rmt_completion_compose(bool local_mode, const char *credited_name,
     struct yt_rmt_completion_result *result);
-bool yt_rmt_completion_delay(struct yt_rmt_delay_result *result);
+void yt_rmt_completion_delay(void);
 bool yt_rmt_standalone_prompt_compose(
     struct yt_rmt_standalone_output *output);
 bool yt_rmt_standalone_response_compose(const uint8_t *response,

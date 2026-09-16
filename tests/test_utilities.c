@@ -343,7 +343,6 @@ test_rmt_completion_output(void)
 	    "Congratulations Last Winner! You have fulfilled the prophesy!!";
 	static const uint8_t returning[] = "Returning you to the BBS...";
 	struct yt_rmt_completion_result result;
-	struct yt_rmt_delay_result delay;
 	char too_long[YT_RMT_COMPLETION_PAYLOAD + 1U];
 
 	if (!yt_rmt_completion_compose(true, "The Sysop", &result)
@@ -370,11 +369,7 @@ test_rmt_completion_output(void)
 		return false;
 	memset(too_long, 'X', sizeof(too_long) - 1U);
 	too_long[sizeof(too_long) - 1U] = '\0';
-	return yt_rmt_completion_delay(&delay)
-	    && delay.admitted_values == 2222U
-	    && delay.final_value == 2223.0f
-	    && !yt_rmt_completion_delay(NULL)
-	    && !yt_rmt_completion_compose(false, too_long, &result)
+	return !yt_rmt_completion_compose(false, too_long, &result)
 	    && !yt_rmt_completion_compose(false, NULL, &result)
 	    && !yt_rmt_completion_compose(false, "The Sysop", NULL);
 }
