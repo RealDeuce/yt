@@ -100,6 +100,7 @@ set(YT_GAME_SOURCES
     src/yt_maint.c
     src/yt_maint_economy.c
     src/yt_maint_messages.c
+    src/yt_maint_mercenaries.c
     src/yt_maint_output.c
     src/yt_maint_players.c
     src/yt_maint_route.c
