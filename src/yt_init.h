@@ -121,9 +121,6 @@ bool yt_init_present_prepared_configuration(
 	const struct yt_init_presenter *presenter, struct yt_error *error);
 bool yt_initializer_bounded(struct yt_random *random, int bound, int *value,
     struct yt_error *error);
-bool yt_rmt_output_compose(enum yt_rmt_output_entry entry,
-    const uint8_t *payload, size_t payload_length, bool local_mode,
-    uint8_t *dest, size_t capacity, struct yt_rmt_output_result *result);
 bool yt_rmt_output_compose_state(enum yt_rmt_output_entry entry,
     const uint8_t *payload, size_t payload_length, bool local_mode,
     const struct yt_rmt_output_state *state, uint8_t *dest,

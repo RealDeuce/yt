@@ -178,18 +178,6 @@ yt_init_present_opening(const struct yt_init_presenter *presenter,
 	    "Creating main data file: YTDATA.DAT", error);
 }
 
-bool
-yt_rmt_output_compose(enum yt_rmt_output_entry entry,
-    const uint8_t *payload, size_t payload_length, bool local_mode,
-    uint8_t *dest, size_t capacity, struct yt_rmt_output_result *result)
-{
-	const struct yt_rmt_output_state state = {0U};
-	struct yt_rmt_output_state final_state;
-
-	return yt_rmt_output_compose_state(entry, payload, payload_length,
-	    local_mode, &state, dest, capacity, result, &final_state);
-}
-
 enum rmt_punctuation {
 	RMT_PUNCTUATION_NEWLINE,
 	RMT_PUNCTUATION_SEMICOLON,

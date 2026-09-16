@@ -243,6 +243,18 @@ test_initializer_confirmation(void)
 
 
 static bool
+compose_initial_rmt_output(enum yt_rmt_output_entry entry,
+    const uint8_t *payload, size_t payload_length, bool local_mode,
+    uint8_t *dest, size_t capacity, struct yt_rmt_output_result *result)
+{
+	const struct yt_rmt_output_state state = {0U};
+	struct yt_rmt_output_state final_state;
+
+	return yt_rmt_output_compose_state(entry, payload, payload_length,
+	    local_mode, &state, dest, capacity, result, &final_state);
+}
+
+static bool
 test_rmt_output_helpers(void)
 {
 	static const uint8_t missing[] =
@@ -250,32 +262,32 @@ test_rmt_output_helpers(void)
 	struct yt_rmt_output_result result;
 	uint8_t bytes[80];
 
-	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_LINE,
+	if (!compose_initial_rmt_output(YT_RMT_OUTPUT_LINE,
 	    (const uint8_t *)"ABC", 3U, false, bytes, sizeof(bytes), &result)
 	    || result.length != 5U || memcmp(bytes, "\nABC\r", 5U) != 0)
 		return false;
-	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_BLANK, NULL, 0U, false,
+	if (!compose_initial_rmt_output(YT_RMT_OUTPUT_BLANK, NULL, 0U, false,
 	    bytes, sizeof(bytes), &result)
 	    || result.length != 2U || memcmp(bytes, "\n\r", 2U) != 0)
 		return false;
-	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_INLINE,
+	if (!compose_initial_rmt_output(YT_RMT_OUTPUT_INLINE,
 	    (const uint8_t *)".", 1U, false, bytes, sizeof(bytes), &result)
 	    || result.length != 1U || bytes[0] != '.')
 		return false;
-	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_LINE,
+	if (!compose_initial_rmt_output(YT_RMT_OUTPUT_LINE,
 	    (const uint8_t *)"ABC", 3U, true, bytes, sizeof(bytes), &result)
 	    || result.length != 4U || memcmp(bytes, "ABC\r", 4U) != 0)
 		return false;
-	if (!yt_rmt_output_compose(YT_RMT_OUTPUT_LINE, missing,
+	if (!compose_initial_rmt_output(YT_RMT_OUTPUT_LINE, missing,
 	    sizeof(missing) - 1U, false, bytes, sizeof(bytes), &result)
 	    || result.length != sizeof(missing) + 1U
 	    || memcmp(bytes,
 	    "\n\aERROR! OLD DATA FILES NOT FOUND!!!!!!!!!!!!!!!!!!!!!!!!\a\r",
 	    sizeof(missing) + 1U) != 0)
 		return false;
-	return !yt_rmt_output_compose(YT_RMT_OUTPUT_BLANK,
+	return !compose_initial_rmt_output(YT_RMT_OUTPUT_BLANK,
 	    (const uint8_t *)"X", 1U, false, bytes, sizeof(bytes), &result)
-	    && !yt_rmt_output_compose(YT_RMT_OUTPUT_LINE,
+	    && !compose_initial_rmt_output(YT_RMT_OUTPUT_LINE,
 	    (const uint8_t *)"ABC", 3U, false, bytes, 4U, &result);
 }
 
