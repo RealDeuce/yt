@@ -1034,6 +1034,10 @@ utility_fixed_clock(void *context, struct yt_clock_value *value,
 	return true;
 }
 
+static const struct yt_clock utility_fixed_clock_source = {
+	.read = utility_fixed_clock,
+};
+
 struct utility_clock_count {
 	size_t calls;
 };
@@ -1119,6 +1123,10 @@ test_yt_init_pre_input_presentation(void)
 	};
 	struct utility_lcg lcg = {UINT32_C(0x89b405)};
 	struct utility_clock_count clock = {0U};
+	const struct yt_clock clock_source = {
+		.read = utility_counted_fixed_clock,
+		.context = &clock,
+	};
 	struct yt_random random;
 	struct yt_initializer_preparation preparation;
 	struct yt_init_capture capture = {0};
@@ -1165,13 +1173,11 @@ test_yt_init_pre_input_presentation(void)
 
 	yt_random_init(&random);
 	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
-	yt_platform_set_clock_provider(utility_counted_fixed_clock, &clock);
 	yt_error_clear(&error);
-	if (!yt_initializer_prepare_yt(&random, &preparation, &error)) {
-		yt_platform_set_clock_provider(NULL, NULL);
+	if (!yt_initializer_prepare_yt(&clock_source, &random, &preparation,
+	    &error)) {
 		return false;
 	}
-	yt_platform_set_clock_provider(NULL, NULL);
 	if (random.draws != 1U || lcg.state != UINT32_C(0x5dd6b4)
 	    || clock.calls != 2U
 	    || preparation.config.epoch_year != 26.0f
@@ -1206,7 +1212,7 @@ test_yt_init_pre_input_presentation(void)
 	yt_error_clear(&error);
 	return !yt_init_present_confirmation_prefix(&presenter, &error)
 	    && error.status == YT_IO_ERROR && capture.calls == 4U
-	    && !yt_initializer_prepare_yt(NULL, &preparation, &error)
+	    && !yt_initializer_prepare_yt(NULL, NULL, &preparation, &error)
 	    && !yt_init_present_prepared_configuration(NULL, &presenter,
 	    &error);
 }
@@ -1309,6 +1315,10 @@ test_yt_init_presented_world(void)
 {
 	struct utility_lcg lcg = {UINT32_C(0x89b405)};
 	struct utility_clock_count clock = {0U};
+	const struct yt_clock clock_source = {
+		.read = utility_counted_fixed_clock,
+		.context = &clock,
+	};
 	struct yt_random random;
 	struct yt_initializer_preparation preparation;
 	struct yt_init_capture capture = {0};
@@ -1325,17 +1335,16 @@ test_yt_init_presented_world(void)
 	yt_error_clear(&error);
 	yt_random_init(&random);
 	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
-	yt_platform_set_clock_provider(utility_counted_fixed_clock, &clock);
 	ok = yt_init_present_confirmation_prefix(&presenter, &error)
 	    && yt_init_present_opening(&presenter, &error)
 	    && yt_initialize_begin_yt(&error)
-	    && yt_initializer_prepare_yt(&random, &preparation, &error)
+	    && yt_initializer_prepare_yt(&clock_source, &random, &preparation,
+	    &error)
 	    && yt_init_present_prepared_configuration(&preparation,
 	    &presenter, &error)
 	    && yt_initialize_yt_prepared_bound(NULL, &preparation,
-	    "YTSCORE.ASC", &random,
+	    "YTSCORE.ASC", &clock_source, &random,
 	    &presenter, &error);
-	yt_platform_set_clock_provider(NULL, NULL);
 	if (!ok || !read_file("YTDATA.DAT", &database, &database_length)) {
 		free(database);
 		return false;
@@ -1402,13 +1411,12 @@ test_yt_init_presentation_pre_put_failure(void)
 	yt_error_clear(&error);
 	yt_random_init(&random);
 	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
-	yt_platform_set_clock_provider(utility_fixed_clock, NULL);
 	initialized = yt_initialize_begin_yt(&error)
-	    && yt_initializer_prepare_yt(&random, &preparation, &error)
+	    && yt_initializer_prepare_yt(&utility_fixed_clock_source, &random,
+	    &preparation, &error)
 	    && yt_initialize_yt_prepared_bound(NULL, &preparation,
-	    "YTSCORE.ASC", &random,
+	    "YTSCORE.ASC", &utility_fixed_clock_source, &random,
 	    &presenter, &error);
-	yt_platform_set_clock_provider(NULL, NULL);
 	read = read_file("YTDATA.DAT", &database, &database_length);
 	free(database);
 	return !initialized && read && error.status == YT_IO_ERROR
@@ -1437,13 +1445,12 @@ test_yt_init_presentation_failure_prefix(void)
 	yt_error_clear(&error);
 	yt_random_init(&random);
 	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
-	yt_platform_set_clock_provider(utility_fixed_clock, NULL);
 	initialized = yt_initialize_begin_yt(&error)
-	    && yt_initializer_prepare_yt(&random, &preparation, &error)
+	    && yt_initializer_prepare_yt(&utility_fixed_clock_source, &random,
+	    &preparation, &error)
 	    && yt_initialize_yt_prepared_bound(NULL, &preparation,
-	    "YTSCORE.ASC", &random,
+	    "YTSCORE.ASC", &utility_fixed_clock_source, &random,
 	    &presenter, &error);
-	yt_platform_set_clock_provider(NULL, NULL);
 	read = read_file("YTDATA.DAT", &database, &database_length);
 	free(database);
 	return !initialized && read && error.status == YT_IO_ERROR
@@ -1583,11 +1590,12 @@ done:
 }
 
 static bool
-initialize_unprepared_yt(const char *scoreboard, struct yt_random *random,
-    struct yt_error *error)
+initialize_unprepared_yt(const char *scoreboard, const struct yt_clock *clock,
+    struct yt_random *random, struct yt_error *error)
 {
 	const struct yt_initializer_options options = {
 		.family = YT_INITIALIZER_YT,
+		.clock = clock,
 		.scoreboard = scoreboard
 	};
 
@@ -1608,9 +1616,8 @@ test_initializer_world_image(void)
 	yt_error_clear(&error);
 	yt_random_init(&random);
 	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
-	yt_platform_set_clock_provider(utility_fixed_clock, NULL);
-	ok = initialize_unprepared_yt("YTSCORE.ASC", &random, &error);
-	yt_platform_set_clock_provider(NULL, NULL);
+	ok = initialize_unprepared_yt("YTSCORE.ASC", &utility_fixed_clock_source,
+	    &random, &error);
 	if (!ok || random.draws != 31297U || lcg.state != UINT32_C(0x9f26f4)
 	    || !read_file("YTDATA.DAT", &database, &length)) {
 		fprintf(stderr, "initializer image setup: ok=%d status=%d draws=%zu state=%06x length=%zu\n",
@@ -1649,6 +1656,7 @@ test_initializer_graph_retries(void)
 
 	memset(&options, 0, sizeof(options));
 	options.family = YT_INITIALIZER_YT;
+	options.clock = &utility_fixed_clock_source;
 	rmt_small_config(&options.config);
 	options.config.epoch_year = 26.0f;
 	options.config.port_offset = 10.0f;
@@ -1658,9 +1666,7 @@ test_initializer_graph_retries(void)
 	yt_error_clear(&error);
 	yt_random_init(&random);
 	yt_random_set_provider(&random, utility_graph_retry_fill, &script);
-	yt_platform_set_clock_provider(utility_fixed_clock, NULL);
 	ok = yt_initialize_world(&options, &random, &error);
-	yt_platform_set_clock_provider(NULL, NULL);
 	if (!ok || random.draws != 105U || script.draws != 105U
 	    || !read_file("YTDATA.DAT", &database, &length)
 	    || length != 2055U) {
@@ -1749,10 +1755,8 @@ test_rmt_initializer_world_image(void)
 	yt_error_clear(&error);
 	yt_random_init(&random);
 	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
-	yt_platform_set_clock_provider(utility_fixed_clock, NULL);
-	ok = yt_initialize_rmt_presented(&config, "The Sysop", &random,
-	    &presenter, &error);
-	yt_platform_set_clock_provider(NULL, NULL);
+	ok = yt_initialize_rmt_presented(&config, "The Sysop",
+	    &utility_fixed_clock_source, &random, &presenter, &error);
 	if (!ok || random.draws != 245U || lcg.state != UINT32_C(0x3fed05)
 	    || !read_file("YTDATA.DAT", &database, &length)) {
 		fprintf(stderr, "RMT initializer image setup: ok=%d status=%d draws=%zu state=%06x length=%zu\n",
@@ -1820,10 +1824,8 @@ test_rmt_presentation_failure_prefixes(void)
 		yt_error_clear(&error);
 		yt_random_init(&random);
 		yt_random_set_provider(&random, utility_lcg_fill, &lcg);
-		yt_platform_set_clock_provider(utility_fixed_clock, NULL);
-		ok = yt_initialize_rmt_presented(&config, "The Sysop", &random,
-		    &presenter, &error);
-		yt_platform_set_clock_provider(NULL, NULL);
+		ok = yt_initialize_rmt_presented(&config, "The Sysop",
+		    &utility_fixed_clock_source, &random, &presenter, &error);
 		if (ok || error.status != YT_IO_ERROR
 		    || random.draws != cases[index].draws
 		    || !read_file("YTDATA.DAT", &database, &length)
@@ -1877,10 +1879,8 @@ test_rmt_dynamic_presentation(void)
 		yt_error_clear(&error);
 		yt_random_init(&random);
 		yt_random_set_provider(&random, utility_lcg_fill, &lcg);
-		yt_platform_set_clock_provider(utility_fixed_clock, NULL);
-		ok = yt_initialize_rmt_presented(&config, "The Sysop", &random,
-		    &presenter, &error);
-		yt_platform_set_clock_provider(NULL, NULL);
+		ok = yt_initialize_rmt_presented(&config, "The Sysop",
+		    &utility_fixed_clock_source, &random, &presenter, &error);
 		if (!ok || random.draws != cases[index].draws
 		    || lcg.state != cases[index].final_state
 		    || tape.calls != cases[index].calls
@@ -1923,10 +1923,8 @@ test_rmt_dynamic_presentation(void)
 		yt_error_clear(&error);
 		yt_random_init(&random);
 		yt_random_set_provider(&random, utility_lcg_fill, &lcg);
-		yt_platform_set_clock_provider(utility_fixed_clock, NULL);
-		ok = yt_initialize_rmt_presented(&config, "The Sysop", &random,
-		    &presenter, &error);
-		yt_platform_set_clock_provider(NULL, NULL);
+		ok = yt_initialize_rmt_presented(&config, "The Sysop",
+		    &utility_fixed_clock_source, &random, &presenter, &error);
 		if (!ok || random.draws != 1288U
 		    || lcg.state != UINT32_C(0x5473de)
 		    || tape.calls != 68U || tape.local_length != 1386U
@@ -1953,6 +1951,10 @@ test_yt_clock_boundaries(void)
 {
 	struct utility_lcg lcg = {UINT32_C(0x89b405)};
 	struct utility_clock_sequence sequence = {0U};
+	const struct yt_clock clock = {
+		.read = utility_initializer_clock_sequence,
+		.context = &sequence,
+	};
 	struct yt_random random;
 	struct yt_initializer_preparation preparation;
 	struct yt_config config;
@@ -1967,14 +1969,11 @@ test_yt_clock_boundaries(void)
 	yt_error_clear(&error);
 	yt_random_init(&random);
 	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
-	yt_platform_set_clock_provider(utility_initializer_clock_sequence,
-	    &sequence);
 	ok = yt_initialize_begin_yt(&error)
-	    && yt_initializer_prepare_yt(&random, &preparation, &error)
+	    && yt_initializer_prepare_yt(&clock, &random, &preparation, &error)
 	    && yt_initialize_yt_prepared_bound(NULL, &preparation,
-	    "YTSCORE.ASC", &random,
+	    "YTSCORE.ASC", &clock, &random,
 	    NULL, &error);
-	yt_platform_set_clock_provider(NULL, NULL);
 	if (!ok || sequence.calls != 17U
 	    || !read_file("YTDATA.DAT", &database, &length)
 	    || length < YT_RECORD_SIZE) {
@@ -2004,6 +2003,10 @@ test_rmt_clock_boundaries(void)
 {
 	struct utility_lcg lcg = {UINT32_C(0x123456)};
 	struct utility_clock_sequence sequence = {0U};
+	const struct yt_clock clock = {
+		.read = utility_initializer_clock_sequence,
+		.context = &sequence,
+	};
 	struct yt_random random;
 	struct yt_config config;
 	struct yt_error error;
@@ -2018,11 +2021,8 @@ test_rmt_clock_boundaries(void)
 	yt_error_clear(&error);
 	yt_random_init(&random);
 	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
-	yt_platform_set_clock_provider(utility_initializer_clock_sequence,
-	    &sequence);
-	ok = yt_initialize_rmt_presented(&config, "The Sysop", &random, NULL,
-	    &error);
-	yt_platform_set_clock_provider(NULL, NULL);
+	ok = yt_initialize_rmt_presented(&config, "The Sysop", &clock, &random,
+	    NULL, &error);
 	port_offset = ((size_t)yt_port_basic_record(&config, 1) - 1U)
 	    * YT_RECORD_SIZE;
 	if (!ok || sequence.calls != 17U
@@ -2037,7 +2037,8 @@ test_rmt_clock_boundaries(void)
 	return yt_record_get_number(&config_record, YT_F45) == 26.0f
 	    && yt_record_get_number(&config_record, YT_F81) == 1.0f
 	    && yt_record_get_number(&port_record, YT_F45) == 0.0f
-	    && !yt_initialize_rmt_presented(NULL, "The Sysop", &random, NULL,
+	    && !yt_initialize_rmt_presented(NULL, "The Sysop", &clock, &random,
+	    NULL,
 	    &error);
 }
 
@@ -2771,7 +2772,7 @@ initialize_direct(struct yt_error *error)
 	struct yt_random random;
 
 	yt_random_init(&random);
-	return initialize_unprepared_yt("YTSCORE.ASC", &random, error);
+	return initialize_unprepared_yt("YTSCORE.ASC", NULL, &random, error);
 }
 
 static bool

@@ -541,8 +541,8 @@ main(void)
 	}
 	yt_rmt_normalize_config(&config, local_mode || standalone);
 	yt_random_init(&random);
-	if (!yt_initialize_rmt_presented(&config, credited, &random, &presenter,
-	    &error)) {
+	if (!yt_initialize_rmt_presented(&config, credited, NULL, &random,
+	    &presenter, &error)) {
 		yt_cli_error("RMT-INIT", &error);
 		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}

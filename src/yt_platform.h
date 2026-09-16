@@ -16,8 +16,13 @@ struct yt_clock_value {
 	int hundredth;
 };
 
-typedef bool (*yt_clock_provider)(void *context, struct yt_clock_value *value,
+typedef bool (*yt_clock_read_fn)(void *context, struct yt_clock_value *value,
     struct yt_error *error);
+
+struct yt_clock {
+	yt_clock_read_fn read;
+	void *context;
+};
 
 enum yt_spawn_mode {
 	YT_SPAWN_WAIT,
@@ -36,7 +41,10 @@ struct yt_platform_rmt_serial {
 };
 
 bool yt_platform_entropy(void *buffer, size_t length, struct yt_error *error);
-void yt_platform_set_clock_provider(yt_clock_provider provider, void *context);
+bool yt_clock_read(const struct yt_clock *clock, struct yt_clock_value *value,
+    struct yt_error *error);
+double yt_clock_timer(const struct yt_clock *clock);
+void yt_platform_set_clock_provider(yt_clock_read_fn provider, void *context);
 bool yt_platform_clock(struct yt_clock_value *value, struct yt_error *error);
 double yt_platform_timer(void);
 bool yt_platform_executable_path(char *dest, size_t size, const char *argv0,

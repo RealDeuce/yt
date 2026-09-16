@@ -119,7 +119,8 @@ yt_initializer_layout_yt(struct yt_initializer_preparation *preparation)
 }
 
 bool
-yt_initializer_prepare_yt(struct yt_random *random,
+yt_initializer_prepare_yt(const struct yt_clock *clock,
+    struct yt_random *random,
     struct yt_initializer_preparation *preparation, struct yt_error *error)
 {
 	struct yt_clock_value epoch_date;
@@ -131,8 +132,8 @@ yt_initializer_prepare_yt(struct yt_random *random,
 		return false;
 	}
 	yt_initializer_layout_yt(preparation);
-	if (!yt_platform_clock(&epoch_date, error)
-	    || !yt_platform_clock(&maintenance_date, error)
+	if (!yt_clock_read(clock, &epoch_date, error)
+	    || !yt_clock_read(clock, &maintenance_date, error)
 	    || !yt_random_next(random, &sample, error))
 		return false;
 	preparation->config.epoch_year = (float)(epoch_date.year % 100);
@@ -226,7 +227,7 @@ rmt_present_before_headquarters(const struct yt_initializer_options *options,
 	    "  # of days inactivity until an dead player is deleted:",
 	    config->retention_days, error))
 		return false;
-	if (!yt_platform_clock(&maintenance_date, error))
+	if (!yt_clock_read(options->clock, &maintenance_date, error))
 		return false;
 	maintenance_serial = yt_date_serial(&maintenance_date,
 	    config->epoch_year, NULL);
@@ -424,7 +425,7 @@ write_world_database(struct yt_database *database,
 	    || !rmt_present_text(options, 0x1689U, YT_RMT_OUTPUT_LINE,
 	    "Initializing ports... (Be patient)", error))
 		return false;
-	if (!yt_platform_clock(&port_date, error))
+	if (!yt_clock_read(options->clock, &port_date, error))
 		return false;
 	today = yt_date_serial(&port_date, config->epoch_year, NULL);
 	if (!yt_present_text(options, 0x1a55U, YT_INIT_OUTPUT_LINE, "", error)
@@ -631,7 +632,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 		    || !yt_database_random_close(database, error)
 		    || !yt_database_open(database, "YTDATA.DAT",
 		    YT_OPEN_UPDATE_CREATE, error)
-		    || !yt_platform_clock(&current, error))
+		    || !yt_clock_read(options->clock, &current, error))
 			goto done;
 		config.epoch_year = (float)(current.year % 100);
 		if (!rmt_present_before_headquarters(options, &config, error)
@@ -675,7 +676,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			world.ports = (int)(config.planet_offset
 			    - config.port_offset);
 		}
-		else if (!yt_platform_clock(&current, error))
+		else if (!yt_clock_read(options->clock, &current, error))
 			goto done;
 		else if (options->use_existing_config) {
 			config = options->config;
@@ -723,7 +724,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			goto done;
 		}
 		if (!options->prepared_yt) {
-			if (!yt_platform_clock(&current, error))
+			if (!yt_clock_read(options->clock, &current, error))
 				goto done;
 			config.last_maintenance = (float)(yt_date_serial(&current,
 			    config.epoch_year, NULL) - 1);
@@ -812,7 +813,8 @@ yt_initialize_bind_yt(struct yt_database *database,
 bool
 yt_initialize_yt_prepared_bound(struct yt_database *database,
     const struct yt_initializer_preparation *preparation,
-    const char *scoreboard, struct yt_random *random,
+    const char *scoreboard, const struct yt_clock *clock,
+    struct yt_random *random,
     const struct yt_init_presenter *presenter, struct yt_error *error)
 {
 	struct yt_initializer_options options;
@@ -826,6 +828,7 @@ yt_initialize_yt_prepared_bound(struct yt_database *database,
 	}
 	memset(&options, 0, sizeof(options));
 	options.family = YT_INITIALIZER_YT;
+	options.clock = clock;
 	options.config = preparation->config;
 	selected = scoreboard != NULL && scoreboard[0] != '\0'
 	    ? scoreboard : "YTSCORE.ASC";
@@ -845,7 +848,8 @@ yt_initialize_yt_prepared_bound(struct yt_database *database,
 
 bool
 yt_initialize_rmt_presented(const struct yt_config *config,
-    const char *credited_name, struct yt_random *random,
+    const char *credited_name, const struct yt_clock *clock,
+    struct yt_random *random,
     const struct yt_rmt_presenter *presenter, struct yt_error *error)
 {
 	if (config == NULL) {
@@ -854,6 +858,7 @@ yt_initialize_rmt_presented(const struct yt_config *config,
 	}
 	struct yt_initializer_options options = {
 	    .family = YT_INITIALIZER_RMT,
+	    .clock = clock,
 	    .config = *config,
 	    .use_existing_config = true,
 	    .credited_name = credited_name,

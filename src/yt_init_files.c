@@ -48,7 +48,8 @@ bool yt_init_write_sequential_file(const char *path, const uint8_t *data,
     size_t length, struct yt_error *error);
 
 static bool
-write_banner(const char *credited_name, bool rmt, struct yt_error *error)
+write_banner(const char *credited_name, bool rmt,
+    const struct yt_clock *clock, struct yt_error *error)
 {
 	static const char *const decorations[] = {
 		"**********************",
@@ -86,8 +87,8 @@ write_banner(const char *credited_name, bool rmt, struct yt_error *error)
 		char line[100];
 		int written;
 
-		if (!yt_platform_clock(&time_now, error)
-		    || !yt_platform_clock(&date_now, error))
+		if (!yt_clock_read(clock, &time_now, error)
+		    || !yt_clock_read(clock, &date_now, error))
 			goto failure;
 		yt_format_time(&time_now, time);
 		yt_format_date(&date_now, date);
@@ -156,7 +157,7 @@ yt_init_write_yt_auxiliary(struct yt_database *database,
 	static const uint8_t dummy[] = "Dummy,Dummy,Dummy,Dummy\r\n";
 	static const uint8_t play[] = "L64cgaL1p1p1p1";
 
-	if (!write_banner(NULL, false, error)
+	if (!write_banner(NULL, false, options->clock, error)
 	    || !yt_present_text(options, 0x224bU, YT_INIT_OUTPUT_LINE, "",
 	    error)
 	    || !yt_present_text(options, 0x225fU, YT_INIT_OUTPUT_LINE,
@@ -216,7 +217,7 @@ yt_init_write_rmt_auxiliary(struct yt_database *database,
 
 	yt_radio_file_init(&file);
 
-	if (!write_banner(credited_name, true, error)
+	if (!write_banner(credited_name, true, options->clock, error)
 	    || !rmt_present(options, 0x2014U, YT_RMT_OUTPUT_BLANK, NULL, 0U,
 	    error)
 	    || !rmt_present_text(options, 0x2022U, YT_RMT_OUTPUT_LINE,

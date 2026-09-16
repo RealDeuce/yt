@@ -81,6 +81,7 @@ struct yt_rmt_standalone_output {
 
 struct yt_initializer_options {
 	enum yt_initializer_family family;
+	const struct yt_clock *clock;
 	const char *scoreboard;
 	struct yt_config config;
 	bool use_existing_config;
@@ -106,7 +107,8 @@ bool yt_init_present_confirmation_prefix(
 	const struct yt_init_presenter *presenter, struct yt_error *error);
 bool yt_init_present_opening(const struct yt_init_presenter *presenter,
 	struct yt_error *error);
-bool yt_initializer_prepare_yt(struct yt_random *random,
+bool yt_initializer_prepare_yt(const struct yt_clock *clock,
+    struct yt_random *random,
 	struct yt_initializer_preparation *preparation,
 	struct yt_error *error);
 bool yt_init_present_prepared_configuration(
@@ -143,10 +145,12 @@ bool yt_initialize_world(const struct yt_initializer_options *options,
 /* Consumes and closes the successfully bound database. */
 bool yt_initialize_yt_prepared_bound(struct yt_database *database,
 	const struct yt_initializer_preparation *preparation,
-	const char *scoreboard, struct yt_random *random,
+	const char *scoreboard, const struct yt_clock *clock,
+	struct yt_random *random,
 	const struct yt_init_presenter *presenter, struct yt_error *error);
 bool yt_initialize_rmt_presented(const struct yt_config *config,
-    const char *credited_name, struct yt_random *random,
+    const char *credited_name, const struct yt_clock *clock,
+    struct yt_random *random,
     const struct yt_rmt_presenter *presenter, struct yt_error *error);
 
 #endif

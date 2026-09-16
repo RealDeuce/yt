@@ -113,7 +113,7 @@ main(int argc, char **argv)
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;
 	}
-	if (!yt_initializer_prepare_yt(&random, &preparation, &error)
+	if (!yt_initializer_prepare_yt(NULL, &random, &preparation, &error)
 	    || !yt_init_present_prepared_configuration(&preparation,
 	    &presenter, &error)) {
 		yt_database_close(&database);
@@ -127,7 +127,7 @@ main(int argc, char **argv)
 	if (scoreboard[0] == '\0')
 		strcpy(scoreboard, "YTSCORE.ASC");
 	if (!yt_initialize_yt_prepared_bound(&database, &preparation, scoreboard,
-	    &random,
+	    NULL, &random,
 	    &presenter, &error)) {
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;
