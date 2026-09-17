@@ -229,17 +229,9 @@ hostile_attack_tail_run(struct yt_session *session,
 	size_t display_length;
 	size_t news_length;
 	size_t defeated_length;
+	float bonus;
+	float dominated_draw;
 
-	state->bonus = 0.0f;
-	state->player_read = false;
-	state->player_written = false;
-	state->reward_presented = false;
-	state->reward_news_written = false;
-	state->clearance_called = false;
-	state->draw_consumed = false;
-	state->defeated_presented = false;
-	state->victory_called = false;
-	state->complete = false;
 	if (state->old_owner == -1.0f && state->defender_loss > 0.0) {
 		if (!session_read_combat_player(session,
 		    state->current_player_record, &state->current, error))
@@ -248,22 +240,20 @@ hostile_attack_tail_run(struct yt_session *session,
 		    sizeof(session->player.name), "%s", cached_player_name);
 		(void)snprintf(state->current.name,
 		    sizeof(state->current.name), "%s", cached_player_name);
-		state->player_read = true;
 		state->ship_fighters = (double)state->current.fighters;
-		state->bonus = yt_xannor_attack_bonus(state->defender_loss,
+		bonus = yt_xannor_attack_bonus(state->defender_loss,
 		    state->current.turns, state->turns_per_day);
-		if (state->bonus >= 1.0f) {
+		if (bonus >= 1.0f) {
 			state->current.turns = qb_single_add(state->current.turns,
-			    state->bonus);
+			    bonus);
 			(void)yt_record_set_number(&state->current.record, YT_F49,
 			    state->current.turns);
 			if (!session_write_combat_player(session,
 			    state->current_player_record, &state->current, error))
 				return false;
-			state->player_written = true;
 			if (!yt_xannor_attack_reward_rows(
 			    state->cached_player_name,
-			    state->cached_player_name_length, state->bonus,
+			    state->cached_player_name_length, bonus,
 			    state->defender_loss, display, sizeof(display),
 			    &display_length, news, sizeof(news), &news_length))
 				return false;
@@ -271,37 +261,30 @@ hostile_attack_tail_run(struct yt_session *session,
 			if (!session_present_paged_fragment(session, display,
 			    display_length))
 				return false;
-			state->reward_presented = true;
 			if (!yt_news_append_bytes(news, news_length,
 			    error))
 				return false;
-			state->reward_news_written = true;
 			if (state->deployed_fighters < 1.0) {
 				if (!yt_session_clearance(session, true, error))
 					return false;
-				state->clearance_called = true;
 			}
 		}
 	}
 	if (!yt_random_next(&session->door->game.random,
-	    &state->dominated_draw, error))
+	    &dominated_draw, error))
 		return false;
-	state->draw_consumed = true;
 	if (state->deployed_fighters <= 0.0) {
 		if (!yt_hostile_defeated_row(state->ship_fighters, defeated,
 		    sizeof(defeated), &defeated_length)
 		    || !session_present_paged_fragment(session, defeated,
 		    defeated_length))
 			return false;
-		state->defeated_presented = true;
 		if (state->old_owner == -1.0f
 		    && state->current.sector == state->headquarters) {
 			if (!yt_session_xannor_victory(session, error))
 				return false;
-			state->victory_called = true;
 		}
 	}
-	state->complete = true;
 	return true;
 }
 

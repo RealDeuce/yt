@@ -375,6 +375,8 @@ test_hostile_attack_tail_run(struct yt_hostile_attack_tail_state *state,
 	size_t display_length;
 	size_t news_length;
 	size_t defeated_length;
+	float bonus;
+	float dominated_draw;
 
 	if (state == NULL || ops == NULL || ops->read_player == NULL
 	    || ops->write_player == NULL || ops->present == NULL
@@ -383,69 +385,50 @@ test_hostile_attack_tail_run(struct yt_hostile_attack_tail_state *state,
 	    || (state->cached_player_name_length != 0U
 	    && state->cached_player_name == NULL))
 		return false;
-	state->bonus = 0.0f;
-	state->player_read = false;
-	state->player_written = false;
-	state->reward_presented = false;
-	state->reward_news_written = false;
-	state->clearance_called = false;
-	state->draw_consumed = false;
-	state->defeated_presented = false;
-	state->victory_called = false;
-	state->complete = false;
 	if (state->old_owner == -1.0f && state->defender_loss > 0.0) {
 		if (!ops->read_player(context, state->current_player_record,
 		    &state->current, error))
 			return false;
-		state->player_read = true;
 		state->ship_fighters = (double)state->current.fighters;
-		state->bonus = yt_xannor_attack_bonus(state->defender_loss,
+		bonus = yt_xannor_attack_bonus(state->defender_loss,
 		    state->current.turns, state->turns_per_day);
-		if (state->bonus >= 1.0f) {
+		if (bonus >= 1.0f) {
 			state->current.turns = attack_single_add(
-			    state->current.turns, state->bonus);
+			    state->current.turns, bonus);
 			(void)yt_record_set_number(&state->current.record, YT_F49,
 			    state->current.turns);
 			if (!ops->write_player(context,
 			    state->current_player_record, &state->current, error))
 				return false;
-			state->player_written = true;
 			if (!yt_xannor_attack_reward_rows(
 			    state->cached_player_name,
-			    state->cached_player_name_length, state->bonus,
+			    state->cached_player_name_length, bonus,
 			    state->defender_loss, display, sizeof(display),
 			    &display_length, news, sizeof(news), &news_length)
 			    || !ops->present(context, display, display_length,
 			    YT_HOSTILE_ATTACK_TAIL_REWARD_ROW, error))
 				return false;
-			state->reward_presented = true;
 			if (!ops->append_news(context, news, news_length, error))
 				return false;
-			state->reward_news_written = true;
 			if (state->deployed_fighters < 1.0) {
 				if (!ops->clearance(context, error))
 					return false;
-				state->clearance_called = true;
 			}
 		}
 	}
-	if (!ops->random(context, &state->dominated_draw, error))
+	if (!ops->random(context, &dominated_draw, error))
 		return false;
-	state->draw_consumed = true;
 	if (state->deployed_fighters <= 0.0) {
 		if (!yt_hostile_defeated_row(state->ship_fighters, defeated,
 		    sizeof(defeated), &defeated_length)
 		    || !ops->present(context, defeated, defeated_length,
 		    YT_HOSTILE_ATTACK_TAIL_DEFEATED_ROW, error))
 			return false;
-		state->defeated_presented = true;
 		if (state->old_owner == -1.0f
 		    && state->current.sector == state->headquarters) {
 			if (!ops->victory(context, error))
 				return false;
-			state->victory_called = true;
 		}
 	}
-	state->complete = true;
 	return true;
 }

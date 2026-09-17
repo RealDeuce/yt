@@ -877,17 +877,6 @@ struct yt_hostile_attack_tail_state {
 	const uint8_t *cached_player_name;
 	size_t cached_player_name_length;
 	struct yt_player current;
-	float bonus;
-	float dominated_draw;
-	bool player_read;
-	bool player_written;
-	bool reward_presented;
-	bool reward_news_written;
-	bool clearance_called;
-	bool draw_consumed;
-	bool defeated_presented;
-	bool victory_called;
-	bool complete;
 };
 
 

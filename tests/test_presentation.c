@@ -27410,9 +27410,7 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		    && combat.surrendered && combat.iterations == 0U
 		    && combat.attacker_loss == 0.0 && combat.defender_loss == 0.0
 		    && combat.ship_fighters == 21.0
-		    && combat.deployed_remaining == 0.0
-		    && combat.tail.draw_consumed && combat.tail.defeated_presented
-		    && !combat.tail.victory_called);
+		    && combat.deployed_remaining == 0.0);
 		CHECK(join.a41c_reads == 2U
 		    && join.sound_calls == 1U && join.surrender_sound_calls == 2U
 		    && join.surrender_force_stores == 1U
@@ -27527,9 +27525,7 @@ test_direct_emergency_warp_hostile_attack_surrender_refused(void)
 		    && !combat.surrendered && combat.iterations == 1U
 		    && combat.attacker_loss == 0.0 && combat.defender_loss == 1.0
 		    && combat.ship_fighters == 7.0
-		    && combat.deployed_remaining == 0.0
-		    && combat.tail.draw_consumed && combat.tail.defeated_presented
-		    && !combat.tail.victory_called);
+		    && combat.deployed_remaining == 0.0);
 		CHECK(join.a41c_reads == 3U
 		    && join.sound_calls == 1U && join.surrender_sound_calls == 1U
 		    && join.surrender_force_stores == 0U
@@ -27699,9 +27695,7 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 		    && !combat.surrendered && combat.iterations == 1U
 		    && combat.attacker_loss == 0.0 && combat.defender_loss == 1.0
 		    && combat.ship_fighters == 7.0
-		    && combat.deployed_remaining == 0.0
-		    && combat.tail.draw_consumed && combat.tail.defeated_presented
-		    && !combat.tail.victory_called);
+		    && combat.deployed_remaining == 0.0);
 		CHECK(attack.a41c_reads == 3U
 		    && attack.sound_calls == 1U
 		    && attack.surrender_sound_calls == 2U
@@ -27901,10 +27895,7 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 			    && combat.attacker_loss == 0.0
 			    && combat.defender_loss == 1.0
 			    && combat.ship_fighters == 7.0
-			    && combat.deployed_remaining == 0.0
-			    && combat.tail.draw_consumed
-			    && combat.tail.defeated_presented
-			    && !combat.tail.victory_called);
+			    && combat.deployed_remaining == 0.0);
 			CHECK(attack.a41c_reads == (origin == 0U ? 4U : 3U)
 			    && attack.tail_player_reads == (origin == 0U ? 1U : 0U)
 			    && attack.sound_calls == 1U
@@ -28987,12 +28978,7 @@ test_xannor_attack_tail_clearance_join(void)
 		    && viewer_colors_fnv1a64(&viewer.join)
 		    == expected[pass].color_hash
 		    && viewer.join.local_fragment_length == 0U);
-		CHECK(tail.complete && tail.player_read && tail.player_written
-		    && tail.reward_presented && tail.reward_news_written
-		    && tail.clearance_called && tail.draw_consumed
-		    && tail.defeated_presented && !tail.victory_called
-		    && tail.bonus == 2.0f && tail.dominated_draw == 0.75f
-		    && tail.ship_fighters == 21.0 && tail.current.turns == 100.0f
+		CHECK(tail.ship_fighters == 21.0 && tail.current.turns == 100.0f
 		    && join.a41c_reads == 1U
 		    && join.tail_player_reads == 1U
 		    && join.tail_player_writes == 1U
