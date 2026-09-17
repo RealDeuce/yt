@@ -12775,13 +12775,7 @@ construct_player_values(struct yt_game *game, int basic_record, float today,
     float turns, struct yt_player *player,
     struct yt_player_constructor_state *state, struct yt_error *error)
 {
-	uint8_t today_raw[4];
-	uint8_t turns_raw[4];
-
-	if (qb_mbf32_encode(today, today_raw) != QB_MBF_OK
-	    || qb_mbf32_encode(turns, turns_raw) != QB_MBF_OK)
-		return false;
-	return yt_game_construct_player(game, basic_record, today_raw, turns_raw,
+	return yt_game_construct_player(game, basic_record, today, turns,
 	    player, state, error);
 }
 
@@ -15058,8 +15052,8 @@ main(void)
 	    || qb_mbf32_encode(45.0f, constructor_fighters_raw) != QB_MBF_OK
 	    || qb_mbf32_encode(678.0f, constructor_credits_raw) != QB_MBF_OK
 	    || qb_mbf32_encode(9.0f, constructor_holds_raw) != QB_MBF_OK
-	    || !yt_game_construct_player(&game, 2, constructor_date_raw,
-	    constructor_turns_raw, &player, NULL, &error)
+	    || !yt_game_construct_player(&game, 2, 321.0f, 500.0f,
+	    &player, NULL, &error)
 	    || !yt_game_read_player(&game, 2, &player, &error)
 	    || strcmp(player.name, "Old Trader") != 0
 	    || player.name_length != 10U || player.score != 77.5f

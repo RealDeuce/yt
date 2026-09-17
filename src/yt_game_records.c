@@ -485,20 +485,17 @@ yt_game_write_planet(struct yt_game *game, int logical_planet,
 
 bool
 yt_game_construct_player(struct yt_game *game, int basic_record,
-    const uint8_t today_raw[4], const uint8_t turns_raw[4],
+    float today, float turns,
     struct yt_player *player, struct yt_player_constructor_state *state,
     struct yt_error *error)
 {
 	static const uint8_t first_zero[4] = {0x00, 0x00, 0x0a, 0x00};
-	static const uint8_t zero[4] = {0x00, 0x00, 0x00, 0x00};
-	static const uint8_t one[4] = {0x00, 0x00, 0x00, 0x81};
-	static const uint8_t hundred[4] = {0x00, 0x00, 0x48, 0x87};
 	struct yt_record config_record;
 	struct yt_record constructed;
+	struct yt_config config;
 	struct yt_player_constructor_state local_state;
 
-	if (game == NULL || today_raw == NULL || turns_raw == NULL
-	    || player == NULL)
+	if (game == NULL || player == NULL)
 		return false;
 	if (state == NULL)
 		state = &local_state;
@@ -507,34 +504,37 @@ yt_game_construct_player(struct yt_game *game, int basic_record,
 	if (!yt_database_read(&game->database, 1, &config_record, error))
 		return false;
 	state->config_hydrated = true;
+	if (!yt_config_decode(&config, &config_record, error))
+		return false;
 	if (!yt_game_read_player(game, basic_record, player, error))
 		return false;
 	state->player_hydrated = true;
 	constructed = player->record;
-	(void)yt_record_set_raw_number(&constructed, YT_F41, today_raw);
 	(void)yt_record_set_raw_number(&constructed, YT_F45, first_zero);
-	(void)yt_record_set_raw_number(&constructed, YT_F49, turns_raw);
-	(void)yt_record_set_raw_number(&constructed, YT_F53, hundred);
-	(void)yt_record_set_raw_number(&constructed, YT_F57, one);
-	(void)yt_record_set_raw_number(&constructed, YT_F61,
-	    config_record.bytes + YT_F65);
-	(void)yt_record_set_raw_number(&constructed, YT_F65,
-	    config_record.bytes + YT_F73);
-	(void)yt_record_set_raw_number(&constructed, YT_F69, zero);
-	(void)yt_record_set_raw_number(&constructed, YT_F73, zero);
-	(void)yt_record_set_raw_number(&constructed, YT_F77, zero);
-	(void)yt_record_set_raw_number(&constructed, YT_F81,
-	    config_record.bytes + YT_F69);
-	(void)yt_record_set_raw_number(&constructed, YT_F93, zero);
-	(void)yt_record_set_raw_number(&constructed, YT_F97, one);
-	(void)yt_record_set_raw_number(&constructed, YT_F101, zero);
-	(void)yt_record_set_raw_number(&constructed, YT_F89, zero);
-	(void)yt_record_set_raw_number(&constructed, YT_F105, zero);
-	(void)yt_record_set_raw_number(&constructed, YT_F113, zero);
-	(void)yt_record_set_raw_number(&constructed, YT_F125, one);
-	(void)yt_record_set_raw_number(&constructed, YT_F117, zero);
-	(void)yt_record_set_raw_number(&constructed, YT_F121, zero);
-	(void)yt_record_set_raw_number(&constructed, YT_F129, zero);
+	if (!yt_record_set_number(&constructed, YT_F41, today)
+	    || !yt_record_set_number(&constructed, YT_F49, turns)
+	    || !yt_record_set_number(&constructed, YT_F53, 100.0f)
+	    || !yt_record_set_number(&constructed, YT_F57, 1.0f)
+	    || !yt_record_set_number(&constructed, YT_F61,
+	    config.initial_fighters)
+	    || !yt_record_set_number(&constructed, YT_F65,
+	    config.initial_holds)
+	    || !yt_record_set_number(&constructed, YT_F69, 0.0f)
+	    || !yt_record_set_number(&constructed, YT_F73, 0.0f)
+	    || !yt_record_set_number(&constructed, YT_F77, 0.0f)
+	    || !yt_record_set_number(&constructed, YT_F81,
+	    config.initial_credits)
+	    || !yt_record_set_number(&constructed, YT_F89, 0.0f)
+	    || !yt_record_set_number(&constructed, YT_F93, 0.0f)
+	    || !yt_record_set_number(&constructed, YT_F97, 1.0f)
+	    || !yt_record_set_number(&constructed, YT_F101, 0.0f)
+	    || !yt_record_set_number(&constructed, YT_F105, 0.0f)
+	    || !yt_record_set_number(&constructed, YT_F113, 0.0f)
+	    || !yt_record_set_number(&constructed, YT_F117, 0.0f)
+	    || !yt_record_set_number(&constructed, YT_F121, 0.0f)
+	    || !yt_record_set_number(&constructed, YT_F125, 1.0f)
+	    || !yt_record_set_number(&constructed, YT_F129, 0.0f))
+		return false;
 	yt_player_decode(player, &constructed);
 	state->put_attempted = true;
 	return yt_database_write(&game->database, (size_t)basic_record,

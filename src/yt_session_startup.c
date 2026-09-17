@@ -255,8 +255,6 @@ static bool
 construct_player_visible(struct yt_session *session, struct yt_error *error)
 {
 	struct yt_player_constructor_state state;
-	uint8_t date_raw[4];
-	uint8_t turns_raw[4];
 
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "player constructor blank", error)
@@ -265,13 +263,9 @@ construct_player_visible(struct yt_session *session, struct yt_error *error)
 	    strlen("Your ship has been built."), SESSION_PRESENT_LINE,
 	    "player constructor row", error))
 		return false;
-	if (qb_mbf32_encode((float)session->door->game.today, date_raw)
-	    != QB_MBF_OK)
-		return false;
-	memcpy(turns_raw, session->door->game.config.record.bytes + YT_F49,
-	    sizeof(turns_raw));
 	if (yt_game_construct_player(&session->door->game,
-	    session_record(session), date_raw, turns_raw, &session->player,
+	    session_record(session), (float)session->door->game.today,
+	    session->door->game.config.turns_per_day, &session->player,
 	    &state, error))
 		return true;
 	if (!state.config_hydrated)

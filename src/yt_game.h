@@ -338,7 +338,7 @@ struct yt_player_constructor_state {
 	bool put_attempted;
 };
 bool yt_game_construct_player(struct yt_game *game, int basic_record,
-    const uint8_t today_raw[4], const uint8_t turns_raw[4],
+    float today, float turns,
     struct yt_player *player, struct yt_player_constructor_state *state,
     struct yt_error *error);
 bool yt_sector_force_route(float fighters, float owner,
