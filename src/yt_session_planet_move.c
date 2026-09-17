@@ -89,11 +89,13 @@ planet_move_hop(struct yt_session *session, int source_number,
 		    session->door->identity.real_first, first_name_length);
 		row[sizeof(xannor_prefix) - 1U + first_name_length] = '!';
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-		    "planet move Xannor blank", error)
-		    || !session_present_text(session, row,
+		    "planet move Xannor blank", error))
+			return false;
+		if (!session_present_text(session, row,
 		    sizeof(xannor_prefix) + first_name_length,
-		    SESSION_PRESENT_LINE, "planet move Xannor refusal", error)
-		    || !session_present_text(session, xannor_slogan,
+		    SESSION_PRESENT_LINE, "planet move Xannor refusal", error))
+			return false;
+		if (!session_present_text(session, xannor_slogan,
 		    sizeof(xannor_slogan) - 1U, SESSION_PRESENT_LINE,
 		    "planet move Xannor slogan", error))
 			return false;
@@ -104,8 +106,9 @@ planet_move_hop(struct yt_session *session, int source_number,
 		return false;
 	if (target.planet > 0) {
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-		    "planet move occupied blank", error)
-		    || !session_present_text(session, occupied,
+		    "planet move occupied blank", error))
+			return false;
+		if (!session_present_text(session, occupied,
 		    sizeof(occupied) - 1U, SESSION_PRESENT_LINE,
 		    "planet move occupied row", error))
 			return false;
@@ -119,8 +122,9 @@ planet_move_hop(struct yt_session *session, int source_number,
 	yt_planet_move_sector_overlay(&source, 0);
 	source_record = (int)session_sector_basic_record(session, source_number);
 	if (!yt_database_write(&session->door->game.database,
-	    (size_t)source_record, &source.record, error)
-	    || !read_planet_physical(session, moving_record, &planet, error))
+	    (size_t)source_record, &source.record, error))
+		return false;
+	if (!read_planet_physical(session, moving_record, &planet, error))
 		return false;
 	planet_name_length = yt_planet_stored_name(&planet, planet_name);
 	if (!yt_random_next(&session->door->game.random, &draw, error))
@@ -130,12 +134,15 @@ planet_move_hop(struct yt_session *session, int source_number,
 
 		yt_planet_move_explosion_overlay(&planet);
 		if (!session_write_planet_physical(session, moving_record, &planet,
-		    false, error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "planet move explosion first blank", error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "planet move explosion second blank", error)
-		    || !yt_planet_move_explosion_row(planet_name,
+		    false, error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet move explosion first blank", error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet move explosion second blank", error))
+			return false;
+		if (!yt_planet_move_explosion_row(planet_name,
 		    planet_name_length, row, sizeof(row), &row_length))
 			return false;
 		session->presentation.bold = true;
@@ -146,11 +153,14 @@ planet_move_hop(struct yt_session *session, int source_number,
 		    player_name);
 		if (!yt_planet_move_explosion_news(planet_name,
 		    planet_name_length, player_name, player_name_length,
-		    row, sizeof(row), &row_length)
-		    || !yt_news_append_bytes(row, row_length, error)
-		    || !session_sound(session, YT_SOUND_CUE_DESTRUCTION,
-		    "planet move explosion sound", error)
-		    || !session_reload_player(session, error))
+		    row, sizeof(row), &row_length))
+			return false;
+		if (!yt_news_append_bytes(row, row_length, error))
+			return false;
+		if (!session_sound(session, YT_SOUND_CUE_DESTRUCTION,
+		    "planet move explosion sound", error))
+			return false;
+		if (!session_reload_player(session, error))
 			return false;
 		if (session->player.fighters != 0.0f) {
 			float range = session->player.fighters;
@@ -167,12 +177,15 @@ planet_move_hop(struct yt_session *session, int source_number,
 			static const uint8_t you[] = "You";
 
 			if (!yt_planet_move_loss_row(you, sizeof(you) - 1U,
-			    loss, row, sizeof(row), &row_length)
-			    || !session_present_text(session, row, row_length,
-			    SESSION_PRESENT_LINE, "planet move fighter loss row", error)
-			    || !yt_planet_move_loss_row(player_name,
-			    player_name_length, loss, row, sizeof(row), &row_length)
-			    || !yt_news_append_bytes(row, row_length, error))
+			    loss, row, sizeof(row), &row_length))
+				return false;
+			if (!session_present_text(session, row, row_length,
+			    SESSION_PRESENT_LINE, "planet move fighter loss row", error))
+				return false;
+			if (!yt_planet_move_loss_row(player_name,
+			    player_name_length, loss, row, sizeof(row), &row_length))
+				return false;
+			if (!yt_news_append_bytes(row, row_length, error))
 				return false;
 			*stop = true;
 		}
@@ -184,8 +197,9 @@ planet_move_hop(struct yt_session *session, int source_number,
 		    (float)session_sector_offset(session));
 
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-		    "planet move Wanderer blank", error)
-		    || !session_present_text(session, wanderer,
+		    "planet move Wanderer blank", error))
+			return false;
+		if (!session_present_text(session, wanderer,
 		    sizeof(wanderer) - 1U, SESSION_PRESENT_LINE,
 		    "planet move Wanderer row", error))
 			return false;
@@ -205,14 +219,18 @@ planet_move_hop(struct yt_session *session, int source_number,
 	}
 	else if (final_hop) {
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-		    "planet move final first blank", error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "planet move final second blank", error)
-		    || !yt_planet_move_success_row(planet_name,
-		    planet_name_length, row, sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
-		    SESSION_PRESENT_LINE, "planet move final row", error)
-		    || !session_sound(session, YT_SOUND_CUE_ACTION,
+		    "planet move final first blank", error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet move final second blank", error))
+			return false;
+		if (!yt_planet_move_success_row(planet_name,
+		    planet_name_length, row, sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "planet move final row", error))
+			return false;
+		if (!session_sound(session, YT_SOUND_CUE_ACTION,
 		    "planet move completion sound", error))
 			return false;
 	}
@@ -237,8 +255,9 @@ planet_move_hop(struct yt_session *session, int source_number,
 	destination_record = (int)session_sector_basic_record(session,
 	    actual_destination);
 	if (!yt_database_write(&session->door->game.database,
-	    (size_t)destination_record, &target.record, error)
-	    || !session_reload_player(session, error))
+	    (size_t)destination_record, &target.record, error))
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	yt_planet_move_success_overlay(&session->player, destination);
 	return yt_database_write(&session->door->game.database,
@@ -282,12 +301,15 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	if (enter_sector != NULL)
 		*enter_sector = false;
 	if (!session_present_paged_line(session, cost_notice,
-	    sizeof(cost_notice) - 1U, "planet Thrusters cost notice", error)
-	    || !yt_session_display_sector(session, false, error)
-	    || !session_present_timed_paged_row(session, destination_prompt,
+	    sizeof(cost_notice) - 1U, "planet Thrusters cost notice", error))
+		return false;
+	if (!yt_session_display_sector(session, false, error))
+		return false;
+	if (!session_present_timed_paged_row(session, destination_prompt,
 	    sizeof(destination_prompt) - 1U,
-	    "planet Thrusters destination prompt", error)
-	    || !session_read_number_command(session, response, sizeof(response)))
+	    "planet Thrusters destination prompt", error))
+		return false;
+	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
 	destination = yt_planet_move_destination(response);
 	if (destination == start)
@@ -310,8 +332,9 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 		    "planet Thrusters range", error);
 	}
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "planet Thrusters working blank", error)
-	    || !session_present_timed_paged_row(session, working,
+	    "planet Thrusters working blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, working,
 	    sizeof(working) - 1U, "planet Thrusters working", error))
 		return false;
 	if (!yt_session_build_route(session, start, destination, true, &route,
@@ -322,12 +345,16 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	start_node = route.start;
 	destination_node = route.destination;
 	if (!yt_planet_move_path_heading(start, destination, row, sizeof(row),
-	    &row_length)
-	    || !session_present_paged_fragment(session, row, row_length)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "planet Thrusters route leading blank", error)
-	    || qb_str_single(number, sizeof(number), start) < 0
-	    || !session_present_timed_paged_row(session,
+	    &row_length))
+		return false;
+	if (!session_present_paged_fragment(session, row, row_length))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet Thrusters route leading blank", error))
+		return false;
+	if (qb_str_single(number, sizeof(number), start) < 0)
+		return false;
+	if (!session_present_timed_paged_row(session,
 	    (const uint8_t *)number, strlen(number),
 	    "planet Thrusters route start", error))
 		return false;
@@ -352,28 +379,35 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 		    "planet Thrusters route token", error))
 			return false;
 		yt_out_cursor_position(&ignored_row, &column);
-		if (column > 74 && !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "planet Thrusters route wrap", error))
-			return false;
+		if (column > 74) {
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "planet Thrusters route wrap", error))
+				return false;
+		}
 		cost = yt_planet_move_add_cost(cost);
 		cursor = next;
 	}
 	session->pager.line_count = 0;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "planet Thrusters route ending", error)
-	    || !yt_planet_move_summary(cost, row, sizeof(row), &row_length)
-	    || !session_present_paged_line(session, row, row_length,
-	    "planet Thrusters distance summary", error)
-	    || !session_reload_player(session, error))
+	    "planet Thrusters route ending", error))
+		return false;
+	if (!yt_planet_move_summary(cost, row, sizeof(row), &row_length))
+		return false;
+	if (!session_present_paged_line(session, row, row_length,
+	    "planet Thrusters distance summary", error))
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	if (cost > session->player.turns)
 		return session_present_alert(session, insufficient,
 		    sizeof(insufficient) - 1U,
 		    "planet Thrusters insufficient turns", error);
 	if (!yt_planet_move_turns_row(session->player.turns, row, sizeof(row),
-	    &row_length)
-	    || !session_present_paged_fragment(session, row, row_length)
-	    || !session_confirm(session, confirmation, sizeof(confirmation) - 1U,
+	    &row_length))
+		return false;
+	if (!session_present_paged_fragment(session, row, row_length))
+		return false;
+	if (!session_confirm(session, confirmation, sizeof(confirmation) - 1U,
 	    &answer, error))
 		return false;
 	if (answer != YT_YES_NO_YES)
@@ -395,7 +429,9 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 		if (next == 0)
 			break;
 		number_length = qb_str_single(number, sizeof(number), (float)next);
-		if (number_length < 0 || !session_present_timed_paged_row(session,
+		if (number_length < 0)
+			return false;
+		if (!session_present_timed_paged_row(session,
 		    (const uint8_t *)number, (size_t)number_length,
 		    "planet Thrusters movement token", error))
 			return false;
@@ -407,8 +443,10 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 		if (stop)
 			break;
 	}
-	if (!stop && !session_reload_player(session, error))
-		return false;
+	if (!stop) {
+		if (!session_reload_player(session, error))
+			return false;
+	}
 	if (enter_sector != NULL)
 		*enter_sector = true;
 	return true;
