@@ -13,9 +13,11 @@ earth_quantity_input(struct yt_session *session, const char *prompt,
 	char line[160];
 	struct qb_val_result parsed;
 
-	if (!session_present_timed_paged_row(session, (const uint8_t *)prompt, strlen(prompt),
-	    "Earth purchase quantity prompt", error)
-	    || !session_read_number_command(session, line, sizeof(line)))
+	if (!session_present_timed_paged_row(session,
+	    (const uint8_t *)prompt, strlen(prompt),
+	    "Earth purchase quantity prompt", error))
+		return false;
+	if (!session_read_number_command(session, line, sizeof(line)))
 		return false;
 	*blank = line[0] == '\0';
 	parsed = qb_val(line);
@@ -53,8 +55,9 @@ earth_purchase_holds(struct yt_session *session,
 		return session_earth_credit_error(session, "You dont need any holds.", error);
 	if (qb_str_single(amount, sizeof(amount), qb_single_subtract(
 	    session->door->game.config.maximum_holds,
-	    session->player.holds)) < 0
-	    || snprintf(row, sizeof(row), "You need%s holds.", amount) < 0)
+	    session->player.holds)) < 0)
+		return session_range_error(error, "Earth Holds needed row");
+	if (snprintf(row, sizeof(row), "You need%s holds.", amount) < 0)
 		return session_range_error(error, "Earth Holds needed row");
 	if (!session_present_paged_line(session, (const uint8_t *)row, strlen(row),
 	    "Earth Holds needed row", error))
@@ -74,8 +77,9 @@ earth_purchase_holds(struct yt_session *session,
 		    "You don't need that many!", error);
 	session->player.holds = qb_single_add(session->player.holds, quantity);
 	cost = qb_single_multiply(quantity, price);
-	return session_write_player(session, error)
-	    && session_earth_receipt(session, cached_earth, cost, error);
+	if (!session_write_player(session, error))
+		return false;
+	return session_earth_receipt(session, cached_earth, cost, error);
 }
 
 static bool
@@ -110,8 +114,9 @@ earth_purchase_supply(struct yt_session *session,
 		    "You do not have enough credits!", error);
 	cost = qb_single_multiply(quantity, price);
 	yt_earth_supply_overlay(&session->player, choice, quantity);
-	return session_write_player(session, error)
-	    && session_earth_receipt(session, cached_earth, cost, error);
+	if (!session_write_player(session, error))
+		return false;
+	return session_earth_receipt(session, cached_earth, cost, error);
 }
 
 static bool
@@ -138,18 +143,26 @@ earth_purchase_cloak(struct yt_session *session,
 		deficit = qb_single_subtract(50.0f, points);
 		default_quantity = yt_earth_cloak_default(deficit,
 		    session->player.credits);
-		if (qb_str_single(deficit_text, sizeof(deficit_text), deficit) < 0
-		    || qb_str_single(default_text, sizeof(default_text),
-		    default_quantity) < 0
-		    || snprintf(row, sizeof(row),
-		    "Cloak energy is down by%s%%.", deficit_text) < 0
-		    || snprintf(prompt, sizeof(prompt),
+		if (qb_str_single(deficit_text, sizeof(deficit_text), deficit) < 0)
+			return session_range_error(error,
+			    "Earth Cloak row formatting");
+		if (qb_str_single(default_text, sizeof(default_text),
+		    default_quantity) < 0)
+			return session_range_error(error,
+			    "Earth Cloak row formatting");
+		if (snprintf(row, sizeof(row),
+		    "Cloak energy is down by%s%%.", deficit_text) < 0)
+			return session_range_error(error,
+			    "Earth Cloak row formatting");
+		if (snprintf(prompt, sizeof(prompt),
 		    "Buy how many points of Cloak Energy? (0 -%s) [%s ] ?",
 		    deficit_text, default_text) < 0)
 			return session_range_error(error,
 			    "Earth Cloak row formatting");
-		if (!session_present_paged_row(session, (const uint8_t *)row, strlen(row))
-		    || !earth_quantity_input(session, prompt, &requested, &blank,
+		if (!session_present_paged_row(session,
+		    (const uint8_t *)row, strlen(row)))
+			return false;
+		if (!earth_quantity_input(session, prompt, &requested, &blank,
 		    error))
 			return false;
 		quantity = blank ? default_quantity
@@ -167,8 +180,9 @@ earth_purchase_cloak(struct yt_session *session,
 			return session_earth_credit_error(session,
 			    "You do not have enough credits!", error);
 		session->player.cloak = yt_earth_cloak_overlay(points, quantity);
-		return session_write_player(session, error)
-		    && session_earth_receipt(session, cached_earth, cost, error);
+		if (!session_write_player(session, error))
+			return false;
+		return session_earth_receipt(session, cached_earth, cost, error);
 	}
 }
 
@@ -191,8 +205,9 @@ earth_purchase_scanner(struct yt_session *session,
 	session->presentation.bold = true;
 	if (!session_present_paged_row(session,
 	    (const uint8_t *)"Danger Scanner installed in your ship!",
-	    strlen("Danger Scanner installed in your ship!"))
-	    || !session_write_player(session, error))
+	    strlen("Danger Scanner installed in your ship!")))
+		return false;
+	if (!session_write_player(session, error))
 		return false;
 	return session_earth_receipt(session, cached_earth, price, error);
 }
@@ -220,8 +235,10 @@ earth_purchase_spies(struct yt_session *session,
 		affordable = yt_earth_affordable(session->player.credits, price);
 		if (active_count != 0) {
 			if (qb_str_single(active_text, sizeof(active_text),
-			    (float)active_count) < 0
-			    || snprintf(active_row, sizeof(active_row),
+			    (float)active_count) < 0)
+				return session_range_error(error,
+				    "Earth Spies active row");
+			if (snprintf(active_row, sizeof(active_row),
 			    "You have%s spies active already.", active_text) < 0)
 				return session_range_error(error,
 				    "Earth Spies active row");
@@ -266,8 +283,9 @@ earth_purchase_spies(struct yt_session *session,
 				int32_t selected;
 
 				if (qb_str_single(number, sizeof(number),
-				    (float)(active_count + spy_index + 1)) < 0
-				    || snprintf(prompt, sizeof(prompt),
+				    (float)(active_count + spy_index + 1)) < 0)
+					return false;
+				if (snprintf(prompt, sizeof(prompt),
 				    "Start spy #%s in what sector?", number) < 0)
 					return false;
 				if (!earth_quantity_input(session, prompt,
@@ -287,11 +305,14 @@ earth_purchase_spies(struct yt_session *session,
 			}
 		}
 		session->spies.count = active_count + quantity;
-		if (!yt_session_list_spies(session, error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "spy purchase pause blank", error)
-		    || !session_press_any_key(session, false, error)
-		    || !session_write_player(session, error))
+		if (!yt_session_list_spies(session, error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "spy purchase pause blank", error))
+			return false;
+		if (!session_press_any_key(session, false, error))
+			return false;
+		if (!session_write_player(session, error))
 			return false;
 		return session_earth_receipt(session, cached_earth, cost, error);
 	}
@@ -318,17 +339,20 @@ earth_anti_cloak(struct yt_session *session, float price,
 
 	if (!session_present_text(session, activation,
 	    sizeof(activation) - 1U, SESSION_PRESENT_LINE,
-	    "anti-cloak transaction row", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "anti-cloak transaction row", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "anti-cloak transaction row", error))
 		return false;
 	if (session->presentation.foreground != 2)
 		session_set_color(session, 2);
 	if (!session_present_text(session, waves, sizeof(waves) - 1U,
-	    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "anti-cloak transaction row", error)
-	    || !session_sound(session, YT_SOUND_CUE_ATTACK,
+	    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "anti-cloak transaction row", error))
+		return false;
+	if (!session_sound(session, YT_SOUND_CUE_ATTACK,
 	    "anti-cloak transaction sound", error))
 		return false;
 	for (player_record = YT_PLAYER_FIRST_RECORD;
@@ -357,8 +381,11 @@ earth_anti_cloak(struct yt_session *session, float price,
 			session_set_color(session, 6);
 		if (!session_present_text(session, row,
 		    name_length + sizeof(uncloaked) - 1U,
-		    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error)
-		    || !session_sound(session, YT_SOUND_CUE_REWARD,
+		    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error)) {
+			session->player.record = field_player.record;
+			return false;
+		}
+		if (!session_sound(session, YT_SOUND_CUE_REWARD,
 		    "anti-cloak transaction sound", error)) {
 			session->player.record = field_player.record;
 			return false;
@@ -367,20 +394,33 @@ earth_anti_cloak(struct yt_session *session, float price,
 	}
 	if (session->presentation.foreground != 2)
 		session_set_color(session, 2);
-	if (!reported
-	    && (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "anti-cloak transaction row", error)
-	    || !session_present_text(session, none, sizeof(none) - 1U,
-	    SESSION_PRESENT_LINE, "anti-cloak transaction row", error))) {
+	if (!reported) {
+		if (!session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "anti-cloak transaction row", error)) {
+			if (field_loaded)
+				session->player.record = field_player.record;
+			return false;
+		}
+		if (!session_present_text(session, none, sizeof(none) - 1U,
+		    SESSION_PRESENT_LINE, "anti-cloak transaction row", error)) {
+			if (field_loaded)
+				session->player.record = field_player.record;
+			return false;
+		}
+	}
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "anti-cloak transaction row", error)) {
 		if (field_loaded)
 			session->player.record = field_player.record;
 		return false;
 	}
-	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "anti-cloak transaction row", error)
-	    || !session_present_text(session, fade, sizeof(fade) - 1U,
-	    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error)
-	    || !session_sound(session, YT_SOUND_CUE_DAMAGE,
+	if (!session_present_text(session, fade, sizeof(fade) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error)) {
+		if (field_loaded)
+			session->player.record = field_player.record;
+		return false;
+	}
+	if (!session_sound(session, YT_SOUND_CUE_DAMAGE,
 	    "anti-cloak transaction sound", error)) {
 		if (field_loaded)
 			session->player.record = field_player.record;
@@ -432,16 +472,22 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 		shields_price = price[2];
 		ground_price = price[3];
 		if (!session_present_paged_line(session, menu, sizeof(menu) - 1U,
-		    "Earth report menu", error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "Earth prompt blank", error)
-		    || qb_str_double(credits_text, sizeof(credits_text),
-		    (double)session->player.credits) < 0
-		    || snprintf(prompt, sizeof(prompt), "Credits:%s%s",
-		    credits_text, prompt_suffix) < 0
-		    || !session_present_timed_paged_row(session, (const uint8_t *)prompt,
-		    strlen(prompt), "Earth item prompt", error)
-		    || !session_read_upper_command(session, line, sizeof(line)))
+		    "Earth report menu", error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "Earth prompt blank", error))
+			return false;
+		if (qb_str_double(credits_text, sizeof(credits_text),
+		    (double)session->player.credits) < 0)
+			return false;
+		if (snprintf(prompt, sizeof(prompt), "Credits:%s%s",
+		    credits_text, prompt_suffix) < 0)
+			return false;
+		if (!session_present_timed_paged_row(session,
+		    (const uint8_t *)prompt, strlen(prompt),
+		    "Earth item prompt", error))
+			return false;
+		if (!session_read_upper_command(session, line, sizeof(line)))
 			return false;
 		if (line[0] == '\0')
 			continue;
@@ -458,15 +504,17 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 				    "Earth menu CINT");
 		}
 		if (strcmp(line, "S") == 0) {
-			if (!yt_session_display_sector(session, true, error)
-			    || !session_wait(session, 9.0,
+			if (!yt_session_display_sector(session, true, error))
+				return false;
+			if (!session_wait(session, 9.0,
 			    "Earth Sensors wait", error))
 				return false;
 			continue;
 		}
 		if (strcmp(line, "I") == 0) {
-			if (!yt_session_show_ship(session, error)
-			    || !session_wait(session, 9.0,
+			if (!yt_session_show_ship(session, error))
+				return false;
+			if (!session_wait(session, 9.0,
 			    "Earth Info wait", error))
 				return false;
 			continue;
@@ -555,15 +603,18 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 				continue;
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE, "Earth Anti-Cloak accepted blank",
-			    error)
-			    || !earth_anti_cloak(session, 1000000000.0f, error))
+			    error))
+				return false;
+			if (!earth_anti_cloak(session, 1000000000.0f, error))
 				return false;
 			session->earth.anti_cloak_enabled = true;
 			if (!session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE, "Earth Anti-Cloak pause blank", error)
-			    || !session_present_timed_paged_row(session, pause, sizeof(pause) - 1U,
-			    "Earth Anti-Cloak pause prompt", error)
-			    || !session_read_command(session, response, sizeof(response)))
+			    SESSION_PRESENT_LINE, "Earth Anti-Cloak pause blank", error))
+				return false;
+			if (!session_present_timed_paged_row(session, pause,
+			    sizeof(pause) - 1U, "Earth Anti-Cloak pause prompt", error))
+				return false;
+			if (!session_read_command(session, response, sizeof(response)))
 				return false;
 			continue;
 		}
