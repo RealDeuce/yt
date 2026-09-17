@@ -87,8 +87,9 @@ write_banner(const char *credited_name, bool rmt,
 		char line[100];
 		int written;
 
-		if (!yt_clock_read(clock, &time_now, error)
-		    || !yt_clock_read(clock, &date_now, error))
+		if (!yt_clock_read(clock, &time_now, error))
+			goto failure;
+		if (!yt_clock_read(clock, &date_now, error))
 			goto failure;
 		yt_format_time(&time_now, time);
 		yt_format_date(&date_now, date);
@@ -121,8 +122,9 @@ clear_yt_radio_messages(struct yt_error *error)
 	yt_text_output_init(&output);
 	if (!yt_text_output_open(&output, "YTRMSG.DAT", error))
 		goto done;
-	if (!yt_text_output_close_all(&output, error)
-	    || !yt_file_kill("YTRMSG.DAT", error))
+	if (!yt_text_output_close_all(&output, error))
+		goto done;
+	if (!yt_file_kill("YTRMSG.DAT", error))
 		goto done;
 	result = true;
 
@@ -139,9 +141,11 @@ yt_init_write_sequential_file(const char *path, const uint8_t *data,
 	bool result = false;
 
 	yt_text_output_init(&output);
-	if (!yt_text_output_open(&output, path, error)
-	    || !yt_text_output_write(&output, data, length, error)
-	    || !yt_text_output_close(&output, error))
+	if (!yt_text_output_open(&output, path, error))
+		goto done;
+	if (!yt_text_output_write(&output, data, length, error))
+		goto done;
+	if (!yt_text_output_close(&output, error))
 		goto done;
 	result = true;
 
@@ -157,40 +161,51 @@ yt_init_write_yt_auxiliary(struct yt_database *database,
 	static const uint8_t dummy[] = "Dummy,Dummy,Dummy,Dummy\r\n";
 	static const uint8_t play[] = "L64cgaL1p1p1p1";
 
-	if (!write_banner(NULL, false, options->clock, error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Initializing the alias file (Matches real name to alias.)", error)
-	    || !yt_database_random_close(database, error)
-	    || !yt_init_write_sequential_file("YTNAME.DAT", dummy,
-	    sizeof(dummy) - 1U, error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Clearing YTRMSG.DAT  (Radio message file)", error)
-	    || !clear_yt_radio_messages(error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Initialization completed sucessfully!", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "<YT-INIT Normal Termination>", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Be SURE to run YTMAINT.EXE at LEAST ONCE per day EVERY DAY!", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Run YTCONFIG and change the default OPTIONS if you wish!", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Running initial maintenance...", error)
-	    || !yt_present(options, YT_INIT_OUTPUT_PLAY, play,
+	if (!write_banner(NULL, false, options->clock, error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Initializing the alias file (Matches real name to alias.)", error))
+		return false;
+	if (!yt_database_random_close(database, error))
+		return false;
+	if (!yt_init_write_sequential_file("YTNAME.DAT", dummy,
+	    sizeof(dummy) - 1U, error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Clearing YTRMSG.DAT  (Radio message file)", error))
+		return false;
+	if (!clear_yt_radio_messages(error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Initialization completed sucessfully!", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "<YT-INIT Normal Termination>", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Be SURE to run YTMAINT.EXE at LEAST ONCE per day EVERY DAY!", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Run YTCONFIG and change the default OPTIONS if you wish!", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Running initial maintenance...", error))
+		return false;
+	if (!yt_present(options, YT_INIT_OUTPUT_PLAY, play,
 	    sizeof(play) - 1U, error))
 		return false;
 	return true;
@@ -217,23 +232,29 @@ yt_init_write_rmt_auxiliary(struct yt_database *database,
 
 	yt_radio_file_init(&file);
 
-	if (!write_banner(credited_name, true, options->clock, error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present_text(options, YT_RMT_OUTPUT_LINE,
-	    "Setting up yesterday's newspaper file.", error)
-	    || !yt_init_write_sequential_file("YTYNEWS.DAT", yesterday,
-	    sizeof(yesterday) - 1U, error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present_text(options, YT_RMT_OUTPUT_LINE,
-	    "Initializing the alias file (Matches real name to alias.)", error)
-	    || !yt_database_random_close(database, error)
-	    || !yt_init_write_sequential_file("YTNAME.DAT", dummy,
-	    sizeof(dummy) - 1U, error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	if (!write_banner(credited_name, true, options->clock, error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	    "Setting up yesterday's newspaper file.", error))
+		return false;
+	if (!yt_init_write_sequential_file("YTYNEWS.DAT", yesterday,
+	    sizeof(yesterday) - 1U, error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	    "Initializing the alias file (Matches real name to alias.)", error))
+		return false;
+	if (!yt_database_random_close(database, error))
+		return false;
+	if (!yt_init_write_sequential_file("YTNAME.DAT", dummy,
+	    sizeof(dummy) - 1U, error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
 	    "Clearing YTRMSG.DAT  (Radio message file)", error))
 		return false;
 	written = snprintf(prophecy, sizeof(prophecy),
@@ -249,8 +270,9 @@ yt_init_write_rmt_auxiliary(struct yt_database *database,
 	yt_radio_set_number(&radio, 8, -2.0f);
 	yt_radio_set_text(&radio, (const uint8_t *)prophecy,
 	    (size_t)written, 72);
-	if (!yt_init_write_sequential_file("YTRMSG.DAT", NULL, 0U, error)
-	    || !yt_radio_file_open(&file, "YTRMSG.DAT", error))
+	if (!yt_init_write_sequential_file("YTRMSG.DAT", NULL, 0U, error))
+		goto done;
+	if (!yt_radio_file_open(&file, "YTRMSG.DAT", error))
 		goto done;
 	for (index = 0; index < 5; ++index) {
 		uint32_t record;
@@ -262,8 +284,13 @@ yt_init_write_rmt_auxiliary(struct yt_database *database,
 		 * record 1 and overwrites it; the following four LOFs are aligned.
 		 */
 		if (index == 0) {
-			if (!yt_radio_file_size(&file, &size, error)
-			    || size != 1U) {
+			if (!yt_radio_file_size(&file, &size, error)) {
+				if (error != NULL && error->status == YT_OK)
+					set_error(error, YT_RANGE,
+					    "RMT initial radio LOF", "YTRMSG.DAT");
+				goto done;
+			}
+			if (size != 1U) {
 				if (error != NULL && error->status == YT_OK)
 					set_error(error, YT_RANGE,
 					    "RMT initial radio LOF", "YTRMSG.DAT");
@@ -276,9 +303,9 @@ yt_init_write_rmt_auxiliary(struct yt_database *database,
 		if (!yt_radio_file_put(&file, record, &radio, error))
 			goto done;
 	}
-	if (!yt_radio_file_close(&file, error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error))
+	if (!yt_radio_file_close(&file, error))
+		goto done;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
 		goto done;
 	valid = true;
 
