@@ -115,7 +115,7 @@ yt_session_info_team_lines(struct yt_session *session,
 		return true;
 	}
 	captain_record = team.captain;
-	session->player_reference.record = (float)captain_record;
+	session->player_reference.record = captain_record;
 	if (captain_record >= 2
 	    && captain_record <= session_sector_offset(session)) {
 		if (!yt_game_read_player(&session->door->game, captain_record,
@@ -128,7 +128,7 @@ yt_session_info_team_lines(struct yt_session *session,
 		}
 	}
 	if (!valid_captain) {
-		session->player_reference.record = (float)current_record;
+		session->player_reference.record = current_record;
 		session->team_cache.captain = current_record;
 		session->team_cache.current_player_is_captain = true;
 		if (!session_read_sector(session, team_id, &fresh, error)

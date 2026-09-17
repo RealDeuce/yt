@@ -38,26 +38,6 @@ test_direct_attack_double_sub(double left, double right)
 	return result;
 }
 
-static bool
-test_direct_attack_candidate_record(struct test_direct_attack_state *state,
-    int *record, struct yt_error *error)
-{
-	bool overflow;
-	int32_t converted = qb_cint_mode((double)state->candidate,
-	    state->conversion_mode, &overflow);
-
-	if (!overflow && yt_player_cache_contains((int)converted)) {
-		*record = (int)converted;
-		return true;
-	}
-	if (error != NULL) {
-		error->status = YT_RANGE;
-		(void)snprintf(error->operation, sizeof(error->operation), "%s",
-		    "direct Attack candidate cache CINT");
-	}
-	return false;
-}
-
 bool
 test_direct_attack_attrition_run(
     struct test_direct_attack_attrition_state *state,
@@ -289,8 +269,8 @@ test_direct_attack_run(struct test_direct_attack_state *state,
 	    || ops->amount == NULL || ops->combat == NULL
 	    || state->player_cache == NULL)
 		return false;
-	state->candidate = 2.0f;
-	state->target_record_cell = 0.0f;
+	state->candidate = 2;
+	state->target_record_cell = 0;
 	state->committed = 0.0;
 	state->encountered = false;
 	state->enter_sector = false;
@@ -321,10 +301,8 @@ test_direct_attack_run(struct test_direct_attack_state *state,
 		bool cloaked;
 		bool positive_team;
 		bool same_team;
-		int record;
+		int record = state->candidate;
 
-		if (!test_direct_attack_candidate_record(state, &record, error))
-			return false;
 		cached_sector = yt_player_cache_value(state->player_cache, record,
 		    YT_PLAYER_CACHE_SECTOR);
 		cached_cloak = yt_player_cache_value(state->player_cache, record,
@@ -333,8 +311,7 @@ test_direct_attack_run(struct test_direct_attack_state *state,
 		self = record == state->current_player_record;
 		cloaked = cached_cloak > 0.0f;
 		if (sector_mismatch || self || cloaked) {
-			state->candidate = test_direct_attack_single_add(
-			    state->candidate, 1.0f);
+			++state->candidate;
 			continue;
 		}
 
@@ -342,7 +319,7 @@ test_direct_attack_run(struct test_direct_attack_state *state,
 		if (ops->store_target_record != NULL) {
 			uint8_t target_record_raw[4];
 
-			(void)qb_mbf32_encode(state->candidate,
+			(void)qb_mbf32_encode((float)state->candidate,
 			    target_record_raw);
 			ops->store_target_record(context, target_record_raw);
 		}
@@ -360,8 +337,7 @@ test_direct_attack_run(struct test_direct_attack_state *state,
 			    YT_DIRECT_ATTACK_TEAM_ROW, error))
 				return false;
 			state->encountered = true;
-			state->candidate = test_direct_attack_single_add(
-			    state->candidate, 1.0f);
+			++state->candidate;
 			continue;
 		}
 
@@ -371,8 +347,7 @@ test_direct_attack_run(struct test_direct_attack_state *state,
 		    || !ops->confirm(context, row, row_length, &answer, error))
 			return false;
 		if (answer == YT_DIRECT_ATTACK_CONFIRM_NO) {
-			state->candidate = test_direct_attack_single_add(
-			    state->candidate, 1.0f);
+			++state->candidate;
 			continue;
 		}
 		if (answer != YT_DIRECT_ATTACK_CONFIRM_YES
@@ -387,8 +362,7 @@ test_direct_attack_run(struct test_direct_attack_state *state,
 			return false;
 		parsed = qb_val(response);
 		state->committed = parsed.valid ? parsed.value : 0.0;
-		if (state->committed < 1.0
-		    || state->target_record_cell < 1.0f) {
+		if (state->committed < 1.0 || state->target_record_cell < 1) {
 			state->route = YT_DIRECT_ATTACK_CANCELLED;
 			state->complete = true;
 			return true;

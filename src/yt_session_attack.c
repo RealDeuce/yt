@@ -258,27 +258,6 @@ yt_session_attack_player(struct yt_session *session, int target_record,
 	    current_player_record, current_sector, target_shields, error);
 }
 
-static bool
-direct_attack_candidate_record(struct yt_session *session, float candidate,
-    int *record, struct yt_error *error)
-{
-	bool overflow;
-	int32_t converted;
-
-	converted = qb_cint_mode((double)candidate,
-	    session->presentation.sound.conversion_mode, &overflow);
-	if (!overflow && yt_player_cache_contains((int)converted)) {
-		*record = (int)converted;
-		return true;
-	}
-	if (error != NULL) {
-		error->status = YT_RANGE;
-		(void)snprintf(error->operation, sizeof(error->operation), "%s",
-		    "direct Attack candidate cache CINT");
-	}
-	return false;
-}
-
 bool
 yt_session_command_attack(struct yt_session *session, bool *enter_sector,
     struct yt_error *error)
@@ -296,7 +275,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 	char response[YT_COMMAND_SIZE];
 	size_t row_length;
 	size_t target_name_length;
-	float candidate = 2.0f;
+	int candidate = 2;
 	bool encountered = false;
 
 	if (enter_sector == NULL)
@@ -311,7 +290,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		    sizeof(no_fighters) - 1U, "direct Attack no-fighters row",
 		    error);
 
-	while (candidate <= (float)session_sector_offset(session)) {
+	while (candidate <= session_sector_offset(session)) {
 		struct qb_val_result parsed;
 		enum yt_yes_no_answer answer;
 		float cached_sector;
@@ -321,11 +300,8 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		bool cloaked;
 		bool positive_team;
 		bool same_team;
-		int record;
+		int record = candidate;
 
-		if (!direct_attack_candidate_record(session, candidate, &record,
-		    error))
-			return false;
 		cached_sector = yt_player_cache_value(&session->player_cache,
 		    record, YT_PLAYER_CACHE_SECTOR);
 		cached_cloak = yt_player_cache_value(&session->player_cache,
@@ -334,7 +310,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		self = record == session_record(session);
 		cloaked = cached_cloak > 0.0f;
 		if (sector_mismatch || self || cloaked) {
-			candidate = qb_single_add(candidate, 1.0f);
+			++candidate;
 			continue;
 		}
 
@@ -353,7 +329,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 			    row_length))
 				return false;
 			encountered = true;
-			candidate = qb_single_add(candidate, 1.0f);
+			++candidate;
 			continue;
 		}
 
@@ -363,7 +339,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		    || !session_confirm(session, row, row_length, &answer, error))
 			return false;
 		if (answer == YT_YES_NO_NO) {
-			candidate = qb_single_add(candidate, 1.0f);
+			++candidate;
 			continue;
 		}
 		if (answer != YT_YES_NO_YES && answer != YT_YES_NO_EMPTY)

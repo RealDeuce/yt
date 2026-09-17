@@ -104,13 +104,12 @@ enum test_direct_attack_confirmation {
 
 struct test_direct_attack_state {
 	int current_player_record;
-	float last_player_record;
-	uint8_t conversion_mode;
+	int last_player_record;
 	const struct yt_player_cache *player_cache;
 	struct yt_player current;
 	struct yt_player candidate_player;
-	float candidate;
-	float target_record_cell;
+	int candidate;
+	int target_record_cell;
 	double committed;
 	bool encountered;
 	bool enter_sector;

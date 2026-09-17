@@ -74,7 +74,7 @@ struct session_planet_state {
 };
 
 struct session_player_reference_state {
-	float record;
+	int record;
 	bool friendly;
 };
 

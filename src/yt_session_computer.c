@@ -231,8 +231,9 @@ yt_session_computer_planet_report(struct yt_session *session,
 
 			session->combat.deployed_fighters =
 			    (double)sector.fighters;
-			session->player_reference.record = sector.fighter_owner;
-			fighter_owner = session->player_reference.record;
+			session->player_reference.record =
+			    (int)sector.fighter_owner;
+			fighter_owner = (float)session->player_reference.record;
 			if (!yt_session_computer_owner_is_friendly(session,
 			    fighter_owner, &fighter_friendly, error))
 				return false;
@@ -292,7 +293,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 		}
 		else {
 			sector_fighters = session->combat.deployed_fighters;
-			fighter_owner = session->player_reference.record;
+			fighter_owner = (float)session->player_reference.record;
 			relationship_friendly = session->player_reference.friendly;
 			scratch = link;
 		}

@@ -11860,7 +11860,6 @@ direct_attack_fixture(struct direct_attack_tape *tape,
 	*state = (struct test_direct_attack_state){
 		.current_player_record = 2,
 		.last_player_record = 5,
-		.conversion_mode = 0,
 		.player_cache = &tape->player_cache,
 	};
 }
@@ -11912,8 +11911,8 @@ check_direct_attack_transaction(void)
 	direct_attack_fixture(&tape, &state);
 	if (!test_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || !state.complete || state.route != YT_DIRECT_ATTACK_COMBAT_RETURN
-	    || state.enter_sector || !state.encountered || state.candidate != 5.0f
-	    || state.target_record_cell != 5.0f || state.committed != 3.0
+	    || state.enter_sector || !state.encountered || state.candidate != 5
+	    || state.target_record_cell != 5 || state.committed != 3.0
 	    || tape.combat_target != 5 || tape.combat_committed != 3.0
 	    || tape.read_count != 4U || tape.read_records[0] != 2
 	    || tape.read_records[1] != 3 || tape.read_records[2] != 4
@@ -11954,8 +11953,8 @@ check_direct_attack_transaction(void)
 		    tape.event_count * sizeof(tape.events[0])) != 0
 		    || error.status != YT_IO_ERROR
 		    || state.encountered != (failure >= 4U)
-		    || state.target_record_cell != (failure < 2U ? 0.0f
-		    : failure < 4U ? 3.0f : failure < 6U ? 4.0f : 5.0f)
+		    || state.target_record_cell != (failure < 2U ? 0
+		    : failure < 4U ? 3 : failure < 6U ? 4 : 5)
 		    || !direct_attack_stored_targets(&tape,
 		    failure < 2U ? 0U : failure < 4U ? 1U
 		    : failure < 6U ? 2U : 3U))
@@ -11982,7 +11981,7 @@ check_direct_attack_transaction(void)
 	if (!test_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || state.route != YT_DIRECT_ATTACK_EXHAUSTED || !state.complete
 	    || !state.enter_sector || state.encountered
-	    || state.target_record_cell != 0.0f
+	    || state.target_record_cell != 0
 	    || !direct_attack_stored_targets(&tape, 0U)
 	    || tape.output_length[YT_DIRECT_ATTACK_NONE_VISIBLE_ROW]
 	    != sizeof(none_visible) - 1U
@@ -12010,7 +12009,7 @@ check_direct_attack_transaction(void)
 	(void)snprintf(tape.amount, sizeof(tape.amount), "%s", "0");
 	if (!test_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || state.route != YT_DIRECT_ATTACK_CANCELLED || !state.complete
-	    || state.target_record_cell != 3.0f || state.committed != 0.0
+	    || state.target_record_cell != 3 || state.committed != 0.0
 	    || !direct_attack_stored_targets(&tape, 1U)
 	    || tape.combat_target != 0)
 		return false;
