@@ -667,7 +667,7 @@ plasma_reload_sector:
 			}
 			saved_mines = victim.mines;
 			victim.mines = 0.0f;
-			victim.danger_scanner = 0.0f;
+			victim.danger_scanner = 0;
 			if (!yt_record_set_number(&victim.record, YT_F129, 0.0f)
 			    || !yt_record_set_number(&victim.record, YT_F93, 0.0f)
 			    || !yt_database_write(&session->door->game.database,

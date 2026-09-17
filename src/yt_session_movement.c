@@ -324,7 +324,7 @@ yt_session_command_move(struct yt_session *session, bool *moved,
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "movement accepted blank", error))
 		return false;
-	if (session->player.danger_scanner != 0.0f) {
+	if (session->player.danger_scanner != 0) {
 		bool dangerous;
 
 		if (!yt_session_destination_is_dangerous(session, target,

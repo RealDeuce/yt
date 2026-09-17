@@ -171,9 +171,9 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 				    TEST_SECTOR_MINE_OUTPUT_BOLD_LINE, error)
 				    || !ops->random(context, &draw, error))
 					return false;
-				if (working.danger_scanner != 0.0f
+				if (working.danger_scanner != 0
 				    && draw > 0.949999988079071f) {
-					working.danger_scanner = 0.0f;
+					working.danger_scanner = 0;
 					state->touched |=
 					    YT_SECTOR_MINE_DAMAGE_SCANNER;
 					state->foreground = 7.0f;
@@ -232,8 +232,8 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 				MINE_LOSS_ROW(YT_SECTOR_MINE_LOSS_MISSILES,
 				    "sector mine missile loss");
 			}
-			if (working.danger_scanner != 0.0f) {
-				working.danger_scanner = 0.0f;
+			if (working.danger_scanner != 0) {
+				working.danger_scanner = 0;
 				state->touched |= YT_SECTOR_MINE_DAMAGE_SCANNER;
 				state->foreground = 7.0f;
 				state->blink = 1.0f;
@@ -318,4 +318,3 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 	state->complete = true;
 	return true;
 }
-

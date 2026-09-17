@@ -229,7 +229,7 @@ check_current_player_cache_model(void)
 	fresh.equipment = 11.0f;
 	fresh.credits = 12.0f;
 	fresh.team = 13;
-	fresh.danger_scanner = 14.0f;
+	fresh.danger_scanner = -1;
 	fresh.missiles = 15.0f;
 	fresh.score = 16.0f;
 	fresh.plasma = 17.0f;
@@ -251,7 +251,7 @@ check_current_player_cache_model(void)
 	    || player.holds != 8.0f || player.ore != 9.0f
 	    || player.organics != 10.0f || player.equipment != 11.0f
 	    || player.credits != 12.0f || player.team != 13
-	    || player.danger_scanner != 14.0f || player.missiles != 15.0f
+	    || player.danger_scanner != -1 || player.missiles != 15.0f
 	    || player.score != 0.0f || player.plasma != 17.0f
 	    || player.ports_owned != 18.0f || player.ground_forces != 19.0f
 	    || player.cloak != 20.0f || player.mines != 21.0f
@@ -470,7 +470,7 @@ check_projectile_damage_model(void)
 	memset(&target, 0, sizeof(target));
 	target.fighters = 1000.0f;
 	target.shields = 100.0f;
-	target.danger_scanner = -1.0f;
+	target.danger_scanner = -1;
 	remaining = 2.5f;
 	tape.values = lethal_draws;
 	tape.count = YT_ARRAY_LEN(lethal_draws);
@@ -484,7 +484,7 @@ check_projectile_damage_model(void)
 	    || remaining != 0.5f || damage.fighters != 1000.0
 	    || damage.shields != 100.0f || damage.scanner_disabled
 	    || target.fighters != 0.0f || target.shields != 0.0f
-	    || target.danger_scanner != -1.0f)
+	    || target.danger_scanner != -1)
 		return false;
 
 	memset(&target, 0, sizeof(target));
@@ -504,7 +504,7 @@ check_projectile_damage_model(void)
 	memset(&target, 0, sizeof(target));
 	target.fighters = 1.0f;
 	target.shields = 1.0f;
-	target.danger_scanner = -1.0f;
+	target.danger_scanner = -1;
 	remaining = 101.5f;
 	tape.values = scanner_draws;
 	tape.count = YT_ARRAY_LEN(scanner_draws);
@@ -513,13 +513,13 @@ check_projectile_damage_model(void)
 	    &random, &damage, &error)
 	    || tape.position != 4U
 	    || remaining != 100.5f || !damage.scanner_disabled
-	    || target.danger_scanner != 0.0f)
+	    || target.danger_scanner != 0)
 		return false;
 
 	memset(&target, 0, sizeof(target));
 	target.fighters = 10.0f;
 	target.shields = 10.0f;
-	target.danger_scanner = -1.0f;
+	target.danger_scanner = -1;
 	remaining = 1.0f;
 	tape.values = no_shield_draws;
 	tape.count = YT_ARRAY_LEN(no_shield_draws);
@@ -555,11 +555,11 @@ check_projectile_persistence_model(void)
 	expected = player.record;
 	if (!yt_record_set_number(&expected, YT_F53, 12.5f)
 	    || !yt_record_set_number(&expected, YT_F61, 7.25f)
-	    || !yt_record_set_number(&expected, YT_F93, -0.5f)
+	    || !yt_record_set_number(&expected, YT_F93, -1.0f)
 	    || !yt_projectile_survivor_overlay(&player, 12.5f, 7.25,
-	    -0.5f, false)
+	    -1, false)
 	    || player.shields != 12.5f || player.fighters != 7.25f
-	    || player.danger_scanner != -0.5f
+	    || player.danger_scanner != -1
 	    || memcmp(&player.record, &expected, sizeof(expected)) != 0)
 		return false;
 
@@ -571,8 +571,8 @@ check_projectile_persistence_model(void)
 	    || !yt_record_set_number(&expected, YT_F61, 2.0f)
 	    || !yt_record_set_raw_number(&expected, YT_F93, scanner_zero)
 	    || !yt_projectile_survivor_overlay(&player, 1.0f, 2.0,
-	    99.0f, true)
-	    || player.danger_scanner != 0.0f
+	    -1, true)
+	    || player.danger_scanner != 0
 	    || memcmp(&player.record, &expected, sizeof(expected)) != 0)
 		return false;
 
@@ -2231,7 +2231,7 @@ check_sector_mine_model(void)
 	working.ore = 4.0f;
 	working.organics = 5.0f;
 	working.equipment = 6.0f;
-	working.danger_scanner = 0.0f;
+	working.danger_scanner = 0;
 	working.missiles = 7.0f;
 	working.cloak = 0.5f;
 	working.mines = 8.0f;
@@ -2254,7 +2254,7 @@ check_sector_mine_model(void)
 	    || fresh.holds != working.holds || fresh.ore != working.ore
 	    || fresh.organics != working.organics
 	    || fresh.equipment != working.equipment
-	    || fresh.danger_scanner != 0.0f
+	    || fresh.danger_scanner != 0
 	    || fresh.missiles != working.missiles
 	    || fresh.cloak != working.cloak || fresh.mines != working.mines)
 		return false;

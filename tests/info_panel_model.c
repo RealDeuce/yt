@@ -203,7 +203,7 @@ yt_info_panel_run(struct yt_info_panel_state *state,
 	    " Equipment.... :", state->player.equipment, error))
 		return false;
 	(void)snprintf(left, sizeof(left), "%s",
-	    state->player.danger_scanner == 0.0f ? " NONE" : " Installed");
+	    state->player.danger_scanner == 0 ? " NONE" : " Installed");
 	if (qb_str_single(right, sizeof(right), state->player.ports_owned) < 0
 	    || !ordinary(state, ops, context, " Scanner.. :", left,
 	    " Ports Owned.. :", right, error))

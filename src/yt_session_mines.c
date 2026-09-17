@@ -66,10 +66,10 @@ mine_damage_shields(struct yt_session *session, struct yt_player *player,
 	    SESSION_PRESENT_BOLD_LINE, "sector mine output", error)
 	    || !yt_random_next(&session->door->game.random, &draw, error))
 		return false;
-	if (player->danger_scanner == 0.0f
+	if (player->danger_scanner == 0
 	    || draw <= 0.949999988079071f)
 		return true;
-	player->danger_scanner = 0.0f;
+	player->danger_scanner = 0;
 	*touched |= YT_SECTOR_MINE_DAMAGE_SCANNER;
 	session_set_foreground(session, 7.0f);
 	yt_present_set_blink(&session->presentation, 1.0f);
@@ -127,8 +127,8 @@ mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
 		    row, sizeof(row), error))
 			return false;
 	}
-	if (player->danger_scanner != 0.0f) {
-		player->danger_scanner = 0.0f;
+	if (player->danger_scanner != 0) {
+		player->danger_scanner = 0;
 		*touched |= YT_SECTOR_MINE_DAMAGE_SCANNER;
 		session_set_foreground(session, 7.0f);
 		yt_present_set_blink(&session->presentation, 1.0f);

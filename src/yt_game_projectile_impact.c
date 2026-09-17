@@ -227,8 +227,8 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 			return false;
 		scanner_product = qb_single_multiply(value, *remaining);
 		if (scanner_product > 100.0f
-		    && target->danger_scanner != 0.0f) {
-			target->danger_scanner = 0.0f;
+		    && target->danger_scanner != 0) {
+			target->danger_scanner = 0;
 			scanner_disabled = true;
 		}
 		if (!yt_random_next(random, &value, error))

@@ -24,7 +24,7 @@ struct yt_player {
 	float credits;
 	size_t name_length;
 	int team;
-	float danger_scanner;
+	int danger_scanner;
 	float missiles;
 	float lottery_plays;
 	float score;
@@ -718,7 +718,7 @@ struct yt_projectile_damage_result {
 };
 bool yt_projectile_damage_iteration(float counter, float saved_missiles);
 bool yt_projectile_survivor_overlay(struct yt_player *player, float shields,
-    double fighters, float scanner, bool scanner_disabled);
+    double fighters, int scanner, bool scanner_disabled);
 bool yt_projectile_victim_mines_overlay(struct yt_player *player,
     float *saved_mines);
 bool yt_projectile_sector_mines_overlay(struct yt_sector *sector,

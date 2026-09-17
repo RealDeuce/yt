@@ -108,7 +108,7 @@ yt_projectile_sector_mine_destroyed_row(float destroyed,
 
 bool
 yt_projectile_survivor_overlay(struct yt_player *player, float shields,
-    double fighters, float scanner, bool scanner_disabled)
+    double fighters, int scanner, bool scanner_disabled)
 {
 	static const uint8_t scanner_zero[4] = {
 		0x00, 0x00, 0x48, 0x00
@@ -118,13 +118,13 @@ yt_projectile_survivor_overlay(struct yt_player *player, float shields,
 		return false;
 	player->shields = shields;
 	player->fighters = (float)fighters;
-	player->danger_scanner = scanner_disabled ? 0.0f : scanner;
+	player->danger_scanner = scanner_disabled ? 0 : scanner;
 	return yt_record_set_number(&player->record, YT_F53, shields)
 	    && yt_record_set_number(&player->record, YT_F61,
 	    player->fighters)
 	    && (scanner_disabled
 	    ? yt_record_set_raw_number(&player->record, YT_F93, scanner_zero)
-	    : yt_record_set_number(&player->record, YT_F93, scanner));
+	    : yt_record_set_number(&player->record, YT_F93, (float)scanner));
 }
 
 bool

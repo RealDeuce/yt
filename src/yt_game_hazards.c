@@ -96,12 +96,12 @@ yt_sector_mine_player_overlay(struct yt_player *fresh,
 	MINE_OVERLAY(YT_SECTOR_MINE_DAMAGE_EQUIPMENT, equipment, YT_F77);
 	if ((fields & YT_SECTOR_MINE_DAMAGE_SCANNER) != 0U) {
 		fresh->danger_scanner = working->danger_scanner;
-		if (working->danger_scanner == 0.0f)
+		if (working->danger_scanner == 0)
 			(void)yt_record_set_raw_number(&fresh->record, YT_F93,
 			    scanner_zero);
 		else
 			(void)yt_record_set_number(&fresh->record, YT_F93,
-			    working->danger_scanner);
+			    (float)working->danger_scanner);
 	}
 	MINE_OVERLAY(YT_SECTOR_MINE_DAMAGE_MISSILES, missiles, YT_F97);
 	MINE_OVERLAY(YT_SECTOR_MINE_DAMAGE_CLOAK, cloak, YT_F125);

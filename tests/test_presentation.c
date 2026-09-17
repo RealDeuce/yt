@@ -12579,7 +12579,7 @@ info_panel_presentation_fixture(bool ansi)
 	fixture.player.organics = 5.0f;
 	fixture.player.missiles = 6.0f;
 	fixture.player.equipment = 7.0f;
-	fixture.player.danger_scanner = 1.0f;
+	fixture.player.danger_scanner = -1;
 	fixture.player.ports_owned = 8.0f;
 	fixture.player.shields = 90.0f;
 	fixture.player.cloak = 0.75f;
@@ -12892,7 +12892,7 @@ normal_exit_info_values_fixture(void)
 	values.player.organics = 5.0f;
 	values.player.missiles = 6.0f;
 	values.player.equipment = 7.0f;
-	values.player.danger_scanner = 1.0f;
+	values.player.danger_scanner = -1;
 	values.player.ports_owned = 8.0f;
 	values.player.shields = 90.0f;
 	values.player.cloak = 0.75f;
@@ -12935,7 +12935,7 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 		fixture.player.organics = 5.0f;
 		fixture.player.missiles = 6.0f;
 		fixture.player.equipment = 7.0f;
-		fixture.player.danger_scanner = 1.0f;
+		fixture.player.danger_scanner = -1;
 		fixture.player.ports_owned = 8.0f;
 		fixture.player.shields = 90.0f;
 		fixture.player.cloak = 0.75f;
@@ -28256,6 +28256,7 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 		(void)yt_record_set_number(&record, YT_F53, 9.0f);
 		(void)yt_record_set_number(&record, YT_F57, 1003.0f);
 		(void)yt_record_set_number(&record, YT_F61, 9.0f);
+		(void)yt_record_set_number(&record, YT_F93, -1.0f);
 		(void)yt_record_set_number(&record, YT_F117, 0.0f);
 		yt_player_decode(&attack.persistence_player, &record);
 		memset(&record, 0x96, sizeof(record));
@@ -33789,7 +33790,7 @@ test_hostile_quit_accept_presentation(void)
 	info.player.organics = 0.0f;
 	info.player.missiles = 5.0f;
 	info.player.equipment = 0.0f;
-	info.player.danger_scanner = 1.0f;
+	info.player.danger_scanner = -1;
 	info.player.ports_owned = 0.0f;
 	info.player.shields = 100.0f;
 	info.player.cloak = 0.5f;

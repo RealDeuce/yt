@@ -178,13 +178,13 @@ earth_purchase_scanner(struct yt_session *session,
 {
 	double affordable = yt_earth_affordable(session->player.credits, price);
 
-	if (session->player.danger_scanner != 0.0f)
+	if (session->player.danger_scanner != 0)
 		return session_earth_credit_error(session,
 		    "You already HAVE a Danger Scanner!", error);
 	if (floor(affordable) < 1.0)
 		return session_earth_credit_error(session,
 		    "You cannot afford a Danger Scanner!", error);
-	session->player.danger_scanner = -1.0f;
+	session->player.danger_scanner = -1;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "Earth Scanner leading blank", error))
 		return false;
