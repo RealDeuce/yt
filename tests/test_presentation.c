@@ -3380,34 +3380,8 @@ test_basic_fault_registry(void)
 		    0xB2DAU, 0U},
 		{YT_BASIC_FAULT_MAIN, 0x6CDBU, 0x6CDEU, 0x6CC7U, 33150,
 		    0xB2DAU, 0U},
-		{YT_BASIC_FAULT_SHARED, 0x103FU, 0x1042U, 0x103CU, 0,
-		    0x45F7U, 2U},
-		{YT_BASIC_FAULT_SHARED, 0x1050U, 0x1053U, 0x104DU, 0,
-		    0x45F7U, 2U},
-		{YT_BASIC_FAULT_SHARED, 0x1067U, 0x106AU, 0x1064U, 0,
-		    0x45F7U, 2U},
-		{YT_BASIC_FAULT_SHARED, 0x1072U, 0x1075U, 0x106FU, 0,
-		    0x45F7U, 2U},
-		{YT_BASIC_FAULT_SHARED, 0x1099U, 0x109CU, 0x1096U, 0,
-		    0x45F7U, 2U},
-		{YT_BASIC_FAULT_SHARED, 0x10A6U, 0x10A9U, 0x1096U, 0,
-		    0x45F7U, 2U},
-		{YT_BASIC_FAULT_SHARED, 0x10B4U, 0x10B7U, 0x10B1U, 0,
-		    0x45F7U, 2U},
-		{YT_BASIC_FAULT_SHARED, 0x1105U, 0x1108U, 0x1102U, 0,
-		    0x45F7U, 2U},
 		{YT_BASIC_FAULT_SHARED, 0x1156U, 0x1159U, 0x113EU, 0,
 		    0x45F7U, 0U},
-		{YT_BASIC_FAULT_SHARED, 0x134CU, 0x134FU, 0x1349U, 0,
-		    0x45F7U, 2U},
-		{YT_BASIC_FAULT_SHARED, 0x136CU, 0x136FU, 0x1369U, 0,
-		    0x45F7U, 2U},
-		{YT_BASIC_FAULT_SHARED, 0x13ADU, 0x13B0U, 0x13AAU, 0,
-		    0x45F7U, 2U},
-		{YT_BASIC_FAULT_MAIN, 0x90E9U, 0x90ECU, 0x90E1U, 33880,
-		    0xB2DAU, 2U},
-		{YT_BASIC_FAULT_MAIN, 0x9123U, 0x9126U, 0x9120U, 33880,
-		    0xB2DAU, 2U},
 		{YT_BASIC_FAULT_MAIN, 0x92E1U, 0x92E4U, 0x92CCU, 33890,
 		    0xB2DAU, 0U},
 		{YT_BASIC_FAULT_SHARED, 0x1584U, 0x1587U, 0x1579U, 0,
@@ -3790,15 +3764,6 @@ test_basic_fault_projection(void)
 
 	yt_error_clear(&error);
 	CHECK(yt_error_attach_basic_fault_number(&error,
-	    YT_BASIC_FAULT_ROUTE_DISPLAY_VERTEX_CINT, 6U)
-	    && yt_basic_fault_project(&error, NULL, 0U, date,
-	    sizeof(date) - 1U, time_text, sizeof(time_text) - 1U, &projection)
-	    && projection.disposition == YT_BASIC_FAULT_RESUME_GAMEPLAY
-	    && projection.identity->source_line == 33880
-	    && projection.main.route == YT_MAIN_ERROR_GAMEPLAY);
-
-	yt_error_clear(&error);
-	CHECK(yt_error_attach_basic_fault_number(&error,
 	    YT_BASIC_FAULT_PORT_SELECTED_SECTOR_GET, 52U)
 	    && yt_basic_fault_project(&error, NULL, 0U, date,
 	    sizeof(date) - 1U, time_text, sizeof(time_text) - 1U, &projection)
@@ -3815,15 +3780,6 @@ test_basic_fault_projection(void)
 	    && projection.shared.route == YT_SHARED_ERROR_DORINFO_COM
 	    && projection.shared.ends
 	    && projection.identity->retry_statement == 0x97BBU);
-
-	yt_error_clear(&error);
-	CHECK(yt_error_attach_basic_fault_number(&error,
-	    YT_BASIC_FAULT_ROUTE_START_FIFO_CINT, 6U)
-	    && yt_basic_fault_project(&error, NULL, 0U, date,
-	    sizeof(date) - 1U, time_text, sizeof(time_text) - 1U, &projection)
-	    && projection.disposition == YT_BASIC_FAULT_END
-	    && projection.shared.route == YT_SHARED_ERROR_GENERIC
-	    && projection.identity->retry_statement == 0x103CU);
 
 	yt_error_clear(&error);
 	CHECK(!yt_error_attach_basic_fault_number(&error,

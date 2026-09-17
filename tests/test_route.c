@@ -85,6 +85,12 @@ test_routes_from_database(void)
 	CHECK(found && outcome == YT_ROUTE_FOUND && status == 0.0f);
 	CHECK(route.next_hop[1] == 2 && route.next_hop[2] == 4);
 
+	session.navigation.avoided_sectors[0] = 1.5f;
+	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, &route, true,
+	    &found, &outcome, &status, &error));
+	CHECK(found && outcome == YT_ROUTE_FOUND && status == 0.0f);
+	CHECK(route.next_hop[1] == 3 && route.next_hop[3] == 4);
+
 	session.navigation.avoided_sectors[0] = 1.0f;
 	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, &route, true,
 	    &found, &outcome, &status, &error));

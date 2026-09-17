@@ -6,23 +6,6 @@
 
 #include <stdio.h>
 #include <string.h>
-static bool
-computer_route_cint(struct yt_session *session, float value, int *converted,
-    enum yt_basic_fault_site site, const char *operation,
-    struct yt_error *error)
-{
-	bool overflow;
-	int32_t result = qb_cint_mode((double)value,
-	    session->presentation.sound.conversion_mode, &overflow);
-
-	if (overflow) {
-		session_computer_error(error, YT_RANGE, operation);
-		(void)yt_error_attach_basic_fault_number(error, site, 6U);
-		return false;
-	}
-	*converted = (int)result;
-	return true;
-}
 
 bool
 yt_session_computer_route(struct yt_session *session, bool autopilot,
@@ -170,16 +153,10 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		char number[64];
 		char token[80];
 		int column;
-		int display_index;
 		int ignored_row;
-		int program_vertex;
 		int16_t next;
 
-		if (!computer_route_cint(session, (float)cursor, &display_index,
-		    YT_BASIC_FAULT_ROUTE_DISPLAY_VERTEX_CINT,
-		    "route display vertex CINT", error))
-			return false;
-		next = route.next_hop[display_index];
+		next = route.next_hop[cursor];
 		if (next == 0)
 			break;
 		cursor = next;
@@ -190,13 +167,9 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		    (const uint8_t *)token, strlen(token),
 		    "path route token", error))
 			return false;
-		if (!computer_route_cint(session, (float)cursor, &program_vertex,
-		    YT_BASIC_FAULT_ROUTE_PROGRAM_VERTEX_CINT,
-		    "course-program vertex CINT", error))
-			return false;
 		if (!yt_computer_path_append_hop(programmed_moves,
 		    sizeof(programmed_moves), &programmed_moves_length,
-		    (float)program_vertex, &hop_count, error))
+		    (float)cursor, &hop_count, error))
 			return false;
 		yt_out_cursor_position(&ignored_row, &column);
 		if (yt_computer_path_wrap_required(column)
