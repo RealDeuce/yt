@@ -34,9 +34,6 @@ struct yt_present_event {
 	int background;
 	int row;
 	int column;
-	int cursor_visible;
-	int cursor_start;
-	int cursor_stop;
 	uint8_t data[YT_PRESENT_EVENT_DATA];
 	size_t length;
 };

@@ -58,8 +58,7 @@ append_local(struct yt_present_result *result,
 }
 
 static enum yt_present_status
-append_locate(struct yt_present_result *result, int row, int column,
-    int cursor_visible, int cursor_start, int cursor_stop)
+append_locate(struct yt_present_result *result, int row, int column)
 {
 	struct yt_present_event *event;
 	enum yt_present_status status = append_event(result,
@@ -70,9 +69,6 @@ append_locate(struct yt_present_result *result, int row, int column,
 	event = &result->events[result->event_count - 1U];
 	event->row = row;
 	event->column = column;
-	event->cursor_visible = cursor_visible;
-	event->cursor_start = cursor_start;
-	event->cursor_stop = cursor_stop;
 	return YT_PRESENT_OK;
 }
 
@@ -596,7 +592,7 @@ yt_present_press_cleanup(int saved_foreground,
 	enum yt_present_status status;
 
 	memset(result, 0, sizeof(*result));
-	status = append_locate(result, -1, 1, -1, 0, 0);
+	status = append_locate(result, -1, 1);
 	if (status != YT_PRESENT_OK)
 		return status;
 	if (!state->sound.local_mode) {
@@ -614,7 +610,7 @@ yt_present_press_cleanup(int saved_foreground,
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	status = append_locate(result, -1, 1, -1, 0, 0);
+	status = append_locate(result, -1, 1);
 	if (status != YT_PRESENT_OK)
 		return status;
 	state->foreground = saved_foreground;
@@ -635,7 +631,7 @@ yt_present_lottery_rewind(int row, int column,
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	return append_locate(result, row, column, -1, 0, 0);
+	return append_locate(result, row, column);
 }
 
 static enum yt_present_status
@@ -675,13 +671,13 @@ yt_present_radio_backspace(int line_number, size_t shortened_length,
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	status = append_locate(result, -1, column, -1, 0, 0);
+	status = append_locate(result, -1, column);
 	if (status != YT_PRESENT_OK)
 		return status;
 	status = append_local(result, YT_PRESENT_LOCAL_SEMI, &space, 1U, 0, 0);
 	if (status != YT_PRESENT_OK)
 		return status;
-	return append_locate(result, -1, column, -1, 0, 0);
+	return append_locate(result, -1, column);
 }
 
 enum yt_present_status
@@ -702,7 +698,7 @@ yt_present_radio_wrap_cleanup(int line_number, size_t wrap_marker,
 	status = radio_column(line_number, wrap_marker + 1U, &column);
 	if (status != YT_PRESENT_OK)
 		return status;
-	status = append_locate(result, -1, column, -1, 0, 0);
+	status = append_locate(result, -1, column);
 	if (status != YT_PRESENT_OK)
 		return status;
 	memset(spaces, ' ', erased);

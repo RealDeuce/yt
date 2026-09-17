@@ -90,14 +90,11 @@ present_local_text(const uint8_t *data, size_t length, bool line)
 }
 
 static void
-present_local_locate(int row, int column, int cursor_visible,
-    int cursor_start, int cursor_stop)
+present_local_locate(int row, int column)
 {
 	INT current_row;
 	INT current_column;
 
-	(void)cursor_start;
-	(void)cursor_stop;
 	if (row < 1) {
 		od_get_cursor(&current_row, &current_column);
 		row = current_row;
@@ -105,7 +102,6 @@ present_local_locate(int row, int column, int cursor_visible,
 			column = current_column;
 	}
 	od_set_cursor(row, column);
-	(void)cursor_visible;
 }
 
 static void
@@ -150,9 +146,7 @@ yt_out_present_result(const struct yt_present_result *result)
 			break;
 		case YT_PRESENT_LOCAL_LOCATE:
 			if (local)
-				present_local_locate(event->row, event->column,
-				    event->cursor_visible, event->cursor_start,
-				    event->cursor_stop);
+				present_local_locate(event->row, event->column);
 			break;
 		case YT_PRESENT_LOCAL_BEEP:
 			if (local)

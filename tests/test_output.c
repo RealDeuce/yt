@@ -328,7 +328,6 @@ build_adapter_result(struct yt_present_result *result)
 	    YT_PRESENT_LOCAL_LOCATE, NULL, 0U);
 	result->events[result->event_count - 1U].row = 4;
 	result->events[result->event_count - 1U].column = 7;
-	result->events[result->event_count - 1U].cursor_visible = 1;
 	set_event(&result->events[result->event_count++],
 	    YT_PRESENT_LOCAL_BEEP, NULL, 0U);
 	set_event(&result->events[result->event_count++],
