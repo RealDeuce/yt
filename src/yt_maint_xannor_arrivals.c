@@ -145,8 +145,9 @@ xannor_arrival_emit(yt_maintenance_score_line_fn line_output,
     void *line_context, const uint8_t *line, size_t length,
     struct yt_error *error)
 {
-	return yt_news_append_bytes(line, length, error)
-	    && line_output(line_context, line, length, error);
+	if (!yt_news_append_bytes(line, length, error))
+		return false;
+	return line_output(line_context, line, length, error);
 }
 
 bool
@@ -223,18 +224,24 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 		first_length = qb_str_single(first, sizeof(first), initial_group);
 		second_length = qb_str_single(second, sizeof(second),
 		    (float)sector_number);
-		if (first_length < 0 || second_length < 0
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    hit_prefix, sizeof(hit_prefix) - 1U)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    (const uint8_t *)first, (size_t)first_length)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    hit_middle, sizeof(hit_middle) - 1U)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    (const uint8_t *)second, (size_t)second_length)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    (const uint8_t *)"!", 1U)
-		    || !xannor_arrival_emit(line_output, line_context, line,
+		if (first_length < 0 || second_length < 0)
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    hit_prefix, sizeof(hit_prefix) - 1U))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    (const uint8_t *)first, (size_t)first_length))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    hit_middle, sizeof(hit_middle) - 1U))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    (const uint8_t *)second, (size_t)second_length))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    (const uint8_t *)"!", 1U))
+			return false;
+		if (!xannor_arrival_emit(line_output, line_context, line,
 		    length, error))
 			return false;
 		if (*group_size <= 0.0f) {
@@ -246,14 +253,18 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 			length = 0U;
 			first_length = qb_str_single(first, sizeof(first),
 			    qb_single_subtract(initial_group, *group_size));
-			if (first_length < 0
-			    || !maintenance_copy_part(line, sizeof(line), &length,
-			    loss_prefix, sizeof(loss_prefix) - 1U)
-			    || !maintenance_copy_part(line, sizeof(line), &length,
-			    (const uint8_t *)first, (size_t)first_length)
-			    || !maintenance_copy_part(line, sizeof(line), &length,
-			    loss_suffix, sizeof(loss_suffix) - 1U)
-			    || !xannor_arrival_emit(line_output, line_context, line,
+			if (first_length < 0)
+				return false;
+			if (!maintenance_copy_part(line, sizeof(line), &length,
+			    loss_prefix, sizeof(loss_prefix) - 1U))
+				return false;
+			if (!maintenance_copy_part(line, sizeof(line), &length,
+			    (const uint8_t *)first, (size_t)first_length))
+				return false;
+			if (!maintenance_copy_part(line, sizeof(line), &length,
+			    loss_suffix, sizeof(loss_suffix) - 1U))
+				return false;
+			if (!xannor_arrival_emit(line_output, line_context, line,
 			    length, error))
 				return false;
 		}
@@ -306,24 +317,32 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 	    qb_single_subtract(initial_defenders, remaining_defenders));
 	second_length = qb_str_single(second, sizeof(second),
 	    qb_single_subtract(defense_group, *group_size));
-	if (first_length < 0 || second_length < 0
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    defense_prefix, sizeof(defense_prefix) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    defender.data, defender.length)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    defense_lost, sizeof(defense_lost) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    (const uint8_t *)first, (size_t)first_length)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    defense_destroyed, sizeof(defense_destroyed) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    (const uint8_t *)second, (size_t)second_length)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
+	if (first_length < 0 || second_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    defense_prefix, sizeof(defense_prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    defender.data, defender.length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    defense_lost, sizeof(defense_lost) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    (const uint8_t *)first, (size_t)first_length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    defense_destroyed, sizeof(defense_destroyed) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    (const uint8_t *)second, (size_t)second_length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
 	    remaining_defenders < 1.0f ? player_destroyed : xannor_destroyed,
 	    remaining_defenders < 1.0f ? sizeof(player_destroyed) - 1U
-	    : sizeof(xannor_destroyed) - 1U)
-	    || !xannor_arrival_emit(line_output, line_context, line, length,
+	    : sizeof(xannor_destroyed) - 1U))
+		return false;
+	if (!xannor_arrival_emit(line_output, line_context, line, length,
 	    error))
 		return false;
 	return true;
@@ -375,18 +394,24 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 	stored_name_length = yt_planet_stored_name(&planet, stored_name);
 	number_length = qb_str_single(number, sizeof(number), *group_size);
 	line_length = 0U;
-	if (number_length < 0
-	    || !maintenance_copy_part(line, sizeof(line), &line_length,
-	    attack_prefix, sizeof(attack_prefix) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &line_length,
-	    (const uint8_t *)number, (size_t)number_length)
-	    || !maintenance_copy_part(line, sizeof(line), &line_length,
-	    attack_middle, sizeof(attack_middle) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &line_length,
-	    stored_name, stored_name_length)
-	    || !maintenance_copy_part(line, sizeof(line), &line_length,
-	    quote, sizeof(quote) - 1U)
-	    || !xannor_arrival_emit(line_output, line_context, line,
+	if (number_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &line_length,
+	    attack_prefix, sizeof(attack_prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &line_length,
+	    (const uint8_t *)number, (size_t)number_length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &line_length,
+	    attack_middle, sizeof(attack_middle) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &line_length,
+	    stored_name, stored_name_length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &line_length,
+	    quote, sizeof(quote) - 1U))
+		return false;
+	if (!xannor_arrival_emit(line_output, line_context, line,
 	    line_length, error))
 		return false;
 	while (planet.ground_forces > 0.0f && *group_size > 0.0f) {
@@ -454,16 +479,18 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 		planet.production[index] = mutated.production[index];
 		planet.stock[index] = mutated.stock[index];
 		if (!yt_record_set_number(&planet.record,
-		    YT_F45 + (size_t)index * 4U, planet.production[index])
-		    || !yt_record_set_number(&planet.record,
+		    YT_F45 + (size_t)index * 4U, planet.production[index]))
+			goto encode_error;
+		if (!yt_record_set_number(&planet.record,
 		    YT_F57 + (size_t)index * 4U, planet.stock[index]))
 			goto encode_error;
 	}
 	planet.owner = mutated.owner;
 	planet.ground_forces = mutated.ground_forces;
 	if (!yt_record_set_number(&planet.record, YT_F73,
-	    (float)planet.owner)
-	    || !yt_record_set_number(&planet.record, YT_F77,
+	    (float)planet.owner))
+		goto encode_error;
+	if (!yt_record_set_number(&planet.record, YT_F77,
 	    planet.ground_forces))
 		goto encode_error;
 	if (!yt_database_write(&game->database,
@@ -481,8 +508,9 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 			return false;
 		}
 		if (!yt_game_write_sector(game, arrival_sector_number, sector,
-		    error)
-		    || !yt_game_read_planet(game, planet_number, &planet, error))
+		    error))
+			return false;
+		if (!yt_game_read_planet(game, planet_number, &planet, error))
 			return false;
 		planet.name_length = 0U;
 		if (!yt_record_set_number(&planet.record, YT_F85, 0.0f)) {
@@ -503,12 +531,15 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 	else {
 		line_length = 0U;
 		if (!maintenance_copy_part(line, sizeof(line), &line_length,
-		    planet_prefix, sizeof(planet_prefix) - 1U)
-		    || !maintenance_copy_part(line, sizeof(line), &line_length,
-		    stored_name, stored_name_length)
-		    || !maintenance_copy_part(line, sizeof(line), &line_length,
-		    planet_suffix, sizeof(planet_suffix) - 1U)
-		    || !xannor_arrival_emit(line_output, line_context, line,
+		    planet_prefix, sizeof(planet_prefix) - 1U))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &line_length,
+		    stored_name, stored_name_length))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &line_length,
+		    planet_suffix, sizeof(planet_suffix) - 1U))
+			return false;
+		if (!xannor_arrival_emit(line_output, line_context, line,
 		    line_length, error))
 			return false;
 	}
@@ -582,10 +613,12 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	if (!yt_game_read_player(game, player_record, &player, error))
 		return false;
 	player.fighters = remaining_fighters;
-	if (!yt_record_set_number(&player.record, YT_F61, player.fighters)
-	    || !yt_database_write(&game->database, (size_t)player_record,
-	    &player.record, error)
-	    || !xannor_player_shield_phase(&game->random, player.fighters,
+	if (!yt_record_set_number(&player.record, YT_F61, player.fighters))
+		return false;
+	if (!yt_database_write(&game->database, (size_t)player_record,
+	    &player.record, error))
+		return false;
+	if (!xannor_player_shield_phase(&game->random, player.fighters,
 	    &remaining_shields, original_xannor, &xannor_fighter_losses,
 	    error))
 		return false;
@@ -603,16 +636,18 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	if (!yt_game_read_player(game, player_record, &player, error))
 		return false;
 	player.shields = remaining_shields;
-	if (!yt_record_set_number(&player.record, YT_F53, player.shields)
-	    || !yt_database_write(&game->database, (size_t)player_record,
+	if (!yt_record_set_number(&player.record, YT_F53, player.shields))
+		return false;
+	if (!yt_database_write(&game->database, (size_t)player_record,
 	    &player.record, error))
 		return false;
 	*xannor_fighters = qb_single_subtract(original_xannor,
 	    xannor_fighter_losses);
 	killed = player.shields < 1.0f;
 	if (killed) {
-		if (!yt_game_read_player(game, player_record, &player, error)
-		    || !yt_maintenance_immediate_death(game, player_sector,
+		if (!yt_game_read_player(game, player_record, &player, error))
+			return false;
+		if (!yt_maintenance_immediate_death(game, player_sector,
 		    player_cloak, cache_count, player_record, -1, &player,
 		    error))
 			return false;
@@ -625,13 +660,16 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	if (!yt_maintenance_xannor_player_line_bytes(stored_name,
 	    stored_name_length, player_fighter_losses, xannor_fighter_losses,
 	    *xannor_fighters, player.shields,
-	    killed, line, sizeof(line), &line_length)
-	    || !yt_news_append_bytes(line, line_length, error)
-	    || !line_output(line_context, line, line_length, error))
+	    killed, line, sizeof(line), &line_length))
+		return false;
+	if (!yt_news_append_bytes(line, line_length, error))
+		return false;
+	if (!line_output(line_context, line, line_length, error))
 		return false;
 	if (killed) {
-		if (!yt_game_read_player(game, player_record, &player, error)
-		    || !yt_radio_append_maintenance(
+		if (!yt_game_read_player(game, player_record, &player, error))
+			return false;
+		if (!yt_radio_append_maintenance(
 		    "HA! We kilt yoo yoo hoo-man slyme bull!", -1.0f,
 		    (float)player_record, error))
 			return false;
@@ -703,9 +741,11 @@ yt_maintenance_xannor_route_arrivals(struct maint_state *state, int group,
 				struct yt_maintenance_output_result output;
 
 				if (!yt_maintenance_compose_xannor_path_error(
-				    (float)source, (float)target, &output)
-				    || !maintenance_emit_output_row(&output, YT_MAINT_ROW_XANNOR_PATH_ERROR,
-				    line_output, line_context, error))
+				    (float)source, (float)target, &output))
+					return false;
+				if (!maintenance_emit_output_row(&output,
+				    YT_MAINT_ROW_XANNOR_PATH_ERROR, line_output,
+				    line_context, error))
 					return false;
 			}
 			break;
@@ -782,8 +822,13 @@ yt_maintenance_xannor_groups_persist(struct yt_game *game,
 		if (!yt_game_read_sector(game, group, &metadata, error))
 			return false;
 		if (!yt_record_set_number(&metadata.record, YT_F105,
-		    location[group])
-		    || !yt_database_write(&game->database,
+		    location[group])) {
+			if (error != NULL && error->status == YT_OK)
+				set_error(error, YT_RANGE,
+				    "encode Xannor group metadata", "YTDATA.DAT");
+			return false;
+		}
+		if (!yt_database_write(&game->database,
 		    (size_t)yt_sector_basic_record(&game->config, group),
 		    &metadata.record, error)) {
 			if (error != NULL && error->status == YT_OK)
@@ -861,11 +906,12 @@ yt_maintenance_xannor_target_finish(struct yt_game *game,
 	if (!reached_target)
 		return true;
 	if (yt_maintenance_xannor_should_attack_hunt_player(group_number,
-	    hunt_player)
-	    && !yt_maintenance_xannor_player_arrival(game, player_sector,
-	    player_cloak, cache_count, hunt_player, group_size, line_output,
-	    line_context, error))
-		return false;
+	    hunt_player)) {
+		if (!yt_maintenance_xannor_player_arrival(game, player_sector,
+		    player_cloak, cache_count, hunt_player, group_size, line_output,
+		    line_context, error))
+			return false;
+	}
 	if (*group_size <= 0.0f)
 		*group_location = 0.0f;
 	return yt_maintenance_xannor_group_twenty_finish(game, group_number,
@@ -891,22 +937,26 @@ yt_maintenance_xannor_roaming_groups(struct maint_state *state, float score,
 		    &skip_group, error))
 			return false;
 		if (!skip_group) {
-			do {
+				do {
 				int target;
 				struct yt_maintenance_output_result group_output;
 				bool reached_target;
 
 				if (!xannor_candidate_target(state,
 				    location[group], revenge_live, revenge_cached,
-				    &target, error)
-				    || !yt_maintenance_xannor_target_override(group,
+				    &target, error))
+					return false;
+				if (!yt_maintenance_xannor_target_override(group,
 				    target, size[1], score,
 				    (int)state->game.config.headquarters,
-				    revenge_live, top_target, &target, error)
-				    || !yt_maintenance_compose_xannor_group(group,
-				    size[group], &group_output)
-				    || !maintenance_emit_output_row(&group_output,
-				    YT_MAINT_ROW_XANNOR_GROUP_REPORT, line_output, line_context, error))
+				    revenge_live, top_target, &target, error))
+					return false;
+				if (!yt_maintenance_compose_xannor_group(group,
+				    size[group], &group_output))
+					return false;
+				if (!maintenance_emit_output_row(&group_output,
+				    YT_MAINT_ROW_XANNOR_GROUP_REPORT, line_output,
+				    line_context, error))
 					return false;
 				if (!yt_maintenance_xannor_route_arrivals(state, group,
 				    target, (float)top_target, location, size,
@@ -947,43 +997,51 @@ yt_maintenance_xannor_run(struct maint_state *state,
 	int revenge_cached;
 
 	if (!yt_maintenance_maintain_xannor_home(&state->game,
-	    NULL, 0U,
-	    line_output, line_context, error)
-	    || !yt_maintenance_xannor_hunt(&state->game, state->player_sector,
+	    NULL, 0U, line_output, line_context, error))
+		return false;
+	if (!yt_maintenance_xannor_hunt(&state->game, state->player_sector,
 	    state->player_cloak, (size_t)state->player_count + 2U,
 	    NULL, 0U,
 	    line_output, line_context, &hunt_player, &score, &top_target,
 	    error))
 		return false;
 	if (!yt_maintenance_xannor_target(&state->game.random,
-	    state->sector_count, &hunt_player, &top_target, error)
-	    || !yt_maintenance_xannor_groups_extract(&state->game, location,
+	    state->sector_count, &hunt_player, &top_target, error))
+		return false;
+	if (!yt_maintenance_xannor_groups_extract(&state->game, location,
 	    size, error))
 		return false;
-	if (!yt_maintenance_xannor_regeneration(score, size, &regeneration)
-	    || !yt_maintenance_compose_xannor_regeneration(
-	    NULL, 0U,
-	    regeneration, &regen_output)
-	    || !line_output(line_context, regen_output.rows[0].data,
-	    regen_output.rows[0].length, error)
-	    || !line_output(line_context, regen_output.rows[1].data,
-	    regen_output.rows[1].length, error)
-	    || !yt_news_append_bytes(regen_output.rows[1].data,
-	    regen_output.rows[1].length, error)
-	    || !line_output(line_context, regen_output.rows[2].data,
+	if (!yt_maintenance_xannor_regeneration(score, size, &regeneration))
+		return false;
+	if (!yt_maintenance_compose_xannor_regeneration(
+	    NULL, 0U, regeneration, &regen_output))
+		return false;
+	if (!line_output(line_context, regen_output.rows[0].data,
+	    regen_output.rows[0].length, error))
+		return false;
+	if (!line_output(line_context, regen_output.rows[1].data,
+	    regen_output.rows[1].length, error))
+		return false;
+	if (!yt_news_append_bytes(regen_output.rows[1].data,
+	    regen_output.rows[1].length, error))
+		return false;
+	if (!line_output(line_context, regen_output.rows[2].data,
 	    regen_output.rows[2].length, error))
 		return false;
 	location[1] = state->game.config.headquarters;
 	if (!xannor_reclaim_and_relocate(state, location, size,
-	    regeneration, line_output, line_context, error)
-	    || !consume_revenge_slot(state, &revenge_live, &revenge_cached,
-	    line_output, line_context, error)
-	    || !yt_maintenance_compose_xannor_roaming(
-	    NULL, 0U,
-	    &roaming_output)
-	    || !line_output(line_context, roaming_output.rows[0].data,
-	    roaming_output.rows[0].length, error)
-	    || !line_output(line_context, roaming_output.rows[1].data,
+	    regeneration, line_output, line_context, error))
+		return false;
+	if (!consume_revenge_slot(state, &revenge_live, &revenge_cached,
+	    line_output, line_context, error))
+		return false;
+	if (!yt_maintenance_compose_xannor_roaming(
+	    NULL, 0U, &roaming_output))
+		return false;
+	if (!line_output(line_context, roaming_output.rows[0].data,
+	    roaming_output.rows[0].length, error))
+		return false;
+	if (!line_output(line_context, roaming_output.rows[1].data,
 	    roaming_output.rows[1].length, error))
 		return false;
 
