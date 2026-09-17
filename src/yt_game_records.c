@@ -46,7 +46,7 @@ yt_player_decode(struct yt_player *player, const struct yt_record *record)
 	player->record = *record;
 	yt_record_get_text(record, player->name, sizeof(player->name));
 	player->last_active = yt_record_get_number(record, YT_F41);
-	player->killed_by = yt_record_get_number(record, YT_F45);
+	player->killed_by = (int)yt_record_get_number(record, YT_F45);
 	player->turns = yt_record_get_number(record, YT_F49);
 	player->shields = yt_record_get_number(record, YT_F53);
 	player->sector = (int)yt_record_get_number(record, YT_F57);
@@ -78,7 +78,7 @@ yt_player_encode(struct yt_player *player)
 	yt_record_set_number_if_changed(&player->record, YT_F41,
 	    player->last_active);
 	yt_record_set_number_if_changed(&player->record, YT_F45,
-	    player->killed_by);
+	    (float)player->killed_by);
 	yt_record_set_number_if_changed(&player->record, YT_F49, player->turns);
 	yt_record_set_number_if_changed(&player->record, YT_F53, player->shields);
 	yt_record_set_number_if_changed(&player->record, YT_F57,

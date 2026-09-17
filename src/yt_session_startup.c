@@ -362,7 +362,7 @@ startup_retention(struct yt_session *session, struct yt_error *error)
 static bool
 returning_daily_update(struct yt_session *session,
     float today, float turns_per_day,
-    float *previous_day, float *killer, struct yt_error *error)
+    float *previous_day, int *killer, struct yt_error *error)
 {
 	static const uint8_t row[] = "You have been on today.";
 	struct yt_player player;
@@ -536,7 +536,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		return false;
 	{
 		float previous_day;
-		float killer;
+		int killer;
 		float startup_day;
 		bool self_kill;
 
@@ -548,7 +548,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		if (!yt_database_flush(&session->door->game.database, error))
 			return false;
 		startup_day = (float)session->door->game.today;
-		self_kill = killer == (float)session_record(session);
+		self_kill = killer == session_record(session);
 		if (!yt_clock_read(&session->door->game.clock, &now, error))
 			return false;
 		{
@@ -561,13 +561,13 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			    session->cached_player_name_length, error))
 				return false;
 		}
-		if (killer != 0.0f) {
+		if (killer != 0) {
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE, "returning death blank", error))
 				return false;
 			if (!self_kill)
 				yt_present_set_blink(&session->presentation, 1.0f);
-			if (killer == -1.0f) {
+			if (killer == -1) {
 				if (!session_present_text(session,
 				    (const uint8_t *)
 				    "You have been killed by The Xannor!",
@@ -576,7 +576,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 				    "returning Xannor death row", error))
 					return false;
 			}
-			else if (killer == -2.0f) {
+			else if (killer == -2) {
 				if (!session_present_text(session,
 				    (const uint8_t *)
 				    "You have been killed by mercenaries!",
@@ -585,7 +585,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 				    "returning mercenary death row", error))
 					return false;
 			}
-			else if (killer == -98.0f) {
+			else if (killer == -98) {
 				if (!session_present_text(session,
 				    (const uint8_t *)
 				    "You have been killed by a deleted player.",
@@ -603,8 +603,8 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 				    "returning self-death row", error))
 					return false;
 			}
-			else if (killer > 1.0f
-			    && killer <= (float)session_sector_offset(session)) {
+			else if (killer > 1
+			    && killer <= session_sector_offset(session)) {
 				struct yt_player attacker;
 				uint8_t attacker_row[YT_TEXT_FIELD_SIZE
 				    + sizeof(" destroyed your ship!") - 1U];
@@ -612,7 +612,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 				bool emit;
 
 				if (!yt_game_read_player(&session->door->game,
-				    (int)killer, &attacker, error)) {
+				    killer, &attacker, error)) {
 					attach_database_get_fault(session, error,
 					    YT_BASIC_FAULT_RETURNING_KILLER_GET);
 					(void)session_route_basic_fault(session, error);

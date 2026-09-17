@@ -23108,7 +23108,7 @@ hostile_bribe_fatal_sound(void *context, float selector,
 }
 
 static bool
-hostile_bribe_fatal_death(void *context, int victim_record, float killer,
+hostile_bribe_fatal_death(void *context, int victim_record, int killer,
     struct yt_error *error)
 {
 	static const uint8_t name[] = "Ada";
@@ -23118,13 +23118,13 @@ hostile_bribe_fatal_death(void *context, int victim_record, float killer,
 	size_t current_name_length = join->current_name != NULL
 	    ? join->current_name_length : sizeof(name) - 1U;
 
-	if (victim_record != 2 || killer != 2.0f)
+	if (victim_record != 2 || killer != 2)
 		return false;
 	++join->death_calls;
 	join->death = (struct test_player_death_state){
 		.victim_record = 2,
 		.current_player_record = 2,
-		.killer = 2.0f,
+		.killer = 2,
 		.sector_count = 2004,
 		.port_count = 0,
 		.last_player_record = 51,
@@ -23175,7 +23175,7 @@ hostile_bribe_fatal_run(void *context, struct yt_error *error)
 	join->fatal.field_valid = true;
 	join->fatal.target_record = 2.0f;
 	if (!hostile_bribe_fatal_sound(join, 3.0f, error)
-	    || !hostile_bribe_fatal_death(join, 2, 2.0f, error)
+	    || !hostile_bribe_fatal_death(join, 2, 2, error)
 	    || !hostile_bribe_fatal_wait(join, 5.0f, error))
 		return false;
 	join->fatal.wait_complete = true;
@@ -27856,11 +27856,11 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 				    (const uint8_t[]){0x00U, 0x00U, 0x7aU, 0x00U}, 4U)
 				    == 0);
 				expected_player = fatal.fatal.field_player;
-				yt_death_player_overlay(&expected_player, 2.0f);
+				yt_death_player_overlay(&expected_player, 2);
 				CHECK(memcmp(&fatal.written_player.record,
 				    &expected_player.record,
 				    sizeof(expected_player.record)) == 0
-				    && fatal.written_player.killed_by == 2.0f
+				    && fatal.written_player.killed_by == 2
 				    && fatal.written_player.sector == 0
 				    && fatal.written_player.ports_owned == 0.0f
 				    && memcmp(&fatal.written_sector.record,
@@ -28089,14 +28089,14 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 			    == 0)
 			    && (cut != FATAL_CUT_WAIT || fatal.duration == 5.0f)
 			    && fatal.player.killed_by
-			    == (cut > FATAL_CUT_DEATH_PLAYER_PUT ? 2.0f : 0.0f)
+			    == (cut > FATAL_CUT_DEATH_PLAYER_PUT ? 2 : 0)
 			    && fatal.player.sector
 			    == (cut > FATAL_CUT_DEATH_PLAYER_PUT ? 0 : 733)
 			    && fatal.sector.fighter_owner
 			    == (cut > FATAL_CUT_SECTOR_PUT ? -2 : 2)
 			    && fatal.sector.fighters == 10.0f
 			    && (cut <= FATAL_CUT_DEATH_PLAYER_PUT
-			    || fatal.written_player.killed_by == 2.0f)
+			    || fatal.written_player.killed_by == 2)
 			    && (cut <= FATAL_CUT_SECTOR_PUT
 			    || fatal.written_sector.fighter_owner == -2)
 			    && fixture.draw_position == 2U);
@@ -28323,7 +28323,7 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 		    && attack.written_sector.fighters == 2.0f
 		    && attack.written_sector.fighter_owner == 2
 		    && fatal.fatal.wait_complete && fatal.fatal.normal_exit
-		    && fatal.death.complete && fatal.player.killed_by == 2.0f
+		    && fatal.death.complete && fatal.player.killed_by == 2
 		    && fatal.player.sector == 0
 		    && fatal.written_sector.fighter_owner == -2
 		    && fatal.news_length == sizeof(expected_news) - 1U

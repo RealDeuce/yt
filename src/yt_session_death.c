@@ -20,7 +20,7 @@ yt_session_common_fatal_self(struct yt_session *session, struct yt_error *error)
 	memcpy(session->player.name, cached_name, sizeof(cached_name));
 	if (!session_sound(session, YT_SOUND_CUE_DESTRUCTION, "fatal destruction sound", error)
 	    || !yt_session_kill_player(session, current_player_record,
-	    (float)current_player_record, false, error)
+	    current_player_record, false, error)
 	    || !session_wait(session, 5.0, "common fatal wait", error))
 		return false;
 	session->fatal_wait_complete = true;
@@ -106,7 +106,7 @@ death_remove_from_team(struct yt_session *session, int victim,
 
 bool
 yt_session_kill_player(struct yt_session *session, int victim_record,
-    float killer, bool wait_for_current, struct yt_error *error)
+    int killer, bool wait_for_current, struct yt_error *error)
 {
 	struct yt_player victim;
 	struct yt_player player;
@@ -153,7 +153,7 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 			if (!death_read_port(session, logical, &port, error))
 				return false;
 			route = yt_death_port_overlay(&port,
-			    victim_record, (int)killer,
+			    victim_record, killer,
 			    session_sector_offset(session));
 			if (route == YT_DEATH_PORT_UNMATCHED)
 				continue;
@@ -163,24 +163,24 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 		}
 	}
 
-	valid_killer = (killer != (float)victim_record)
-	    & (killer > 1.0f)
-	    & (killer <= (float)session_sector_offset(session));
+	valid_killer = (killer != victim_record)
+	    & (killer > 1)
+	    & (killer <= session_sector_offset(session));
 	matched = (float)matched_ports;
 	if (valid_killer && matched_ports != 0) {
 		if (!yt_death_title_row(victim_name, victim_name_length, matched,
 		    row, sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "death title row", error)
-		    || !yt_game_read_player(&session->door->game, (int)killer,
+		    || !yt_game_read_player(&session->door->game, killer,
 		    &player, error))
 			return false;
 		yt_death_killer_credit_overlay(&player, matched);
-		if (!yt_game_write_player(&session->door->game, (int)killer,
+		if (!yt_game_write_player(&session->door->game, killer,
 		    &player, error))
 			return false;
 	}
-	self = killer == (float)victim_record;
+	self = killer == victim_record;
 	if (!self
 	    && !yt_game_read_player(&session->door->game, victim_record,
 	    &player, error))

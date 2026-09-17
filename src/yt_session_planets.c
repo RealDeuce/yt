@@ -144,7 +144,7 @@ yt_session_planet_permission(struct yt_session *session,
 		if (!yt_game_read_player(&session->door->game, cached_owner,
 		    &owner, error))
 			return false;
-		vacant = owner.killed_by != 0.0f;
+		vacant = owner.killed_by != 0;
 	}
 	if (vacant) {
 		if (!session_present_text(session, governor,

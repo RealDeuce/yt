@@ -259,7 +259,7 @@ yt_deployed_attack_sector_overlay(struct yt_sector *sector, float fighters)
 }
 
 void
-yt_death_player_overlay(struct yt_player *player, float killer)
+yt_death_player_overlay(struct yt_player *player, int killer)
 {
 	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x7a, 0x00};
 
@@ -268,7 +268,7 @@ yt_death_player_overlay(struct yt_player *player, float killer)
 	player->killed_by = killer;
 	player->sector = 0;
 	player->ports_owned = 0.0f;
-	(void)yt_record_set_number(&player->record, YT_F45, killer);
+	(void)yt_record_set_number(&player->record, YT_F45, (float)killer);
 	(void)yt_record_set_raw_number(&player->record, YT_F57, dirty_zero);
 	(void)yt_record_set_raw_number(&player->record, YT_F117, dirty_zero);
 }

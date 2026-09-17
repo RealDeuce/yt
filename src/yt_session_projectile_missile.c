@@ -573,7 +573,7 @@ missile_mines:
 			    mines, error))
 				return false;
 			if (!yt_session_kill_player(session, basic,
-			    (float)session_record(session), true, error))
+			    session_record(session), true, error))
 				return false;
 			if (yt_projectile_salvage_admitted(*counterattack,
 			    *xannor_provoker)) {

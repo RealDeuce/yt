@@ -349,7 +349,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 			return false;
 		}
 		field_loaded = true;
-		if (field_player.killed_by != 0.0f)
+		if (field_player.killed_by != 0)
 			continue;
 		name_length = yt_player_stored_name(&field_player, row);
 		memcpy(row + name_length, uncloaked, sizeof(uncloaked) - 1U);

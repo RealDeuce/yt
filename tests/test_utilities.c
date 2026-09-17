@@ -2384,8 +2384,8 @@ test_expired_player_cleanup(struct yt_error *error)
 	victim.lottery_plays = 7.0f;
 	victim.credits = 123.0f;
 	victim.fighters = 45.0f;
-	other.killed_by = 2.0f;
-	unrelated.killed_by = -1.0f;
+	other.killed_by = 2;
+	unrelated.killed_by = -1;
 	yt_record_set_number(&team.record, YT_F109, 2.0f);
 	yt_record_set_number(&team.record, YT_F117, 9.0f);
 	yt_record_set_number(&team.record, YT_F121, 2.0f);
@@ -2458,7 +2458,7 @@ test_expired_player_cleanup(struct yt_error *error)
 	    && planet.owner == 0 && planet.ground_forces == 0.0f
 	    && planet.bank == 456.0f
 	    && port.owner == 2 && port.treasury == 99.0f
-	    && other.killed_by == -98.0f && unrelated.killed_by == -1.0f
+	    && other.killed_by == -98 && unrelated.killed_by == -1
 	    && radio_length == sizeof(radio)
 	    && yt_radio_get_number((const struct yt_radio_record *)radio_bytes,
 	    0) == 0.0f
@@ -2507,7 +2507,7 @@ test_immediate_death_cleanup(struct yt_error *error)
 		goto done;
 	strcpy(victim.name, "Combat Victim");
 	victim.name_length = 13U;
-	victim.killed_by = 0.0f;
+	victim.killed_by = 0;
 	victim.sector = 20.0f;
 	victim.ground_forces = 6.0f;
 	victim.team = 10.0f;
@@ -2539,7 +2539,7 @@ test_immediate_death_cleanup(struct yt_error *error)
 	sector_cache[3] = 30.0f;
 	cloak_cache[3] = 0.25f;
 	if (!yt_maintenance_immediate_death(&game, sector_cache, cloak_cache,
-	    YT_ARRAY_LEN(sector_cache), 2, -1.0f, &victim, error)
+	    YT_ARRAY_LEN(sector_cache), 2, -1, &victim, error)
 	    || !yt_game_read_player(&game, 2, &victim, error)
 	    || !yt_game_read_sector(&game, 10, &team, error)
 	    || !yt_game_read_sector(&game, 20, &defense, error)
@@ -2549,7 +2549,7 @@ test_immediate_death_cleanup(struct yt_error *error)
 		goto done;
 	valid = sector_cache[2] == 0 && cloak_cache[2] == 0.0f
 	    && sector_cache[3] == 30 && cloak_cache[3] == 0.25f
-	    && victim.killed_by == -1.0f && victim.sector == 0
+	    && victim.killed_by == -1 && victim.sector == 0
 	    && victim.ground_forces == 0.0f && victim.team == 0.0f
 	    && victim.name_length == 13U && victim.fighters == 45.0f
 	    && victim.credits == 123.0f && victim.cloak == 0.5f
@@ -2659,7 +2659,7 @@ test_xannor_player_arrival(struct yt_error *error)
 	player.shields = 1.0f;
 	player.sector = 42.0f;
 	player.cloak = 0.25f;
-	player.killed_by = 0.0f;
+	player.killed_by = 0;
 	player.team = 0.0f;
 	player.ground_forces = 0.0f;
 	if (!yt_game_write_player(&game, 2, &player, error))
@@ -2672,7 +2672,7 @@ test_xannor_player_arrival(struct yt_error *error)
 	survivor.shields = 10.0f;
 	survivor.sector = 43.0f;
 	survivor.cloak = 0.75f;
-	survivor.killed_by = 0.0f;
+	survivor.killed_by = 0;
 	survivor.team = 0.0f;
 	survivor.ground_forces = 0.0f;
 	if (!yt_game_write_player(&game, 3, &survivor, error)
@@ -2687,7 +2687,7 @@ test_xannor_player_arrival(struct yt_error *error)
 	large_player.shields = 6000.0f;
 	large_player.sector = 44.0f;
 	large_player.cloak = 0.5f;
-	large_player.killed_by = 0.0f;
+	large_player.killed_by = 0;
 	large_player.team = 0.0f;
 	large_player.ground_forces = 0.0f;
 	if (!yt_game_write_player(&game, 4, &large_player, error)
@@ -2745,17 +2745,17 @@ test_xannor_player_arrival(struct yt_error *error)
 	    && tape.calls == 3U && strcmp(tape.line[0], expected_line) == 0
 	    && strcmp(tape.line[1], expected_survivor_line) == 0
 	    && strcmp(tape.line[2], expected_large_line) == 0
-	    && player.killed_by == -1.0f && player.fighters == 0.0f
+	    && player.killed_by == -1 && player.fighters == 0.0f
 	    && player.shields == 0.0f && player.sector == 0
 	    && sector_cache[2] == 0 && cloak_cache[2] == 0.0f
-	    && survivor.killed_by == 0.0f && survivor.fighters == 1.0f
+	    && survivor.killed_by == 0 && survivor.fighters == 1.0f
 	    && survivor.shields == 10.0f && survivor.sector == 43
 	    && sector_cache[3] == 43 && cloak_cache[3] == 0.75f
 	    && memcmp(survivor.record.bytes, survivor_before.bytes,
 	    YT_RECORD_SIZE) == 0
 	    && memcmp(survivor_sector_after.record.bytes,
 	    survivor_sector_before.record.bytes, YT_RECORD_SIZE) == 0
-	    && large_player.killed_by == 0.0f
+	    && large_player.killed_by == 0
 	    && large_player.fighters == 5001.0f
 	    && large_player.shields == 6000.0f
 	    && large_player.sector == 44

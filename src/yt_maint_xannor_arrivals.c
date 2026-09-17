@@ -556,7 +556,7 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	if (!yt_game_read_player(game, player_record, &player, error))
 		return false;
 	if (player.name_length == 0U
-	    || player.killed_by != 0.0f)
+	    || player.killed_by != 0)
 		return true;
 	player_sector[player_record] = player.sector;
 	player_cloak[player_record] = player.cloak;
@@ -613,7 +613,7 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	if (killed) {
 		if (!yt_game_read_player(game, player_record, &player, error)
 		    || !yt_maintenance_immediate_death(game, player_sector,
-		    player_cloak, cache_count, player_record, -1.0f, &player,
+		    player_cloak, cache_count, player_record, -1, &player,
 		    error))
 			return false;
 	}

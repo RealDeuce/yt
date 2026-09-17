@@ -205,7 +205,7 @@ bool yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 bool yt_maintenance_store_final_marker(struct yt_game *game, float serial,
     struct yt_error *error);
 bool yt_maintenance_age_player(float *cloak, float last_active,
-    float killer_status, float today, float retention_days,
+    int killer_status, float today, float retention_days,
     float *cached_cloak, enum yt_maintenance_player_action *action);
 bool yt_maintenance_compose_player_aging(
     const struct yt_maintenance_text *name,
@@ -358,7 +358,7 @@ bool yt_maintenance_expire_player(struct yt_game *game,
     int player_record, struct yt_player *player, struct yt_error *error);
 bool yt_maintenance_immediate_death(struct yt_game *game,
     int *player_sector, float *player_cloak, size_t cache_count,
-    int victim_record, float killer, struct yt_player *victim,
+    int victim_record, int killer, struct yt_player *victim,
     struct yt_error *error);
 bool yt_radio_append_maintenance_bytes(const uint8_t *text, size_t length,
     float sender, float recipient, struct yt_error *error);

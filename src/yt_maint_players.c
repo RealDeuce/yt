@@ -237,8 +237,8 @@ expire_player_impl(struct maint_state *state, int player_record,
 
 		if (!yt_game_read_player(&state->game, logical, &other, error))
 			return false;
-		if (other.killed_by == (float)player_record) {
-			other.killed_by = -98.0f;
+		if (other.killed_by == player_record) {
+			other.killed_by = -98;
 			if (!yt_game_write_player(&state->game, logical, &other,
 			    error))
 				return false;
@@ -365,7 +365,7 @@ yt_maintenance_players_run(struct maint_state *state,
 
 bool
 yt_maintenance_age_player(float *cloak, float last_active,
-    float killer_status, float today, float retention_days,
+    int killer_status, float today, float retention_days,
     float *cached_cloak, enum yt_maintenance_player_action *action)
 {
 	static const float cloak_charge = -0.05000000074505806f;
@@ -389,14 +389,14 @@ yt_maintenance_age_player(float *cloak, float last_active,
 	}
 	cutoff = qb_single_subtract(today, retention_days);
 	if (*action != YT_MAINTENANCE_PLAYER_CLOAK_EXPIRED
-	    && last_active <= cutoff && killer_status != 0.0f)
+	    && last_active <= cutoff && killer_status != 0)
 		*action = YT_MAINTENANCE_PLAYER_DELETE;
 	return true;
 }
 
 static bool
 immediate_death_cleanup_impl(struct maint_state *state, int victim_record,
-    float killer, struct yt_player *victim, struct yt_error *error)
+    int killer, struct yt_player *victim, struct yt_error *error)
 {
 	int logical;
 
@@ -434,7 +434,7 @@ immediate_death_cleanup_impl(struct maint_state *state, int victim_record,
 		return false;
 	victim->team = 0.0f;
 	if (!yt_record_set_number(&victim->record, YT_F45,
-	    victim->killed_by)
+	    (float)victim->killed_by)
 	    || !yt_record_set_number(&victim->record, YT_F57,
 	    (float)victim->sector)
 	    || !yt_record_set_number(&victim->record, YT_F89, victim->team)
@@ -450,7 +450,7 @@ immediate_death_cleanup_impl(struct maint_state *state, int victim_record,
 
 bool
 yt_maintenance_immediate_death(struct yt_game *game, int *player_sector,
-    float *player_cloak, size_t cache_count, int victim_record, float killer,
+    float *player_cloak, size_t cache_count, int victim_record, int killer,
     struct yt_player *victim, struct yt_error *error)
 {
 	struct maint_state state;

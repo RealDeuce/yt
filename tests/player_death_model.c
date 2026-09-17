@@ -72,7 +72,7 @@ test_player_death_run(struct test_player_death_state *state,
 			if (!ops->read_port(context, logical, &port, error))
 				return false;
 			route = yt_death_port_overlay(&port,
-			    state->victim_record, (int)state->killer,
+			    state->victim_record, state->killer,
 			    state->last_player_record);
 			if (route == YT_DEATH_PORT_UNMATCHED)
 				continue;
@@ -81,24 +81,24 @@ test_player_death_run(struct test_player_death_state *state,
 				return false;
 		}
 	}
-	valid_killer = (state->killer != (float)state->victim_record)
-	    & (state->killer > 1.0f)
-	    & (state->killer <= (float)state->last_player_record);
+	valid_killer = (state->killer != state->victim_record)
+	    & (state->killer > 1)
+	    & (state->killer <= state->last_player_record);
 	matched = (float)state->matched_ports;
 	if (valid_killer && state->matched_ports != 0) {
 		if (!yt_death_title_row(state->victim_name,
 		    state->victim_name_length, matched, row, sizeof(row),
 		    &row_length)
 		    || !ops->present(context, row, row_length, error)
-		    || !ops->read_player(context, (int)state->killer, &player,
+		    || !ops->read_player(context, state->killer, &player,
 		    error))
 			return false;
 		yt_death_killer_credit_overlay(&player, matched);
-		if (!ops->write_player(context, (int)state->killer, &player,
+		if (!ops->write_player(context, state->killer, &player,
 		    error))
 			return false;
 	}
-	self = state->killer == (float)state->victim_record;
+	self = state->killer == state->victim_record;
 	if (!self
 	    && !ops->read_player(context, state->victim_record, &player, error))
 		return false;

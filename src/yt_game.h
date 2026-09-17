@@ -12,7 +12,7 @@ struct yt_player {
 	struct yt_record record;
 	char name[42];
 	float last_active;
-	float killed_by;
+	int killed_by;
 	float turns;
 	float shields;
 	int sector;
@@ -809,7 +809,7 @@ void yt_deployed_attack_player_overlay(struct yt_player *player,
     float shields, float fighters);
 void yt_deployed_attack_sector_overlay(struct yt_sector *sector,
     float fighters);
-void yt_death_player_overlay(struct yt_player *player, float killer);
+void yt_death_player_overlay(struct yt_player *player, int killer);
 bool yt_death_sector_overlay(struct yt_sector *sector, int victim);
 enum yt_death_port_route yt_death_port_overlay(struct yt_port *port,
     int victim, int killer, int last_player);

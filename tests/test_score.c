@@ -211,13 +211,13 @@ check_current_player_cache_model(void)
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Cached Name");
 	player.name_length = 11U;
 	player.last_active = 71.0f;
-	player.killed_by = 72.0f;
+	player.killed_by = 72;
 	player.lottery_plays = 73.0f;
 	memset(&fresh, 0, sizeof(fresh));
 	(void)snprintf(fresh.name, sizeof(fresh.name), "%s", "Field Name");
 	fresh.name_length = 10U;
 	fresh.last_active = 1.0f;
-	fresh.killed_by = 2.0f;
+	fresh.killed_by = 2;
 	fresh.lottery_plays = 3.0f;
 	fresh.turns = 4.0f;
 	fresh.shields = 5.0f;
@@ -245,7 +245,7 @@ check_current_player_cache_model(void)
 	    &current_sector, &player_cache)
 	    || strcmp(player.name, "Cached Name") != 0
 	    || player.name_length != 11U || player.last_active != 71.0f
-	    || player.killed_by != 72.0f || player.lottery_plays != 73.0f
+	    || player.killed_by != 72 || player.lottery_plays != 73.0f
 	    || player.turns != 4.0f || player.shields != 5.0f
 	    || player.sector != 6 || player.fighters != 7.0f
 	    || player.holds != 8.0f || player.ore != 9.0f
@@ -2626,7 +2626,7 @@ check_player_death_transaction(void)
 	state = (struct test_player_death_state){
 		.victim_record = 3,
 		.current_player_record = 2,
-		.killer = 2.0f,
+		.killer = 2,
 		.sector_count = 2,
 		.port_count = 2,
 		.last_player_record = 51,
@@ -2665,7 +2665,7 @@ check_player_death_transaction(void)
 		state = (struct test_player_death_state){
 			.victim_record = 3,
 			.current_player_record = 2,
-			.killer = 2.0f,
+			.killer = 2,
 			.sector_count = 2,
 			.port_count = 2,
 			.last_player_record = 51,
@@ -2684,7 +2684,7 @@ check_player_death_transaction(void)
 	state = (struct test_player_death_state){
 		.victim_record = 3,
 		.current_player_record = 3,
-		.killer = 3.0f,
+		.killer = 3,
 		.sector_count = 2,
 		.port_count = 2,
 			.last_player_record = 51,
@@ -2734,8 +2734,8 @@ check_player_death_model(void)
 	(void)yt_record_set_number(&record, YT_F117, 4.0f);
 	yt_player_decode(&player, &record);
 	before = player.record;
-	yt_death_player_overlay(&player, 3.0f);
-	if (player.killed_by != 3.0f || player.sector != 0
+	yt_death_player_overlay(&player, 3);
+	if (player.killed_by != 3 || player.sector != 0
 	    || player.ports_owned != 0.0f
 	    || yt_record_get_number(&player.record, YT_F45) != 3.0f
 	    || memcmp(player.record.bytes + YT_F57, dirty_zero, 4U) != 0
@@ -3955,25 +3955,25 @@ check_maintenance_player_aging(void)
 	float cloak;
 
 	cloak = 0.0f;
-	if (!yt_maintenance_age_player(&cloak, 100.0f, 0.0f, 204.0f,
+	if (!yt_maintenance_age_player(&cloak, 100.0f, 0, 204.0f,
 	    14.0f, &cached_cloak, &action)
 	    || cached_cloak != 0.0f || cloak != 0.0f
 	    || action != YT_MAINTENANCE_PLAYER_UNCHANGED)
 		return false;
 	cloak = 0.02f;
-	if (!yt_maintenance_age_player(&cloak, 190.0f, -1.0f, 204.0f,
+	if (!yt_maintenance_age_player(&cloak, 190.0f, -1, 204.0f,
 	    14.0f, &cached_cloak, &action)
 	    || cached_cloak != 0.02f || cloak != 0.0f
 	    || action != YT_MAINTENANCE_PLAYER_CLOAK_EXPIRED)
 		return false;
 	cloak = -4.0f;
-	if (!yt_maintenance_age_player(&cloak, 191.0f, -1.0f, 204.0f,
+	if (!yt_maintenance_age_player(&cloak, 191.0f, -1, 204.0f,
 	    14.0f, &cached_cloak, &action)
 	    || cached_cloak != 1.0f || fabsf(cloak - 0.95f) > 0.000001f
 	    || action != YT_MAINTENANCE_PLAYER_UNCHANGED)
 		return false;
 	cloak = 0.0f;
-	if (!yt_maintenance_age_player(&cloak, 190.0f, -1.0f, 204.0f,
+	if (!yt_maintenance_age_player(&cloak, 190.0f, -1, 204.0f,
 	    14.0f, &cached_cloak, &action)
 	    || action != YT_MAINTENANCE_PLAYER_DELETE
 	    || !yt_maintenance_compose_player_aging(&name, &time_text,
@@ -3999,7 +3999,7 @@ check_maintenance_player_aging(void)
 	return yt_maintenance_compose_player_aging(&name, &time_text,
 	    &date_text, false, false, &output)
 	    && output.screen.row_count == 0U && output.radio_length == 0U
-	    && !yt_maintenance_age_player(NULL, 0.0f, 0.0f, 0.0f, 0.0f,
+	    && !yt_maintenance_age_player(NULL, 0.0f, 0, 0.0f, 0.0f,
 	    &cached_cloak, &action)
 	    && !yt_maintenance_compose_player_aging(NULL, &time_text,
 	    &date_text, false, false, &output);
@@ -4244,7 +4244,7 @@ check_maintenance_player_pass(void)
 		yt_player_decode(&player, &seed);
 		player.sector = record * 11;
 		player.last_active = record == 4 ? 0.0f : 204.0f;
-		player.killed_by = record >= 4 ? -1.0f : 0.0f;
+		player.killed_by = record >= 4 ? -1 : 0;
 		player.cloak = record == 2 ? 9.0f : record == 3 ? 0.0f
 		    : record == 4 ? 0.02f : -4.0f;
 		if (record != 2) {
@@ -8221,7 +8221,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	    != 0)
 		goto done;
 	if (!yt_game_read_player(&game, 2, &route_player, &error)
-	    || route_player.killed_by != -1.0f || route_player.sector != 0
+	    || route_player.killed_by != -1 || route_player.sector != 0
 	    || route_player.fighters != 0.0f || route_player.shields != 0.0f
 	    || player_sector[2] != 0 || player_cloak[2] != 0.0f
 	    || memcmp(route_player.record.bytes, "R\0ute", 5U) != 0)
@@ -14890,7 +14890,7 @@ main(void)
 	    || !yt_game_read_player(&game, 2, &player, &error)
 	    || strcmp(player.name, "Old Trader") != 0
 	    || player.name_length != 10U || player.score != 77.5f
-	    || player.last_active != 321.0f || player.killed_by != 0.0f
+	    || player.last_active != 321.0f || player.killed_by != 0
 	    || player.turns != 500.0f || player.fighters != 45.0f
 	    || player.credits != 678.0f || player.holds != 9.0f
 	    || player.team != 0.0f
@@ -15031,7 +15031,7 @@ main(void)
 	yt_player_decode(&player, &blank);
 	strcpy(player.name, "Bob");
 	player.name_length = 3U;
-	player.killed_by = -1.0f;
+	player.killed_by = -1;
 	player.credits = 9999.0f;
 	player.team = 2.0f;
 	if (!yt_game_write_player(&game, 3, &player, &error))

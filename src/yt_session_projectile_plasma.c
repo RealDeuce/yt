@@ -721,7 +721,7 @@ plasma_reload_sector:
 					return false;
 			}
 			else if (!yt_session_kill_player(session, basic,
-			    (float)session_record(session), true, error)
+			    session_record(session), true, error)
 			    || !session_sound(session, YT_SOUND_CUE_DESTRUCTION, "plasma salvage sound",
 			    error)
 			    || !yt_session_salvage_player(session, basic,

@@ -6,7 +6,7 @@
 struct test_player_death_state {
 	int victim_record;
 	int current_player_record;
-	float killer;
+	int killer;
 	int sector_count;
 	int port_count;
 	int last_player_record;
