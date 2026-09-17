@@ -220,14 +220,10 @@ yt_session_computer_owned_planets(struct yt_session *session,
 	static const uint8_t prefix[] = "Planet: ";
 	static const uint8_t infix[] = " Sector:";
 	int maximum_sector = session_sector_count(session);
-	float planet_record_base = session_planet_offset(session);
-	float current_player = (float)session_record(session);
+	int current_player = session_record(session);
 	bool found = false;
 	int sector_number;
 
-	if (maximum_sector < 0)
-		return session_computer_error(error, YT_INVALID,
-		    "owned-planet state");
 	session_set_color(session, 2);
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "owned-planet opening blank", error)
@@ -243,23 +239,19 @@ yt_session_computer_owned_planets(struct yt_session *session,
 		struct yt_sector sector;
 		struct yt_record record;
 		struct yt_planet planet;
-		volatile float record_expression;
 		uint32_t physical_record;
 
 		if (!session_read_sector(session, sector_number, &sector, error))
 			return false;
 		if (sector.planet == 0.0f)
 			continue;
-		record_expression = planet_record_base + sector.planet;
-		physical_record = qb_brun_random_record_number(record_expression);
-		if (physical_record == 0U)
-			return session_computer_error(error, YT_RANGE,
-			    "owned-planet record number");
+		physical_record = session_planet_basic_record(session,
+		    (int)sector.planet);
 		if (!yt_database_read(&session->door->game.database,
 		    (size_t)physical_record, &record, error))
 			return false;
 		yt_planet_decode(&planet, &record);
-		if (planet.owner == current_player) {
+		if (planet.owner == (float)current_player) {
 			uint8_t row[128];
 			char number[64];
 			size_t length = 0U;
@@ -293,4 +285,3 @@ yt_session_computer_owned_planets(struct yt_session *session,
 	}
 	return true;
 }
-

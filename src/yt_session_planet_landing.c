@@ -169,9 +169,8 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	size_t row_length;
 	uint32_t selected_physical;
 	uint32_t sector_physical;
-	float selected_expression;
-	float selected_logical;
-	float scan;
+	int selected_logical;
+	uint32_t scan;
 	float minute;
 	int logical;
 	int today;
@@ -199,20 +198,17 @@ create_planet(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (answer != YT_YES_NO_YES)
 		return true;
-	scan = qb_single_add(session_planet_offset(session), 2.0f);
+	scan = session_planet_basic_record(session, 2);
 	for (;;) {
-		uint32_t physical = qb_brun_random_record_number(scan);
-
 		if (!yt_database_read(&session->door->game.database,
-		    (size_t)physical, &raw, error))
+		    (size_t)scan, &raw, error))
 			return false;
 		yt_planet_decode(&planet, &raw);
 		if (planet.name_length == 0U) {
-			selected_expression = scan;
-			selected_physical = physical;
+			selected_physical = scan;
 			break;
 		}
-		if (scan >= session->door->game.config.total_records) {
+		if (scan >= (uint32_t)session->door->game.config.total_records) {
 			if (!session_present_alert(session, all_taken,
 			    sizeof(all_taken) - 1U,
 			    "planet creation allocation full", error)
@@ -221,11 +217,11 @@ create_planet(struct yt_session *session, struct yt_error *error)
 				return false;
 			return true;
 		}
-		scan = qb_single_add(scan, 1.0f);
+		++scan;
 	}
-	selected_logical = qb_single_subtract(selected_expression,
-	    session_planet_offset(session));
-	logical = (int)selected_logical;
+	selected_logical = (int)selected_physical
+	    - (int)session_planet_offset(session);
+	logical = selected_logical;
 	if (!yt_session_planet_rename(session, logical, &renamed, error))
 		return false;
 	if (!renamed)
@@ -242,8 +238,9 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	    (size_t)sector_physical, &raw, error))
 		return false;
 	yt_sector_decode(&sector, &raw);
-	sector.planet = selected_logical;
-	(void)yt_record_set_number(&sector.record, YT_F93, selected_logical);
+	sector.planet = (float)selected_logical;
+	(void)yt_record_set_number(&sector.record, YT_F93,
+	    (float)selected_logical);
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)sector_physical, &sector.record, error)
 	    || !session_current_date_serial(session, &today, &adjusted_year,

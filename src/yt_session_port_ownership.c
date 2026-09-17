@@ -108,21 +108,19 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 	struct yt_record record;
 	uint8_t total[8] = {0};
 	char text[192];
-	float loop_bound;
-	float counter;
+	int loop_bound;
+	int counter;
 	float owned = 0.0f;
 	float credited = 0.0f;
 	float barren;
-	uint32_t player_record;
+	int player_record;
 
 	if (session == NULL)
 		return false;
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "treasury opening blank", error))
 		return false;
-	player_record = (uint32_t)session_record(session);
-	if (player_record == 0U)
-		return treasury_error(error, "treasury player record conversion");
+	player_record = session_record(session);
 	if (!yt_database_read(&session->door->game.database,
 	    (size_t)player_record, &record, error))
 		return false;
@@ -144,17 +142,11 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "treasury scan blank", error))
 		return false;
-	loop_bound = qb_single_subtract(session_planet_offset(session),
-	    session_port_offset(session));
-	for (counter = 1.0f; counter <= loop_bound;
-	    counter = qb_single_add(counter, 1.0f)) {
-		float expression = qb_single_add(session_port_offset(session),
+	loop_bound = (int)(session_planet_offset(session)
+	    - session_port_offset(session));
+	for (counter = 1; counter <= loop_bound; ++counter) {
+		uint32_t physical_record = session_port_basic_record(session,
 		    counter);
-		uint32_t physical_record = qb_brun_random_record_number(expression);
-
-		if (physical_record == 0U)
-			return treasury_error(error,
-			    "treasury port record conversion");
 		if (!yt_database_read(&session->door->game.database,
 		    (size_t)physical_record, &record, error))
 			return false;

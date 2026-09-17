@@ -151,11 +151,10 @@ spy_clear_cached_cloak(struct yt_session *session, int player_record)
 }
 
 static bool
-spy_update_planet(struct yt_session *session, float link,
+spy_update_planet(struct yt_session *session, int link,
     struct yt_error *error)
 {
-	uint32_t physical = (uint32_t)yt_planet_basic_record(
-	    &session->door->game.config, (int)link);
+	uint32_t physical = session_planet_basic_record(session, link);
 	struct yt_planet planet;
 
 	return yt_session_update_planet_physical(session, physical, &planet, NULL,
@@ -163,27 +162,20 @@ spy_update_planet(struct yt_session *session, float link,
 }
 
 static bool
-spy_read_planet(struct yt_session *session, float link,
+spy_read_planet(struct yt_session *session, int link,
     struct yt_planet *planet, struct yt_error *error)
 {
-	uint32_t physical = (uint32_t)yt_planet_basic_record(
-	    &session->door->game.config, (int)link);
+	uint32_t physical = session_planet_basic_record(session, link);
 
 	return read_planet_physical(session, physical, planet, error);
 }
 
 static bool
-spy_read_player(struct yt_session *session, float record,
+spy_read_player(struct yt_session *session, int record,
     struct yt_player *player, struct yt_error *error)
 {
-	struct yt_record raw;
-	uint32_t physical = qb_brun_random_record_number(record);
-
-	if (!yt_database_read(&session->door->game.database, physical, &raw,
-	    error))
-		return false;
-	yt_player_decode(player, &raw);
-	return true;
+	return yt_game_read_player(&session->door->game, record, player,
+	    error);
 }
 
 bool
@@ -199,7 +191,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 		session->disruption_sectors[0],
 		session->disruption_sectors[1]
 	};
-	float last_player_record = session_sector_offset(session);
+	int last_player_record = (int)session_sector_offset(session);
 	int current_player_record = session_record(session);
 	int active_spies = session->spies.count;
 	int spy_index;
@@ -243,8 +235,8 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				uint8_t row[160];
 				size_t length;
 
-				if (!spy_update_planet(session, sector.planet, error)
-				    || !spy_read_planet(session, sector.planet, &planet,
+				if (!spy_update_planet(session, (int)sector.planet, error)
+				    || !spy_read_planet(session, (int)sector.planet, &planet,
 				    error)
 				    || !spy_first_finding(session, spy, sector_number, error)
 				    || !yt_sector_planet_row(&planet, row, sizeof(row),
@@ -255,8 +247,8 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				    error))
 					return false;
 			}
-			for (candidate = 2;
-			    (float)candidate <= last_player_record; ++candidate) {
+			for (candidate = 2; candidate <= last_player_record;
+			    ++candidate) {
 				float draw;
 				float cloak;
 				bool detected;
@@ -306,7 +298,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 					uint8_t row[256];
 					size_t length;
 
-					if (!spy_read_player(session, (float)candidate,
+					if (!spy_read_player(session, candidate,
 					    &player, error)
 					    || !yt_sector_player_row(&player, row,
 					    sizeof(row), &length))
@@ -346,7 +338,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				displayed = refreshed;
 				displayed.fighter_owner = owner;
 				if (owner != -1.0f && owner != -2.0f) {
-					if (!spy_read_player(session, owner, &owner_player,
+					if (!spy_read_player(session, (int)owner, &owner_player,
 					    error))
 						return false;
 					owner_pointer = &owner_player;

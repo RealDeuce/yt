@@ -1,7 +1,5 @@
 #include "yt_session_internal.h"
 
-#include "qb.h"
-
 #include <string.h>
 
 bool
@@ -70,7 +68,6 @@ death_remove_from_team(struct yt_session *session, int victim,
 	struct yt_player player;
 	struct yt_record overlay;
 	int team_id;
-	float expression;
 	uint32_t physical_record;
 	size_t index;
 
@@ -89,9 +86,7 @@ death_remove_from_team(struct yt_session *session, int victim,
 			session->team_cache.roster[index] = 0;
 	}
 
-	expression = qb_single_add(session_sector_offset(session),
-	    (float)team_id);
-	physical_record = qb_brun_random_record_number(expression);
+	physical_record = session_sector_basic_record(session, team_id);
 	if (!yt_database_read(&session->door->game.database,
 	    (size_t)physical_record, &overlay, error))
 		return false;
