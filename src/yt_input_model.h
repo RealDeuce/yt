@@ -190,17 +190,12 @@ bool yt_input_queue_prepend_program(char *queue, size_t capacity,
 bool yt_input_repeat_requested(bool queued,
     const struct yt_input_value *selected);
 bool yt_input_submit_requested(uint8_t selected_key);
-bool yt_input_command_save_requested(const char *text, size_t capacity,
-	bool *requested);
 bool yt_input_command_save_staged(char *text, size_t text_capacity,
 	char *queue, size_t queue_capacity, size_t *queue_position,
 	size_t *queue_length, char *saved_command, size_t saved_capacity,
 	char *output_source, size_t output_capacity,
 	enum yt_basic_fault_site target,
 	struct yt_command_save_transform *result);
-bool yt_input_expand_repeat(char *text, size_t text_capacity,
-    char *saved_command, size_t saved_capacity,
-    struct yt_repeat_transform *result);
 void yt_input_compat_upper_n(uint8_t *text, size_t length);
 bool yt_input_compat_upper_n_staged(uint8_t *text, size_t length,
 	enum yt_basic_fault_site target, size_t occurrence,
@@ -241,7 +236,6 @@ bool yt_input_confirmation_staged(const char *command_accumulator,
 	size_t *queue_length, float *bold,
 	enum yt_confirmation_fault_site target, uint16_t error_number,
 	struct yt_confirmation_transform *result);
-void yt_input_numeric_response(char *text);
 bool yt_input_drain_begin(struct yt_input_drain_state *state,
     const struct yt_input_value *initial_residue);
 enum yt_input_drain_reason yt_input_drain_local(

@@ -391,25 +391,6 @@ test_ab36_printable_transaction(void)
 }
 
 static void
-test_command_save_gate(void)
-{
-	bool requested;
-
-	CHECK(yt_input_command_save_requested("", 1U, &requested)
-	    && !requested);
-	CHECK(yt_input_command_save_requested("A", 2U, &requested)
-	    && !requested);
-	CHECK(yt_input_command_save_requested("A/", 3U, &requested)
-	    && requested);
-	CHECK(yt_input_command_save_requested("/", 2U, &requested)
-	    && requested);
-	CHECK(yt_input_command_save_requested("A//", 4U, &requested)
-	    && requested);
-	CHECK(!yt_input_command_save_requested("A", 1U, &requested));
-	CHECK(!yt_input_command_save_requested("A", 2U, NULL));
-}
-
-static void
 test_command_save_stages(void)
 {
 	static const char notice[] =
@@ -971,23 +952,23 @@ test_repeat_transform(void)
 
 	snprintf(saved, sizeof(saved), "old");
 	snprintf(text, sizeof(text), "A/r2/B/R3");
-	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),
-	    &result));
+	CHECK(yt_input_expand_repeat_with_notice(text, sizeof(text), saved,
+	    sizeof(saved), output, sizeof(output), &result));
 	CHECK(result.emit_notice && result.count == 2.0f);
 	CHECK(strcmp(text, "A;A") == 0 && strcmp(saved, "A;A") == 0);
 
 	snprintf(saved, sizeof(saved), "old");
 	snprintf(text, sizeof(text), "ABC");
-	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),
-	    &result));
+	CHECK(yt_input_expand_repeat_with_notice(text, sizeof(text), saved,
+	    sizeof(saved), output, sizeof(output), &result));
 	CHECK(!result.emit_notice && result.count == 0.0f
 	    && result.failure == YT_REPEAT_FAILURE_NONE
 	    && strcmp(text, "ABC") == 0 && strcmp(saved, "old") == 0);
 
 	snprintf(saved, sizeof(saved), "old");
 	snprintf(text, sizeof(text), "A/R0");
-	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),
-	    &result));
+	CHECK(yt_input_expand_repeat_with_notice(text, sizeof(text), saved,
+	    sizeof(saved), output, sizeof(output), &result));
 	CHECK(!result.emit_notice && result.count == 0.0f);
 	CHECK(result.failure == YT_REPEAT_FAILURE_NONE);
 	CHECK(strcmp(text, "A;") == 0 && strcmp(saved, "old") == 0);
@@ -1014,14 +995,14 @@ test_repeat_transform(void)
 	    && strcmp(saved, "old") == 0);
 
 	snprintf(text, sizeof(text), "A/R-.1");
-	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),
-	    &result));
+	CHECK(yt_input_expand_repeat_with_notice(text, sizeof(text), saved,
+	    sizeof(saved), output, sizeof(output), &result));
 	CHECK(!result.emit_notice && result.count == -1.0f);
 	CHECK(strcmp(text, "A;") == 0 && strcmp(saved, "old") == 0);
 
 	snprintf(text, sizeof(text), "A/R11");
-	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),
-	    &result));
+	CHECK(yt_input_expand_repeat_with_notice(text, sizeof(text), saved,
+	    sizeof(saved), output, sizeof(output), &result));
 	CHECK(result.emit_notice && result.count == 20.0f);
 	CHECK(strlen(text) == 39 && strcmp(text, saved) == 0);
 	for (index = 0; index < strlen(text); index += 2)
@@ -1030,8 +1011,8 @@ test_repeat_transform(void)
 	for (index = 0; index < 100; ++index)
 		text[index] = 'A';
 	snprintf(text + 100, sizeof(text) - 100, "/R10");
-	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),
-	    &result));
+	CHECK(yt_input_expand_repeat_with_notice(text, sizeof(text), saved,
+	    sizeof(saved), output, sizeof(output), &result));
 	CHECK(result.emit_notice && result.count == 10.0f);
 	CHECK(strlen(text) == 504 && strcmp(text, saved) == 0);
 	semicolons = 0;
@@ -1047,8 +1028,8 @@ test_repeat_transform(void)
 		};
 
 		snprintf(text, sizeof(text), "A/R%s", suffixes[index]);
-		CHECK(yt_input_expand_repeat(text, sizeof(text), saved,
-		    sizeof(saved), &result));
+		CHECK(yt_input_expand_repeat_with_notice(text, sizeof(text), saved,
+		    sizeof(saved), output, sizeof(output), &result));
 		CHECK(result.emit_notice && result.count == 3.0f);
 		CHECK(strcmp(text, "A;A;A") == 0);
 	}
@@ -1498,31 +1479,6 @@ test_a8d2_fault_stages(void)
 }
 
 static void
-test_numeric_response(void)
-{
-	char text[32];
-
-	text[0] = '\0';
-	yt_input_numeric_response(text);
-	CHECK(text[0] == '\0');
-	snprintf(text, sizeof(text), "%s", "12.5");
-	yt_input_numeric_response(text);
-	CHECK(strcmp(text, "12.5") == 0);
-	snprintf(text, sizeof(text), "%s", "abc");
-	yt_input_numeric_response(text);
-	CHECK(strcmp(text, "ABC") == 0);
-	snprintf(text, sizeof(text), "%s", "1e2");
-	yt_input_numeric_response(text);
-	CHECK(text[0] == '\0');
-	snprintf(text, sizeof(text), "%s", "never");
-	yt_input_numeric_response(text);
-	CHECK(text[0] == '\0');
-	snprintf(text, sizeof(text), "%s", "e");
-	yt_input_numeric_response(text);
-	CHECK(text[0] == '\0');
-}
-
-static void
 test_startup_helpers(void)
 {
 	struct yt_startup_framing framing;
@@ -1663,7 +1619,6 @@ main(void)
 	test_ab36_submission();
 	test_ab36_backspace_transaction();
 	test_ab36_printable_transaction();
-	test_command_save_gate();
 	test_command_save_stages();
 	test_b05d_keys();
 	test_upper_fault_stages();
@@ -1677,7 +1632,6 @@ main(void)
 	test_input_drain();
 	test_yes_no_candidate();
 	test_a8d2_fault_stages();
-	test_numeric_response();
 	test_startup_helpers();
 	test_platform_rmt_serial();
 	if (failures != 0) {

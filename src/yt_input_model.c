@@ -108,19 +108,6 @@ yt_input_submit_requested(uint8_t selected_key)
 	return selected_key == '\r';
 }
 
-bool
-yt_input_command_save_requested(const char *text, size_t capacity,
-    bool *requested)
-{
-	size_t length;
-
-	if (requested == NULL
-	    || !bounded_string_length(text, capacity, &length))
-		return false;
-	*requested = length != 0U && text[length - 1U] == '/';
-	return true;
-}
-
 static bool
 command_save_fault_target(enum yt_basic_fault_site target)
 {
@@ -202,19 +189,6 @@ yt_input_command_save_staged(char *text, size_t text_capacity,
 	if (target == YT_BASIC_FAULT_ADE0_SAVE_NOTICE_GOSUB_STACK)
 		return command_save_fail(result, target);
 	return true;
-}
-
-bool
-yt_input_expand_repeat(char *text, size_t text_capacity,
-    char *saved_command, size_t saved_capacity,
-    struct yt_repeat_transform *result)
-{
-	char output_source[128];
-
-	output_source[0] = '\0';
-	return yt_input_expand_repeat_with_notice(text, text_capacity,
-	    saved_command, saved_capacity, output_source, sizeof(output_source),
-	    result);
 }
 
 static bool
@@ -984,14 +958,6 @@ yt_input_yes_no_candidate(const char *command_accumulator,
 		return false;
 	*answer = result.answer;
 	return true;
-}
-
-void
-yt_input_numeric_response(char *text)
-{
-	qb_compat_upper(text);
-	if (strchr(text, 'E') != NULL)
-		text[0] = '\0';
 }
 
 bool
