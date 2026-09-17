@@ -256,20 +256,27 @@ registration_title(struct yt_session *session, struct yt_error *error)
 			return false;
 	}
 	if (!registration_centered(session, (const uint8_t *)centered[0],
-	    strlen(centered[0]), "registration title", error)
-	    || !registration_centered(session, (const uint8_t *)centered[1],
-	    strlen(centered[1]), "registration copyright", error)
-	    || !registration_centered(session, (const uint8_t *)centered[2],
-	    strlen(centered[2]), "registration features", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "registration title blank", error)
-	    || !registration_centered(session, (const uint8_t *)centered[3],
-	    strlen(centered[3]), "registration strategy", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "registration title blank", error)
-	    || !registration_centered(session, (const uint8_t *)centered[4],
-	    strlen(centered[4]), "registration version", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    strlen(centered[0]), "registration title", error))
+		return false;
+	if (!registration_centered(session, (const uint8_t *)centered[1],
+	    strlen(centered[1]), "registration copyright", error))
+		return false;
+	if (!registration_centered(session, (const uint8_t *)centered[2],
+	    strlen(centered[2]), "registration features", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "registration title blank", error))
+		return false;
+	if (!registration_centered(session, (const uint8_t *)centered[3],
+	    strlen(centered[3]), "registration strategy", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "registration title blank", error))
+		return false;
+	if (!registration_centered(session, (const uint8_t *)centered[4],
+	    strlen(centered[4]), "registration version", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "registration title blank", error))
 		return false;
 	return true;
@@ -319,18 +326,24 @@ yt_session_registration(struct yt_session *session, struct yt_error *error)
 		    * REGISTRATION_STRING_CAPACITY;
 
 	session->registered = false;
-	if (!registration_close_file4(&files, error)
-	    || !registration_resolve_path(&files, error)
-	    || !yt_database_open(&files.random, files.path,
-	    YT_OPEN_UPDATE_CREATE, error)
-	    || !yt_database_random_lof(&files.random, &size, error)
-	    || !registration_close_file4(&files, error))
+	if (!registration_close_file4(&files, error))
+		goto done;
+	if (!registration_resolve_path(&files, error))
+		goto done;
+	if (!yt_database_open(&files.random, files.path,
+	    YT_OPEN_UPDATE_CREATE, error))
+		goto done;
+	if (!yt_database_random_lof(&files.random, &size, error))
+		goto done;
+	if (!registration_close_file4(&files, error))
 		goto done;
 	if (size == 0U) {
-		if (!yt_file_kill(files.path, error)
-		    || !registration_copy(&display[0], NULL, 0U,
-		    evaluation_first, sizeof(evaluation_first) - 1U, error)
-		    || !registration_copy(&display[1], NULL, 0U,
+		if (!yt_file_kill(files.path, error))
+			goto done;
+		if (!registration_copy(&display[0], NULL, 0U,
+		    evaluation_first, sizeof(evaluation_first) - 1U, error))
+			goto done;
+		if (!registration_copy(&display[1], NULL, 0U,
 		    evaluation_second, sizeof(evaluation_second) - 1U, error))
 			goto done;
 	}
@@ -355,13 +368,17 @@ yt_session_registration(struct yt_session *session, struct yt_error *error)
 		if (!registration_arithmetic(line, calculated_key, error))
 			goto done;
 		if (memcmp(parsed_key, calculated_key, sizeof(parsed_key)) != 0) {
-			if (!registration_beep(error)
-			    || !registration_beep(error)
-			    || !session_present_forced_local_line(invalid_notice,
+			if (!registration_beep(error))
+				goto done;
+			if (!registration_beep(error))
+				goto done;
+			if (!session_present_forced_local_line(invalid_notice,
 			    sizeof(invalid_notice) - 1U,
-			    "registration forced local row", error)
-			    || !registration_beep(error)
-			    || !registration_beep(error))
+			    "registration forced local row", error))
+				goto done;
+			if (!registration_beep(error))
+				goto done;
+			if (!registration_beep(error))
 				goto done;
 			registration_close_all(session, &files);
 			session->running = false;
@@ -370,21 +387,24 @@ yt_session_registration(struct yt_session *session, struct yt_error *error)
 			goto done;
 		}
 		if (!registration_copy(&display[0], NULL, 0U, line[0].data,
-		    line[0].length, error)
-		    || !registration_copy(&display[1], NULL, 0U, line[1].data,
+		    line[0].length, error))
+			goto done;
+		if (!registration_copy(&display[1], NULL, 0U, line[1].data,
 		    line[1].length, error))
 			goto done;
 		session->registered = true;
 		if (!registration_prepend(&display[0],
-		    (const uint8_t *)"Registered to ", 14U, error)
-		    || !registration_prepend(&display[1],
+		    (const uint8_t *)"Registered to ", 14U, error))
+			goto done;
+		if (!registration_prepend(&display[1],
 		    (const uint8_t *)"Registered by ", 14U, error))
 			goto done;
 	}
 	for (index = 0U; index < REGISTRATION_DISPLAY_COUNT; ++index) {
 		if (!registration_centered(session, display[index].data,
-		    display[index].length, "registration result row", error)
-		    || !session_present_text(session, NULL, 0U,
+		    display[index].length, "registration result row", error))
+			goto done;
+		if (!session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "registration result blank", error))
 			goto done;
 	}
