@@ -238,7 +238,7 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 	static const uint8_t limit[] =
 	    "   Due to the distances involved, messages are limited to 20 lines.";
 	char target[160];
-	float recipients[4] = {0};
+	int recipients[4] = {0};
 	int recipient_count = 0;
 	char lines[21][76] = {{0}};
 	int line_count = 0;
@@ -264,7 +264,7 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 		    || !session_present_paged_fragment(session, broadcast,
 		    sizeof(broadcast) - 1U))
 			return false;
-		recipients[0] = -2.0f;
+		recipients[0] = -2;
 		recipient_count = 1;
 		all = true;
 	}
@@ -282,8 +282,7 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 		    session_record(session), NULL, NULL, NULL, error))
 			return false;
 		for (index = 0; index < 4; ++index)
-			recipients[index] =
-			    (float)session->team_cache.roster[index];
+			recipients[index] = session->team_cache.roster[index];
 		recipient_count = 4;
 	}
 	else {
@@ -293,7 +292,7 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 			return false;
 		if (selected == 0)
 			return true;
-		recipients[0] = (float)selected;
+		recipients[0] = selected;
 		recipient_count = 1;
 	}
 	if (!all && !session_present_text(session, NULL, 0,
@@ -305,9 +304,9 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 		    + sizeof("'s frequency.") - 1U];
 		size_t row_length;
 
-		if (all || recipients[index] == 0.0f)
+		if (all || recipients[index] == 0)
 			continue;
-		if (!session_read_player_expression(session, recipients[index],
+		if (!yt_game_read_player(&session->door->game, recipients[index],
 		    &target_player, error)
 		    || !yt_radio_tuning_row(&target_player, row, sizeof(row),
 		    &row_length, error))
@@ -513,7 +512,7 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 	for (index = 0; index < recipient_count; ++index) {
 		int body;
 
-		if (recipients[index] == 0.0f)
+		if (recipients[index] == 0)
 			continue;
 		for (body = 0; body < line_count; ++body) {
 			size_t length = strlen(lines[body]);
@@ -531,7 +530,8 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 			}
 			if (!session_append_radio_bytes(
 			    (const uint8_t *)lines[body], length,
-			    (float)session_record(session), recipients[index], error))
+			    (float)session_record(session),
+			    (float)recipients[index], error))
 				return false;
 		}
 	}

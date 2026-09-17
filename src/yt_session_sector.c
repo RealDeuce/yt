@@ -121,21 +121,6 @@ scanner_read_planet(struct yt_session *session, uint32_t physical_record,
 	return true;
 }
 
-bool
-session_read_player_expression(struct yt_session *session,
-    float basic_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_record record;
-	uint32_t physical = qb_brun_random_record_number(basic_record);
-
-	if (!yt_database_read(&session->door->game.database, (size_t)physical,
-	    &record, error))
-		return false;
-	yt_player_decode(player, &record);
-	return true;
-}
-
 static void
 scanner_cache_hostile_sector(struct yt_session *session,
     const struct yt_sector *sector)
@@ -311,9 +296,8 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		if (sector.fighter_owner != -1.0f
 		    && sector.fighter_owner != -2.0f
 		    && sector.fighter_owner != (float)session_record(session)) {
-			if (!session_read_player_expression(session,
-			    sector.fighter_owner,
-			    &owner, error))
+			if (!yt_game_read_player(&session->door->game,
+			    (int)sector.fighter_owner, &owner, error))
 				return false;
 			owner_pointer = &owner;
 			owner_team_nonzero = owner.team != 0.0f;

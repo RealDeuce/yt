@@ -8,7 +8,7 @@
 #include <string.h>
 
 static bool
-radio_name_bytes(struct yt_session *session, float record, uint8_t *dest,
+radio_name_bytes(struct yt_session *session, int record, uint8_t *dest,
     size_t capacity, size_t *length, bool sender, struct yt_error *error)
 {
 	const uint8_t *literal;
@@ -17,12 +17,12 @@ radio_name_bytes(struct yt_session *session, float record, uint8_t *dest,
 	if (length == NULL)
 		return false;
 	*length = 0;
-	if (record > 0.0f) {
+	if (record > 0) {
 		struct yt_player player;
 		uint8_t stored[YT_TEXT_FIELD_SIZE];
 		size_t stored_length;
 
-		if (!session_read_player_expression(session, record, &player,
+		if (!yt_game_read_player(&session->door->game, record, &player,
 		    error))
 			return false;
 		stored_length = yt_player_stored_name(&player, stored);
@@ -37,7 +37,7 @@ radio_name_bytes(struct yt_session *session, float record, uint8_t *dest,
 		literal = (const uint8_t *)"All";
 		literal_length = strlen("All");
 	}
-	else if (record == -1.0f) {
+	else if (record == -1) {
 		literal = (const uint8_t *)"The Xannor";
 		literal_length = strlen("The Xannor");
 	}
@@ -88,9 +88,9 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 	struct yt_radio_pager_state pager;
 	uint64_t byte_length;
 	uint64_t probe_count;
-	float previous_recipient = 0.0f;
-	float previous_sender = 0.0f;
-	float current_player = (float)session_record(session);
+	int previous_recipient = 0;
+	int previous_sender = 0;
+	int current_player = session_record(session);
 	bool visible = false;
 	uint32_t record_number;
 
@@ -142,8 +142,8 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 		struct yt_radio_record record;
 		struct yt_radio_reader_decision decision;
 		float counter;
-		float recipient;
-		float sender;
+		int recipient;
+		int sender;
 
 		if (!yt_radio_file_get(&file, record_number, &record, NULL,
 		    error)) {
@@ -153,10 +153,11 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 			goto abort;
 		}
 		counter = yt_radio_get_number(&record, 0U);
-		recipient = yt_radio_get_number(&record, 4U);
-		sender = yt_radio_get_number(&record, 8U);
-		if (!yt_radio_reader_decide(counter, recipient, sender,
-		    current_player, log_mode ? 1.0f : 0.0f, &decision, error))
+		recipient = (int)yt_radio_get_number(&record, 4U);
+		sender = (int)yt_radio_get_number(&record, 8U);
+		if (!yt_radio_reader_decide(counter, (float)recipient,
+		    (float)sender, (float)current_player,
+		    log_mode ? 1.0f : 0.0f, &decision, error))
 			goto abort;
 		if (!decision.visible)
 			continue;
@@ -172,7 +173,7 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 			visible = true;
 			if (!radio_name_bytes(session, recipient, to, sizeof(to),
 			    &to_length, false, error)) {
-				if (recipient > 0.0f)
+				if (recipient > 0)
 					(void)radio_read_attach_fault(error,
 					    YT_BASIC_FAULT_RADIO_RECIPIENT_GET,
 					    session->door->game.database.last_get_basic_error);
@@ -180,7 +181,7 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 			}
 			if (!radio_name_bytes(session, sender, from, sizeof(from),
 			    &from_length, true, error)) {
-				if (sender > 0.0f)
+				if (sender > 0)
 					(void)radio_read_attach_fault(error,
 					    YT_BASIC_FAULT_RADIO_SENDER_GET,
 					    session->door->game.database.last_get_basic_error);
