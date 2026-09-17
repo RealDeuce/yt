@@ -7,7 +7,6 @@
 
 #define YT_MAINTENANCE_OUTPUT_ROWS 13U
 #define YT_MAINTENANCE_OUTPUT_ROW_SIZE 256U
-#define YT_MAINTENANCE_OUTPUT_SIZE 2048U
 
 struct yt_maintenance_text {
 	const uint8_t *data;
@@ -99,9 +98,6 @@ struct yt_maintenance_output_row {
 struct yt_maintenance_output_result {
 	struct yt_maintenance_output_row rows[YT_MAINTENANCE_OUTPUT_ROWS];
 	size_t row_count;
-	uint8_t output[YT_MAINTENANCE_OUTPUT_SIZE];
-	size_t output_length;
-	size_t final_column;
 };
 
 enum yt_maintenance_player_action {

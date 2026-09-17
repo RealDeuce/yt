@@ -25,26 +25,14 @@ maintenance_output_row(struct yt_maintenance_output_result *result,
 
 	if ((data == NULL && length != 0U)
 	    || result->row_count >= YT_MAINTENANCE_OUTPUT_ROWS
-	    || length > YT_MAINTENANCE_OUTPUT_ROW_SIZE
-	    || length > YT_MAINTENANCE_OUTPUT_SIZE - result->output_length
-	    || (newline
-	    && result->output_length + length >= YT_MAINTENANCE_OUTPUT_SIZE))
+	    || length > YT_MAINTENANCE_OUTPUT_ROW_SIZE)
 		return false;
 	row = &result->rows[result->row_count++];
 	row->id = id;
 	row->newline = newline;
 	row->length = length;
-	if (length != 0U) {
+	if (length != 0U)
 		memcpy(row->data, data, length);
-		memcpy(result->output + result->output_length, data, length);
-		result->output_length += length;
-	}
-	if (newline) {
-		result->output[result->output_length++] = '\r';
-		result->final_column = 0U;
-	}
-	else
-		result->final_column += length;
 	return true;
 }
 
