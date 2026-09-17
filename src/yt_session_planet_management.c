@@ -42,7 +42,7 @@ yt_session_planet_garrison(struct yt_session *session, int logical_planet,
 	old_garrison = planet.ground_forces;
 	if (!session_reload_player(session, error))
 		return false;
-	session_set_foreground(session, 6.0f);
+	session_set_foreground(session, 6);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "planet garrison opening blank", error)
 	    || !yt_planet_garrison_prompt(session->player.ground_forces,
@@ -114,7 +114,7 @@ yt_session_planet_bank(struct yt_session *session, int logical_planet,
 	float old_bank;
 	float credit_argument;
 
-	session_set_foreground(session, 6.0f);
+	session_set_foreground(session, 6);
 	if (!session_read_planet(session, logical_planet,
 	    &planet, error))
 		return false;

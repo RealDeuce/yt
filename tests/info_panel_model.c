@@ -134,7 +134,7 @@ yt_info_panel_run(struct yt_info_panel_state *state,
 	char left[64];
 	char right[64];
 	size_t row_length;
-	float saved_foreground;
+	int saved_foreground;
 	float cloak_percent;
 	int length;
 

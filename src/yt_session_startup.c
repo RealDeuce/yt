@@ -73,7 +73,7 @@ startup_pre_admission(struct yt_session *session, struct yt_error *error)
 	int adjusted_year;
 	int today;
 
-	session_set_foreground(session, 5.0f);
+	session_set_foreground(session, 5);
 	if (!session_present_paged_line(session, (const uint8_t *)"Initializing...",
 	    strlen("Initializing..."), "startup initializing row", error))
 		return false;
@@ -124,7 +124,7 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 		enum yt_alias_key_status alias_status;
 		struct yt_name_row row;
 
-		session_set_foreground(session, 2.0f);
+		session_set_foreground(session, 2);
 		if (!session_present_paged_line(session,
 		    (const uint8_t *)"You are a new player.",
 		    strlen("You are a new player."), "new alias notice", error)
@@ -180,7 +180,7 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 			}
 			continue;
 		}
-		session_set_foreground(session, 3.0f);
+		session_set_foreground(session, 3);
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "new alias identity blank", error)) {
 			yt_names_free(&names);
@@ -200,7 +200,7 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 				return false;
 			}
 		}
-		session_set_foreground(session, 6.0f);
+		session_set_foreground(session, 6);
 		if (!session_present_timed_paged_row(session,
 		    (const uint8_t *)"Is this OK (Y/[N])? ",
 		    strlen("Is this OK (Y/[N])? "),
@@ -422,7 +422,7 @@ returning_self_denial(struct yt_session *session, struct yt_error *error)
 	    "returning self-denial blank", error))
 		return false;
 	session->presentation.blink = true;
-	session_set_foreground(session, 7.0f);
+	session_set_foreground(session, 7);
 	if (!session_present_text(session, row, sizeof(row) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "returning self-denial row", error))
 		return false;
@@ -470,7 +470,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		int vacant = 0;
 		float vacancy_bound;
 
-		session_set_foreground(session, 5.0f);
+		session_set_foreground(session, 5);
 		if (!session_present_paged_line(session,
 		    (const uint8_t *)"Entering a new player...",
 		    strlen("Entering a new player..."),
@@ -531,7 +531,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		}
 		return yt_session_instruction_offer(session, error);
 	}
-	session_set_foreground(session, 2.0f);
+	session_set_foreground(session, 2);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "returning player blank", error))
 		return false;
@@ -736,13 +736,13 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	session.presentation.sound.local_mode = door->identity.local;
 	session.presentation.sound.user_sound = true;
 	session.presentation.sound.local_sound = door->identity.local;
-	session_set_foreground(&session, 7.0f);
+	session_set_foreground(&session, 7);
 	yt_random_init(&launch_random);
 	if (!yt_random_market_bases(&launch_random, session.market_bases, error))
 		return false;
 	if (!load_configuration(&session, error))
 		return session.terminated;
-	session_set_foreground(&session, 6.0f);
+	session_set_foreground(&session, 6);
 	if (!session_present_text(&session, NULL, 0, SESSION_PRESENT_LINE,
 	    "startup pre-title blank", error)
 	    || !yt_session_registration(&session, error))

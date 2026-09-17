@@ -304,8 +304,8 @@ session_set_color(struct yt_session *session, int logical)
 {
 	static const int pc_color[8] = {0, 4, 2, 6, 1, 5, 3, 7};
 
-	session_set_foreground(session, (float)logical);
-	session->presentation.background = 0.0f;
+	session_set_foreground(session, logical);
+	session->presentation.background = 0;
 	if (logical >= 0 && logical < 8)
 		od_set_color(pc_color[logical], 0);
 }
@@ -506,7 +506,7 @@ session_press_any_key(struct yt_session *session, bool drain,
 	enum yt_present_status status;
 	enum yt_status failure_status = YT_RANGE;
 	const char *failure_operation = "press any key presentation";
-	float saved_foreground;
+	int saved_foreground;
 
 	if (drain && !session_drain_pending_input(session)) {
 		failure_status = YT_IO_ERROR;
@@ -517,7 +517,7 @@ session_press_any_key(struct yt_session *session, bool drain,
 	    &presentation, &saved_foreground);
 	if (status != YT_PRESENT_OK)
 		goto failed;
-	session_set_foreground(session, (float)(3));
+	session_set_foreground(session, 3);
 	yt_out_present_result(&presentation);
 	if (!yt_input_pause(&session->io.input, 33.0)) {
 		failure_status = YT_IO_ERROR;
@@ -603,7 +603,7 @@ session_display_game_file(struct yt_session *session, const char *path,
 	struct yt_text_input input;
 	struct yt_error local_error;
 	struct yt_error *active_error = error == NULL ? &local_error : error;
-	float saved_foreground = session->presentation.foreground;
+	int saved_foreground = session->presentation.foreground;
 	int saved_pager_foreground = (int)session->presentation.foreground;
 	bool ok = false;
 
@@ -654,7 +654,7 @@ session_display_game_file(struct yt_session *session, const char *path,
 			goto done;
 		}
 		foreground = yt_file_viewer_line_foreground(line, length);
-		session->presentation.foreground = (float)foreground;
+		session->presentation.foreground = foreground;
 		session->pager.foreground = foreground;
 		if (foreground != 2)
 			session->presentation.bold = true;

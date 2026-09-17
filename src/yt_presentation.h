@@ -52,12 +52,12 @@ struct yt_present_time_state {
 struct yt_present_state {
 	struct yt_sound_state sound;
 	uint8_t conversion_mode;
-	float foreground;
-	float background;
+	int foreground;
+	int background;
 	bool bold;
 	bool blink;
-	float cached_foreground;
-	float cached_background;
+	int cached_foreground;
+	int cached_background;
 };
 
 struct yt_present_result {
@@ -111,8 +111,8 @@ enum yt_present_status yt_present_sound(enum yt_sound_cue cue,
     struct yt_present_state *state, struct yt_present_result *result);
 enum yt_present_status yt_present_press_prompt(
     struct yt_present_state *state, struct yt_present_result *result,
-    float *saved_foreground);
-enum yt_present_status yt_present_press_cleanup(float saved_foreground,
+    int *saved_foreground);
+enum yt_present_status yt_present_press_cleanup(int saved_foreground,
     struct yt_present_state *state, struct yt_present_result *result);
 enum yt_present_status yt_present_lottery_rewind(int row, int column,
     struct yt_present_state *state, struct yt_present_result *result);

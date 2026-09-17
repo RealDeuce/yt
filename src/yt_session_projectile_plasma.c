@@ -547,7 +547,7 @@ plasma_reload_sector:
 			float original_shields;
 			float destroyed_shields = 0.0f;
 			float remaining_shields;
-			float saved_foreground;
+			int saved_foreground;
 			uint8_t victim[YT_TEXT_FIELD_SIZE];
 			uint8_t news_row[256];
 			uint8_t direct_row[256];
@@ -563,7 +563,7 @@ plasma_reload_sector:
 			original_fighters = (double)target.fighters;
 			original_shields = target.shields;
 			saved_foreground = session->presentation.foreground;
-			session_set_foreground(session, 5.0f);
+			session_set_foreground(session, 5);
 			if (!session_sound(session, YT_SOUND_CUE_ATTACK,
 			    "plasma player-attack sound", error))
 				return false;

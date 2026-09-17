@@ -7,7 +7,7 @@ computer_activate(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t notice[] = "<Computer activated>";
 
-	session_set_foreground(session, 1.0f);
+	session_set_foreground(session, 1);
 	return session_present_paged_line(session, notice, sizeof(notice) - 1U,
 	    "computer activation notice", error)
 	    && session_sound(session, YT_SOUND_CUE_ACTION, "computer activation sound", error);
@@ -69,7 +69,7 @@ computer_menu_prompt(struct yt_session *session, char *command,
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "computer prompt leading blank", error))
 		return false;
-	session_set_foreground(session, 1.0f);
+	session_set_foreground(session, 1);
 	if (!yt_computer_prompt_row((const uint8_t *)session->time.text,
 	    session->time.text_length, prompt, sizeof(prompt), &prompt_length)
 	    || !session_present_timed_paged_row(session, prompt, prompt_length,

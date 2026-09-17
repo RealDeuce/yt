@@ -16,7 +16,7 @@ yt_pager_advance(struct yt_pager_state *pager,
 	*saved_foreground = pager->foreground;
 	pager->line_count = 0.0f;
 	pager->foreground = 3;
-	presentation->foreground = 3.0f;
+	presentation->foreground = 3;
 	presentation->bold = true;
 	pager->newline_flag = true;
 	return true;
@@ -55,7 +55,7 @@ yt_pager_complete(struct yt_pager_state *pager,
 		pager->key[1] = '\0';
 	}
 	pager->foreground = saved_foreground;
-	presentation->foreground = (float)saved_foreground;
+	presentation->foreground = saved_foreground;
 }
 
 bool

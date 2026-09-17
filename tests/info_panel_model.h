@@ -12,8 +12,8 @@ struct yt_info_panel_state {
 	const uint8_t *cached_name;
 	size_t cached_name_length;
 	float anti_cloak;
-	float foreground;
-	float background;
+	int foreground;
+	int background;
 	bool bold;
 	uint8_t time_text[64];
 	size_t time_text_length;

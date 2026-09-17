@@ -59,7 +59,7 @@ test_adjacent_and_global_reports(void)
 	session.door = &door;
 	session.active_player_record = 2;
 	session.navigation.current_sector_physical_record = 4;
-	session.presentation.foreground = 1.0f;
+	session.presentation.foreground = 1;
 	session.market_bases[0] = 20.0f;
 	session.market_bases[1] = 30.0f;
 	session.market_bases[2] = 40.0f;
@@ -100,10 +100,10 @@ test_adjacent_and_global_reports(void)
 	CHECK(yt_database_flush(&door.game.database, &error));
 
 	CHECK(yt_session_computer_profit(&session, false, &error));
-	CHECK(session.presentation.foreground == 3.0f);
+	CHECK(session.presentation.foreground == 3);
 	CHECK(door.game.today != 0);
 	CHECK(yt_session_computer_profit(&session, true, &error));
-	CHECK(session.presentation.foreground == 7.0f);
+	CHECK(session.presentation.foreground == 7);
 	for (index = 0U; index < 6U; ++index) {
 		CHECK(yt_database_read(&door.game.database, index + 3U,
 		    &after, &error));

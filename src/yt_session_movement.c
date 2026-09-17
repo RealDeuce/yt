@@ -79,7 +79,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 	static const uint8_t deactivated[] =
 	    "*** WARP DRIVE DEACTIVATED ***";
 	struct yt_sector sector;
-	float saved_foreground;
+	int saved_foreground;
 	bool finding = false;
 	uint8_t row[256];
 	char number[80];
@@ -91,8 +91,8 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 	if (target < 1.0f || target > (float)session_sector_count(session))
 		return true;
 	saved_foreground = session->presentation.foreground;
-	session_set_foreground(session, 3.0f);
-	session->presentation.background = 4.0f;
+	session_set_foreground(session, 3);
+	session->presentation.background = 4;
 	if (!session_read_sector(session, (int)target, &sector, error))
 		return false;
 	if (target == (float)session->disruption_sectors[0]
@@ -226,7 +226,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 			return false;
 	}
 	session_set_foreground(session, saved_foreground);
-	session->presentation.background = 0.0f;
+	session->presentation.background = 0;
 	*dangerous = finding;
 	return true;
 }

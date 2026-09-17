@@ -96,20 +96,17 @@ convert(const struct yt_present_state *state, double value, int *converted)
 }
 
 static enum yt_present_status
-color_digit(float value, uint8_t *digit)
+color_digit(int value, uint8_t *digit)
 {
-	char rendered[64];
-	int length = qb_str_single(rendered, sizeof(rendered), value);
-
-	if (length < 2)
+	if (value < 0 || value > 7)
 		return YT_PRESENT_RANGE;
-	*digit = (uint8_t)rendered[1];
+	*digit = (uint8_t)('0' + value);
 	return YT_PRESENT_OK;
 }
 
 static enum yt_present_status
 stage_color_cache(struct yt_present_state *state,
-    struct yt_present_result *result, float foreground, float background)
+    struct yt_present_result *result, int foreground, int background)
 {
 	if (result->event_count == 0U)
 		return YT_PRESENT_CAPACITY;
@@ -128,34 +125,26 @@ build_color(struct yt_present_state *state,
 	static const int standard[8] = {0, 4, 2, 6, 1, 5, 3, 7};
 	uint8_t sequence[32];
 	size_t length = 0;
-	float background = state->background;
+	int background = state->background;
 	bool bold = state->bold;
 	bool blink = state->blink;
-	float cached_foreground = state->cached_foreground;
-	float cached_background = state->cached_background;
-	int foreground_index;
-	int background_index;
+	int cached_foreground = state->cached_foreground;
+	int cached_background = state->cached_background;
 	int local_foreground;
 	int local_background;
 	enum yt_present_status status;
 
 	if (state->foreground == background) {
-		state->foreground = 3.0f;
-		state->background = 0.0f;
-		background = 0.0f;
+		state->foreground = 3;
+		state->background = 0;
+		background = 0;
 	}
-	status = convert(state, state->foreground, &foreground_index);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = convert(state, background, &background_index);
-	if (status != YT_PRESENT_OK)
-		return status;
-	if (foreground_index < 0 || foreground_index >= 8
-	    || background_index < 0 || background_index >= 8)
+	if (state->foreground < 0 || state->foreground >= 8
+	    || background < 0 || background >= 8)
 		return YT_PRESENT_RANGE;
-	local_foreground = standard[foreground_index]
+	local_foreground = standard[state->foreground]
 	    + (bold ? 8 : 0) + (blink ? 16 : 0);
-	local_background = standard[background_index];
+	local_background = standard[background];
 	status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0,
 	    local_foreground, local_background);
 	if (status != YT_PRESENT_OK)
@@ -185,7 +174,7 @@ build_color(struct yt_present_state *state,
 			    sequence, length);
 			if (status != YT_PRESENT_OK)
 				return status;
-			status = stage_color_cache(state, result, 0.0f, 0.0f);
+			status = stage_color_cache(state, result, 0, 0);
 			if (status != YT_PRESENT_OK)
 				return status;
 		}
@@ -587,19 +576,19 @@ yt_present_sound(enum yt_sound_cue cue, struct yt_present_state *state,
 
 enum yt_present_status
 yt_present_press_prompt(struct yt_present_state *state,
-    struct yt_present_result *result, float *saved_foreground)
+    struct yt_present_result *result, int *saved_foreground)
 {
 	static const uint8_t prompt[] = "*[ Press any Key ]*";
 
 	memset(result, 0, sizeof(*result));
 	*saved_foreground = state->foreground;
-	state->foreground = 3.0f;
+	state->foreground = 3;
 	return yt_present_bold_character(prompt, sizeof(prompt) - 1U, state,
 	    result);
 }
 
 enum yt_present_status
-yt_present_press_cleanup(float saved_foreground,
+yt_present_press_cleanup(int saved_foreground,
     struct yt_present_state *state, struct yt_present_result *result)
 {
 	static const uint8_t carriage_return = '\r';

@@ -172,7 +172,7 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 
 			if (!session_reload_player(session, error))
 				return false;
-			session_set_foreground(session, 3.0f);
+			session_set_foreground(session, 3);
 			if (!yt_hostile_menu_row(session->combat.ship_fighters,
 			    session->combat.deployed_fighters, row,
 			    sizeof(row), &row_length)) {
@@ -230,7 +230,7 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 						return true;
 					if (session->combat.deployed_fighters
 					    <= 0.0) {
-						session_set_foreground(session, 1.0f);
+						session_set_foreground(session, 1);
 						if (!yt_session_display_sector(session, false, error))
 							return false;
 						return true;
@@ -271,7 +271,7 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 					if (forced_attack) {
 						if (session->combat.deployed_fighters
 						    <= 0.0) {
-							session_set_foreground(session, 1.0f);
+							session_set_foreground(session, 1);
 							if (!yt_session_display_sector(session, false, error))
 								return false;
 							return true;

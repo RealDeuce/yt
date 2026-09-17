@@ -25,7 +25,7 @@ yt_session_planet_assault(struct yt_session *session,
 	size_t row_length;
 	float attackers = commitment;
 	float defenders;
-	float saved_foreground;
+	int saved_foreground;
 
 	if (defeated == NULL)
 		return false;
@@ -73,7 +73,7 @@ yt_session_planet_assault(struct yt_session *session,
 			return false;
 		yt_planet_assault_round(attacker_damage, amount, &attackers,
 		    &defenders);
-		session_set_foreground(session, attacker_damage ? 3.0f : 4.0f);
+		session_set_foreground(session, attacker_damage ? 3 : 4);
 		if (!yt_planet_assault_status_row(attacker_damage,
 		    attacker_damage ? attackers : defenders, row, sizeof(row),
 		    &row_length)
@@ -308,7 +308,7 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 			*enter_sector = true;
 		return created;
 	}
-	session_set_foreground(session, 6.0f);
+	session_set_foreground(session, 6);
 	if (!session_present_paged_line(session, landing, sizeof(landing) - 1U,
 	    "planet landing progress", error))
 		return false;

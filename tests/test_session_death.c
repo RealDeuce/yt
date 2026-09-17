@@ -54,7 +54,7 @@ test_distinct_player_death(void)
 	memset(&session, 0, sizeof(session));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.presentation.foreground = 6.0f;
+	session.presentation.foreground = 6;
 	session.pager.foreground = 6;
 	session.pager.nonstop = true;
 	door.game.config.sector_offset = 4.0f;

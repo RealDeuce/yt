@@ -122,9 +122,9 @@ test_report_text(void)
 		CHECK(memcmp(report.item[index].price, prices[index],
 		    price_lengths[index]) == 0);
 	}
-	CHECK(report.item[0].foreground == 3.0f);
-	CHECK(report.item[1].foreground == 2.0f);
-	CHECK(report.item[2].foreground == 3.0f);
+	CHECK(report.item[0].foreground == 3);
+	CHECK(report.item[1].foreground == 2);
+	CHECK(report.item[2].foreground == 3);
 }
 
 static void

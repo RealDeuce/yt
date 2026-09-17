@@ -181,7 +181,7 @@ yt_session_port_report(struct yt_session *session, int logical_port,
 		    "port report price", error))
 			return false;
 	}
-	session_set_foreground(session, 3.0f);
+	session_set_foreground(session, 3);
 	if (terminal_port != NULL)
 		*terminal_port = report_port;
 	return true;

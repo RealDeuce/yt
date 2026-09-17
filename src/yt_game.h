@@ -577,7 +577,7 @@ struct yt_port_report_item {
 	uint8_t hold[11];
 	uint8_t price[100];
 	size_t price_length;
-	float foreground;
+	int foreground;
 };
 struct yt_port_report_text {
 	uint8_t title[256];

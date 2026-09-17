@@ -164,7 +164,7 @@ yt_session_xannor_victory(struct yt_session *session, struct yt_error *error)
 	bool credit_hydrated = false;
 	unsigned ordinal;
 
-	session_set_foreground(session, 7.0f);
+	session_set_foreground(session, 7);
 	if (!xannor_victory_file(session, "XANNORHQ.TXT", error)
 	    || !session_present_text(session, pause, sizeof(pause) - 1U,
 	    SESSION_PRESENT_RAW, "Xannor victory pause", error)

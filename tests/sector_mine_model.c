@@ -113,7 +113,7 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 	for (;;) {
 		struct yt_player working;
 		struct yt_player persisted;
-		float saved_foreground;
+		int saved_foreground;
 		float draw;
 		float loss;
 		float empty;
@@ -129,8 +129,8 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 			return false;
 		++state->batches;
 		saved_foreground = state->foreground;
-		state->foreground = 3.0f;
-		state->background = 0.0f;
+		state->foreground = 3;
+		state->background = 0;
 		state->blink = false;
 		state->pager_foreground = 3;
 		test_sector_mine_apply_style(state, ops, context);
@@ -139,7 +139,7 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 		    || !ops->present(context, row, row_length,
 		    TEST_SECTOR_MINE_OUTPUT_BOLD_RAW, error))
 			return false;
-		state->background = 1.0f;
+		state->background = 1;
 		test_sector_mine_apply_style(state, ops, context);
 		if (!ops->present(context, NULL, 0U,
 		    TEST_SECTOR_MINE_OUTPUT_LINE, error)

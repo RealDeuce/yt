@@ -273,11 +273,11 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 
 		if (market->port.factor[index] < 0.0f) {
 			status = buying;
-			item->foreground = 3.0f;
+			item->foreground = 3;
 		}
 		else {
 			status = selling;
-			item->foreground = 2.0f;
+			item->foreground = 2;
 		}
 		if (!port_report_append(item->name_status,
 		    sizeof(item->name_status), &position, commodity[index],

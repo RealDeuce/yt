@@ -322,7 +322,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "anti-cloak transaction row", error))
 		return false;
-	if (session->presentation.foreground != 2.0f)
+	if (session->presentation.foreground != 2)
 		session_set_color(session, 2);
 	if (!session_present_text(session, waves, sizeof(waves) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error)
@@ -342,7 +342,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 		    player_record, 0.0f);
 		if (!yt_game_read_player(&session->door->game, player_record,
 		    &field_player, error)) {
-			if (session->presentation.foreground != 6.0f)
+			if (session->presentation.foreground != 6)
 				session_set_color(session, 6);
 			if (field_loaded)
 				session->player.record = field_player.record;
@@ -353,7 +353,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 			continue;
 		name_length = yt_player_stored_name(&field_player, row);
 		memcpy(row + name_length, uncloaked, sizeof(uncloaked) - 1U);
-		if (session->presentation.foreground != 6.0f)
+		if (session->presentation.foreground != 6)
 			session_set_color(session, 6);
 		if (!session_present_text(session, row,
 		    name_length + sizeof(uncloaked) - 1U,
@@ -365,7 +365,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 		}
 		reported = true;
 	}
-	if (session->presentation.foreground != 2.0f)
+	if (session->presentation.foreground != 2)
 		session_set_color(session, 2);
 	if (!reported
 	    && (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,

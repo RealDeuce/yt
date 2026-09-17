@@ -35,7 +35,7 @@ mine_stock_loss(struct yt_session *session, float batch, float *stock,
 
 static bool
 mine_damage_shields(struct yt_session *session, struct yt_player *player,
-    float batch, float saved_foreground, unsigned *touched,
+    float batch, int saved_foreground, unsigned *touched,
     struct yt_error *error)
 {
 	static const uint8_t shields_destroyed[] = "Shields disintegrated!";
@@ -51,7 +51,7 @@ mine_damage_shields(struct yt_session *session, struct yt_player *player,
 	    draw);
 	*touched |= YT_SECTOR_MINE_DAMAGE_SHIELDS;
 	if (player->shields == 0.0f) {
-		session_set_foreground(session, 7.0f);
+		session_set_foreground(session, 7);
 		session->presentation.blink = true;
 		if (!session_present_text(session, shields_destroyed,
 		    sizeof(shields_destroyed) - 1U, SESSION_PRESENT_BOLD_LINE,
@@ -71,7 +71,7 @@ mine_damage_shields(struct yt_session *session, struct yt_player *player,
 		return true;
 	player->danger_scanner = 0;
 	*touched |= YT_SECTOR_MINE_DAMAGE_SCANNER;
-	session_set_foreground(session, 7.0f);
+	session_set_foreground(session, 7);
 	session->presentation.blink = true;
 	if (!session_present_text(session, scanner_destroyed,
 	    sizeof(scanner_destroyed) - 1U, SESSION_PRESENT_BOLD_LINE,
@@ -83,7 +83,7 @@ mine_damage_shields(struct yt_session *session, struct yt_player *player,
 
 static bool
 mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
-    float batch, float saved_foreground, unsigned *touched,
+    float batch, int saved_foreground, unsigned *touched,
     struct yt_error *error)
 {
 	static const uint8_t scanner_destroyed[] =
@@ -130,7 +130,7 @@ mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
 	if (player->danger_scanner != 0) {
 		player->danger_scanner = 0;
 		*touched |= YT_SECTOR_MINE_DAMAGE_SCANNER;
-		session_set_foreground(session, 7.0f);
+		session_set_foreground(session, 7);
 		session->presentation.blink = true;
 		if (!session_present_text(session, scanner_destroyed,
 		    sizeof(scanner_destroyed) - 1U, SESSION_PRESENT_BOLD_LINE,
@@ -299,7 +299,7 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 	row_length += (size_t)number_length;
 	memcpy(row + row_length, success_suffix, sizeof(success_suffix) - 1U);
 	row_length += sizeof(success_suffix) - 1U;
-	session_set_foreground(session, 6.0f);
+	session_set_foreground(session, 6);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "sector mine success blank", error))
 		return false;
@@ -343,7 +343,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 	for (;;) {
 		struct yt_player working;
 		struct yt_player persisted;
-		float saved_foreground;
+		int saved_foreground;
 		float mines_before;
 		float batch;
 		float draw;
@@ -361,15 +361,15 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 			return false;
 
 		saved_foreground = session->presentation.foreground;
-		session_set_foreground(session, 3.0f);
-		session->presentation.background = 0.0f;
+		session_set_foreground(session, 3);
+		session->presentation.background = 0;
 		session->presentation.blink = false;
 		if (!yt_sector_mine_explosion_row(mines_before, batch, row,
 		    sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_RAW, "sector mine output", error))
 			return false;
-		session->presentation.background = 1.0f;
+		session->presentation.background = 1;
 		if (!session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "sector mine output", error)
 		    || !session_reload_player(session, error))

@@ -142,7 +142,7 @@ session_team_create(struct yt_session *session, struct yt_error *error)
 	    &team.overlay.record, error)
 	    || !session_team_create_password(session, id, password, error))
 		return false;
-	session_set_foreground(session, 3.0f);
+	session_set_foreground(session, 3);
 	if (qb_str_single(number, sizeof(number), (float)selected) < 0
 	    || snprintf(news, sizeof(news), "%s Created Team%s -=- %s",
 	    actor_name, number, name) < 0
@@ -271,7 +271,7 @@ session_team_join(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (!yt_news_append(news, error))
 		return false;
-	session_set_foreground(session, 3.0f);
+	session_set_foreground(session, 3);
 	if (!session_present_alert(session, success, sizeof(success) - 1U,
 	    "team join success row", error))
 		return false;
@@ -331,7 +331,7 @@ session_team_quit(struct yt_session *session, struct yt_team *team,
 		if (!session_team_store_inactive(session, team, error))
 			return false;
 	}
-	session_set_foreground(session, 6.0f);
+	session_set_foreground(session, 6);
 	if (!session_present_paged_line(session, success, sizeof(success) - 1U,
 	    "team quit success row", error)
 	    || !session_team_audit(session, old_team, YT_TEAM_AUDIT_QUIT, "",

@@ -379,7 +379,7 @@ yt_session_ordinary_commerce(struct yt_session *session,
 		const char *first_name = session->door->identity.real_first;
 		size_t first_name_length = strlen(first_name);
 
-		session_set_foreground(session, 6.0f);
+		session_set_foreground(session, 6);
 		if (!session_buffer_append(row, sizeof(row), &length, refusal_prefix,
 		    sizeof(refusal_prefix) - 1U)
 		    || !session_buffer_append(row, sizeof(row), &length, first_name,
@@ -438,7 +438,7 @@ yt_session_command_trade(struct yt_session *session, bool *enter_sector,
 		*enter_sector = false;
 	if (!session_present_paged_fragment(session, label, sizeof(label) - 1U))
 		return false;
-	session_set_foreground(session, 3.0f);
+	session_set_foreground(session, 3);
 	if (!yt_session_fresh_no_turn_gate(session, &denied, error))
 		return false;
 	if (denied) {

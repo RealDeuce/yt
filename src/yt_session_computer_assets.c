@@ -101,7 +101,7 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 	old_value = session->navigation.avoided_sectors[slot - 1];
 	session->navigation.avoided_sectors[slot - 1] = new_value;
 	yt_computer_avoid_transition(old_value, new_value, &locked, &available);
-	session_set_foreground(session, 2.0f);
+	session_set_foreground(session, 2);
 	if (locked) {
 		char number[64];
 		char status[128];
@@ -126,7 +126,7 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 		    "avoid available status", error))
 			return false;
 	}
-	session_set_foreground(session, 1.0f);
+	session_set_foreground(session, 1);
 	return true;
 }
 

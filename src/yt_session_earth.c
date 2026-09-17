@@ -193,7 +193,7 @@ session_earth_report(struct yt_session *session, struct yt_port *earth,
 	if (!session_read_port_at_fault(session, 1, earth,
 	    YT_BASIC_FAULT_PORT_EARTH_GET, error))
 		return false;
-	session_set_foreground(session, 3.0f);
+	session_set_foreground(session, 3);
 	if (!yt_clock_read(&session->door->game.clock, &date_now, error)
 	    || !yt_clock_read(&session->door->game.clock, &time_now, error))
 		return false;

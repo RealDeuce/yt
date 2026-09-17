@@ -174,7 +174,7 @@ bool session_read_planet(struct yt_session *session, int logical_planet,
 bool session_write_planet(struct yt_session *session, int logical_planet,
     struct yt_planet *planet, struct yt_error *error);
 bool session_write_player(struct yt_session *session, struct yt_error *error);
-void session_set_foreground(struct yt_session *session, float value);
+void session_set_foreground(struct yt_session *session, int value);
 void session_set_color(struct yt_session *session, int logical);
 bool session_present_text(struct yt_session *session, const uint8_t *text,
     size_t length, enum session_present_text_kind kind,

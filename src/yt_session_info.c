@@ -243,14 +243,14 @@ info_panel_commodity(struct yt_session *session,
 		return false;
 	if (right_value != 0.0f) {
 		session->presentation.bold = true;
-		session_set_foreground(session, 7.0f);
-		session->presentation.background = 4.0f;
+		session_set_foreground(session, 7);
+		session->presentation.background = 4;
 	}
 	if (!info_panel_fixed(session, (const uint8_t *)number,
 	    (size_t)number_length, 6.0f, error))
 		return false;
-	session_set_foreground(session, 2.0f);
-	session->presentation.background = 0.0f;
+	session_set_foreground(session, 2);
+	session->presentation.background = 0;
 	return info_line(session, &bar, 1U, error);
 }
 
@@ -277,14 +277,14 @@ yt_session_show_ship(struct yt_session *session, struct yt_error *error)
 	char right[64];
 	size_t row_length;
 	size_t cached_name_length = session->cached_player_name_length;
-	float saved_foreground = session->presentation.foreground;
+	int saved_foreground = session->presentation.foreground;
 	float cloak_percent;
 	bool anti_cloak = session->earth.anti_cloak_enabled;
 	int length;
 
 	if (!info_refresh_time(session, error))
 		return false;
-	session_set_foreground(session, 2.0f);
+	session_set_foreground(session, 2);
 	if (!info_line(session, NULL, 0U, error)
 	    || !info_panel_fixed(session, NULL, 0U, 20.0f, error)
 	    || !info_line(session, title, sizeof(title) - 1U, error)

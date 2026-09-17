@@ -104,7 +104,7 @@ test_emergency_warp_persistence(void)
 	session.door = &door;
 	session.active_player_record = 2;
 	session.pager.nonstop = true;
-	session.presentation.foreground = 7.0f;
+	session.presentation.foreground = 7;
 	door.game.config.sector_offset = 51.0f;
 	door.game.config.port_offset = 2055.0f;
 	door.game.config.headquarters = 42.0f;

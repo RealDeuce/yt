@@ -187,11 +187,11 @@ yt_session_planet_permission(struct yt_session *session,
 	    "planet permission prefix", error))
 		return false;
 	session->presentation.blink = true;
-	session_set_foreground(session, 3.0f);
+	session_set_foreground(session, 3);
 	if (!session_present_text(session, denial, sizeof(denial) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "planet permission denial", error))
 		return false;
 	*denied = true;
-	session_set_foreground(session, 6.0f);
+	session_set_foreground(session, 6);
 	return true;
 }

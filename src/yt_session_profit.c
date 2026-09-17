@@ -106,13 +106,13 @@ profit_pair_color(struct yt_session *session, int source, int target)
 {
 	if ((source == 1 && target == 2)
 	    || (source == 2 && target == 1))
-		session_set_foreground(session, 3.0f);
+		session_set_foreground(session, 3);
 	else if ((source == 1 && target == 3)
 	    || (source == 3 && target == 1))
-		session_set_foreground(session, 2.0f);
+		session_set_foreground(session, 2);
 	else if ((source == 2 && target == 3)
 	    || (source == 3 && target == 2))
-		session_set_foreground(session, 1.0f);
+		session_set_foreground(session, 1);
 }
 
 static int
@@ -286,7 +286,7 @@ profit_emit_pair(struct yt_session *session, struct profit_report *report,
 	    SESSION_PRESENT_BOLD_RAW, "profit row", error))
 		return false;
 	++report->rows;
-	session_set_foreground(session, 6.0f);
+	session_set_foreground(session, 6);
 	if ((report->result_count & 1U) != 0U) {
 		if (!session_present_text(session, separator, sizeof(separator),
 		    SESSION_PRESENT_BOLD_RAW, "global profit separator", error))
@@ -322,7 +322,7 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 	int warps[6];
 	size_t slot;
 
-	session_set_foreground(session, 7.0f);
+	session_set_foreground(session, 7);
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "profit leading blank", error)
 	    || !session_present_text(session, title, sizeof(title) - 1U,
@@ -461,7 +461,7 @@ profit_global(struct yt_session *session, struct profit_report *report,
 				return true;
 		}
 	}
-	session_set_foreground(session, 7.0f);
+	session_set_foreground(session, 7);
 	return session_present_text(session, end_banner,
 	    sizeof(end_banner) - 1U, SESSION_PRESENT_BOLD_LINE,
 	    "global profit end row", error);

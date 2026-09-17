@@ -184,7 +184,7 @@ nearest_page(struct yt_session *session, struct nearest_scan *scan,
 
 	*stop = false;
 	scan->page_count = 0;
-	session_set_foreground(session, 3.0f);
+	session_set_foreground(session, 3);
 	session->presentation.bold = true;
 	if (!session_present_text(session, prompt, sizeof(prompt) - 1U,
 	    SESSION_PRESENT_BOLD_RAW, "nearest-port pager prompt", error))
@@ -249,13 +249,13 @@ nearest_scan_run(struct yt_session *session, int selector,
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "nearest-port opening blank", error))
 		goto done;
-	session_set_foreground(session, 3.0f);
+	session_set_foreground(session, 3);
 	if (!session_present_text(session, scanning, sizeof(scanning) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "nearest-port scanning row", error)
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "nearest-port scanning blank", error))
 		goto done;
-	session_set_foreground(session, 7.0f);
+	session_set_foreground(session, 7);
 	if (!session_present_text(session, instruction,
 	    sizeof(instruction) - 1U, SESSION_PRESENT_BOLD_LINE,
 	    "nearest-port ownership row", error)
@@ -360,7 +360,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				}
 				memcpy(heading, "Distance:", 9U);
 				memcpy(heading + 9U, number, (size_t)length);
-				session_set_foreground(session, 1.0f);
+				session_set_foreground(session, 1);
 				if (!session_present_text(session, heading,
 				    9U + (size_t)length, SESSION_PRESENT_BOLD_LINE,
 				    "nearest-port distance heading", error))
@@ -433,20 +433,20 @@ nearest_scan_run(struct yt_session *session, int selector,
 				}
 				if (scan.port.owner != 0)
 					session->presentation.bold = true;
-				session_set_foreground(session, 2.0f);
+				session_set_foreground(session, 2);
 				if (!session_present_text(session, sector_cell,
 				    sizeof(sector_cell), SESSION_PRESENT_RAW,
 				    "nearest-port sector prefix", error))
 					goto done;
 				session_set_foreground(session,
-				    scan.port.commodity_class == 3 ? 7.0f : 6.0f);
+				    scan.port.commodity_class == 3 ? 7 : 6);
 				session->presentation.bold = true;
 				if (!session_present_text(session, ore,
 				    scan.display_sector == 1 ? 0U : sizeof(ore) - 1U,
 				    SESSION_PRESENT_BOLD_RAW, "nearest-port ore cell", error))
 					goto done;
 				session_set_foreground(session,
-				    scan.port.commodity_class == 2 ? 7.0f : 6.0f);
+				    scan.port.commodity_class == 2 ? 7 : 6);
 				session->presentation.bold = true;
 				if (!session_present_text(session, organics,
 				    scan.display_sector == 1 ? 0U : sizeof(organics) - 1U,
@@ -454,19 +454,19 @@ nearest_scan_run(struct yt_session *session, int selector,
 				    error))
 					goto done;
 				session_set_foreground(session,
-				    scan.port.commodity_class == 1 ? 7.0f : 6.0f);
+				    scan.port.commodity_class == 1 ? 7 : 6);
 				session->presentation.bold = true;
 				if (!session_present_text(session, equipment,
 				    scan.display_sector == 1 ? 0U : sizeof(equipment) - 1U,
 				    SESSION_PRESENT_BOLD_RAW, "nearest-port equipment cell",
 				    error))
 					goto done;
-				session_set_foreground(session, 2.0f);
+				session_set_foreground(session, 2);
 				if (!session_present_text(session, stock,
 				    scan.display_sector == 1 ? 0U : sizeof(stock),
 				    SESSION_PRESENT_RAW, "nearest-port aggregate cell", error))
 					goto done;
-				session_set_foreground(session, 3.0f);
+				session_set_foreground(session, 3);
 				owner_record = scan.port.owner;
 				if (scan.display_sector != 1 && owner_record != 0) {
 					if (!yt_database_read(&session->door->game.database,
@@ -481,10 +481,10 @@ nearest_scan_run(struct yt_session *session, int selector,
 					if (name_length > 26U)
 						name_length = 26U;
 					if (owner_record == scan.actor_number)
-						session_set_foreground(session, 5.0f);
+						session_set_foreground(session, 5);
 				}
 				if (scan.display_sector == 1) {
-					session_set_foreground(session, 3.0f);
+					session_set_foreground(session, 3);
 					session->presentation.blink = true;
 				}
 				if (!session_present_text(session, name, name_length,

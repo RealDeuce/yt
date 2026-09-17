@@ -501,7 +501,7 @@ missile_mines:
 		    &session->door->game.random, &damage, error))
 			return false;
 		scanner_disabled = damage.scanner_disabled;
-		session_set_foreground(session, 5.0f);
+		session_set_foreground(session, 5);
 		if (!yt_game_read_player(&session->door->game, basic,
 		    &presentation_target, error))
 			return false;
@@ -531,7 +531,7 @@ missile_mines:
 		    strlen(row), SESSION_PRESENT_BOLD_LINE,
 		    "cruise missile player attack second row", error))
 			return false;
-		session_set_foreground(session, 0.0f);
+		session_set_foreground(session, 0);
 		if (!yt_projectile_player_survives(target.shields)) {
 			float mines;
 			uint8_t killed_name[YT_TEXT_FIELD_SIZE];

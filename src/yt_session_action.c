@@ -48,7 +48,7 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 	anti_cloak_allows = !session->earth.anti_cloak_enabled;
 	if (quotient == floorf(quotient) && anti_cloak_allows) {
 		float display;
-		float saved_foreground;
+		int saved_foreground;
 		int cache_record;
 
 		session->player.cloak = qb_single_subtract(session->player.cloak,
@@ -70,7 +70,7 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 		qb_str_single(number, sizeof(number), display);
 		snprintf(row, sizeof(row), "Cloak at%s%%", number);
 		saved_foreground = session->presentation.foreground;
-		session_set_foreground(session, 7.0f);
+		session_set_foreground(session, 7);
 		if (!session_present_timed_paged_row(session, (const uint8_t *)row, strlen(row),
 		    "action-finalizer cloak row", error))
 			return false;
@@ -101,7 +101,7 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 	qb_str_single(number, sizeof(number), session->player.turns);
 	snprintf(row, sizeof(row), "One Turn Deducted,%s left.", number);
 	if (session->player.turns < 51.0f) {
-		session_set_foreground(session, 3.0f);
+		session_set_foreground(session, 3);
 		session->presentation.bold = true;
 		session->presentation.blink = true;
 	}
@@ -164,18 +164,18 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "emergency warp pre-temperature blank", error))
 		return false;
-	session_set_foreground(session, 6.0f);
+	session_set_foreground(session, 6);
 	if (!session_present_text(session, temperature,
 	    sizeof(temperature) - 1U, SESSION_PRESENT_BOLD_LINE,
 	    "emergency warp temperature title", error)
 	    || !session_present_text(session, scale, sizeof(scale) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "emergency warp temperature scale", error))
 		return false;
-	session_set_foreground(session, 2.0f);
+	session_set_foreground(session, 2);
 	if (!session_present_text(session, ruler, sizeof(ruler) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "emergency warp temperature ruler", error))
 		return false;
-	session_set_foreground(session, 6.0f);
+	session_set_foreground(session, 6);
 	if (!session_present_text(session, gauge_open,
 	    sizeof(gauge_open) - 1U, SESSION_PRESENT_BOLD_RAW,
 	    "emergency warp gauge open", error)
@@ -191,13 +191,13 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 		if (draw > 0.75f)
 			heat = qb_single_add(heat, 1.0f);
 		if (heat < 10.0f) {
-			session_set_foreground(session, 2.0f);
+			session_set_foreground(session, 2);
 		}
 		else if (heat < 20.0f) {
-			session_set_foreground(session, 3.0f);
+			session_set_foreground(session, 3);
 		}
 		else {
-			session_set_foreground(session, 1.0f);
+			session_set_foreground(session, 1);
 			session->presentation.blink = true;
 		}
 		if (!session_present_text(session, gauge_tick,
@@ -213,7 +213,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 		if ((float)counter > duration)
 			break;
 	}
-	session_set_foreground(session, 2.0f);
+	session_set_foreground(session, 2);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "emergency warp post-gauge blank one", error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -235,7 +235,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 		    sizeof(meltdown) - 1U,
 		    "meltdown attention", error))
 			return false;
-		session_set_foreground(session, 1.0f);
+		session_set_foreground(session, 1);
 		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "meltdown leading blank", error)
 		    || !session_present_text(session, engines_disabled,
@@ -301,7 +301,7 @@ yt_session_direct_emergency_warp(struct yt_session *session,
 	    "emergency warp leading blank", error))
 		return false;
 	session->presentation.bold = true;
-	session_set_foreground(session, 7.0f);
+	session_set_foreground(session, 7);
 	if (!session_present_paged_fragment(session, warning_one, sizeof(warning_one) - 1U))
 		return false;
 	session->presentation.bold = true;

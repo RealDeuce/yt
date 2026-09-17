@@ -8,12 +8,12 @@
 #include <string.h>
 
 struct yt_file_viewer_state {
-	float *foreground;
+	int *foreground;
 	int *pager_foreground;
 	bool *bold;
 	float *line_count;
 	char *pager_key;
-	float saved_foreground;
+	int saved_foreground;
 	int saved_pager_foreground;
 };
 
@@ -82,7 +82,7 @@ yt_file_viewer_display(const char *path, struct yt_file_viewer_state *state,
 			goto done;
 		}
 		foreground = yt_file_viewer_line_foreground(line, length);
-		*state->foreground = (float)foreground;
+		*state->foreground = foreground;
 		*state->pager_foreground = foreground;
 		if (foreground != 2)
 			*state->bold = true;

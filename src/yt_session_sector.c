@@ -209,7 +209,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		struct yt_planet planet;
 		uint32_t physical_planet = session_planet_basic_record(session,
 		    sector.planet);
-		float saved_foreground;
+		int saved_foreground;
 
 		if (!yt_session_update_planet_physical(session, physical_planet,
 		    &planet, NULL, error)
@@ -219,7 +219,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		    &row_length))
 			return false;
 		saved_foreground = session->presentation.foreground;
-		session_set_foreground(session, 3.0f);
+		session_set_foreground(session, 3);
 		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_LINE, "sector planet row", error))
 			return false;
@@ -383,7 +383,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "sector private-pause blank", error))
 			return false;
-		session_set_foreground(session, 7.0f);
+		session_set_foreground(session, 7);
 		if (!session_present_text(session,
 		    (const uint8_t *)"[ Pause ]", strlen("[ Pause ]"),
 		    SESSION_PRESENT_BOLD_LINE, "sector private-pause prompt",
@@ -392,7 +392,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		if (!session_wait(session, 15.0,
 		    "sector private-pause wait", error))
 			return false;
-		session_set_foreground(session, 1.0f);
+		session_set_foreground(session, 1);
 	}
 	return true;
 }
@@ -405,13 +405,13 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 	struct yt_sector_pager_state private_pager;
 	int caller_warps[6];
 	int targets[6];
-	float saved_foreground = session->presentation.foreground;
+	int saved_foreground = session->presentation.foreground;
 	size_t target_count;
 	size_t slot;
 
 	yt_sector_pager_begin(&private_pager);
 	if (!adjacent) {
-		session_set_foreground(session, 1.0f);
+		session_set_foreground(session, 1);
 		if (!yt_game_read_player(&session->door->game,
 		    session_record(session), &session->player, error))
 			return false;
@@ -429,7 +429,7 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "adjacent-sector sensor leading blank", error))
 		return false;
-	session_set_foreground(session, 7.0f);
+	session_set_foreground(session, 7);
 	if (!session_present_text(session,
 	    (const uint8_t *)"[ Sensors Activated ]",
 	    strlen("[ Sensors Activated ]"), SESSION_PRESENT_BOLD_LINE,
@@ -438,7 +438,7 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 	if (!session_sound(session, YT_SOUND_CUE_ACTION,
 	    "adjacent-sector sensor sound", error))
 		return false;
-	session_set_foreground(session, 1.0f);
+	session_set_foreground(session, 1);
 	for (slot = 0; slot < target_count; ++slot) {
 		if (!display_sector_one(session, targets[slot],
 		    &private_pager, error))
@@ -447,7 +447,7 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "adjacent-sector sensor ending blank", error))
 		return false;
-	session_set_foreground(session, 7.0f);
+	session_set_foreground(session, 7);
 	if (!session_present_text(session,
 	    (const uint8_t *)"[ End Sensor Scan ]",
 	    strlen("[ End Sensor Scan ]"), SESSION_PRESENT_BOLD_LINE,
@@ -464,12 +464,12 @@ yt_session_display_current_sector_cached(struct yt_session *session,
     struct yt_error *error)
 {
 	struct yt_sector_pager_state private_pager;
-	float saved_foreground = session->presentation.foreground;
+	int saved_foreground = session->presentation.foreground;
 	int current = session->player.sector;
 	bool ok;
 
 	yt_sector_pager_begin(&private_pager);
-	session_set_foreground(session, 1.0f);
+	session_set_foreground(session, 1);
 	ok = display_sector_one(session, current, &private_pager, error)
 	    && yt_game_read_player(&session->door->game,
 	    session_record(session), &session->player, error);

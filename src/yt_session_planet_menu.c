@@ -53,7 +53,7 @@ yt_session_planet_menu(struct yt_session *session, int logical_planet,
 		    || !session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "planet prompt framing blank", error))
 			return false;
-		session_set_foreground(session, 6.0f);
+		session_set_foreground(session, 6);
 		memcpy(prompt + prompt_length, prompt_prefix,
 		    sizeof(prompt_prefix) - 1U);
 		prompt_length += sizeof(prompt_prefix) - 1U;

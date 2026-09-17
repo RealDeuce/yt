@@ -138,7 +138,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 		bool first_ship = true;
 		int candidate;
 
-		session_set_foreground(session, 7.0f);
+		session_set_foreground(session, 7);
 		if (!(sector_number == session->spies.last_findings[spy]
 		    && sector_number != 0)) {
 			session->spies.found = false;
@@ -322,6 +322,6 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 			}
 		}
 	}
-	session_set_foreground(session, 0.0f);
+	session_set_foreground(session, 0);
 	return true;
 }

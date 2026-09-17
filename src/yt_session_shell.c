@@ -15,7 +15,7 @@ session_quit_confirm(struct yt_session *session, bool *confirmed,
 	if (confirmed == NULL)
 		return false;
 	*confirmed = false;
-	session_set_foreground(session, 7.0f);
+	session_set_foreground(session, 7);
 	if (!session_present_paged_fragment(session, heading, sizeof(heading) - 1U))
 		return false;
 	for (;;) {
@@ -74,7 +74,7 @@ show_help(struct yt_session *session, struct yt_error *error)
 	char row[128];
 	size_t index;
 
-	session_set_foreground(session, 6.0f);
+	session_set_foreground(session, 6);
 	if (!session_present_paged_line(session, heading, sizeof(heading) - 1U,
 	    "main help heading", error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -121,7 +121,7 @@ yt_session_quit(struct yt_session *session, struct yt_error *error)
 
 	if (!session->door->game_open)
 		return true;
-	session_set_foreground(session, 1.0f);
+	session_set_foreground(session, 1);
 	if (!yt_session_show_ship(session, error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "normal-exit post-Info blank", error)
@@ -172,7 +172,7 @@ yt_session_command_shell(struct yt_session *session, struct yt_error *error)
 		session->pager.line_count = 0.0f;
 		if (!session_reload_player(session, error))
 			return false;
-		session_set_foreground(session, 2.0f);
+		session_set_foreground(session, 2);
 		if (!session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "main prompt leading blank", error))
 			return false;
@@ -227,7 +227,7 @@ yt_session_command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			continue;
 		case YT_MAIN_SHELL_VERSION:
-			session_set_foreground(session, 6.0f);
+			session_set_foreground(session, 6);
 			if (!yt_session_registration(session, error))
 				return false;
 			if (!session->running)
@@ -326,7 +326,7 @@ yt_session_command_shell(struct yt_session *session, struct yt_error *error)
 		case YT_MAIN_SHELL_MINES:
 			if (!yt_session_command_mines(session, error))
 				return false;
-			session_set_foreground(session, 1.0f);
+			session_set_foreground(session, 1);
 			if (!yt_session_display_sector(session, false, error))
 				return false;
 			break;

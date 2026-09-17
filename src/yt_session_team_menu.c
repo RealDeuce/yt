@@ -42,7 +42,7 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 		int32_t captain_cint;
 		bool invalid;
 
-		session_set_foreground(session, 6.0f);
+		session_set_foreground(session, 6);
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "team front leading blank", error)
 		    || !yt_session_info_team_lines(session, &team, &captain,
@@ -75,7 +75,7 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 					    strlen(captain_rows[index])))
 						return false;
 		}
-		session_set_foreground(session, 6.0f);
+		session_set_foreground(session, 6);
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "team prompt blank", error))
 			return false;
