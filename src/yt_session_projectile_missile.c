@@ -75,10 +75,12 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	if (!yt_projectile_planet_attack_rows(false, attacker_name,
 	    attacker_name_length, planet_name, planet_name_length,
 	    (float)sector_number, direct_row, sizeof(direct_row),
-	    &direct_length, news_row, sizeof(news_row), &news_length)
-	    || !session_present_text(session, direct_row, direct_length,
-	    SESSION_PRESENT_LINE, "cruise missile planet-attack row", error)
-	    || !yt_news_append_bytes(news_row, news_length, error))
+	    &direct_length, news_row, sizeof(news_row), &news_length))
+		return false;
+	if (!session_present_text(session, direct_row, direct_length,
+	    SESSION_PRESENT_LINE, "cruise missile planet-attack row", error))
+		return false;
+	if (!yt_news_append_bytes(news_row, news_length, error))
 		return false;
 	if (!session_sound(session, YT_SOUND_CUE_ATTACK,
 	    "cruise missile planet attack sound", error))
@@ -96,16 +98,21 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		planet.ground_forces = impact.ground;
 		planet.owner = impact.owner;
 		if (!read_planet_physical(session, physical_planet, &persistence,
-		    error)
-		    || !yt_projectile_planet_ground_overlay(&persistence,
-		    impact.ground, impact.owner)
-		    || !session_write_planet_physical(session, physical_planet,
-		    &persistence, false, error)
-		    || !yt_projectile_planet_ground_row(impact.ground, row,
-		    sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
-		    SESSION_PRESENT_LINE, "cruise missile planet impact row", error)
-		    || !yt_news_append_bytes(row, row_length, error))
+		    error))
+			return false;
+		if (!yt_projectile_planet_ground_overlay(&persistence,
+		    impact.ground, impact.owner))
+			return false;
+		if (!session_write_planet_physical(session, physical_planet,
+		    &persistence, false, error))
+			return false;
+		if (!yt_projectile_planet_ground_row(impact.ground, row,
+		    sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "cruise missile planet impact row", error))
+			return false;
+		if (!yt_news_append_bytes(row, row_length, error))
 			return false;
 		if (*remaining < 1.0f) {
 			*early_return = true;
@@ -121,17 +128,23 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 
 		if (!yt_projectile_planet_productivity_damage(original_ore,
 		    planet.production, planet.stock, remaining,
-		    &session->door->game.random, &impact, error)
-		    || !yt_projectile_planet_productivity_row(impact.old_total,
-		    impact.new_total, row, sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
-		    SESSION_PRESENT_LINE, "cruise missile planet impact row", error)
-		    || !yt_news_append_bytes(row, row_length, error)
-		    || !read_planet_physical(session, physical_planet, &persistence,
-		    error)
-		    || !yt_projectile_planet_productivity_overlay(&persistence,
-		    planet.production, planet.stock)
-		    || !session_write_planet_physical(session, physical_planet,
+		    &session->door->game.random, &impact, error))
+			return false;
+		if (!yt_projectile_planet_productivity_row(impact.old_total,
+		    impact.new_total, row, sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "cruise missile planet impact row", error))
+			return false;
+		if (!yt_news_append_bytes(row, row_length, error))
+			return false;
+		if (!read_planet_physical(session, physical_planet, &persistence,
+		    error))
+			return false;
+		if (!yt_projectile_planet_productivity_overlay(&persistence,
+		    planet.production, planet.stock))
+			return false;
+		if (!session_write_planet_physical(session, physical_planet,
 		    &persistence, false, error))
 			return false;
 	}
@@ -144,23 +157,30 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		struct yt_record record;
 
 		if (!read_planet_physical(session, physical_planet, &destruction,
-		    error)
-		    || !yt_projectile_planet_destroy_overlay(&destruction)
-		    || !session_write_planet_physical(session, physical_planet,
-		    &destruction, false, error)
-		    || !yt_database_read(&session->door->game.database,
+		    error))
+			return false;
+		if (!yt_projectile_planet_destroy_overlay(&destruction))
+			return false;
+		if (!session_write_planet_physical(session, physical_planet,
+		    &destruction, false, error))
+			return false;
+		if (!yt_database_read(&session->door->game.database,
 		    (size_t)physical_sector, &record, error))
 			return false;
 		yt_sector_decode(&unlink, &record);
-		if (!yt_projectile_sector_unlink_overlay(&unlink)
-		    || !yt_database_write(&session->door->game.database,
-		    (size_t)physical_sector, &unlink.record, error)
-		    || !session_present_text(session, destroyed,
+		if (!yt_projectile_sector_unlink_overlay(&unlink))
+			return false;
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)physical_sector, &unlink.record, error))
+			return false;
+		if (!session_present_text(session, destroyed,
 		    sizeof(destroyed) - 1U, SESSION_PRESENT_LINE,
-		    "cruise missile planet impact row", error)
-		    || !session_sound(session, YT_SOUND_CUE_DESTRUCTION,
-		    "cruise missile planet destruction sound", error)
-		    || !yt_news_append_bytes(destroyed,
+		    "cruise missile planet impact row", error))
+			return false;
+		if (!session_sound(session, YT_SOUND_CUE_DESTRUCTION,
+		    "cruise missile planet destruction sound", error))
+			return false;
+		if (!yt_news_append_bytes(destroyed,
 		    sizeof(destroyed) - 1U, error))
 			return false;
 	}
@@ -306,8 +326,9 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 		}
 		if (!yt_projectile_defense_row((float)sector_number, owner_name,
 		    owner_length, (double)sector.fighters, row, sizeof(row),
-		    &row_length)
-		    || !session_present_text(session, row, row_length,
+		    &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_LINE, "cruise missile defense report",
 		    error))
 			return false;
@@ -350,19 +371,22 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 			counter = qb_single_add(counter, 1.0f);
 		}
 		if (!cruise_defense_damage_row(destroyed, row, sizeof(row),
-		    &row_length)
-		    || !session_present_text(session, row, row_length,
+		    &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "cruise missile destroyed-defense row",
 		    error))
 			return false;
 		remaining_fighters = original_fighters - (double)destroyed;
-		if (destroyed > 9.0f
-		    && (!cruise_defense_news_row(
-		    (const uint8_t *)session->player.name,
-		    strlen(session->player.name), destroyed, (float)sector_number,
-		    row, sizeof(row), &row_length)
-		    || !yt_news_append_bytes(row, row_length, error)))
-			return false;
+		if (destroyed > 9.0f) {
+			if (!cruise_defense_news_row(
+			    (const uint8_t *)session->player.name,
+			    strlen(session->player.name), destroyed,
+			    (float)sector_number, row, sizeof(row), &row_length))
+				return false;
+			if (!yt_news_append_bytes(row, row_length, error))
+				return false;
+		}
 		if (!session_read_sector(session, sector_number, &persistence,
 		    error))
 			return false;
@@ -374,8 +398,9 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 			persistence.fighters = 0.0f;
 			persistence.fighter_owner = 0;
 			if (!yt_record_set_raw_number(&persistence.record, YT_F81,
-			    dirty_zero)
-			    || !yt_record_set_raw_number(&persistence.record, YT_F85,
+			    dirty_zero))
+				return false;
+			if (!yt_record_set_raw_number(&persistence.record, YT_F85,
 			    dirty_zero))
 				return false;
 		}
@@ -389,9 +414,10 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 		if (remaining_fighters == 0.0
 		    && (float)sector_number
 		    == session->door->game.config.headquarters
-		    && owner == -1
-		    && !yt_session_xannor_victory(session, error))
-			return false;
+		    && owner == -1) {
+			if (!yt_session_xannor_victory(session, error))
+				return false;
+		}
 		if (*remaining < 1.0f)
 			return true;
 	}
@@ -412,37 +438,42 @@ missile_mines:
 		if (!(observed_mines > 0.0))
 			break;
 		if (!yt_projectile_sector_mine_hit_row(observed_mines,
-		    (float)sector_number, row, sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
+		    (float)sector_number, row, sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_LINE, "cruise missile sector-mine row",
-		    error)
-		    || !session_sound(session, YT_SOUND_CUE_DAMAGE,
+		    error))
+			return false;
+		if (!session_sound(session, YT_SOUND_CUE_DAMAGE,
 		    "cruise missile sector-mine sound", error))
 			return false;
 		if (*last_mine_news_sector != (float)sector_number) {
 			if (!yt_projectile_sector_mine_news_row(
 			    (const uint8_t *)session->player.name,
 			    strlen(session->player.name), (float)sector_number,
-			    row, sizeof(row), &row_length)
-			    || !yt_news_append_bytes(row, row_length,
-			    error))
+			    row, sizeof(row), &row_length))
+				return false;
+			if (!yt_news_append_bytes(row, row_length, error))
 				return false;
 			*last_mine_news_sector = (float)sector_number;
 		}
 		destroyed = (double)*remaining < observed_mines
 		    ? *remaining : (float)observed_mines;
 		if (!yt_projectile_sector_mine_destroyed_row(destroyed, row,
-		    sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
+		    sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_LINE, "cruise missile sector-mine row",
-		    error)
-		    || !session_read_sector(session, sector_number, &mine_sector,
+		    error))
+			return false;
+		if (!session_read_sector(session, sector_number, &mine_sector,
 		    error))
 			return false;
 		mine_sector.mines = (float)(observed_mines - (double)destroyed);
 		if (!yt_record_set_number(&mine_sector.record, YT_F129,
-		    mine_sector.mines)
-		    || !yt_database_write(&session->door->game.database,
+		    mine_sector.mines))
+			return false;
+		if (!yt_database_write(&session->door->game.database,
 		    (size_t)session_sector_basic_record(session,
 		    sector_number), &mine_sector.record, error))
 			return false;
@@ -516,10 +547,11 @@ missile_mines:
 		    attacker_name, attacker_length, victim_name, victim_length,
 		    (float)sector_number, first_news, sizeof(first_news),
 		    &first_news_length, first_direct, sizeof(first_direct),
-		    &first_direct_length)
-		    || !yt_news_append_bytes(first_news, first_news_length,
-		    error)
-		    || !session_present_text(session, first_direct,
+		    &first_direct_length))
+			return false;
+		if (!yt_news_append_bytes(first_news, first_news_length, error))
+			return false;
+		if (!session_present_text(session, first_direct,
 		    first_direct_length, SESSION_PRESENT_BOLD_LINE,
 		    "cruise missile player attack first row", error))
 			return false;
@@ -551,8 +583,9 @@ missile_mines:
 			    &destroyed_length, warning_row, sizeof(warning_row),
 			    &warning_length))
 				return false;
-			if (!yt_projectile_victim_mines_overlay(&target, &mines)
-			    || !yt_database_write(&session->door->game.database,
+			if (!yt_projectile_victim_mines_overlay(&target, &mines))
+				return false;
+			if (!yt_database_write(&session->door->game.database,
 			    (size_t)basic, &target.record, error))
 				return false;
 			session->presentation.blink = true;
@@ -568,18 +601,20 @@ missile_mines:
 				    "cruise missile carried-mine warning", error))
 					return false;
 			}
-			if (mines != 0.0f
-			    && !deploy_victim_mines(session, sector_number,
-			    mines, error))
-				return false;
+			if (mines != 0.0f) {
+				if (!deploy_victim_mines(session, sector_number,
+				    mines, error))
+					return false;
+			}
 			if (!yt_session_kill_player(session, basic,
 			    session_record(session), true, error))
 				return false;
 			if (yt_projectile_salvage_admitted(*counterattack,
 			    *xannor_provoker)) {
 				if (!session_sound(session, YT_SOUND_CUE_DESTRUCTION,
-				    "cruise missile salvage sound", error)
-				    || !yt_session_salvage_player(session, basic,
+				    "cruise missile salvage sound", error))
+					return false;
+				if (!yt_session_salvage_player(session, basic,
 				    session_record(session), error))
 					return false;
 			}
