@@ -13716,17 +13716,15 @@ check_port_market_update(void)
 		(void)yt_record_set_number(&expected, YT_F61 + index * 4U,
 		    expected_production[index]);
 	}
-	if (!yt_port_market_update(&state, NULL) || !state.complete
-	    || state.completed_items != 3U || state.current_minute != 600.0f
-	    || state.elapsed != 1.0f
+	if (!yt_port_market_update(&state, NULL)
 	    || memcmp(state.port.record.bytes, expected.bytes,
 	    sizeof(expected.bytes)) != 0)
 		return false;
 	for (index = 0U; index < 3U; ++index) {
-		if (state.capacity[index] != (double)expected_capacity[index]
+		if (qb_mbf64_decode(state.capacity_raw[index])
+		    != (double)expected_capacity[index]
 		    || state.port.production[index] != expected_production[index]
-		    || state.price[index] != expected_price[index]
-		    || !state.production_raised[index])
+		    || state.price[index] != expected_price[index])
 			return false;
 	}
 
@@ -13738,8 +13736,7 @@ check_port_market_update(void)
 	if (qb_mbf64_encode(16777217.0, exact_capacity) != QB_MBF_OK
 	    || !yt_port_market_update(&state, NULL)
 	    || memcmp(state.capacity_raw[0], exact_capacity,
-	    sizeof(exact_capacity)) != 0
-	    || state.capacity[0] != 16777217.0)
+	    sizeof(exact_capacity)) != 0)
 		return false;
 
 	port_market_fixture(&state, 999.0f, stock, production);
@@ -13749,16 +13746,19 @@ check_port_market_update(void)
 	yt_port_decode(&state.port, &expected);
 	yt_error_clear(&error);
 	if (yt_port_market_update(&state, &error) || error.status != YT_RANGE
-	    || state.complete || state.completed_items != 0U
 	    || memcmp(state.port.record.bytes, expected.bytes,
 	    sizeof(expected.bytes)) != 0)
 		return false;
 
 	port_market_fixture(&state, 900.0f, stock, production);
-	if (!yt_port_market_update(&state, NULL) || state.elapsed != 10.0f)
+	if (!yt_port_market_update(&state, NULL)
+	    || state.port.stock[0] != 150.0f
+	    || state.port.production[0] != 15.0f)
 		return false;
 	port_market_fixture(&state, 1001.0f, stock, production);
-	return yt_port_market_update(&state, NULL) && state.elapsed == 10.0f;
+	return yt_port_market_update(&state, NULL)
+	    && state.port.stock[0] == 150.0f
+	    && state.port.production[0] == 15.0f;
 }
 
 static bool

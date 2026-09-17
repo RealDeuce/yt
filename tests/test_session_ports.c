@@ -76,7 +76,6 @@ test_port_update(void)
 	CHECK(market.logical_port == 2.0f);
 	CHECK(market.port_physical_record == 2057U);
 	CHECK(market.current_day == (float)today);
-	CHECK(market.complete);
 	CHECK(yt_database_read(&door.game.database, 2057U, &persisted,
 	    &error));
 	CHECK(memcmp(persisted.bytes, market.port.record.bytes,

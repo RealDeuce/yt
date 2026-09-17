@@ -47,24 +47,15 @@ yt_port_market_update(struct yt_port_market_state *state,
 	uint8_t mutable_production[3][4];
 	uint8_t mutable_price[3][4];
 	struct yt_record updated;
-	bool raised[3] = {false, false, false};
 	float minute;
 	float elapsed;
 	size_t index;
 
 	if (state == NULL)
 		return false;
-	state->current_minute = 0.0f;
-	state->elapsed = 0.0f;
 	memset(state->capacity_raw, 0, sizeof(state->capacity_raw));
-	memset(state->capacity, 0, sizeof(state->capacity));
-	memset(state->production_raw, 0, sizeof(state->production_raw));
 	memset(state->price_raw, 0, sizeof(state->price_raw));
 	memset(state->price, 0, sizeof(state->price));
-	memset(state->production_raised, 0,
-	    sizeof(state->production_raised));
-	state->completed_items = 0U;
-	state->complete = false;
 
 	if (qb_mbf64_from_u64(10U, ten) != QB_MBF_OK
 	    || qb_mbf64_from_u64(1000U, thousand) != QB_MBF_OK
@@ -128,7 +119,6 @@ yt_port_market_update(struct yt_port_market_state *state,
 			    mutable_production[index]) == QB_MBF_OVERFLOW)
 				return yt_game_error(error, YT_RANGE,
 				    "ordinary port production CSNG");
-			raised[index] = true;
 			yt_port_mbf64_promote_single(mutable_production[index],
 			    promoted_production);
 		}
@@ -174,7 +164,6 @@ yt_port_market_update(struct yt_port_market_state *state,
 		    && !market_encode_single(1.0f, mutable_price[index], error,
 		    "ordinary port price floor"))
 			return false;
-		++state->completed_items;
 	}
 
 	updated = state->port.record;
@@ -195,16 +184,10 @@ yt_port_market_update(struct yt_port_market_state *state,
 			return yt_game_error(error, YT_RANGE,
 			    "ordinary port FIELD overlay");
 		memcpy(state->capacity_raw[index], mutable_capacity[index], 8U);
-		state->capacity[index] = qb_mbf64_decode(mutable_capacity[index]);
-		memcpy(state->production_raw[index], mutable_production[index], 4U);
 		memcpy(state->price_raw[index], mutable_price[index], 4U);
 		state->price[index] = qb_mbf32_decode(mutable_price[index]);
-		state->production_raised[index] = raised[index];
 	}
-	state->current_minute = minute;
-	state->elapsed = elapsed;
 	yt_port_decode(&state->port, &updated);
-	state->complete = true;
 	return true;
 }
 

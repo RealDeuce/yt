@@ -583,16 +583,9 @@ struct yt_port_market_state {
 	float current_day;
 	float timer_seconds;
 	float base_price[3];
-	float current_minute;
-	float elapsed;
 	uint8_t capacity_raw[3][8];
-	double capacity[3];
-	uint8_t production_raw[3][4];
 	uint8_t price_raw[3][4];
 	float price[3];
-	bool production_raised[3];
-	size_t completed_items;
-	bool complete;
 };
 bool yt_port_market_update(struct yt_port_market_state *state,
 	struct yt_error *error);
