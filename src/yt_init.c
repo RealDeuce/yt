@@ -131,9 +131,11 @@ yt_initializer_prepare_yt(const struct yt_clock *clock,
 		return false;
 	}
 	yt_initializer_layout_yt(preparation);
-	if (!yt_clock_read(clock, &epoch_date, error)
-	    || !yt_clock_read(clock, &maintenance_date, error)
-	    || !yt_random_next(random, &sample, error))
+	if (!yt_clock_read(clock, &epoch_date, error))
+		return false;
+	if (!yt_clock_read(clock, &maintenance_date, error))
+		return false;
+	if (!yt_random_next(random, &sample, error))
 		return false;
 	preparation->config.epoch_year = (float)(epoch_date.year % 100);
 	preparation->config.turns_per_day = 500.0f;
@@ -193,17 +195,19 @@ static bool
 rmt_present_preopen(const struct yt_initializer_options *options,
     struct yt_error *error)
 {
-	return rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    && rmt_present_text(options, YT_RMT_OUTPUT_LINE,
-	    "          Yankee Trader Remote Initialization Program v2.2", error)
-	    && rmt_present_text(options, YT_RMT_OUTPUT_LINE,
-	    "                         By Alan Davenport", error)
-	    && rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    && rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    && rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	    "          Yankee Trader Remote Initialization Program v2.2", error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	    "                         By Alan Davenport", error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	return rmt_present_text(options, YT_RMT_OUTPUT_LINE,
 	    "Re-creating main data file: YTDATA.DAT", error);
 }
 
@@ -214,17 +218,21 @@ rmt_present_before_headquarters(const struct yt_initializer_options *options,
 	struct yt_clock_value maintenance_date;
 	int maintenance_serial;
 
-	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present_text(options, YT_RMT_OUTPUT_LINE,
-	    "Starting player info:", error)
-	    || !rmt_present_number_line(options,
-	    "  # of fighters at start:", config->initial_fighters, error)
-	    || !rmt_present_number_line(options,
-	    "  # of credits at start:", config->initial_credits, error)
-	    || !rmt_present_number_line(options,
-	    "  # of cargo holds at start:", config->initial_holds, error)
-	    || !rmt_present_number_line(options,
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	    "Starting player info:", error))
+		return false;
+	if (!rmt_present_number_line(options,
+	    "  # of fighters at start:", config->initial_fighters, error))
+		return false;
+	if (!rmt_present_number_line(options,
+	    "  # of credits at start:", config->initial_credits, error))
+		return false;
+	if (!rmt_present_number_line(options,
+	    "  # of cargo holds at start:", config->initial_holds, error))
+		return false;
+	if (!rmt_present_number_line(options,
 	    "  # of days inactivity until an dead player is deleted:",
 	    config->retention_days, error))
 		return false;
@@ -233,11 +241,13 @@ rmt_present_before_headquarters(const struct yt_initializer_options *options,
 	maintenance_serial = yt_date_serial(&maintenance_date,
 	    config->epoch_year, NULL);
 	config->last_maintenance = (float)(maintenance_serial - 1);
-	return rmt_present_text(options, YT_RMT_OUTPUT_LINE,
-	    "  Last day maintenance run: Yesterday", error)
-	    && rmt_present_number_line(options, "  # of turns per day:",
-	    config->turns_per_day, error)
-	    && rmt_present_number_line(options,
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	    "  Last day maintenance run: Yesterday", error))
+		return false;
+	if (!rmt_present_number_line(options, "  # of turns per day:",
+	    config->turns_per_day, error))
+		return false;
+	return rmt_present_number_line(options,
 	    "  # of times per day a user may play the lottery:",
 	    config->lottery_plays, error);
 }
@@ -252,11 +262,13 @@ rmt_present_after_headquarters(const struct yt_initializer_options *options,
 
 	if (!rmt_present_number_line(options,
 	    "  Xannor Headquarters placed in sector:", config->headquarters,
-	    error)
-	    || !rmt_present_number_line(options,
+	    error))
+		return false;
+	if (!rmt_present_number_line(options,
 	    "  Ports needed to initiate Genesis:", config->genesis_ports,
-	    error)
-	    || !rmt_present_number_line(options,
+	    error))
+		return false;
+	if (!rmt_present_number_line(options,
 	    "  Maximum Cargo holds set to:", config->maximum_holds, error))
 		return false;
 	prefix_length = sizeof("  Scoreboard bulletin name and path is: ") - 1U;
@@ -268,44 +280,47 @@ rmt_present_after_headquarters(const struct yt_initializer_options *options,
 	memcpy(payload, "  Scoreboard bulletin name and path is: ",
 	    prefix_length);
 	memcpy(payload + prefix_length, config->scoreboard, scoreboard_length);
-	return rmt_present(options, YT_RMT_OUTPUT_LINE, payload,
-	    prefix_length + scoreboard_length, error)
-	    && rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error);
+	if (!rmt_present(options, YT_RMT_OUTPUT_LINE, payload,
+	    prefix_length + scoreboard_length, error))
+		return false;
+	return rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error);
 }
 
 static bool
 rmt_present_graph_opening(const struct yt_initializer_options *options,
     struct yt_error *error)
 {
-	return rmt_present_text(options, YT_RMT_OUTPUT_LINE,
-	    "Initializing sectors...", error)
-	    && rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    && rmt_present_text(options, YT_RMT_OUTPUT_LINE,
-	    "Generating Randomized Universe... Please be patient...", error)
-	    && rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    && rmt_present_text(options, YT_RMT_OUTPUT_LINE,
-	    "Wormholes (Long Warps)..", error)
-	    && rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error);
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	    "Initializing sectors...", error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	    "Generating Randomized Universe... Please be patient...", error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	    "Wormholes (Long Warps)..", error))
+		return false;
+	return rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error);
 }
 
 static bool
 yt_present_graph_opening(const struct yt_initializer_options *options,
     struct yt_error *error)
 {
-	return yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    && yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Generating Randomized Universe... Please be patient...", error)
-	    && yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    && yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Wormholes (Long Warps)..", error)
-	    && yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error);
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Generating Randomized Universe... Please be patient...", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Wormholes (Long Warps)..", error))
+		return false;
+	return yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error);
 }
 
 static bool
@@ -323,17 +338,22 @@ write_config_and_players(struct yt_database *database,
 	if (options->family == YT_INITIALIZER_YT) {
 		players_length = qb_str_single(players_text, sizeof(players_text),
 		    config->sector_offset - 1.0f);
-		if (players_length < 0
-		    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-		    "", error)
-		    || !yt_database_write(database, 1, &config->record, error)
-		    || !yt_present(options, YT_INIT_OUTPUT_LINE,
-		    config->record.bytes + YT_F53, 4U, error)
-		    || !yt_present_text(options, YT_INIT_OUTPUT_INLINE,
-		    "Generating Player Records for", error)
-		    || !yt_present_number(options,
-		    config->sector_offset - 1.0f, YT_INIT_OUTPUT_INLINE, error)
-		    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
+		if (players_length < 0)
+			return false;
+		if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+			return false;
+		if (!yt_database_write(database, 1, &config->record, error))
+			return false;
+		if (!yt_present(options, YT_INIT_OUTPUT_LINE,
+		    config->record.bytes + YT_F53, 4U, error))
+			return false;
+		if (!yt_present_text(options, YT_INIT_OUTPUT_INLINE,
+		    "Generating Player Records for", error))
+			return false;
+		if (!yt_present_number(options, config->sector_offset - 1.0f,
+		    YT_INIT_OUTPUT_INLINE, error))
+			return false;
+		if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
 		    "Players.", error))
 			return false;
 	}
@@ -352,10 +372,12 @@ write_config_and_players(struct yt_database *database,
 		    (size_t)players_length);
 		memcpy(payload + prefix_length + (size_t)players_length,
 		    " Players.", sizeof(" Players.") - 1U);
-		if (!yt_database_write(database, 1, &config->record, error)
-		    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL,
-		    0U, error)
-		    || !rmt_present(options, YT_RMT_OUTPUT_LINE,
+		if (!yt_database_write(database, 1, &config->record, error))
+			return false;
+		if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
+		    error))
+			return false;
+		if (!rmt_present(options, YT_RMT_OUTPUT_LINE,
 		    payload, prefix_length + (size_t)players_length
 		    + sizeof(" Players.") - 1U, error))
 			return false;
@@ -368,10 +390,11 @@ write_config_and_players(struct yt_database *database,
 		    &record, error))
 			return false;
 	}
-	if (!yt_database_flush(database, error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	if (!yt_database_flush(database, error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
 	    "Initializing sectors...", error))
 		return false;
 	return rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
@@ -389,12 +412,14 @@ write_world_database(struct yt_database *database,
 	int today;
 	int logical;
 
-	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Random sector data generated and verified. Writing...", error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present_text(options, YT_RMT_OUTPUT_INLINE,
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Random sector data generated and verified. Writing...", error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_INLINE,
 	    "Random sector data generated and verified. Writing...", error))
 		return false;
 	for (logical = 1; logical <= world->sectors; ++logical) {
@@ -410,45 +435,56 @@ write_world_database(struct yt_database *database,
 		    (size_t)yt_sector_basic_record(config, logical),
 		    &record, error))
 			return false;
-		if (logical % 50 == 0
-		    && !rmt_present_text(options, YT_RMT_OUTPUT_INLINE, ".", error))
-			return false;
+		if (logical % 50 == 0) {
+			if (!rmt_present_text(options, YT_RMT_OUTPUT_INLINE, ".",
+			    error))
+				return false;
+		}
 	}
 
-	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Initializing ports...", error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Initializing ports...", error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
 	    "Initializing ports... (Be patient)", error))
 		return false;
 	if (!yt_clock_read(options->clock, &port_date, error))
 		return false;
 	today = yt_date_serial(&port_date, config->epoch_year, NULL);
-	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "   They started producing 10 days ago...", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present(options, YT_INIT_OUTPUT_LOCATE_ROW_25,
-	    NULL, 0U, error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_COMMA,
-	    "Port #", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_COMMA,
-	    "Prod Ore", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_COMMA,
-	    "Prod Org", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_COMMA,
-	    "Prod Equ", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Port Name", error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present_text(options, YT_RMT_OUTPUT_INLINE,
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "   They started producing 10 days ago...", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present(options, YT_INIT_OUTPUT_LOCATE_ROW_25,
+	    NULL, 0U, error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_COMMA,
+	    "Port #", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_COMMA,
+	    "Prod Ore", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_COMMA,
+	    "Prod Org", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_COMMA,
+	    "Prod Equ", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Port Name", error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_INLINE,
 	    "   They started producing 10 days ago...", error))
 		return false;
 	for (logical = 1; logical <= world->ports; ++logical) {
@@ -519,29 +555,36 @@ write_world_database(struct yt_database *database,
 		    (size_t)yt_port_basic_record(config, logical),
 		    &record, error))
 			return false;
-		if (logical % 15 == 0
-		    && !rmt_present_text(options, YT_RMT_OUTPUT_INLINE, ".", error))
-			return false;
+		if (logical % 15 == 0) {
+			if (!rmt_present_text(options, YT_RMT_OUTPUT_INLINE, ".",
+			    error))
+				return false;
+		}
 	}
 
 	if (!yt_present(options, YT_INIT_OUTPUT_LOCATE_ROW_25,
-	    NULL, 0U, error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    NULL, 0U, error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
 	    "                                                                               ",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Initializing planets...", error)
-	    || !yt_present_str_number_line(options, "   Maximum number of planets:",
-	    config->total_records - config->planet_offset, error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present_text(options, YT_RMT_OUTPUT_LINE,
-	    "Initializing planets...", error)
-	    || !rmt_present_number_line(options, "   Maximum number of planets:",
+	    error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Initializing planets...", error))
+		return false;
+	if (!yt_present_str_number_line(options, "   Maximum number of planets:",
+	    config->total_records - config->planet_offset, error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	    "Initializing planets...", error))
+		return false;
+	if (!rmt_present_number_line(options, "   Maximum number of planets:",
 	    config->total_records - config->planet_offset, error))
 		return false;
 	record = config->record;
@@ -555,13 +598,14 @@ write_world_database(struct yt_database *database,
 			return false;
 	}
 
-	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Initializing the Xannor...", error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Initializing the Xannor...", error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
 	    "Initializing the Xannor...", error))
 		return false;
 	if (!yt_database_read(database,
@@ -579,8 +623,9 @@ write_world_database(struct yt_database *database,
 		return false;
 	yt_record_set_number(&record, YT_F105, config->headquarters);
 	if (!yt_database_write(database,
-	    (size_t)yt_sector_basic_record(config, 1), &record, error)
-	    || !yt_database_flush(database, error))
+	    (size_t)yt_sector_basic_record(config, 1), &record, error))
+		return false;
+	if (!yt_database_flush(database, error))
 		return false;
 	return true;
 }
@@ -631,27 +676,34 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			set_error(error, YT_RANGE, "initializer configuration", "");
 			goto done;
 		}
-		if (!yt_init_world_allocate(&world, error)
-		    || !rmt_present_preopen(options, error)
-		    /* 08A1 OUTPUT/CLOSE leaves DOS EOF before 26D7 RANDOM reopen. */
-		    || !yt_init_write_sequential_file("YTDATA.DAT", NULL, 0U,
-		    error)
-		    || !yt_database_random_close(database, error)
-		    || !yt_database_open(database, "YTDATA.DAT",
-		    YT_OPEN_UPDATE_CREATE, error)
-		    || !yt_clock_read(options->clock, &current, error))
+		if (!yt_init_world_allocate(&world, error))
+			goto done;
+		if (!rmt_present_preopen(options, error))
+			goto done;
+		/* 08A1 OUTPUT/CLOSE leaves DOS EOF before 26D7 RANDOM reopen. */
+		if (!yt_init_write_sequential_file("YTDATA.DAT", NULL, 0U,
+		    error))
+			goto done;
+		if (!yt_database_random_close(database, error))
+			goto done;
+		if (!yt_database_open(database, "YTDATA.DAT",
+		    YT_OPEN_UPDATE_CREATE, error))
+			goto done;
+		if (!yt_clock_read(options->clock, &current, error))
 			goto done;
 		config.epoch_year = (float)(current.year % 100);
-		if (!rmt_present_before_headquarters(options, &config, error)
-		    || !yt_random_next(random, &sample, error))
+		if (!rmt_present_before_headquarters(options, &config, error))
+			goto done;
+		if (!yt_random_next(random, &sample, error))
 			goto done;
 		config.headquarters = (float)((int)floorf(qb_single_multiply(sample,
 		    qb_single_add((float)world.sectors, -7.0f))) + 1);
 		if (!rmt_present_after_headquarters(options, &config, error))
 			goto done;
 		make_config_record(&config, config.scoreboard_length);
-		if (!write_config_and_players(database, &config, options, error)
-		    || !rmt_present_graph_opening(options, error))
+		if (!write_config_and_players(database, &config, options, error))
+			goto done;
+		if (!rmt_present_graph_opening(options, error))
 			goto done;
 	}
 	else {
@@ -739,31 +791,38 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			    qb_single_add((float)world.sectors, -7.0f))) + 1);
 		}
 		make_config_record(&config, config.scoreboard_length);
-		if (!write_config_and_players(database, &config, options, error)
-		    || !yt_init_sector_prepass(database, (int)config.sector_offset,
-		    world.sectors, &config.port_offset, error)
-		    || !yt_init_world_allocate(&world, error))
+		if (!write_config_and_players(database, &config, options, error))
+			goto done;
+		if (!yt_init_sector_prepass(database, (int)config.sector_offset,
+		    world.sectors, &config.port_offset, error))
+			goto done;
+		if (!yt_init_world_allocate(&world, error))
 			goto done;
 	}
-	if (!yt_present_graph_opening(options, error)
-	    || !yt_init_world_build_graph(&world, options->family, random,
-	    options, error)
-	    || !yt_init_world_assign_ports(&world, random, error)
-	    || !write_world_database(database, options, &config, &world,
+	if (!yt_present_graph_opening(options, error))
+		goto done;
+	if (!yt_init_world_build_graph(&world, options->family, random,
+	    options, error))
+		goto done;
+	if (!yt_init_world_assign_ports(&world, random, error))
+		goto done;
+	if (!write_world_database(database, options, &config, &world,
 	    random, error))
 		goto done;
 	if (options->family == YT_INITIALIZER_YT) {
-		if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-		    error)
-		    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
+		if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+			goto done;
+		if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
 		    "Setting up newspaper file.", error))
 			goto done;
 	}
-	else if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL,
-	    0U, error)
-	    || !rmt_present_text(options, YT_RMT_OUTPUT_LINE,
-	    "Setting up newspaper file.", error))
-		goto done;
+	else {
+		if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+			goto done;
+		if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+		    "Setting up newspaper file.", error))
+			goto done;
+	}
 	if (!yt_database_random_close(database, error)) {
 		explicit_close_failed = true;
 		goto done;
@@ -803,14 +862,19 @@ yt_initialize_bind_yt(struct yt_database *database, struct yt_error *error)
 		set_error(error, YT_INVALID, "bind YT initializer", "YTDATA.DAT");
 		return false;
 	}
-	if (!yt_database_open(database, "YTDATA.DAT", YT_OPEN_UPDATE, error)
-	    || !yt_database_read(database, 1U, &first, error)
-	    || !yt_config_decode(&loaded, &first, error)
-	    || !yt_database_read(database, 1U, &second, error)) {
-		yt_database_close(database);
-		return false;
-	}
+	if (!yt_database_open(database, "YTDATA.DAT", YT_OPEN_UPDATE, error))
+		goto failed;
+	if (!yt_database_read(database, 1U, &first, error))
+		goto failed;
+	if (!yt_config_decode(&loaded, &first, error))
+		goto failed;
+	if (!yt_database_read(database, 1U, &second, error))
+		goto failed;
 	return true;
+
+failed:
+	yt_database_close(database);
+	return false;
 }
 
 bool
