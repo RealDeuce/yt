@@ -132,7 +132,7 @@ yt_session_port_report(struct yt_session *session, int logical_port,
 	physical_record = market->port_physical_record != 0U
 	    ? market->port_physical_record
 	    : session_port_basic_record(session, logical_port);
-	session_set_pager_line_count(session, 0);
+	session->pager.line_count = 0;
 	if (!port_report_owner(session, market, error)
 	    || !session_reload_player(session, error))
 		return false;

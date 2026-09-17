@@ -38,7 +38,7 @@ computer_help(struct yt_session *session, struct yt_error *error)
 	    "17) Check Profits of Adjacent Ports";
 	size_t index;
 
-	session_set_pager_line_count(session, 0);
+	session->pager.line_count = 0;
 	if (!session_present_paged_line(session, heading, sizeof(heading) - 1U,
 	    "computer help heading", error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,

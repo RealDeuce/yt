@@ -41,12 +41,6 @@ session_planet_offset(const struct yt_session *session)
 }
 
 void
-session_set_pager_line_count(struct yt_session *session, int value)
-{
-	session->pager.line_count = value;
-}
-
-void
 session_set_foreground(struct yt_session *session, int value)
 {
 	session->presentation.foreground = value;

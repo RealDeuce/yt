@@ -48,7 +48,7 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 		    || !yt_session_info_team_lines(session, &team, &captain,
 		    error))
 			return false;
-		session_set_pager_line_count(session, 0);
+		session->pager.line_count = 0;
 		if (!session_reload_player(session, error)
 		    || !session_present_paged_line(session, exit_row, sizeof(exit_row) - 1U,
 		    "team exit row", error)

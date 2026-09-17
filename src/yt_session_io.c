@@ -604,7 +604,6 @@ session_display_game_file(struct yt_session *session, const char *path,
 	struct yt_error local_error;
 	struct yt_error *active_error = error == NULL ? &local_error : error;
 	int saved_foreground = session->presentation.foreground;
-	int saved_pager_foreground = (int)session->presentation.foreground;
 	bool ok = false;
 
 	if (error == NULL)
@@ -654,28 +653,21 @@ session_display_game_file(struct yt_session *session, const char *path,
 			goto done;
 		}
 		foreground = yt_file_viewer_line_foreground(line, length);
-		session->presentation.foreground = foreground;
-		session->pager.foreground = foreground;
+		session_set_foreground(session, foreground);
 		if (foreground != 2)
 			session->presentation.bold = true;
-		session_set_foreground(session,
-		    session->presentation.foreground);
 		if (!session_present_paged_row(session, line, length))
 			goto done;
 	}
 	if (!yt_text_input_close(&input, active_error))
 		goto done;
 	session->pager.line_count = 0;
-	session->presentation.foreground = saved_foreground;
-	session->pager.foreground = saved_pager_foreground;
-	session_set_foreground(session, session->presentation.foreground);
+	session_set_foreground(session, saved_foreground);
 	ok = session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "file viewer final blank", active_error);
 
 done:
 	yt_text_input_destroy(&input);
-	if (ok)
-		session_set_pager_line_count(session, session->pager.line_count);
 	if (!ok && active_error->status == YT_NOT_FOUND) {
 		struct yt_main_error_result handler;
 		uint8_t row[sizeof(active_error->path) + 32U];

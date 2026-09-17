@@ -340,7 +340,7 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 
 		if (next == 0)
 			break;
-		session_set_pager_line_count(session, 0);
+		session->pager.line_count = 0;
 		number_length = qb_str_single(number, sizeof(number), (float)next);
 		if (number_length < 0)
 			return false;
@@ -358,7 +358,7 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 		cost = yt_planet_move_add_cost(cost);
 		cursor = next;
 	}
-	session_set_pager_line_count(session, 0);
+	session->pager.line_count = 0;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "planet Thrusters route ending", error)
 	    || !yt_planet_move_summary(cost, row, sizeof(row), &row_length)
@@ -383,7 +383,7 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	if (!session_present_paged_line(session, engaged, sizeof(engaged) - 1U,
 	    "planet Thrusters engaged", error))
 		return false;
-	session_set_pager_line_count(session, 0);
+	session->pager.line_count = 0;
 	if (!session_present_timed_paged_row(session, moving,
 	    sizeof(moving) - 1U, "planet Thrusters moving prefix", error))
 		return false;

@@ -37,7 +37,7 @@ yt_session_planet_menu(struct yt_session *session, int logical_planet,
 		double free_holds;
 		int position;
 
-		session_set_pager_line_count(session, 0);
+		session->pager.line_count = 0;
 		if (!session_reload_player(session, error))
 			return false;
 		free_holds = qb_double_subtract(qb_double_subtract(

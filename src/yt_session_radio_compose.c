@@ -331,7 +331,7 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 			menu = true;
 		}
 		else {
-			session_set_pager_line_count(session, 0);
+			session->pager.line_count = 0;
 			if (!radio_line_prompt(session, line_count + 1,
 			    lines[line_count], error))
 				return false;
@@ -370,7 +370,7 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 							menu = true;
 						}
 						else {
-							session_set_pager_line_count(session, 0);
+							session->pager.line_count = 0;
 							if (!radio_line_prompt(session,
 							    line_count + 1, lines[line_count],
 							    error))
@@ -428,7 +428,7 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 						menu = true;
 					}
 					else {
-						session_set_pager_line_count(session, 0);
+						session->pager.line_count = 0;
 						if (!radio_line_prompt(session,
 						    line_count + 1, lines[line_count],
 						    error))
@@ -455,7 +455,7 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 			    SESSION_PRESENT_LINE, "radio menu dispatch blank", error))
 				return false;
 			if (strcmp(choice, "L") == 0) {
-				session_set_pager_line_count(session, 0);
+				session->pager.line_count = 0;
 				for (index = 0; index < line_count; ++index) {
 					char row[96];
 
