@@ -452,7 +452,7 @@ bool yt_genesis_insufficient_rows(float required, float owned,
     uint8_t *first, size_t first_capacity, size_t *first_length,
     uint8_t *second, size_t second_capacity, size_t *second_length);
 bool yt_main_fighters_sector_overlay(struct yt_sector *sector,
-	const uint8_t desired_raw[4], int player_record);
+	float desired, int player_record);
 bool yt_main_fighters_player_overlay(struct yt_player *player,
 	float remaining);
 bool yt_planet_garrison_prompt(float player_forces, float planet_forces,

@@ -101,7 +101,7 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 		    sizeof(insufficient) - 1U, "fighter insufficient notice", error);
 	if (!session_read_sector(session, logical_sector, &accepted_sector,
 	    error)
-	    || !yt_main_fighters_sector_overlay(&accepted_sector, desired_raw,
+	    || !yt_main_fighters_sector_overlay(&accepted_sector, desired,
 	    session_record(session))
 	    || !session_write_sector(session, logical_sector, &accepted_sector,
 	    error)
