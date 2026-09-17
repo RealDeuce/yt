@@ -101,8 +101,10 @@ hostile_surrender_run(struct yt_session *session,
 	state->ship_fighters = (double)state->current.fighters;
 	owner_route = yt_hostile_surrender_route(state->old_owner);
 	if (!session_present_paged_line(session, radio, sizeof(radio) - 1U,
-	    "surrender radio row", error)
-	    || !session_sound(session, YT_SOUND_CUE_ACTION, "hostile surrender sound", error))
+	    "surrender radio row", error))
+		return false;
+	if (!session_sound(session, YT_SOUND_CUE_ACTION,
+	    "hostile surrender sound", error))
 		return false;
 	if (qb_str_single(sector_number, sizeof(sector_number),
 	    (float)state->current.sector) < 0)
@@ -110,20 +112,24 @@ hostile_surrender_run(struct yt_session *session,
 	sector_length = strlen(sector_number);
 	position = 0U;
 	if (!session_buffer_append(captain, sizeof(captain), &position,
-	    captain_prefix, sizeof(captain_prefix) - 1U)
-	    || !session_buffer_append(captain, sizeof(captain), &position,
-	    (const uint8_t *)sector_number, sector_length)
-	    || !session_present_paged_line(session, captain, position,
+	    captain_prefix, sizeof(captain_prefix) - 1U))
+		return false;
+	if (!session_buffer_append(captain, sizeof(captain), &position,
+	    (const uint8_t *)sector_number, sector_length))
+		return false;
+	if (!session_present_paged_line(session, captain, position,
 	    "surrender captain row", error))
 		return false;
 
 	switch (owner_route) {
 	case YT_HOSTILE_SURRENDER_PLAYER:
 		if (!session_present_alert(session, wish, sizeof(wish) - 1U,
-		    "surrender wish row", error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "surrender prompt blank", error)
-		    || !session_confirm(session, prompt, sizeof(prompt) - 1U,
+		    "surrender wish row", error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "surrender prompt blank", error))
+			return false;
+		if (!session_confirm(session, prompt, sizeof(prompt) - 1U,
 		    &answer, error))
 			return false;
 		if (answer != YT_YES_NO_NO && answer != YT_YES_NO_YES
@@ -134,23 +140,28 @@ hostile_surrender_run(struct yt_session *session,
 		break;
 	case YT_HOSTILE_SURRENDER_XANNOR:
 		if (!session_present_paged_fragment(session, xannor_refusal,
-		    sizeof(xannor_refusal) - 1U)
-		    || !session_sound(session, YT_SOUND_CUE_DAMAGE,
+		    sizeof(xannor_refusal) - 1U))
+			return false;
+		if (!session_sound(session, YT_SOUND_CUE_DAMAGE,
 		    "hostile surrender sound", error))
 			return false;
 		break;
 	case YT_HOSTILE_SURRENDER_MERCENARY:
 		position = 0U;
 		if (!session_buffer_append(refusal, sizeof(refusal),
-		    &position, mercenary_prefix, sizeof(mercenary_prefix) - 1U)
-		    || !session_buffer_append(refusal, sizeof(refusal),
+		    &position, mercenary_prefix, sizeof(mercenary_prefix) - 1U))
+			return false;
+		if (!session_buffer_append(refusal, sizeof(refusal),
 		    &position, state->real_first_name,
-		    state->real_first_name_length)
-		    || !session_buffer_append(refusal, sizeof(refusal),
+		    state->real_first_name_length))
+			return false;
+		if (!session_buffer_append(refusal, sizeof(refusal),
 		    &position, mercenary_suffix,
-		    sizeof(mercenary_suffix) - 1U)
-		    || !session_present_paged_fragment(session, refusal, position)
-		    || !session_sound(session, YT_SOUND_CUE_DAMAGE,
+		    sizeof(mercenary_suffix) - 1U))
+			return false;
+		if (!session_present_paged_fragment(session, refusal, position))
+			return false;
+		if (!session_sound(session, YT_SOUND_CUE_DAMAGE,
 		    "hostile surrender sound", error))
 			return false;
 		break;
@@ -161,8 +172,10 @@ hostile_surrender_run(struct yt_session *session,
 	if (!accepted)
 		return true;
 	if (!session_present_paged_line(session, joined, sizeof(joined) - 1U,
-	    "surrender joined row", error)
-	    || !session_sound(session, YT_SOUND_CUE_REWARD, "hostile surrender sound", error))
+	    "surrender joined row", error))
+		return false;
+	if (!session_sound(session, YT_SOUND_CUE_REWARD,
+	    "hostile surrender sound", error))
 		return false;
 	surrendered_fighters = qb_double_subtract(state->deployed_fighters,
 	    state->defender_loss);
@@ -172,16 +185,21 @@ hostile_surrender_run(struct yt_session *session,
 	surrendered_length = strlen(surrendered_number);
 	position = 0U;
 	if (!session_buffer_append(news, sizeof(news), &position,
-	    (const uint8_t *)surrendered_number, surrendered_length)
-	    || !session_buffer_append(news, sizeof(news), &position,
-	    news_middle_one, sizeof(news_middle_one) - 1U)
-	    || !session_buffer_append(news, sizeof(news), &position,
-	    (const uint8_t *)sector_number, sector_length)
-	    || !session_buffer_append(news, sizeof(news), &position,
-	    news_middle_two, sizeof(news_middle_two) - 1U)
-	    || !session_buffer_append(news, sizeof(news), &position,
-	    state->cached_player_name, state->cached_player_name_length)
-	    || !yt_news_append_bytes(news, position, error))
+	    (const uint8_t *)surrendered_number, surrendered_length))
+		return false;
+	if (!session_buffer_append(news, sizeof(news), &position,
+	    news_middle_one, sizeof(news_middle_one) - 1U))
+		return false;
+	if (!session_buffer_append(news, sizeof(news), &position,
+	    (const uint8_t *)sector_number, sector_length))
+		return false;
+	if (!session_buffer_append(news, sizeof(news), &position,
+	    news_middle_two, sizeof(news_middle_two) - 1U))
+		return false;
+	if (!session_buffer_append(news, sizeof(news), &position,
+	    state->cached_player_name, state->cached_player_name_length))
+		return false;
+	if (!yt_news_append_bytes(news, position, error))
 		return false;
 	state->ship_fighters = qb_double_add(qb_double_subtract(qb_double_subtract(
 	    (double)state->current.fighters, state->attacker_loss),
@@ -193,10 +211,12 @@ hostile_surrender_run(struct yt_session *session,
 	session->combat.deployed_fighters = state->deployed_remaining;
 	position = 0U;
 	if (!session_buffer_append(count, sizeof(count), &position,
-	    (const uint8_t *)surrendered_number, surrendered_length)
-	    || !session_buffer_append(count, sizeof(count), &position,
-	    count_suffix, sizeof(count_suffix) - 1U)
-	    || !session_present_paged_fragment(session, count, position))
+	    (const uint8_t *)surrendered_number, surrendered_length))
+		return false;
+	if (!session_buffer_append(count, sizeof(count), &position,
+	    count_suffix, sizeof(count_suffix) - 1U))
+		return false;
+	if (!session_present_paged_fragment(session, count, position))
 		return false;
 	return true;
 }
@@ -250,18 +270,24 @@ hostile_attack_persistence_run(struct yt_session *session,
 		state->ship_fighters = (double)state->current.fighters;
 		loss_length = qb_str_double(loss_number, sizeof(loss_number),
 		    state->defender_loss);
-		if (loss_length < 0
-		    || !session_buffer_append(news, sizeof(news), &position,
-		    state->cached_player_name, state->cached_player_name_length)
-		    || !session_buffer_append(news, sizeof(news), &position,
-		    destroyed, sizeof(destroyed) - 1U)
-		    || !session_buffer_append(news, sizeof(news), &position,
-		    (const uint8_t *)loss_number, (size_t)loss_length)
-		    || !session_buffer_append(news, sizeof(news), &position,
-		    belonging, sizeof(belonging) - 1U)
-		    || !session_buffer_append(news, sizeof(news), &position,
-		    state->owner_label, state->owner_label_length)
-		    || !yt_news_append_bytes(news, position, error))
+		if (loss_length < 0)
+			return false;
+		if (!session_buffer_append(news, sizeof(news), &position,
+		    state->cached_player_name, state->cached_player_name_length))
+			return false;
+		if (!session_buffer_append(news, sizeof(news), &position,
+		    destroyed, sizeof(destroyed) - 1U))
+			return false;
+		if (!session_buffer_append(news, sizeof(news), &position,
+		    (const uint8_t *)loss_number, (size_t)loss_length))
+			return false;
+		if (!session_buffer_append(news, sizeof(news), &position,
+		    belonging, sizeof(belonging) - 1U))
+			return false;
+		if (!session_buffer_append(news, sizeof(news), &position,
+		    state->owner_label, state->owner_label_length))
+			return false;
+		if (!yt_news_append_bytes(news, position, error))
 			return false;
 		state->mercenaries_hurt = state->old_owner == -2;
 	}
@@ -325,8 +351,9 @@ hostile_attack_tail_run(struct yt_session *session,
 		return false;
 	if (state->deployed_fighters <= 0.0) {
 		if (!yt_hostile_defeated_row(state->ship_fighters, defeated,
-		    sizeof(defeated), &defeated_length)
-		    || !session_present_paged_fragment(session, defeated,
+		    sizeof(defeated), &defeated_length))
+			return false;
+		if (!session_present_paged_fragment(session, defeated,
 		    defeated_length))
 			return false;
 		if (state->old_owner == -1
@@ -492,33 +519,43 @@ yt_session_attack_deployed(struct yt_session *session,
 	    sizeof(attacker_number), attacker_loss);
 	defender_length = qb_str_double(defender_number,
 	    sizeof(defender_number), defender_loss);
-	if (attacker_length < 0 || defender_length < 0
-	    || !session_buffer_append(lost_row, sizeof(lost_row),
-	    &lost_length, lost_prefix, sizeof(lost_prefix) - 1U)
-	    || !session_buffer_append(lost_row, sizeof(lost_row),
+	if (attacker_length < 0 || defender_length < 0)
+		return false;
+	if (!session_buffer_append(lost_row, sizeof(lost_row),
+	    &lost_length, lost_prefix, sizeof(lost_prefix) - 1U))
+		return false;
+	if (!session_buffer_append(lost_row, sizeof(lost_row),
 	    &lost_length, (const uint8_t *)attacker_number,
-	    (size_t)attacker_length)
-	    || !session_buffer_append(lost_row, sizeof(lost_row),
-	    &lost_length, lost_suffix, sizeof(lost_suffix) - 1U)
-	    || !session_buffer_append(destroyed_row,
+	    (size_t)attacker_length))
+		return false;
+	if (!session_buffer_append(lost_row, sizeof(lost_row),
+	    &lost_length, lost_suffix, sizeof(lost_suffix) - 1U))
+		return false;
+	if (!session_buffer_append(destroyed_row,
 	    sizeof(destroyed_row), &destroyed_length, destroyed_prefix,
-	    sizeof(destroyed_prefix) - 1U)
-	    || !session_buffer_append(destroyed_row,
+	    sizeof(destroyed_prefix) - 1U))
+		return false;
+	if (!session_buffer_append(destroyed_row,
 	    sizeof(destroyed_row), &destroyed_length,
-	    (const uint8_t *)defender_number, (size_t)defender_length)
-	    || !session_buffer_append(destroyed_row,
+	    (const uint8_t *)defender_number, (size_t)defender_length))
+		return false;
+	if (!session_buffer_append(destroyed_row,
 	    sizeof(destroyed_row), &destroyed_length, destroyed_suffix,
-	    sizeof(destroyed_suffix) - 1U)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "deployed attack result blank", error)
-	    || !session_present_paged_fragment(session, lost_row, lost_length)
-	    || !session_present_paged_fragment(session, destroyed_row,
+	    sizeof(destroyed_suffix) - 1U))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "deployed attack result blank", error))
+		return false;
+	if (!session_present_paged_fragment(session, lost_row, lost_length))
+		return false;
+	if (!session_present_paged_fragment(session, destroyed_row,
 	    destroyed_length))
 		return false;
 	if (ship_fighters < 1.0 && deployed_remaining > 0.0) {
 		if (!session_present_alert(session, exposed, sizeof(exposed) - 1U,
-		    "deployed attack ship exposed", error)
-		    || !session_present_text(session, NULL, 0U,
+		    "deployed attack ship exposed", error))
+			return false;
+		if (!session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "shield spill leading blank", error))
 			return false;
 		if (!yt_session_fighter_shield_spill(session,
