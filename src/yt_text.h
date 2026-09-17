@@ -15,20 +15,6 @@ bool yt_text_write(const char *path, const uint8_t *data, size_t length,
     bool dos_eof, struct yt_error *error);
 bool yt_text_append_line(const char *path, const uint8_t *line, size_t length,
     struct yt_error *error);
-bool yt_text_line_input_next(const uint8_t *data, size_t data_length,
-    size_t *cursor, uint8_t *line, size_t capacity, size_t *line_length,
-    bool *available);
-
-enum yt_text_stream_line_status {
-	YT_TEXT_STREAM_LINE_OK,
-	YT_TEXT_STREAM_LINE_EOF,
-	YT_TEXT_STREAM_LINE_TOO_LONG,
-	YT_TEXT_STREAM_LINE_IO_ERROR,
-};
-
-enum yt_text_stream_line_status yt_text_stream_line_input_next(FILE *file,
-    uint8_t *line, size_t capacity, size_t *line_length);
-
 #define YT_TEXT_OUTPUT_BUFFER_SIZE 128U
 #define YT_TEXT_INPUT_BUFFER_SIZE 128U
 
@@ -225,8 +211,6 @@ bool yt_text_output_open(struct yt_text_output *output, const char *path,
 	struct yt_error *error);
 bool yt_text_output_open_append(struct yt_text_output *output,
 	const char *path, struct yt_error *error);
-bool yt_text_output_stage(struct yt_text_output *output,
-	const uint8_t *data, size_t length, struct yt_error *error);
 bool yt_text_output_write(struct yt_text_output *output,
 	const uint8_t *data, size_t length, struct yt_error *error);
 bool yt_text_output_close(struct yt_text_output *output,

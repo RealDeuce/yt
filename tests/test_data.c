@@ -785,7 +785,7 @@ test_text_output_close(void)
 	CHECK(output.file != NULL);
 	(void)snprintf(output.path, sizeof(output.path), "%s", path);
 	CHECK(output.file != NULL && fseek(output.file, 0L, SEEK_SET) == 0
-	    && yt_text_output_stage(&output, pending, sizeof(pending), &error)
+	    && yt_text_output_write(&output, pending, sizeof(pending), &error)
 	    && yt_text_output_close(&output, &error));
 	CHECK(yt_text_read(path, &text, &error));
 	if (text.data != NULL) {
@@ -1421,79 +1421,6 @@ test_main_error_fatal_transaction(void)
 }
 
 static void
-test_line_input_grammar(void)
-{
-	static const uint8_t source[] = {
-		'\r', '\n', 'A', 0, 'B', '\r', '\n',
-		'C', '\n', 'D', '\r', 'E', 0x1a, 'Z'
-	};
-	static const uint8_t expected_one[] = {'A', 'B'};
-	static const uint8_t expected_two[] = {'C', '\n', 'D'};
-	uint8_t line[16];
-	size_t cursor = 0U;
-	size_t length;
-	bool available;
-
-	CHECK(yt_text_line_input_next(source, sizeof(source), &cursor,
-	    line, sizeof(line), &length, &available));
-	CHECK(available && length == 0U && cursor == 2U);
-	CHECK(yt_text_line_input_next(source, sizeof(source), &cursor,
-	    line, sizeof(line), &length, &available));
-	CHECK(available && length == sizeof(expected_one)
-	    && memcmp(line, expected_one, length) == 0 && cursor == 7U);
-	CHECK(yt_text_line_input_next(source, sizeof(source), &cursor,
-	    line, sizeof(line), &length, &available));
-	CHECK(available && length == sizeof(expected_two)
-	    && memcmp(line, expected_two, length) == 0 && cursor == 11U);
-	CHECK(yt_text_line_input_next(source, sizeof(source), &cursor,
-	    line, sizeof(line), &length, &available));
-	CHECK(available && length == 1U && line[0] == 'E' && cursor == 12U);
-	CHECK(yt_text_line_input_next(source, sizeof(source), &cursor,
-	    line, sizeof(line), &length, &available));
-	CHECK(!available && length == 0U && cursor == 12U);
-
-	cursor = 2U;
-	CHECK(!yt_text_line_input_next(source, sizeof(source), &cursor,
-	    line, 1U, &length, &available));
-	CHECK(cursor == 2U);
-	{
-		static const uint8_t nul_tail[] = {0, 0x1a};
-
-		cursor = 0U;
-		CHECK(yt_text_line_input_next(nul_tail, sizeof(nul_tail), &cursor,
-		    line, sizeof(line), &length, &available));
-		CHECK(available && length == 0U && cursor == 1U);
-	}
-	{
-		FILE *file = tmpfile();
-
-		CHECK(file != NULL);
-		if (file != NULL) {
-			CHECK(fwrite(source, 1U, sizeof(source), file)
-			    == sizeof(source));
-			rewind(file);
-			CHECK(yt_text_stream_line_input_next(file, line,
-			    sizeof(line), &length) == YT_TEXT_STREAM_LINE_OK
-			    && length == 0U);
-			CHECK(yt_text_stream_line_input_next(file, line, 1U,
-			    &length) == YT_TEXT_STREAM_LINE_TOO_LONG);
-			CHECK(yt_text_stream_line_input_next(file, line,
-			    sizeof(line), &length) == YT_TEXT_STREAM_LINE_OK
-			    && length == sizeof(expected_two)
-			    && memcmp(line, expected_two, length) == 0);
-			CHECK(yt_text_stream_line_input_next(file, line,
-			    sizeof(line), &length) == YT_TEXT_STREAM_LINE_OK
-			    && length == 1U && line[0] == 'E');
-			CHECK(yt_text_stream_line_input_next(file, line,
-			    sizeof(line), &length) == YT_TEXT_STREAM_LINE_EOF);
-			CHECK(yt_text_stream_line_input_next(file, line,
-			    sizeof(line), &length) == YT_TEXT_STREAM_LINE_EOF);
-			CHECK(fclose(file) == 0);
-		}
-	}
-}
-
-static void
 test_text_input(void)
 {
 	char directory[256];
@@ -1730,7 +1657,6 @@ main(void)
 	test_radio_file();
 	test_append_window();
 	test_main_error_fatal_transaction();
-	test_line_input_grammar();
 	test_text_input();
 	test_file_viewer_physical_stream();
 	test_file_viewer_missing();

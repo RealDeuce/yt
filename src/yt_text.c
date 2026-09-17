@@ -20,109 +20,6 @@ static void text_input_read_snapshot(struct yt_text_input *input);
 static uint16_t text_output_dos_error(const char *path, int system_error);
 static int64_t text_output_position(FILE *file);
 
-bool
-yt_text_line_input_next(const uint8_t *data, size_t data_length,
-    size_t *cursor, uint8_t *line, size_t capacity, size_t *line_length,
-    bool *available)
-{
-	size_t start;
-	size_t position;
-	size_t output_length = 0U;
-	size_t output_position = 0U;
-	bool consumed = false;
-
-	if (cursor == NULL || line_length == NULL || available == NULL
-	    || (data == NULL && data_length != 0U) || *cursor > data_length)
-		return false;
-	*line_length = 0U;
-	*available = false;
-	start = *cursor;
-	if (start == data_length || data[start] == 0x1aU)
-		return true;
-	position = start;
-	while (position < data_length && data[position] != 0x1aU
-	    && data[position] != '\r') {
-		if (data[position] != 0U)
-			++output_length;
-		++position;
-		consumed = true;
-	}
-	if (position < data_length && data[position] == '\r') {
-		++position;
-		consumed = true;
-		if (position < data_length && data[position] == '\n')
-			++position;
-	}
-	if (!consumed)
-		return true;
-	if (output_length > capacity
-	    || (output_length != 0U && line == NULL))
-		return false;
-	for (size_t input = start; input < position; ++input) {
-		if (data[input] == '\r')
-			break;
-		if (data[input] != 0U)
-			line[output_position++] = data[input];
-	}
-	*cursor = position;
-	*line_length = output_position;
-	*available = true;
-	return true;
-}
-
-enum yt_text_stream_line_status
-yt_text_stream_line_input_next(FILE *file, uint8_t *line, size_t capacity,
-    size_t *line_length)
-{
-	size_t used = 0U;
-	bool consumed = false;
-	bool overflow = false;
-
-	if (file == NULL || line_length == NULL
-	    || (line == NULL && capacity != 0U))
-		return YT_TEXT_STREAM_LINE_IO_ERROR;
-	*line_length = 0U;
-	for (;;) {
-		int value = fgetc(file);
-
-		if (value == EOF) {
-			if (ferror(file))
-				return YT_TEXT_STREAM_LINE_IO_ERROR;
-			break;
-		}
-		if ((uint8_t)value == 0x1aU) {
-			if (ungetc(value, file) == EOF)
-				return YT_TEXT_STREAM_LINE_IO_ERROR;
-			break;
-		}
-		consumed = true;
-		if ((uint8_t)value == '\r') {
-			int following = fgetc(file);
-
-			if (following == EOF) {
-				if (ferror(file))
-					return YT_TEXT_STREAM_LINE_IO_ERROR;
-			}
-			else if ((uint8_t)following != '\n'
-			    && ungetc(following, file) == EOF)
-				return YT_TEXT_STREAM_LINE_IO_ERROR;
-			break;
-		}
-		if ((uint8_t)value == 0U)
-			continue;
-		if (used < capacity)
-			line[used++] = (uint8_t)value;
-		else
-			overflow = true;
-	}
-	if (!consumed)
-		return YT_TEXT_STREAM_LINE_EOF;
-	if (overflow)
-		return YT_TEXT_STREAM_LINE_TOO_LONG;
-	*line_length = used;
-	return YT_TEXT_STREAM_LINE_OK;
-}
-
 void
 yt_text_input_init(struct yt_text_input *input)
 {
@@ -1937,24 +1834,6 @@ selected:
 	output->pending_count = 0U;
 	memset(&output->last_write, 0, sizeof(output->last_write));
 	memset(&output->last_close, 0, sizeof(output->last_close));
-	return true;
-}
-
-bool
-yt_text_output_stage(struct yt_text_output *output, const uint8_t *data,
-    size_t length, struct yt_error *error)
-{
-	if (output == NULL || output->file == NULL
-	    || (data == NULL && length != 0U)
-	    || length > sizeof(output->pending)) {
-		errno = 0;
-		set_error(error, YT_INVALID, "stage text output",
-		    output == NULL ? NULL : output->path);
-		return false;
-	}
-	if (length != 0U)
-		memcpy(output->pending, data, length);
-	output->pending_count = length;
 	return true;
 }
 
