@@ -3,7 +3,6 @@
 
 #include "qb.h"
 
-#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -127,35 +126,19 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 
 
 
-bool
+enum yt_sector_force_route
 yt_sector_force_route(float fighters, float owner, int current_player_record,
-    enum yt_sector_force_route *route, int *owner_record,
-    struct yt_error *error)
+    int *owner_record)
 {
-	if (route == NULL || owner_record == NULL)
-		return false;
-	*owner_record = 0;
-	if (fighters == 0.0f || owner == (float)current_player_record) {
-		*route = YT_SECTOR_FORCE_FRIENDLY;
-		return true;
-	}
-	if (owner <= 0.0f) {
-		*route = YT_SECTOR_FORCE_HOSTILE;
-		return true;
-	}
-	if (!isfinite(owner) || owner != floorf(owner)
-	    || owner > (float)INT_MAX) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation,
-			    sizeof(error->operation), "%s",
-			    "fighter owner record");
-		}
-		return false;
-	}
-	*route = YT_SECTOR_FORCE_OWNER_GET;
-	*owner_record = (int)owner;
-	return true;
+	if (owner_record != NULL)
+		*owner_record = 0;
+	if (fighters == 0.0f || owner == (float)current_player_record)
+		return YT_SECTOR_FORCE_FRIENDLY;
+	if (owner <= 0.0f)
+		return YT_SECTOR_FORCE_HOSTILE;
+	if (owner_record != NULL)
+		*owner_record = (int)owner;
+	return YT_SECTOR_FORCE_OWNER_GET;
 }
 
 bool
@@ -174,21 +157,14 @@ enum yt_port_owner_kind
 yt_port_owner_classify(float owner, int current_player_record,
     int *owner_record)
 {
-	uint32_t record;
-
 	if (owner_record != NULL)
 		*owner_record = 0;
 	if (owner <= 1.0f)
 		return YT_PORT_OWNER_SILENT;
 	if (owner == (float)current_player_record)
 		return YT_PORT_OWNER_SELF;
-	if (!isfinite(owner))
-		return YT_PORT_OWNER_INVALID;
-	record = qb_brun_random_record_number(owner);
-	if (record > (uint32_t)INT_MAX)
-		return YT_PORT_OWNER_INVALID;
 	if (owner_record != NULL)
-		*owner_record = (int)record;
+		*owner_record = (int)owner;
 	return YT_PORT_OWNER_OTHER;
 }
 

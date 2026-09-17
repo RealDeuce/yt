@@ -105,7 +105,6 @@ enum yt_port_owner_kind {
 	YT_PORT_OWNER_SILENT,
 	YT_PORT_OWNER_SELF,
 	YT_PORT_OWNER_OTHER,
-	YT_PORT_OWNER_INVALID,
 };
 
 enum yt_death_port_route {
@@ -335,9 +334,8 @@ bool yt_game_construct_player(struct yt_game *game, int basic_record,
     float today, float turns,
     struct yt_player *player, enum yt_player_constructor_failure *failure,
     struct yt_error *error);
-bool yt_sector_force_route(float fighters, float owner,
-    int current_player_record, enum yt_sector_force_route *route,
-    int *owner_record, struct yt_error *error);
+enum yt_sector_force_route yt_sector_force_route(float fighters, float owner,
+    int current_player_record, int *owner_record);
 bool yt_sector_mines_admitted(float mines, float suppression);
 bool yt_sector_force_same_team(float current_team, float owner_team);
 enum yt_port_owner_kind yt_port_owner_classify(float owner,

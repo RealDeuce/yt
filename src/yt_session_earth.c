@@ -23,9 +23,6 @@ session_port_owner_row_capture(struct yt_session *session,
 		*captured_length = 0U;
 	kind = yt_port_owner_classify(port->owner, session_record(session),
 	    &owner_record);
-	if (kind == YT_PORT_OWNER_INVALID)
-		return session_range_error(error,
-		    "port owner record conversion");
 	if (kind == YT_PORT_OWNER_SILENT)
 		return true;
 	if (kind == YT_PORT_OWNER_OTHER) {

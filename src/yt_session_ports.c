@@ -97,8 +97,6 @@ port_report_owner(struct yt_session *session,
 
 	kind = yt_port_owner_classify(market->port.owner,
 	    session_record(session), &owner_record);
-	if (kind == YT_PORT_OWNER_INVALID)
-		return session_range_error(error, "port owner record conversion");
 	if (kind == YT_PORT_OWNER_SILENT)
 		return true;
 	if (kind == YT_PORT_OWNER_OTHER) {

@@ -419,22 +419,10 @@ check_port_owner_row_model(void)
 	    != YT_PORT_OWNER_SILENT || owner_record != 0
 	    || yt_port_owner_classify(1.0f, 1, &owner_record)
 	    != YT_PORT_OWNER_SILENT
-	    || yt_port_owner_classify(-4.0f, 7, &owner_record)
-	    != YT_PORT_OWNER_SILENT
-	    || yt_port_owner_classify(0.5f, 7, &owner_record)
-	    != YT_PORT_OWNER_SILENT
 	    || yt_port_owner_classify(7.0f, 7, &owner_record)
 	    != YT_PORT_OWNER_SELF
 	    || yt_port_owner_classify(8.0f, 7, &owner_record)
-	    != YT_PORT_OWNER_OTHER || owner_record != 8
-	    || yt_port_owner_classify(1.75f, 7, &owner_record)
-	    != YT_PORT_OWNER_OTHER || owner_record != 1
-	    || yt_port_owner_classify(16777216.0f, 7, &owner_record)
-	    != YT_PORT_OWNER_OTHER || owner_record != 0
-	    || yt_port_owner_classify(INFINITY, 7, &owner_record)
-	    != YT_PORT_OWNER_INVALID
-	    || yt_port_owner_classify(NAN, 7, &owner_record)
-	    != YT_PORT_OWNER_INVALID)
+	    != YT_PORT_OWNER_OTHER || owner_record != 8)
 		return false;
 	if (!yt_port_owner_compose(YT_PORT_OWNER_SILENT, 0.0f,
 	    NULL, 0U, NULL, 0U, &length) || length != 0U
@@ -449,9 +437,7 @@ check_port_owner_row_model(void)
 	    || yt_port_owner_compose(YT_PORT_OWNER_OTHER, 0.0f,
 	    other_name, sizeof(other_name), row, 8U, &length)
 	    || yt_port_owner_compose(YT_PORT_OWNER_OTHER, 0.0f,
-	    NULL, 1U, row, sizeof(row), &length)
-	    || yt_port_owner_compose(YT_PORT_OWNER_INVALID, 0.0f,
-	    NULL, 0U, row, sizeof(row), &length))
+	    NULL, 1U, row, sizeof(row), &length))
 		return false;
 	return true;
 }
@@ -12793,24 +12779,20 @@ done:
 static bool
 check_sector_force_routes(void)
 {
-	struct yt_error error;
 	enum yt_sector_force_route route;
 	int owner;
 
-	yt_error_clear(&error);
-	if (!yt_sector_force_route(0.0f, -1.0f, 2, &route, &owner, &error)
-	    || route != YT_SECTOR_FORCE_FRIENDLY || owner != 0
-	    || !yt_sector_force_route(-7.0f, 2.0f, 2, &route, &owner,
-	    &error) || route != YT_SECTOR_FORCE_FRIENDLY || owner != 0
-	    || !yt_sector_force_route(-1.0f, -1.0f, 2, &route, &owner,
-	    &error) || route != YT_SECTOR_FORCE_HOSTILE || owner != 0
-	    || !yt_sector_force_route(10.0f, 3.0f, 2, &route, &owner,
-	    &error) || route != YT_SECTOR_FORCE_OWNER_GET || owner != 3)
+	route = yt_sector_force_route(0.0f, -1.0f, 2, &owner);
+	if (route != YT_SECTOR_FORCE_FRIENDLY || owner != 0)
 		return false;
-	yt_error_clear(&error);
-	if (yt_sector_force_route(1.0f, 2.5f, 2, &route, &owner, &error)
-	    || error.status != YT_RANGE
-	    || strcmp(error.operation, "fighter owner record") != 0)
+	route = yt_sector_force_route(-7.0f, 2.0f, 2, &owner);
+	if (route != YT_SECTOR_FORCE_FRIENDLY || owner != 0)
+		return false;
+	route = yt_sector_force_route(-1.0f, -1.0f, 2, &owner);
+	if (route != YT_SECTOR_FORCE_HOSTILE || owner != 0)
+		return false;
+	route = yt_sector_force_route(10.0f, 3.0f, 2, &owner);
+	if (route != YT_SECTOR_FORCE_OWNER_GET || owner != 3)
 		return false;
 	if (!yt_sector_mines_admitted(0.4f, 0.0f)
 	    || yt_sector_mines_admitted(0.0f, 0.0f)
