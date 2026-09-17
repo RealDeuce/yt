@@ -88,27 +88,31 @@ yt_session_info_team_lines(struct yt_session *session,
 		return false;
 	team_id = current_player.team;
 	if (team_id == 0) {
-		if (!info_line(session, none, sizeof(none) - 1U, error)
-		    || !info_line(session, NULL, 0U, error))
+		if (!info_line(session, none, sizeof(none) - 1U, error))
+			return false;
+		if (!info_line(session, NULL, 0U, error))
 			return false;
 		info_team_result(session, &current_player, &team, false,
 		    resolved_team, current_is_captain);
 		return true;
 	}
-	if (!session_load_team(session, team_id, &team, error)
-	    || !yt_info_team_row(YT_INFO_TEAM_SUMMARY, team_id,
+	if (!session_load_team(session, team_id, &team, error))
+		return false;
+	if (!yt_info_team_row(YT_INFO_TEAM_SUMMARY, team_id,
 	    (const uint8_t *)team.name, team.name_length, row, sizeof(row),
 	    &row_length))
 		return false;
-	if (!info_line(session, row, row_length, error)
-	    || !info_line(session, NULL, 0U, error))
+	if (!info_line(session, row, row_length, error))
+		return false;
+	if (!info_line(session, NULL, 0U, error))
 		return false;
 	if (team.captain == current_record) {
 		if (!yt_info_team_row(YT_INFO_TEAM_SELF_CAPTAIN, team_id, NULL,
 		    0U, row, sizeof(row), &row_length))
 			return info_failure(error, "Info team row");
-		if (!info_line(session, row, row_length, error)
-		    || !info_line(session, NULL, 0U, error))
+		if (!info_line(session, row, row_length, error))
+			return false;
+		if (!info_line(session, NULL, 0U, error))
 			return false;
 		info_team_result(session, &current_player, &team, true,
 		    resolved_team, current_is_captain);
@@ -131,8 +135,9 @@ yt_session_info_team_lines(struct yt_session *session,
 		session->player_reference.record = current_record;
 		session->team_cache.captain = current_record;
 		session->team_cache.current_player_is_captain = true;
-		if (!session_read_sector(session, team_id, &fresh, error)
-		    || !yt_record_set_number(&fresh.record, YT_F77,
+		if (!session_read_sector(session, team_id, &fresh, error))
+			return false;
+		if (!yt_record_set_number(&fresh.record, YT_F77,
 		    (float)current_record))
 			return false;
 		team.overlay = fresh;
@@ -140,11 +145,14 @@ yt_session_info_team_lines(struct yt_session *session,
 		if (!yt_database_write(&session->door->game.database,
 		    (size_t)yt_sector_basic_record(&session->door->game.config,
 		    team_id),
-		    &fresh.record, error)
-		    || !info_line(session, promoted, sizeof(promoted) - 1U, error)
-		    || !info_line(session, congratulations,
-		    sizeof(congratulations) - 1U, error)
-		    || !info_line(session, NULL, 0U, error))
+		    &fresh.record, error))
+			return false;
+		if (!info_line(session, promoted, sizeof(promoted) - 1U, error))
+			return false;
+		if (!info_line(session, congratulations,
+		    sizeof(congratulations) - 1U, error))
+			return false;
+		if (!info_line(session, NULL, 0U, error))
 			return false;
 		info_team_result(session, &current_player, &team, true,
 		    resolved_team, current_is_captain);
@@ -156,8 +164,9 @@ yt_session_info_team_lines(struct yt_session *session,
 	if (!yt_info_team_row(YT_INFO_TEAM_OTHER_CAPTAIN, team_id, captain_name,
 	    captain_name_length, row, sizeof(row), &row_length))
 		return info_failure(error, "Info team row");
-	if (!info_line(session, row, row_length, error)
-	    || !info_line(session, NULL, 0U, error))
+	if (!info_line(session, row, row_length, error))
+		return false;
+	if (!info_line(session, NULL, 0U, error))
 		return false;
 	info_team_result(session, &current_player, &team, false, resolved_team,
 	    current_is_captain);
@@ -185,9 +194,11 @@ info_panel_cell(uint8_t *cell, size_t capacity, size_t *length,
 	static const uint8_t bar = 0xba;
 
 	*length = 0U;
-	return info_panel_append(cell, capacity, length, &bar, 1U)
-	    && info_panel_append(cell, capacity, length, label, strlen(label))
-	    && info_panel_append(cell, capacity, length, value, strlen(value));
+	if (!info_panel_append(cell, capacity, length, &bar, 1U))
+		return false;
+	if (!info_panel_append(cell, capacity, length, label, strlen(label)))
+		return false;
+	return info_panel_append(cell, capacity, length, value, strlen(value));
 }
 
 static bool
@@ -210,13 +221,17 @@ info_panel_ordinary(struct yt_session *session,
 	size_t left_length;
 	size_t right_length;
 
-	return info_panel_cell(left, sizeof(left), &left_length, left_label,
-	    left_value)
-	    && info_panel_cell(right, sizeof(right), &right_length, right_label,
-	    right_value)
-	    && info_panel_fixed(session, left, left_length, 26.0f, error)
-	    && info_panel_fixed(session, right, right_length, 23.0f, error)
-	    && info_line(session, &bar, 1U, error);
+	if (!info_panel_cell(left, sizeof(left), &left_length, left_label,
+	    left_value))
+		return false;
+	if (!info_panel_cell(right, sizeof(right), &right_length, right_label,
+	    right_value))
+		return false;
+	if (!info_panel_fixed(session, left, left_length, 26.0f, error))
+		return false;
+	if (!info_panel_fixed(session, right, right_length, 23.0f, error))
+		return false;
+	return info_line(session, &bar, 1U, error);
 }
 
 static bool
@@ -233,13 +248,17 @@ info_panel_commodity(struct yt_session *session,
 	int number_length;
 
 	number_length = qb_str_single(number, sizeof(number), right_value);
-	if (number_length < 0
-	    || !info_panel_cell(left, sizeof(left), &left_length, left_label,
-	    left_value)
-	    || !info_panel_cell(right, sizeof(right), &right_length,
-	    right_label, "")
-	    || !info_panel_fixed(session, left, left_length, 26.0f, error)
-	    || !info_panel_fixed(session, right, right_length, 17.0f, error))
+	if (number_length < 0)
+		return false;
+	if (!info_panel_cell(left, sizeof(left), &left_length, left_label,
+	    left_value))
+		return false;
+	if (!info_panel_cell(right, sizeof(right), &right_length,
+	    right_label, ""))
+		return false;
+	if (!info_panel_fixed(session, left, left_length, 26.0f, error))
+		return false;
+	if (!info_panel_fixed(session, right, right_length, 17.0f, error))
 		return false;
 	if (right_value != 0.0f) {
 		session->presentation.bold = true;
@@ -285,25 +304,35 @@ yt_session_show_ship(struct yt_session *session, struct yt_error *error)
 	if (!info_refresh_time(session, error))
 		return false;
 	session_set_foreground(session, 2);
-	if (!info_line(session, NULL, 0U, error)
-	    || !info_panel_fixed(session, NULL, 0U, 20.0f, error)
-	    || !info_line(session, title, sizeof(title) - 1U, error)
-	    || !info_line(session, NULL, 0U, error))
+	if (!info_line(session, NULL, 0U, error))
+		return false;
+	if (!info_panel_fixed(session, NULL, 0U, 20.0f, error))
+		return false;
+	if (!info_line(session, title, sizeof(title) - 1U, error))
+		return false;
+	if (!info_line(session, NULL, 0U, error))
 		return false;
 	row_length = 0U;
-	if (!info_panel_append(row, sizeof(row), &row_length, "Name  : ", 8U)
-	    || !info_panel_append(row, sizeof(row), &row_length,
-	    session->cached_player_name, cached_name_length)
-	    || !info_line(session, row, row_length, error))
+	if (!info_panel_append(row, sizeof(row), &row_length, "Name  : ", 8U))
+		return false;
+	if (!info_panel_append(row, sizeof(row), &row_length,
+	    session->cached_player_name, cached_name_length))
+		return false;
+	if (!info_line(session, row, row_length, error))
 		return false;
 	row_length = 0U;
-	if (!info_panel_append(row, sizeof(row), &row_length, "Time  :", 7U)
-	    || !info_panel_append(row, sizeof(row), &row_length,
-	    session->time.text, session->time.text_length)
-	    || !info_line(session, row, row_length, error)
-	    || !yt_session_info_team_lines(session, NULL, NULL, error)
-	    || !session_reload_player(session, error)
-	    || !info_line(session, top, sizeof(top), error))
+	if (!info_panel_append(row, sizeof(row), &row_length, "Time  :", 7U))
+		return false;
+	if (!info_panel_append(row, sizeof(row), &row_length,
+	    session->time.text, session->time.text_length))
+		return false;
+	if (!info_line(session, row, row_length, error))
+		return false;
+	if (!yt_session_info_team_lines(session, NULL, NULL, error))
+		return false;
+	if (!session_reload_player(session, error))
+		return false;
+	if (!info_line(session, top, sizeof(top), error))
 		return false;
 	length = qb_str_double(left, sizeof(left),
 	    (double)session->player.credits);
@@ -311,32 +340,40 @@ yt_session_show_ship(struct yt_session *session, struct yt_error *error)
 		return false;
 	length = qb_str_single(right, sizeof(right),
 	    (float)session->player.sector);
-	if (length < 0 || !info_panel_ordinary(session,
+	if (length < 0)
+		return false;
+	if (!info_panel_ordinary(session,
 	    " Credits.. :", left, " Sector....... :", right, error))
 		return false;
-	if (qb_str_single(left, sizeof(left), session->player.turns) < 0
-	    || qb_str_single(right, sizeof(right), session->player.holds) < 0
-	    || !info_panel_ordinary(session, " Turns.... :", left,
+	if (qb_str_single(left, sizeof(left), session->player.turns) < 0)
+		return false;
+	if (qb_str_single(right, sizeof(right), session->player.holds) < 0)
+		return false;
+	if (!info_panel_ordinary(session, " Turns.... :", left,
 	    " Holds........ :", right, error))
 		return false;
 	if (qb_str_double(left, sizeof(left),
-	    (double)session->player.fighters) < 0
-	    || !info_panel_commodity(session, " Fighters. :", left,
+	    (double)session->player.fighters) < 0)
+		return false;
+	if (!info_panel_commodity(session, " Fighters. :", left,
 	    " Ore.......... :", session->player.ore, error))
 		return false;
-	if (qb_str_single(left, sizeof(left), session->player.mines) < 0
-	    || !info_panel_commodity(session, " Mines.... :", left,
+	if (qb_str_single(left, sizeof(left), session->player.mines) < 0)
+		return false;
+	if (!info_panel_commodity(session, " Mines.... :", left,
 	    " Organics..... :", session->player.organics, error))
 		return false;
-	if (qb_str_single(left, sizeof(left), session->player.missiles) < 0
-	    || !info_panel_commodity(session, " Missiles. :", left,
+	if (qb_str_single(left, sizeof(left), session->player.missiles) < 0)
+		return false;
+	if (!info_panel_commodity(session, " Missiles. :", left,
 	    " Equipment.... :", session->player.equipment, error))
 		return false;
 	(void)snprintf(left, sizeof(left), "%s",
 	    session->player.danger_scanner == 0 ? " NONE" : " Installed");
 	if (qb_str_single(right, sizeof(right),
-	    (float)session->player.ports_owned) < 0
-	    || !info_panel_ordinary(session, " Scanner.. :", left,
+	    (float)session->player.ports_owned) < 0)
+		return false;
+	if (!info_panel_ordinary(session, " Scanner.. :", left,
 	    " Ports Owned.. :", right, error))
 		return false;
 	if (qb_str_double(left, sizeof(left),
@@ -352,13 +389,17 @@ yt_session_show_ship(struct yt_session *session, struct yt_error *error)
 		strcat(right, "%");
 	}
 	if (!info_panel_ordinary(session, " Shields.. :", left,
-	    " Cloak Energy. :", right, error)
-	    || qb_str_single(left, sizeof(left),
-	    session->player.ground_forces) < 0
-	    || qb_str_single(right, sizeof(right), session->player.plasma) < 0
-	    || !info_panel_ordinary(session, " Forces... :", left,
-	    " Plasma Bolts. :", right, error)
-	    || !info_line(session, bottom, sizeof(bottom), error))
+	    " Cloak Energy. :", right, error))
+		return false;
+	if (qb_str_single(left, sizeof(left),
+	    session->player.ground_forces) < 0)
+		return false;
+	if (qb_str_single(right, sizeof(right), session->player.plasma) < 0)
+		return false;
+	if (!info_panel_ordinary(session, " Forces... :", left,
+	    " Plasma Bolts. :", right, error))
+		return false;
+	if (!info_line(session, bottom, sizeof(bottom), error))
 		return false;
 	session_set_foreground(session, saved_foreground);
 	return true;
