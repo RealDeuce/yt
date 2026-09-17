@@ -10,75 +10,6 @@ bool yt_text_append_line(const char *path, const uint8_t *line, size_t length,
 #define YT_TEXT_OUTPUT_BUFFER_SIZE 128U
 #define YT_TEXT_INPUT_BUFFER_SIZE 128U
 
-enum yt_text_open_operation {
-	YT_TEXT_OPEN_EXISTING,
-	YT_TEXT_OPEN_CREATE,
-	YT_TEXT_OPEN_TEMP_CLOSE,
-	YT_TEXT_OPEN_REOPEN,
-	YT_TEXT_OPEN_EXTENDED_ERROR,
-	YT_TEXT_OPEN_QUERY_DEVICE,
-	YT_TEXT_OPEN_CONFIGURE_DEVICE,
-	YT_TEXT_OPEN_SEEK_END,
-	YT_TEXT_OPEN_SEEK_WINDOW,
-	YT_TEXT_OPEN_READ_WINDOW,
-	YT_TEXT_OPEN_SEEK_SELECTED,
-};
-
-struct yt_text_open_observation {
-	FILE *file;
-	size_t accepted;
-	bool carry;
-	bool device;
-	bool handle_open;
-	uint16_t dos_error;
-	uint16_t mapped_error;
-	int64_t terminal_position;
-};
-
-enum yt_text_open_outcome {
-	YT_TEXT_OPEN_NONE,
-	YT_TEXT_OPEN_RETURNED,
-	YT_TEXT_OPEN_INITIAL_ERROR,
-	YT_TEXT_OPEN_CREATE_ERROR,
-	YT_TEXT_OPEN_TEMP_CLOSE_ERROR,
-	YT_TEXT_OPEN_REOPEN_ERROR,
-	YT_TEXT_OPEN_DEVICE_ERROR,
-	YT_TEXT_OPEN_SEEK_ERROR,
-	YT_TEXT_OPEN_READ_ERROR,
-	YT_TEXT_OPEN_PROVIDER_ERROR,
-};
-
-struct yt_text_open_result {
-	enum yt_text_open_outcome outcome;
-	enum yt_text_open_operation failed_operation;
-	uint16_t dos_error;
-	uint16_t basic_error;
-	uint16_t temporary_close_retry_dos_error;
-	uint8_t access_attempts[4];
-	size_t access_attempt_count;
-	size_t operation_count;
-	size_t refill_count;
-	size_t accepted;
-	int64_t physical_length;
-	int64_t window_start;
-	int64_t selected_position;
-	int64_t terminal_position;
-	bool created;
-	bool temporary_close_attempted;
-	bool temporary_close_retried;
-	bool device;
-	bool registered;
-	bool handle_open;
-};
-
-enum yt_text_close_operation {
-	YT_TEXT_CLOSE_PENDING_WRITE,
-	YT_TEXT_CLOSE_EOF_WRITE,
-	YT_TEXT_CLOSE_TRUNCATE,
-	YT_TEXT_CLOSE_HANDLE,
-	YT_TEXT_CLOSE_CLEANUP_HANDLE,
-};
-
 struct yt_text_input {
 	FILE *file;
 	char path[512];
@@ -116,10 +47,10 @@ struct yt_text_output {
 	bool device;
 	uint8_t pending[YT_TEXT_OUTPUT_BUFFER_SIZE];
 	size_t pending_count;
+	uint16_t last_output_open_basic_error;
+	uint16_t last_append_open_basic_error;
 	uint16_t last_write_basic_error;
 	uint16_t last_close_basic_error;
-	struct yt_text_open_result last_output_open;
-	struct yt_text_open_result last_append_open;
 };
 
 void yt_text_output_init(struct yt_text_output *output);

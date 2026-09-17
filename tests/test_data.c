@@ -666,22 +666,14 @@ test_text_output_write(void)
 	yt_text_output_init(&output);
 	yt_error_clear(&error);
 	CHECK(!yt_text_output_open(&output, missing_parent_path, &error)
-	    && output.last_output_open.outcome
-	    == YT_TEXT_OPEN_INITIAL_ERROR
-	    && output.last_output_open.basic_error == 76U
-	    && output.last_output_open.dos_error == 3U
-	    && output.last_output_open.access_attempt_count == 1U);
+	    && output.last_output_open_basic_error == 76U);
 	yt_text_output_destroy(&output);
 
 	/* The filesystem path composes arbitrary writes with close. */
 	CHECK(write_bytes(path, (const uint8_t *)"stale-tail", 10U));
 	yt_text_output_init(&output);
 	CHECK(yt_text_output_open(&output, path, &error)
-	    && output.last_output_open.outcome == YT_TEXT_OPEN_RETURNED
-	    && !output.last_output_open.created
-	    && output.last_output_open.access_attempt_count == 1U
-	    && output.last_output_open.access_attempts[0] == 1U
-	    && output.last_output_open.registered
+	    && output.last_output_open_basic_error == 0U
 	    && ftell(output.file) == 0L);
 	CHECK(yt_text_read(path, &text, &error));
 	if (text.data != NULL) {
@@ -753,11 +745,8 @@ test_text_output_close(void)
 	yt_text_output_init(&output);
 	yt_error_clear(&error);
 	CHECK(yt_text_output_open(&output, path, &error)
-	    && output.last_output_open.outcome == YT_TEXT_OPEN_RETURNED
-	    && output.last_output_open.created
-	    && output.last_output_open.temporary_close_attempted
-	    && output.last_output_open.operation_count == 5U
-	    && output.last_output_open.access_attempt_count == 2U);
+	    && output.file != NULL
+	    && output.last_output_open_basic_error == 0U);
 	CHECK(yt_text_output_close(&output, &error)
 	    && output.last_close_basic_error == 0U);
 	CHECK(yt_text_read(path, &text, &error));
@@ -1133,20 +1122,13 @@ test_append_window(void)
 	yt_text_output_init(&output);
 	yt_error_clear(&error);
 	CHECK(yt_text_output_open_append(&output, path, &error)
-	    && output.last_append_open.outcome == YT_TEXT_OPEN_RETURNED
-	    && output.last_append_open.created
-	    && output.last_append_open.temporary_close_attempted
-	    && output.last_append_open.access_attempt_count == 2U
-	    && output.last_append_open.refill_count == 1U
-	    && output.last_append_open.selected_position == 0);
+	    && output.file != NULL
+	    && output.last_append_open_basic_error == 0U
+	    && ftell(output.file) == 0L);
 	yt_text_output_destroy(&output);
 	yt_text_output_init(&output);
 	CHECK(!yt_text_output_open_append(&output, missing_parent_path, &error)
-	    && output.last_append_open.outcome
-	    == YT_TEXT_OPEN_INITIAL_ERROR
-	    && output.last_append_open.basic_error == 76U
-	    && output.last_append_open.dos_error == 3U
-	    && output.last_append_open.access_attempt_count == 1U);
+	    && output.last_append_open_basic_error == 76U);
 	yt_text_output_destroy(&output);
 
 	/* Empty sequential OUTPUT/CLOSE retains the BRUN DOS EOF byte. */
@@ -1195,11 +1177,7 @@ test_append_window(void)
 	yt_text_output_init(&output);
 	CHECK(yt_text_output_open_append(&output, path, &error)
 	    && ftell(output.file) == 3L
-	    && output.last_append_open.outcome == YT_TEXT_OPEN_RETURNED
-	    && output.last_append_open.physical_length == 9
-	    && output.last_append_open.window_start == 0
-	    && output.last_append_open.selected_position == 3
-	    && output.last_append_open.refill_count == 1U);
+	    && output.last_append_open_basic_error == 0U);
 	yt_text_output_destroy(&output);
 	CHECK(yt_text_read(path, &text, &error));
 	CHECK(text.length == 9U && memcmp(text.data, "old\x1a" "stale", 9U) == 0);

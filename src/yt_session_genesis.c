@@ -14,10 +14,10 @@ genesis_handoff_open_output(struct yt_text_output *output,
 	bool opened;
 
 	opened = yt_text_output_open(output, "RMTINIT.TMP", error);
-	if (!opened && output->last_output_open.basic_error != 0U)
+	if (!opened && output->last_output_open_basic_error != 0U)
 		(void)yt_error_attach_basic_fault_number(error,
 		    YT_BASIC_FAULT_GENESIS_OPEN_OUTPUT,
-		    output->last_output_open.basic_error);
+		    output->last_output_open_basic_error);
 	return opened;
 }
 
