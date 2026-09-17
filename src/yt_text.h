@@ -106,17 +106,17 @@ struct yt_text_close_result {
 
 struct yt_text_input {
 	FILE *file;
-	FILE *orphaned_file;
 	char path[512];
+	bool device;
 	uint8_t *line;
 	size_t line_capacity;
 	uint8_t read_ahead[YT_TEXT_INPUT_BUFFER_SIZE];
 	size_t read_total;
 	size_t read_remaining;
 	uint64_t logical_position;
+	uint16_t last_open_basic_error;
 	uint16_t last_read_basic_error;
-	struct yt_text_open_result last_open;
-	struct yt_text_close_result last_close;
+	uint16_t last_close_basic_error;
 };
 
 void yt_text_input_init(struct yt_text_input *input);

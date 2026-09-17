@@ -291,7 +291,7 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 	} \
 } while (0)
 	OPENING_TEXT_RETRY(yt_text_input_open(&input, path, active_error),
-	    input.last_open.basic_error);
+	    input.last_open_basic_error);
 	for (;;) {
 		const uint8_t *line;
 		size_t length;
@@ -348,7 +348,7 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 			out_emulated_bytes(reset, sizeof(reset) - 1U);
 	}
 	OPENING_TEXT_RETRY(yt_text_input_close(&input, active_error),
-	    input.last_close.basic_error);
+	    input.last_close_basic_error);
 	result = true;
 
 done:

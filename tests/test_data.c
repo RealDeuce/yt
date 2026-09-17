@@ -1404,12 +1404,7 @@ test_text_input(void)
 	CHECK(yt_text_input_close(&input, &error));
 	CHECK(yt_text_input_open(&input, requested, &error));
 	CHECK(input.file != NULL && strcmp(input.path, actual) == 0
-	    && input.last_open.outcome == YT_TEXT_OPEN_RETURNED
-	    && input.last_open.operation_count == 2U
-	    && input.last_open.access_attempt_count == 1U
-	    && input.last_open.access_attempts[0] == 0U
-	    && input.last_open.terminal_position == 0
-	    && input.last_open.registered && input.last_open.handle_open);
+	    && input.last_open_basic_error == 0U);
 	CHECK(yt_text_input_eof(&input, &eof, &error) && !eof);
 	CHECK(yt_text_input_read_line(&input, &line, &length, &available,
 	    &error) && available && length == 0U);
@@ -1432,11 +1427,7 @@ test_text_input(void)
 	CHECK(yt_text_input_read_line(&input, &line, &length, &available,
 	    &error) && !available && length == 0U);
 	CHECK(yt_text_input_close(&input, &error) && input.file == NULL
-	    && input.last_close.outcome == YT_TEXT_CLOSE_RETURNED
-	    && input.last_close.operation_count == 1U
-	    && !input.last_close.missing && !input.last_close.device
-	    && !input.last_close.registered
-	    && !input.last_close.handle_open);
+	    && input.last_close_basic_error == 0U);
 	CHECK(write_bytes(actual, (const uint8_t *)"tail", 4U));
 	CHECK(yt_text_input_open(&input, requested, &error));
 	CHECK(yt_text_input_eof(&input, &eof, &error) && !eof);
@@ -1450,15 +1441,11 @@ test_text_input(void)
 	yt_error_clear(&error);
 	CHECK(!yt_text_input_open(&input, missing, &error)
 	    && error.status == YT_NOT_FOUND && input.file == NULL
-	    && input.last_open.outcome == YT_TEXT_OPEN_INITIAL_ERROR
-	    && input.last_open.dos_error == 2U
-	    && input.last_open.basic_error == 53U);
+	    && input.last_open_basic_error == 53U);
 	yt_error_clear(&error);
 	CHECK(!yt_text_input_open(&input, missing_parent, &error)
 	    && error.status == YT_NOT_FOUND && input.file == NULL
-	    && input.last_open.outcome == YT_TEXT_OPEN_INITIAL_ERROR
-	    && input.last_open.dos_error == 3U
-	    && input.last_open.basic_error == 76U);
+	    && input.last_open_basic_error == 76U);
 	yt_text_input_destroy(&input);
 	CHECK(yt_file_delete(actual, false, &error));
 #ifdef _WIN32

@@ -30,8 +30,7 @@ bool
 yt_text_input_open(struct yt_text_input *input, const char *path,
     struct yt_error *error)
 {
-	if (input != NULL && input->file == NULL
-	    && input->orphaned_file == NULL) {
+	if (input != NULL && input->file == NULL) {
 		memset(input->read_ahead, 0, sizeof(input->read_ahead));
 		input->read_total = 0U;
 		input->read_remaining = 0U;
@@ -390,9 +389,6 @@ yt_text_input_destroy(struct yt_text_input *input)
 		return;
 	if (input->file != NULL)
 		(void)fclose(input->file);
-	if (input->orphaned_file != NULL
-	    && input->orphaned_file != input->file)
-		(void)fclose(input->orphaned_file);
 	free(input->line);
 	memset(input, 0, sizeof(*input));
 }
@@ -702,103 +698,28 @@ text_close_observation_valid(
 }
 
 static bool
-text_input_close_observe(struct yt_text_input *input, FILE *file,
-    enum yt_text_close_operation operation,
-    struct text_close_observation *observation)
-{
-	++input->last_close.operation_count;
-	memset(observation, 0, sizeof(*observation));
-	observation->terminal_position = -1;
-	return text_close_perform(file, operation, NULL, 0U,
-	    observation);
-}
-
-static void
-text_input_close_failure(struct yt_text_input *input,
-    enum yt_text_close_outcome outcome,
-    enum yt_text_close_operation operation, uint16_t basic_error,
-    uint16_t dos_error, const struct text_close_observation *observed,
-    struct yt_error *error)
-{
-	input->last_close.outcome = outcome;
-	input->last_close.failed_operation = operation;
-	input->last_close.basic_error = basic_error;
-	input->last_close.dos_error = dos_error;
-	if (observed != NULL) {
-		input->last_close.accepted = observed->accepted;
-		input->last_close.terminal_position =
-		    observed->terminal_position;
-	}
-	input->last_close.registered = input->file != NULL;
-	input->last_close.handle_open = input->file != NULL
-	    || input->orphaned_file != NULL;
-	set_error(error, YT_IO_ERROR, "sequential INPUT CLOSE", input->path);
-}
-
-static bool
 text_input_close_execute(struct yt_text_input *input, struct yt_error *error)
 {
-	struct text_close_observation observation;
-	struct text_close_observation cleanup;
 	FILE *file;
-	uint16_t first_dos_error;
-	bool delivered;
-	bool valid;
-	bool first_handle_open;
+	int saved_errno;
 
 	if (input == NULL) {
 		errno = 0;
 		set_error(error, YT_INVALID, "sequential INPUT CLOSE", NULL);
 		return false;
 	}
-	memset(&input->last_close, 0, sizeof(input->last_close));
-	input->last_close.failed_operation = YT_TEXT_CLOSE_HANDLE;
-	input->last_close.terminal_position = -1;
-	input->last_close.device = input->last_open.device;
-	if (input->file == NULL) {
-		input->last_close.outcome = YT_TEXT_CLOSE_RETURNED;
-		input->last_close.missing = true;
-		input->last_close.handle_open = input->orphaned_file != NULL;
+	input->last_close_basic_error = 0U;
+	if (input->file == NULL)
 		return true;
-	}
 	file = input->file;
-	delivered = text_input_close_observe(input, file,
-	    YT_TEXT_CLOSE_HANDLE, &observation);
-	valid = delivered && text_close_observation_valid(
-	    YT_TEXT_CLOSE_HANDLE, 0U, &observation);
-	if (!valid) {
-		if (delivered && !observation.handle_open)
-			input->file = NULL;
-		text_input_close_failure(input, YT_TEXT_CLOSE_PROVIDER_ERROR,
-		    YT_TEXT_CLOSE_HANDLE, 57U, observation.dos_error,
-		    delivered ? &observation : NULL, error);
-		return false;
-	}
-	if (!observation.carry) {
-		input->file = NULL;
-		input->last_close.outcome = YT_TEXT_CLOSE_RETURNED;
-		input->last_close.terminal_position =
-		    observation.terminal_position;
-		input->last_close.registered = false;
-		input->last_close.handle_open = input->orphaned_file != NULL;
-		return true;
-	}
-	first_dos_error = observation.dos_error;
-	first_handle_open = observation.handle_open;
 	input->file = NULL;
-	input->last_close.cleanup_close_attempted = true;
-	delivered = text_input_close_observe(input,
-	    first_handle_open ? file : NULL,
-	    YT_TEXT_CLOSE_CLEANUP_HANDLE, &cleanup);
-	input->last_close.cleanup_dos_error = cleanup.dos_error;
-	valid = delivered && text_close_observation_valid(
-	    YT_TEXT_CLOSE_CLEANUP_HANDLE, 0U, &cleanup);
-	if ((!valid && first_handle_open) || (valid && cleanup.handle_open))
-		input->orphaned_file = file;
-	text_input_close_failure(input, valid ? YT_TEXT_CLOSE_DISK_ERROR
-	    : YT_TEXT_CLOSE_PROVIDER_ERROR, YT_TEXT_CLOSE_HANDLE,
-	    valid ? (input->last_close.device ? 57U : 70U) : 57U,
-	    first_dos_error, &observation, error);
+	errno = 0;
+	if (fclose(file) == 0)
+		return true;
+	saved_errno = errno;
+	input->last_close_basic_error = input->device ? 57U : 70U;
+	errno = saved_errno;
+	set_error(error, YT_IO_ERROR, "sequential INPUT CLOSE", input->path);
 	return false;
 }
 
@@ -1027,139 +948,39 @@ text_open_observation_valid(enum yt_text_open_operation operation,
 	    && observation->terminal_position >= 0;
 }
 
-static void
-text_input_open_failure(struct yt_text_input *input,
-    enum yt_text_open_outcome outcome,
-    enum yt_text_open_operation operation, uint16_t basic_error,
-    uint16_t dos_error, struct yt_error *error)
-{
-	input->last_open.outcome = outcome;
-	input->last_open.failed_operation = operation;
-	input->last_open.basic_error = basic_error;
-	input->last_open.dos_error = dos_error;
-	input->last_open.registered = input->file != NULL;
-	input->last_open.handle_open = input->file != NULL
-	    || input->orphaned_file != NULL;
-	set_error(error, basic_error == 53U || basic_error == 76U
-	    ? YT_NOT_FOUND : YT_IO_ERROR, "sequential INPUT OPEN", input->path);
-}
-
-static bool
-text_input_open_observe(struct yt_text_input *input, const char *path,
-    enum yt_text_open_operation operation, FILE *active_file,
-    uint16_t prior_dos_error,
-    struct yt_text_open_observation *observation)
-{
-	bool delivered;
-
-	++input->last_open.operation_count;
-	memset(observation, 0, sizeof(*observation));
-	observation->terminal_position = -1;
-	delivered = text_open_perform(path, operation, 0U,
-	    active_file, 0, NULL, 0U, prior_dos_error, observation);
-	input->last_open.accepted = observation->accepted;
-	if (observation->terminal_position >= 0)
-		input->last_open.terminal_position =
-		    observation->terminal_position;
-	return delivered;
-}
-
 static bool
 text_input_open_execute(struct yt_text_input *input, const char *path,
     struct yt_error *error)
 {
 	char resolved[512];
-	struct yt_text_open_observation observation;
-	bool delivered;
-	bool valid;
+	uint16_t dos_error;
+	uint16_t basic_error;
+	int saved_errno;
 
-	if (input == NULL || path == NULL || input->file != NULL
-	    || input->orphaned_file != NULL) {
+	if (input == NULL || path == NULL || input->file != NULL) {
 		errno = 0;
 		set_error(error, YT_INVALID, "open text input", path);
 		return false;
 	}
-	memset(&input->last_open, 0, sizeof(input->last_open));
-	input->last_open.failed_operation = YT_TEXT_OPEN_EXISTING;
-	input->last_open.terminal_position = -1;
+	input->last_open_basic_error = 0U;
 	if (!yt_resolve_case_path(path, true, resolved, sizeof(resolved), error))
 		return false;
 	(void)snprintf(input->path, sizeof(input->path), "%s", resolved);
-	input->last_open.access_attempts[
-	    input->last_open.access_attempt_count++] = 0U;
-	delivered = text_input_open_observe(input, resolved,
-	    YT_TEXT_OPEN_EXISTING, NULL, 0U, &observation);
-	valid = delivered && text_open_observation_valid(
-	    YT_TEXT_OPEN_EXISTING, 0U, &observation);
-	if (!valid) {
-		if (observation.file != NULL && observation.handle_open)
-			input->orphaned_file = observation.file;
-		text_input_open_failure(input, YT_TEXT_OPEN_PROVIDER_ERROR,
-		    YT_TEXT_OPEN_EXISTING, 53U, observation.dos_error, error);
+	errno = 0;
+	input->file = fopen(resolved, "rb");
+	if (input->file == NULL) {
+		saved_errno = errno;
+		dos_error = text_output_dos_error(resolved, saved_errno);
+		basic_error = dos_error == 5U ? 75U
+		    : dos_error == 3U ? 76U : 53U;
+		input->last_open_basic_error = basic_error;
+		errno = saved_errno;
+		set_error(error, basic_error == 53U || basic_error == 76U
+		    ? YT_NOT_FOUND : YT_IO_ERROR, "sequential INPUT OPEN",
+		    input->path);
 		return false;
 	}
-	if (observation.carry) {
-		uint16_t dos_error = observation.dos_error;
-
-		if (dos_error == 5U) {
-			delivered = text_input_open_observe(input, resolved,
-			    YT_TEXT_OPEN_EXTENDED_ERROR, NULL, dos_error,
-			    &observation);
-			valid = delivered && text_open_observation_valid(
-			    YT_TEXT_OPEN_EXTENDED_ERROR, 0U, &observation);
-			if (!valid) {
-				text_input_open_failure(input,
-				    YT_TEXT_OPEN_PROVIDER_ERROR,
-				    YT_TEXT_OPEN_EXTENDED_ERROR, 53U,
-				    dos_error, error);
-				return false;
-			}
-			text_input_open_failure(input,
-			    YT_TEXT_OPEN_INITIAL_ERROR,
-			    YT_TEXT_OPEN_EXTENDED_ERROR,
-			    observation.mapped_error, dos_error, error);
-			return false;
-		}
-		text_input_open_failure(input, YT_TEXT_OPEN_INITIAL_ERROR,
-		    YT_TEXT_OPEN_EXISTING, dos_error == 3U ? 76U : 53U,
-		    dos_error, error);
-		return false;
-	}
-	input->file = observation.file;
-	delivered = text_input_open_observe(input, resolved,
-	    YT_TEXT_OPEN_QUERY_DEVICE, input->file, 0U, &observation);
-	valid = delivered && text_open_observation_valid(
-	    YT_TEXT_OPEN_QUERY_DEVICE, 0U, &observation);
-	if (!valid) {
-		text_input_open_failure(input, YT_TEXT_OPEN_PROVIDER_ERROR,
-		    YT_TEXT_OPEN_QUERY_DEVICE, 57U, observation.dos_error, error);
-		return false;
-	}
-	input->last_open.device = observation.device;
-	if (observation.device) {
-		delivered = text_input_open_observe(input, resolved,
-		    YT_TEXT_OPEN_CONFIGURE_DEVICE, input->file, 0U,
-		    &observation);
-		valid = delivered && text_open_observation_valid(
-		    YT_TEXT_OPEN_CONFIGURE_DEVICE, 0U, &observation);
-		if (!valid) {
-			text_input_open_failure(input,
-			    YT_TEXT_OPEN_PROVIDER_ERROR,
-			    YT_TEXT_OPEN_CONFIGURE_DEVICE, 57U,
-			    observation.dos_error, error);
-			return false;
-		}
-		if (observation.carry) {
-			text_input_open_failure(input,
-			    YT_TEXT_OPEN_DEVICE_ERROR,
-			    YT_TEXT_OPEN_CONFIGURE_DEVICE, 57U,
-			    observation.dos_error, error);
-			return false;
-		}
-	}
-	input->last_open.outcome = YT_TEXT_OPEN_RETURNED;
-	input->last_open.registered = true;
-	input->last_open.handle_open = true;
+	input->device = yt_text_isatty(yt_text_fileno(input->file)) != 0;
 	return true;
 }
 

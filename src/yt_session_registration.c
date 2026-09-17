@@ -72,8 +72,7 @@ static bool
 registration_close_file4(struct registration_files *files,
     struct yt_error *error)
 {
-	if (files->sequential.file != NULL
-	    || files->sequential.orphaned_file != NULL)
+	if (files->sequential.file != NULL)
 		return yt_text_input_close(&files->sequential, error);
 	return yt_database_random_close(&files->random, error);
 }
@@ -394,9 +393,7 @@ yt_session_registration(struct yt_session *session, struct yt_error *error)
 	    : "registration evaluation wait", error);
 
 done:
-	if (files.sequential.file != NULL
-	    || files.sequential.orphaned_file != NULL
-	    || files.random.file != NULL)
+	if (files.sequential.file != NULL || files.random.file != NULL)
 		(void)registration_close_file4(&files, NULL);
 	yt_text_input_destroy(&files.sequential);
 	free(storage);
