@@ -11,9 +11,10 @@ mine_loss_row(struct yt_session *session, enum yt_sector_mine_loss_kind kind,
 {
 	size_t length;
 
-	return yt_sector_mine_loss_row(kind, loss, row, capacity, &length)
-	    && session_present_text(session, row, length, SESSION_PRESENT_LINE,
-	    "sector mine output", error);
+	if (!yt_sector_mine_loss_row(kind, loss, row, capacity, &length))
+		return false;
+	return session_present_text(session, row, length,
+	    SESSION_PRESENT_LINE, "sector mine output", error);
 }
 
 static bool
@@ -61,10 +62,12 @@ mine_damage_shields(struct yt_session *session, struct yt_player *player,
 		return true;
 	}
 	if (!yt_sector_mine_shields_row(player->shields, row, sizeof(row),
-	    &row_length)
-	    || !session_present_text(session, row, row_length,
-	    SESSION_PRESENT_BOLD_LINE, "sector mine output", error)
-	    || !yt_random_next(&session->door->game.random, &draw, error))
+	    &row_length))
+		return false;
+	if (!session_present_text(session, row, row_length,
+	    SESSION_PRESENT_BOLD_LINE, "sector mine output", error))
+		return false;
+	if (!yt_random_next(&session->door->game.random, &draw, error))
 		return false;
 	if (player->danger_scanner == 0
 	    || draw <= 0.949999988079071f)
@@ -222,10 +225,12 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 	current_sector = player.sector;
 	if (carried < 0.0f) {
 		player.mines = 0.0f;
-		if (!yt_record_set_number(&player.record, YT_F129, 0.0f)
-		    || !yt_game_write_player(&session->door->game,
-		    session_record(session), &player, error)
-		    || !yt_database_flush(&session->door->game.database, error))
+		if (!yt_record_set_number(&player.record, YT_F129, 0.0f))
+			return false;
+		if (!yt_game_write_player(&session->door->game,
+		    session_record(session), &player, error))
+			return false;
+		if (!yt_database_flush(&session->door->game.database, error))
 			return false;
 	}
 	if (carried < 1.0f)
@@ -249,10 +254,12 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 	memcpy(row + row_length, prompt_suffix, sizeof(prompt_suffix) - 1U);
 	row_length += sizeof(prompt_suffix) - 1U;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "sector mine prompt blank", error)
-	    || !session_present_timed_paged_row(session, row, row_length,
-	    "sector mine prompt", error)
-	    || !session_read_number_command(session, response, sizeof(response)))
+	    "sector mine prompt blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, row, row_length,
+	    "sector mine prompt", error))
+		return false;
+	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
 	if (response[0] == '\0')
 		amount = 0.0f;
@@ -274,16 +281,21 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 	session->navigation.self_mines_suppressed = true;
 	remaining = qb_single_subtract(carried, amount);
 	player.mines = remaining;
-	if (!yt_record_set_number(&player.record, YT_F129, remaining)
-	    || !yt_game_write_player(&session->door->game,
-	    session_record(session), &player, error)
-	    || !yt_database_flush(&session->door->game.database, error)
-	    || !session_read_sector(session, current_sector, &sector, error))
+	if (!yt_record_set_number(&player.record, YT_F129, remaining))
+		return false;
+	if (!yt_game_write_player(&session->door->game,
+	    session_record(session), &player, error))
+		return false;
+	if (!yt_database_flush(&session->door->game.database, error))
+		return false;
+	if (!session_read_sector(session, current_sector, &sector, error))
 		return false;
 	sector.mines = qb_single_add(sector.mines, amount);
-	if (!yt_record_set_number(&sector.record, YT_F129, sector.mines)
-	    || !session_write_sector(session, current_sector, &sector, error)
-	    || !yt_database_flush(&session->door->game.database, error))
+	if (!yt_record_set_number(&sector.record, YT_F129, sector.mines))
+		return false;
+	if (!session_write_sector(session, current_sector, &sector, error))
+		return false;
+	if (!yt_database_flush(&session->door->game.database, error))
 		return false;
 
 	number_length = qb_str_single(number, sizeof(number),
@@ -305,8 +317,10 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 		return false;
 	session->presentation.bold = true;
 	session->presentation.blink = true;
-	return session_present_paged_fragment(session, row, row_length)
-	    && session_sound(session, YT_SOUND_CUE_ACTION, "sector mine sound", error);
+	if (!session_present_paged_fragment(session, row, row_length))
+		return false;
+	return session_sound(session, YT_SOUND_CUE_ACTION,
+	    "sector mine sound", error);
 }
 
 bool
@@ -329,15 +343,19 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 		return false;
 	session->presentation.blink = true;
 	if (!session_present_text(session, warning, sizeof(warning) - 1U,
-	    SESSION_PRESENT_LINE, "sector mine output", error)
-	    || !session_sound(session, YT_SOUND_CUE_DAMAGE, "sector mine sound", error)
-	    || !session_reload_player(session, error))
+	    SESSION_PRESENT_LINE, "sector mine output", error))
+		return false;
+	if (!session_sound(session, YT_SOUND_CUE_DAMAGE,
+	    "sector mine sound", error))
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	player = session->player;
 	if (!yt_sector_mine_entry_news(player.record.bytes,
 	    player.name_length, (float)current_sector, row, sizeof(row),
-	    &row_length)
-	    || !yt_news_append_bytes(row, row_length, error))
+	    &row_length))
+		return false;
+	if (!yt_news_append_bytes(row, row_length, error))
 		return false;
 
 	for (;;) {
@@ -365,14 +383,16 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 		session->presentation.background = 0;
 		session->presentation.blink = false;
 		if (!yt_sector_mine_explosion_row(mines_before, batch, row,
-		    sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
+		    sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_RAW, "sector mine output", error))
 			return false;
 		session->presentation.background = 1;
 		if (!session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "sector mine output", error)
-		    || !session_reload_player(session, error))
+		    SESSION_PRESENT_LINE, "sector mine output", error))
+			return false;
+		if (!session_reload_player(session, error))
 			return false;
 		working = session->player;
 
@@ -390,14 +410,17 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 			return false;
 		yt_sector_mine_player_overlay(&persisted, &working, touched);
 		if (!yt_database_write(&session->door->game.database,
-		    (size_t)session_record(session), &persisted.record, error)
-		    || !yt_database_flush(&session->door->game.database, error))
+		    (size_t)session_record(session), &persisted.record, error))
+			return false;
+		if (!yt_database_flush(&session->door->game.database, error))
 			return false;
 		working.record = persisted.record;
 		player = working;
 		session->player = working;
-		if (!session_sound(session, YT_SOUND_CUE_ATTACK, "sector mine sound", error)
-		    || !yt_random_next(&session->door->game.random, &draw, error))
+		if (!session_sound(session, YT_SOUND_CUE_ATTACK,
+		    "sector mine sound", error))
+			return false;
+		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		if (draw > 0.800000011920929f && working.holds < 10.0f) {
 			if (!yt_session_emergency_warp(session, error))
@@ -410,9 +433,11 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 		break;
 	}
 	if (!yt_sector_mine_final_news(player.shields, row, sizeof(row),
-	    &row_length)
-	    || !yt_news_append_bytes(row, row_length, error)
-	    || !session_read_sector(session, current_sector, &sector, error))
+	    &row_length))
+		return false;
+	if (!yt_news_append_bytes(row, row_length, error))
+		return false;
+	if (!session_read_sector(session, current_sector, &sector, error))
 		return false;
 	return true;
 }
