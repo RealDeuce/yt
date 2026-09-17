@@ -17,20 +17,14 @@ mine_loss_row(struct yt_session *session, enum yt_sector_mine_loss_kind kind,
 }
 
 static bool
-mine_shrink(struct yt_session *session, float range, float *result,
-    struct yt_error *error)
-{
-	return yt_random_nested_single(&session->door->game.random, 3.0f,
-	    &range, result, error);
-}
-
-static bool
 mine_stock_loss(struct yt_session *session, float batch, float *stock,
     float *loss, struct yt_error *error)
 {
 	float sampled;
+	float range = qb_single_multiply(batch, *stock);
 
-	if (!mine_shrink(session, qb_single_multiply(batch, *stock), &sampled, error))
+	if (!yt_random_nested_single(&session->door->game.random, 3.0f,
+	    &range, &sampled, error))
 		return false;
 	if (sampled > *stock)
 		sampled = *stock;
@@ -98,10 +92,12 @@ mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
 	float draw;
 	float loss;
 	float empty;
+	float range;
 
 	if (player->fighters != 0.0f) {
-		if (!mine_shrink(session, qb_single_multiply(40000.0f, batch), &loss,
-		    error))
+		range = qb_single_multiply(40000.0f, batch);
+		if (!yt_random_nested_single(&session->door->game.random, 3.0f,
+		    &range, &loss, error))
 			return false;
 		if (loss > player->fighters)
 			loss = player->fighters;
@@ -165,7 +161,8 @@ mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
 	empty = yt_sector_mine_empty_holds(player);
 	if (!(empty > 0.0f))
 		return true;
-	if (!mine_shrink(session, empty, &loss, error))
+	if (!yt_random_nested_single(&session->door->game.random, 3.0f,
+	    &empty, &loss, error))
 		return false;
 	loss = qb_single_multiply(loss, batch);
 	if (loss > empty)
