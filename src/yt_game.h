@@ -66,7 +66,7 @@ struct yt_team {
 struct yt_port {
 	struct yt_record record;
 	char name[42];
-	float commodity_class;
+	int commodity_class;
 	float last_day;
 	float stock[3];
 	float production[3];

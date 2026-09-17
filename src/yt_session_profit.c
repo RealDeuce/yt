@@ -102,35 +102,35 @@ profit_warp_targets(const struct yt_sector *sector, int targets[6])
 }
 
 static void
-profit_pair_color(struct yt_session *session, float source, float target)
+profit_pair_color(struct yt_session *session, int source, int target)
 {
-	if ((source == 1.0f && target == 2.0f)
-	    || (source == 2.0f && target == 1.0f))
+	if ((source == 1 && target == 2)
+	    || (source == 2 && target == 1))
 		session_set_foreground(session, 3.0f);
-	else if ((source == 1.0f && target == 3.0f)
-	    || (source == 3.0f && target == 1.0f))
+	else if ((source == 1 && target == 3)
+	    || (source == 3 && target == 1))
 		session_set_foreground(session, 2.0f);
-	else if ((source == 2.0f && target == 3.0f)
-	    || (source == 3.0f && target == 2.0f))
+	else if ((source == 2 && target == 3)
+	    || (source == 3 && target == 2))
 		session_set_foreground(session, 1.0f);
 }
 
 static int
-profit_price_index(float commodity_class)
+profit_price_index(int commodity_class)
 {
-	if (commodity_class == 1.0f)
+	if (commodity_class == 1)
 		return 3;
-	if (commodity_class == 2.0f)
+	if (commodity_class == 2)
 		return 2;
 	return 1;
 }
 
 static int
-profit_class_text(float commodity_class)
+profit_class_text(int commodity_class)
 {
-	if (commodity_class == 1.0f)
+	if (commodity_class == 1)
 		return 0;
-	if (commodity_class == 2.0f)
+	if (commodity_class == 2)
 		return 1;
 	return 2;
 }

@@ -89,15 +89,15 @@ nearest_descending_compare(const void *left, const void *right)
 static bool
 nearest_filter(const struct nearest_scan *scan, bool member)
 {
-	float klass = scan->port.commodity_class;
+	int klass = scan->port.commodity_class;
 	int owner = (int)scan->port.owner;
 	bool accepted = false;
 
 	if (scan->selector >= 1 && scan->selector <= 3) {
 		accepted = scan->direction == 'S'
-		    ? klass == (float)scan->selector
+		    ? klass == scan->selector
 		    : scan->direction == 'B'
-		    && klass != (float)scan->selector;
+		    && klass != scan->selector;
 	} else if (scan->selector == 4) {
 		accepted = true;
 	} else if (scan->selector == 5) {
@@ -112,7 +112,7 @@ nearest_filter(const struct nearest_scan *scan, bool member)
 	} else if (scan->selector == 8) {
 		accepted = owner == 0;
 	}
-	return accepted && klass != 0.0f;
+	return accepted && klass != 0;
 }
 
 static bool
@@ -400,7 +400,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				}
 				(void)snprintf((char *)ore, sizeof(ore),
 				    " Ore @%c%s  ", scan.port.commodity_class
-				    == 3.0f ? 'S' : 'B', price);
+				    == 3 ? 'S' : 'B', price);
 				if (!nearest_price_cell(scan.market.price[1], price)) {
 					nearest_session_error(error,
 					    "nearest organics formatting");
@@ -408,7 +408,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				}
 				(void)snprintf((char *)organics, sizeof(organics),
 				    " Org @%c%s  ", scan.port.commodity_class
-				    == 2.0f ? 'S' : 'B', price);
+				    == 2 ? 'S' : 'B', price);
 				if (!nearest_price_cell(scan.market.price[2], price)) {
 					nearest_session_error(error,
 					    "nearest equipment formatting");
@@ -416,7 +416,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				}
 				(void)snprintf((char *)equipment, sizeof(equipment),
 				    " Equ @%c%s", scan.port.commodity_class
-				    == 1.0f ? 'S' : 'B', price);
+				    == 1 ? 'S' : 'B', price);
 				if (!nearest_stock_cell(&scan.market, stock, error))
 					goto done;
 				name_length = scan.port.name_length;
@@ -439,14 +439,14 @@ nearest_scan_run(struct yt_session *session, int selector,
 				    "nearest-port sector prefix", error))
 					goto done;
 				session_set_foreground(session,
-				    scan.port.commodity_class == 3.0f ? 7.0f : 6.0f);
+				    scan.port.commodity_class == 3 ? 7.0f : 6.0f);
 				yt_present_set_bold(&session->presentation, 1.0f);
 				if (!session_present_text(session, ore,
 				    scan.display_sector == 1 ? 0U : sizeof(ore) - 1U,
 				    SESSION_PRESENT_BOLD_RAW, "nearest-port ore cell", error))
 					goto done;
 				session_set_foreground(session,
-				    scan.port.commodity_class == 2.0f ? 7.0f : 6.0f);
+				    scan.port.commodity_class == 2 ? 7.0f : 6.0f);
 				yt_present_set_bold(&session->presentation, 1.0f);
 				if (!session_present_text(session, organics,
 				    scan.display_sector == 1 ? 0U : sizeof(organics) - 1U,
@@ -454,7 +454,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				    error))
 					goto done;
 				session_set_foreground(session,
-				    scan.port.commodity_class == 1.0f ? 7.0f : 6.0f);
+				    scan.port.commodity_class == 1 ? 7.0f : 6.0f);
 				yt_present_set_bold(&session->presentation, 1.0f);
 				if (!session_present_text(session, equipment,
 				    scan.display_sector == 1 ? 0U : sizeof(equipment) - 1U,

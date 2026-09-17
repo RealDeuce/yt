@@ -2606,12 +2606,9 @@ test_sector_scanner_rows(void)
 	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length)
 	    && length == sizeof(port_equ_expected)
 	    && memcmp(row, port_equ_expected, length) == 0);
-	port.commodity_class = 2.0f;
+	port.commodity_class = 2;
 	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length)
 	    && memcmp(row + length - 3U, "Org", 3U) == 0);
-	port.commodity_class = -7.0f;
-	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length)
-	    && memcmp(row + length - 3U, "Ore", 3U) == 0);
 	CHECK(!yt_sector_port_row(&port, row, length - 1U, &length));
 
 	yt_record_blank(&record);

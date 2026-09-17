@@ -192,7 +192,7 @@ yt_port_decode(struct yt_port *port, const struct yt_record *record)
 	memset(port, 0, sizeof(*port));
 	port->record = *record;
 	yt_record_get_text(record, port->name, sizeof(port->name));
-	port->commodity_class = yt_record_get_number(record, YT_F41);
+	port->commodity_class = (int)yt_record_get_number(record, YT_F41);
 	port->last_day = yt_record_get_number(record, YT_F45);
 	for (index = 0; index < 3; ++index) {
 		port->stock[index] = yt_record_get_number(record, YT_F49 + index * 4U);
@@ -215,7 +215,7 @@ yt_port_encode(struct yt_port *port)
 	yt_record_set_text_if_changed(&port->record, (const uint8_t *)port->name,
 	    strlen(port->name));
 	yt_record_set_number_if_changed(&port->record, YT_F41,
-	    port->commodity_class);
+	    (float)port->commodity_class);
 	yt_record_set_number_if_changed(&port->record, YT_F45, port->last_day);
 	for (index = 0; index < 3; ++index) {
 		yt_record_set_number_if_changed(&port->record,

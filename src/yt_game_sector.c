@@ -118,9 +118,9 @@ yt_sector_port_row(const struct yt_port *port, uint8_t *row,
 	if (port == NULL)
 		return false;
 	name_length = yt_port_stored_name(port, name);
-	if (port->commodity_class == 1.0f)
+	if (port->commodity_class == 1)
 		commodity = equipment;
-	else if (port->commodity_class == 2.0f)
+	else if (port->commodity_class == 2)
 		commodity = organics;
 	if (!yt_game_row_append(&builder, prefix, sizeof(prefix) - 1U)
 	    || !yt_game_row_append(&builder, name, name_length)

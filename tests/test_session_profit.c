@@ -15,7 +15,7 @@ static int failures;
 } while (0)
 
 static void
-prepare_port(struct yt_port *port, float commodity_class,
+prepare_port(struct yt_port *port, int commodity_class,
     const float factor[3])
 {
 	size_t index;

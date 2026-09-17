@@ -3048,7 +3048,7 @@ check_maintenance_port_model(void)
 	port.factor[0] = 1.0f;
 	port.factor[1] = -1.0f;
 	port.factor[2] = -1.0f;
-	port.commodity_class = 3.0f;
+	port.commodity_class = 3;
 	port.last_day = 100.0f;
 	port.last_minute = 720.0f;
 	yt_random_init(&random);
@@ -3074,7 +3074,7 @@ check_maintenance_port_model(void)
 	port.factor[0] = -2.0f;
 	port.factor[1] = 3.0f;
 	port.factor[2] = -4.0f;
-	port.commodity_class = 1.0f;
+	port.commodity_class = 1;
 	port.last_day = 1.0f;
 	script.position = 0U;
 	yt_test_random_use_provider(&random, score_random_fill, &script);
@@ -3087,7 +3087,7 @@ check_maintenance_port_model(void)
 	    || port.stock[0] != 25005000.0f
 	    || port.stock[1] != 25005000.0f
 	    || port.stock[2] != 15005000.0f
-	    || port.commodity_class != 3.0f
+	    || port.commodity_class != 3
 	    || port.factor[0] != 2.0f || port.factor[1] != -3.0f
 	    || port.factor[2] != -4.0f)
 		return false;
