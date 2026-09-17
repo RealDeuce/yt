@@ -13462,8 +13462,6 @@ check_admission_news(void)
 	    "***07-24-2026 Star Lord: New player not allowed - game full.\r\n\x1a";
 	static const uint8_t new_expected[] =
 	    "-=*=- 07-24-2026 Star Lord New Player Entered -=*=-\r\n\x1a";
-	static const uint8_t login_expected[] =
-	    "-=*=- 12:34:56 Star Lord Logged on -=*=-\r\n\x1a";
 	static const uint8_t binary_login_expected[] = {
 		'-', '=', '*', '=', '-', ' ', '1', '2', ':', '3', '4', ':', '5',
 		'6', ' ', 'A', 0, 'B', ' ', 'L', 'o', 'g', 'g', 'e', 'd', ' ',
@@ -13496,17 +13494,6 @@ check_admission_news(void)
 		goto done;
 	if (text.length != sizeof(new_expected) - 1U
 	    || memcmp(text.data, new_expected, sizeof(new_expected) - 1U) != 0) {
-		yt_text_free(&text);
-		goto done;
-	}
-	yt_text_free(&text);
-	remove("YTNEWS.DAT");
-	if (!yt_news_append_login("12:34:56", "Star Lord", &error)
-	    || !yt_text_read("YTNEWS.DAT", &text, &error))
-		goto done;
-	if (text.length != sizeof(login_expected) - 1U
-	    || memcmp(text.data, login_expected,
-	    sizeof(login_expected) - 1U) != 0) {
 		yt_text_free(&text);
 		goto done;
 	}

@@ -102,19 +102,6 @@ yt_news_append_login_bytes(const uint8_t *time_text, size_t time_length,
 }
 
 bool
-yt_news_append_login(const char *time_text, const char *player_name,
-    struct yt_error *error)
-{
-	if (time_text == NULL || player_name == NULL) {
-		set_error(error, YT_INVALID, "format news", "YTNEWS.DAT");
-		return false;
-	}
-	return yt_news_append_login_bytes((const uint8_t *)time_text,
-	    strlen(time_text), (const uint8_t *)player_name,
-	    strlen(player_name), error);
-}
-
-bool
 yt_news_append_new_player(const char *date_text, const char *player_name,
     struct yt_error *error)
 {

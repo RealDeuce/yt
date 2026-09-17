@@ -531,8 +531,6 @@ bool yt_news_append_bytes(const uint8_t *text, size_t length,
 bool yt_news_append_login_bytes(const uint8_t *time_text,
     size_t time_length, const uint8_t *player_name, size_t player_length,
     struct yt_error *error);
-bool yt_news_append_login(const char *time_text, const char *player_name,
-    struct yt_error *error);
 bool yt_news_append_new_player(const char *date_text, const char *player_name,
     struct yt_error *error);
 bool yt_news_append_game_full(const char *date_text, const char *player_name,
