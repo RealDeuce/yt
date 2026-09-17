@@ -79,6 +79,8 @@ yt_config_headquarters_relocate(struct yt_database *database,
 	int old_logical;
 	int32_t converted;
 	float captured_candidate_fighters;
+	float candidate_planet;
+	float candidate_fighter_owner;
 	float merged_fighters;
 	float planet_link;
 
@@ -89,7 +91,7 @@ yt_config_headquarters_relocate(struct yt_database *database,
 	if (qb_mbf32_encode(candidate, candidate_raw) == QB_MBF_OVERFLOW)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters candidate");
-	converted = qb_cint_mbf32(candidate_raw, 0U, &overflow);
+	converted = qb_cint((double)candidate, &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters candidate");
@@ -98,8 +100,8 @@ yt_config_headquarters_relocate(struct yt_database *database,
 	    (size_t)yt_sector_basic_record(config, candidate_logical),
 	    &candidate_initial, error))
 		return false;
-	converted = qb_cint_mbf32(candidate_initial.bytes + YT_F93, 0U,
-	    &overflow);
+	candidate_planet = yt_record_get_number(&candidate_initial, YT_F93);
+	converted = qb_cint((double)candidate_planet, &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters planet link");
@@ -107,20 +109,19 @@ yt_config_headquarters_relocate(struct yt_database *database,
 		*route = YT_CONFIG_HQ_ROUTE_OCCUPIED;
 		return true;
 	}
-	converted = qb_cint_mbf32(candidate_initial.bytes + YT_F81, 0U,
-	    &overflow);
+	captured_candidate_fighters = yt_record_get_number(&candidate_initial,
+	    YT_F81);
+	converted = qb_cint((double)captured_candidate_fighters, &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters fighters");
-	if (converted != 0 && yt_record_get_number(&candidate_initial,
-	    YT_F85) != -1.0f) {
+	candidate_fighter_owner = yt_record_get_number(&candidate_initial,
+	    YT_F85);
+	if (converted != 0 && candidate_fighter_owner != -1.0f) {
 		*route = YT_CONFIG_HQ_ROUTE_OCCUPIED;
 		return true;
 	}
-	captured_candidate_fighters = yt_record_get_number(&candidate_initial,
-	    YT_F81);
-	converted = qb_cint_mbf32(config->record.bytes + YT_F117, 0U,
-	    &overflow);
+	converted = qb_cint((double)config->headquarters, &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG old Headquarters");
@@ -180,7 +181,8 @@ yt_config_toggle_local_screen(struct yt_database *database,
 		    "YTCONFIG local-screen transaction");
 	if (!yt_database_read(database, 1U, &field, error))
 		return false;
-	converted = qb_cint_mbf32(field.bytes + YT_F85, 0U, &overflow);
+	converted = qb_cint((double)yt_record_get_number(&field, YT_F85),
+	    &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG local-screen CINT");
