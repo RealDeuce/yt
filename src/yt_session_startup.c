@@ -352,16 +352,17 @@ startup_retention(struct yt_session *session, struct yt_error *error)
 	static const uint8_t second[] =
 	    "days, it will be deleted to make room for someone else.";
 	struct yt_record record;
+	struct yt_config config;
 	uint8_t first[128];
 	char number[64];
 	int number_length;
 	size_t first_length;
 
 	if (!yt_database_read(&session->door->game.database, 1U, &record,
-	    error))
+	    error) || !yt_config_decode(&config, &record, error))
 		return false;
 	number_length = qb_str_single(number, sizeof(number),
-	    qb_mbf32_decode(record.bytes + YT_F77));
+	    config.retention_days);
 	if (number_length < 0
 	    || sizeof(prefix) - 1U + (size_t)number_length > sizeof(first))
 		return false;
@@ -377,14 +378,12 @@ startup_retention(struct yt_session *session, struct yt_error *error)
 
 static bool
 returning_daily_update(struct yt_session *session,
-    const uint8_t today_raw[4], const uint8_t turns_per_day_raw[4],
+    float today, float turns_per_day,
     float *previous_day, float *killer, struct yt_error *error)
 {
-	static const uint8_t zero[4] = {0x00U, 0x00U, 0x00U, 0x00U};
 	static const uint8_t row[] = "You have been on today.";
 	struct yt_player player;
 	struct yt_record daily;
-	uint8_t turns_scratch[4];
 	bool same_day;
 
 	if (!yt_game_read_player(&session->door->game, session_record(session),
@@ -396,7 +395,7 @@ returning_daily_update(struct yt_session *session,
 		return false;
 	}
 	*previous_day = player.last_active;
-	same_day = *previous_day == qb_mbf32_decode(today_raw);
+	same_day = *previous_day == today;
 	if (same_day && !session_present_text(session, row, sizeof(row) - 1U,
 	    SESSION_PRESENT_LINE, "returning same-day row", error)) {
 		if (error != NULL && error->basic_fault_valid)
@@ -404,21 +403,17 @@ returning_daily_update(struct yt_session *session,
 		return false;
 	}
 	*killer = player.killed_by;
-	memcpy(turns_scratch, player.record.bytes + YT_F49,
-	    sizeof(turns_scratch));
 
 	daily = player.record;
-	(void)yt_record_set_raw_number(&daily, YT_F41, today_raw);
+	if (!yt_record_set_number(&daily, YT_F41, today))
+		return false;
 	if (!same_day) {
-		if (qb_mbf32_decode(turns_scratch)
-		    < qb_mbf32_decode(turns_per_day_raw))
-			memcpy(turns_scratch, turns_per_day_raw,
-			    sizeof(turns_scratch));
-		if (memcmp(turns_scratch, daily.bytes + YT_F49,
-		    sizeof(turns_scratch)) != 0)
-			(void)yt_record_set_raw_number(&daily, YT_F49,
-			    turns_scratch);
-		(void)yt_record_set_raw_number(&daily, YT_F105, zero);
+		if (player.turns < turns_per_day)
+			player.turns = turns_per_day;
+		if (!yt_record_set_number_if_changed(&daily, YT_F49,
+		    player.turns)
+		    || !yt_record_set_number(&daily, YT_F105, 0.0f))
+			return false;
 	}
 	yt_player_decode(&player, &daily);
 	if (!yt_database_write(&session->door->game.database,
@@ -557,24 +552,19 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 	    "returning player blank", error))
 		return false;
 	{
-		uint8_t today_raw[4];
-		uint8_t turns_raw[4];
 		float previous_day;
 		float killer;
 		float startup_day;
 		bool self_kill;
 
-		if (qb_mbf32_encode((float)session->door->game.today, today_raw)
-		    != QB_MBF_OK)
-			return false;
-		memcpy(turns_raw, session->door->game.config.record.bytes + YT_F49,
-		    sizeof(turns_raw));
-		if (!returning_daily_update(session, today_raw, turns_raw,
+		if (!returning_daily_update(session,
+		    (float)session->door->game.today,
+		    session->door->game.config.turns_per_day,
 		    &previous_day, &killer, error))
 			return false;
 		if (!yt_database_flush(&session->door->game.database, error))
 			return false;
-		startup_day = qb_mbf32_decode(today_raw);
+		startup_day = (float)session->door->game.today;
 		self_kill = killer == (float)session_record(session);
 		if (!yt_clock_read(&session->door->game.clock, &now, error))
 			return false;
@@ -675,7 +665,7 @@ post_login(struct yt_session *session, struct yt_error *error)
 
 	{
 		struct yt_record repaired;
-		uint8_t maximum_raw[4];
+		float maximum_holds;
 
 		if (!session_reload_player(session, error))
 			return false;
@@ -690,17 +680,16 @@ post_login(struct yt_session *session, struct yt_error *error)
 		}
 		if (!session_reload_player(session, error))
 			return false;
-		memcpy(maximum_raw, session->door->game.config.record.bytes + YT_F121,
-	    sizeof(maximum_raw));
+		maximum_holds = session->door->game.config.maximum_holds;
 		if ((double)session->player.holds
-		    > (double)qb_mbf32_decode(maximum_raw)) {
+		    > (double)maximum_holds) {
 			repaired = session->player.record;
 			(void)yt_record_set_number(&repaired, YT_F69, 0.0f);
 			(void)yt_record_set_number(&repaired, YT_F73, 0.0f);
-			(void)yt_record_set_raw_number(&repaired, YT_F77,
-			    maximum_raw);
-			(void)yt_record_set_raw_number(&repaired, YT_F65,
-			    maximum_raw);
+			(void)yt_record_set_number(&repaired, YT_F77,
+			    maximum_holds);
+			(void)yt_record_set_number(&repaired, YT_F65,
+			    maximum_holds);
 			yt_player_decode(&session->player, &repaired);
 			if (!write_database_record_at_fault(session,
 			    (uint32_t)session_record(session), &repaired,
