@@ -61,9 +61,11 @@ yt_sector_mine_warning_row(float mines, uint8_t *row,
 
 	if (length != NULL)
 		*length = 0U;
-	if (!yt_game_row_append(&builder, prefix, sizeof(prefix) - 1U)
-	    || !yt_game_row_number(&builder, mines, false)
-	    || !yt_game_row_append(&builder, suffix, sizeof(suffix) - 1U))
+	if (!yt_game_row_append(&builder, prefix, sizeof(prefix) - 1U))
+		return false;
+	if (!yt_game_row_number(&builder, mines, false))
+		return false;
+	if (!yt_game_row_append(&builder, suffix, sizeof(suffix) - 1U))
 		return false;
 	if (length != NULL)
 		*length = builder.length;
@@ -122,10 +124,13 @@ yt_sector_port_row(const struct yt_port *port, uint8_t *row,
 		commodity = equipment;
 	else if (port->commodity_class == 2)
 		commodity = organics;
-	if (!yt_game_row_append(&builder, prefix, sizeof(prefix) - 1U)
-	    || !yt_game_row_append(&builder, name, name_length)
-	    || !yt_game_row_append(&builder, separator, sizeof(separator) - 1U)
-	    || !yt_game_row_append(&builder, commodity, sizeof(ore) - 1U))
+	if (!yt_game_row_append(&builder, prefix, sizeof(prefix) - 1U))
+		return false;
+	if (!yt_game_row_append(&builder, name, name_length))
+		return false;
+	if (!yt_game_row_append(&builder, separator, sizeof(separator) - 1U))
+		return false;
+	if (!yt_game_row_append(&builder, commodity, sizeof(ore) - 1U))
 		return false;
 	if (length != NULL)
 		*length = builder.length;
@@ -149,10 +154,13 @@ yt_sector_planet_row(const struct yt_planet *planet, uint8_t *row,
 		return false;
 	name_length = yt_planet_stored_name(planet, name);
 	forces = (float)qb_int((double)planet->ground_forces);
-	if (!yt_game_row_append(&builder, prefix, sizeof(prefix) - 1U)
-	    || !yt_game_row_append(&builder, name, name_length)
-	    || !yt_game_row_append(&builder, separator, sizeof(separator) - 1U)
-	    || !yt_game_row_number(&builder, forces, false))
+	if (!yt_game_row_append(&builder, prefix, sizeof(prefix) - 1U))
+		return false;
+	if (!yt_game_row_append(&builder, name, name_length))
+		return false;
+	if (!yt_game_row_append(&builder, separator, sizeof(separator) - 1U))
+		return false;
+	if (!yt_game_row_number(&builder, forces, false))
 		return false;
 	if (length != NULL)
 		*length = builder.length;
@@ -176,17 +184,23 @@ yt_sector_player_row(const struct yt_player *player, uint8_t *row,
 	if (player == NULL)
 		return false;
 	name_length = yt_player_stored_name(player, name);
-	if (!yt_game_row_append(&builder, indent, sizeof(indent) - 1U)
-	    || !yt_game_row_append(&builder, name, name_length))
+	if (!yt_game_row_append(&builder, indent, sizeof(indent) - 1U))
 		return false;
-	if (player->team > 0
-	    && (!yt_game_row_append(&builder, team, sizeof(team) - 1U)
-	    || !yt_game_row_number(&builder, (float)player->team, false)))
+	if (!yt_game_row_append(&builder, name, name_length))
 		return false;
-	if (!yt_game_row_append(&builder, fighters, sizeof(fighters) - 1U)
-	    || !yt_game_row_number(&builder, player->fighters, true)
-	    || !yt_game_row_append(&builder, shields, sizeof(shields) - 1U)
-	    || !yt_game_row_number(&builder, player->shields, false))
+	if (player->team > 0) {
+		if (!yt_game_row_append(&builder, team, sizeof(team) - 1U))
+			return false;
+		if (!yt_game_row_number(&builder, (float)player->team, false))
+			return false;
+	}
+	if (!yt_game_row_append(&builder, fighters, sizeof(fighters) - 1U))
+		return false;
+	if (!yt_game_row_number(&builder, player->fighters, true))
+		return false;
+	if (!yt_game_row_append(&builder, shields, sizeof(shields) - 1U))
+		return false;
+	if (!yt_game_row_number(&builder, player->shields, false))
 		return false;
 	if (length != NULL)
 		*length = builder.length;
@@ -218,9 +232,11 @@ yt_sector_fighter_row(const struct yt_sector *sector,
 		*length = 0U;
 	if (scratch_changed != NULL)
 		*scratch_changed = false;
-	if (sector == NULL
-	    || !yt_game_row_number(&builder, sector->fighters, true)
-	    || !yt_game_row_append(&builder, belonging,
+	if (sector == NULL)
+		return false;
+	if (!yt_game_row_number(&builder, sector->fighters, true))
+		return false;
+	if (!yt_game_row_append(&builder, belonging,
 	    sizeof(belonging) - 1U))
 		return false;
 	if (sector->fighter_owner == current_player_record) {
@@ -254,25 +270,34 @@ yt_sector_fighter_row(const struct yt_sector *sector,
 			if (owner->team != 0) {
 				number_length = qb_str_single(number, sizeof(number),
 				    (float)owner->team);
-				if (number_length < 1 || team == NULL
-				    || !yt_game_row_append(&scratch_builder,
-				    team_prefix, sizeof(team_prefix) - 1U)
-				    || !yt_game_row_append(&scratch_builder,
-				    number + 1, (size_t)number_length - 1U)
-				    || !yt_game_row_append(&scratch_builder, "]", 1U))
+				if (number_length < 1 || team == NULL)
 					return false;
-				if (team->name_length > 0U
-				    && (!yt_game_row_append(&scratch_builder,
-				    overlay_prefix, sizeof(overlay_prefix) - 1U)
-				    || !yt_game_row_append(&scratch_builder,
-				    team->name, team->name_length)
-				    || !yt_game_row_append(&scratch_builder, "]", 1U)))
+				if (!yt_game_row_append(&scratch_builder,
+				    team_prefix, sizeof(team_prefix) - 1U))
 					return false;
+				if (!yt_game_row_append(&scratch_builder,
+				    number + 1, (size_t)number_length - 1U))
+					return false;
+				if (!yt_game_row_append(&scratch_builder, "]", 1U))
+					return false;
+				if (team->name_length > 0U) {
+					if (!yt_game_row_append(&scratch_builder,
+					    overlay_prefix,
+					    sizeof(overlay_prefix) - 1U))
+						return false;
+					if (!yt_game_row_append(&scratch_builder,
+					    team->name, team->name_length))
+						return false;
+					if (!yt_game_row_append(&scratch_builder,
+					    "]", 1U))
+						return false;
+				}
 			}
 		}
 		if (!yt_game_row_append(&builder, scratch_builder.row,
-		    scratch_builder.length)
-		    || !yt_game_row_append(&builder, ")", 1U))
+		    scratch_builder.length))
+			return false;
+		if (!yt_game_row_append(&builder, ")", 1U))
 			return false;
 	}
 	if (length != NULL)
