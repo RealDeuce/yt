@@ -335,11 +335,11 @@ earth_anti_cloak(struct yt_session *session, float price,
 	    player_record <= player_terminal; ++player_record) {
 		size_t name_length;
 
-		if (yt_player_cache_value(&session->player_cache, player_record,
-		    YT_PLAYER_CACHE_CLOAK) <= 0.0f)
+		if (yt_player_cache_cloak(&session->player_cache,
+		    player_record) <= 0.0f)
 			continue;
-		(void)yt_player_cache_set(&session->player_cache, player_record,
-		    YT_PLAYER_CACHE_CLOAK, 0.0f);
+		(void)yt_player_cache_set_cloak(&session->player_cache,
+		    player_record, 0.0f);
 		if (!yt_game_read_player(&session->door->game, player_record,
 		    &field_player, error)) {
 			if (session->presentation.foreground != 6.0f)

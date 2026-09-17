@@ -119,8 +119,7 @@ test_emergency_warp_persistence(void)
 	CHECK(yt_session_emergency_warp(&session, &error));
 	CHECK(sequence.position == 6U);
 	CHECK(TEST_DRAWS(door.game.random) == 6U);
-	CHECK(yt_player_cache_value(&session.player_cache, 2,
-	    YT_PLAYER_CACHE_SECTOR) == 1.0f);
+	CHECK(yt_player_cache_sector(&session.player_cache, 2) == 1);
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
 	yt_player_decode(&player, &persisted);
 	CHECK(player.turns == 20.0f);

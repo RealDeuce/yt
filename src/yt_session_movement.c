@@ -248,8 +248,8 @@ yt_session_store_move(struct yt_session *session, float target,
 	    (size_t)player_record, &session->player.record, error)
 	    || !yt_database_flush(&session->door->game.database, error))
 		return false;
-	return yt_player_cache_set(&session->player_cache, player_record,
-	    YT_PLAYER_CACHE_SECTOR, target);
+	return yt_player_cache_set_sector(&session->player_cache, player_record,
+	    (int)target);
 }
 
 bool

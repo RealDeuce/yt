@@ -130,8 +130,7 @@ test_move_storage(void)
 	player.sector = 7.0f;
 	player.credits = 1234.0f;
 	yt_player_encode(&player);
-	CHECK(yt_player_cache_set(&session.player_cache, 2,
-	    YT_PLAYER_CACHE_SECTOR, 7.0f));
+	CHECK(yt_player_cache_set_sector(&session.player_cache, 2, 7));
 	yt_error_clear(&error);
 	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
 	    &error));
@@ -142,8 +141,7 @@ test_move_storage(void)
 	CHECK(session.player.sector == 42.0f);
 	CHECK(session.player.turns == 99.0f);
 	CHECK(session.player.credits == 1234.0f);
-	CHECK(yt_player_cache_value(&session.player_cache, 2,
-	    YT_PLAYER_CACHE_SECTOR) == 42.0f);
+	CHECK(yt_player_cache_sector(&session.player_cache, 2) == 42);
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
 	yt_player_decode(&player, &persisted);
 	CHECK(player.sector == 42.0f);

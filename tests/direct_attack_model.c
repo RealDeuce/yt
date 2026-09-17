@@ -294,7 +294,7 @@ test_direct_attack_run(struct test_direct_attack_state *state,
 	while (state->candidate <= state->last_player_record) {
 		enum test_direct_attack_confirmation answer;
 		struct qb_val_result parsed;
-		float cached_sector;
+		int cached_sector;
 		float cached_cloak;
 		bool sector_mismatch;
 		bool self;
@@ -303,11 +303,9 @@ test_direct_attack_run(struct test_direct_attack_state *state,
 		bool same_team;
 		int record = state->candidate;
 
-		cached_sector = yt_player_cache_value(state->player_cache, record,
-		    YT_PLAYER_CACHE_SECTOR);
-		cached_cloak = yt_player_cache_value(state->player_cache, record,
-		    YT_PLAYER_CACHE_CLOAK);
-		sector_mismatch = cached_sector != state->current.sector;
+		cached_sector = yt_player_cache_sector(state->player_cache, record);
+		cached_cloak = yt_player_cache_cloak(state->player_cache, record);
+		sector_mismatch = cached_sector != (int)state->current.sector;
 		self = record == state->current_player_record;
 		cloaked = cached_cloak > 0.0f;
 		if (sector_mismatch || self || cloaked) {

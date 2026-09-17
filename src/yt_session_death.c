@@ -123,8 +123,7 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 	bool valid_killer;
 
 	current_player_record = session_record(session);
-	(void)yt_player_cache_set(&session->player_cache, victim_record,
-	    YT_PLAYER_CACHE_SECTOR, 0.0f);
+	(void)yt_player_cache_set_sector(&session->player_cache, victim_record, 0);
 	if (!yt_game_read_player(&session->door->game, victim_record, &victim,
 	    error))
 		return false;

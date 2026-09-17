@@ -66,7 +66,7 @@ yt_projectile_candidate_admitted(int candidate, float cached_cloak,
 
 enum yt_projectile_candidate_route
 yt_projectile_candidate_route(int candidate, int shooter,
-    float cached_sector, float sector, float remaining)
+    int cached_sector, int sector, float remaining)
 {
 	if (cached_sector != sector)
 		return YT_PROJECTILE_CANDIDATE_SKIP;
@@ -169,10 +169,8 @@ yt_projectile_sector_has_presence(const struct yt_sector *sector,
 	present = sector->mines > 0.0f || sector->fighters > 0.0f
 	    || sector->port > 0.0f || sector->planet > 0.0f;
 	for (player = YT_PLAYER_FIRST_RECORD; player <= last_player; ++player) {
-		if (yt_player_cache_value(player_cache, player,
-		    YT_PLAYER_CACHE_SECTOR) == (float)sector_number
-		    && (yt_player_cache_value(player_cache, player,
-		    YT_PLAYER_CACHE_CLOAK) == 0.0f
+		if (yt_player_cache_sector(player_cache, player) == sector_number
+		    && (yt_player_cache_cloak(player_cache, player) == 0.0f
 		    || player == xannor_provoker))
 			return true;
 	}

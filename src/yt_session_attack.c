@@ -293,7 +293,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 	while (candidate <= session_sector_offset(session)) {
 		struct qb_val_result parsed;
 		enum yt_yes_no_answer answer;
-		float cached_sector;
+		int cached_sector;
 		float cached_cloak;
 		bool sector_mismatch;
 		bool self;
@@ -302,11 +302,11 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		bool same_team;
 		int record = candidate;
 
-		cached_sector = yt_player_cache_value(&session->player_cache,
-		    record, YT_PLAYER_CACHE_SECTOR);
-		cached_cloak = yt_player_cache_value(&session->player_cache,
-		    record, YT_PLAYER_CACHE_CLOAK);
-		sector_mismatch = cached_sector != current.sector;
+		cached_sector = yt_player_cache_sector(&session->player_cache,
+		    record);
+		cached_cloak = yt_player_cache_cloak(&session->player_cache,
+		    record);
+		sector_mismatch = cached_sector != (int)current.sector;
 		self = record == session_record(session);
 		cloaked = cached_cloak > 0.0f;
 		if (sector_mismatch || self || cloaked) {

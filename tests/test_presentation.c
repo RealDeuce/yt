@@ -2588,9 +2588,9 @@ test_sector_scanner_rows(void)
 	CHECK(yt_sector_mine_warning_row(3.0f, row, sizeof(row), &length)
 	    && length == sizeof(mine_expected) - 1U
 	    && memcmp(row, mine_expected, length) == 0);
-	CHECK(!yt_sector_candidate_eligible(2, 2, 42.0f, 42.0f)
-	    && !yt_sector_candidate_eligible(3, 2, 41.0f, 42.0f)
-	    && yt_sector_candidate_eligible(3, 2, 42.0f, 42.0f));
+	CHECK(!yt_sector_candidate_eligible(2, 2, 42, 42)
+	    && !yt_sector_candidate_eligible(3, 2, 41, 42)
+	    && yt_sector_candidate_eligible(3, 2, 42, 42));
 	CHECK(!yt_sector_cloak_revealed(0.9f, 0.0f)
 	    && !yt_sector_cloak_revealed(0.5f, 0.5f)
 	    && yt_sector_cloak_revealed(0.5001f, 0.5f));
@@ -21097,7 +21097,7 @@ direct_emergency_warp_reentry_scanner(
 	++cycle->sector_reads;
 	cycle->physical_current_sector = 1054.0f;
 	if (!hostile_mine_hazard_random(fixture, &reveal_draw, NULL)
-	    || !yt_sector_candidate_eligible(3, 2, 1003.0f, 1003.0f)
+	    || !yt_sector_candidate_eligible(3, 2, 1003, 1003)
 	    || !yt_sector_cloak_revealed(reveal_draw, cycle->target_cloak))
 		return false;
 	for (index = 0U; index < YT_ARRAY_LEN(scanner); ++index) {
@@ -21164,7 +21164,7 @@ direct_emergency_warp_reentry_failure_run(
 	cycle->final_field_record = 1054;
 	cycle->final_field_player = false;
 	if (!hostile_mine_hazard_random(fixture, &reveal_draw, NULL)
-	    || !yt_sector_candidate_eligible(3, 2, 1003.0f, 1003.0f)
+	    || !yt_sector_candidate_eligible(3, 2, 1003, 1003)
 	    || !yt_sector_cloak_revealed(reveal_draw, cycle->target_cloak))
 		return false;
 	for (index = 0U; index < YT_ARRAY_LEN(scanner); ++index) {
@@ -23238,7 +23238,7 @@ direct_emergency_warp_owner_get_failure(
 	cycle->final_field_record = 1054;
 	cycle->final_field_player = false;
 	if (!hostile_mine_hazard_random(fixture, &reveal_draw, NULL)
-	    || !yt_sector_candidate_eligible(3, 2, 1003.0f, 1003.0f)
+	    || !yt_sector_candidate_eligible(3, 2, 1003, 1003)
 	    || !yt_sector_cloak_revealed(reveal_draw, cycle->target_cloak))
 		return false;
 	for (index = 0U; index < YT_ARRAY_LEN(scanner); ++index) {

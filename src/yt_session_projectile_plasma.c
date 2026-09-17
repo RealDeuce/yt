@@ -534,8 +534,8 @@ plasma_reload_sector:
 	}
 	for (basic = YT_PLAYER_FIRST_RECORD;
 	    basic <= session_sector_offset(session); ++basic) {
-		if (yt_player_cache_value(&session->player_cache, basic,
-		    YT_PLAYER_CACHE_SECTOR) != (float)sector_number
+		if (yt_player_cache_sector(&session->player_cache, basic)
+		    != sector_number
 		    || !(*energy > 0.0))
 			continue;
 		{
@@ -716,8 +716,8 @@ plasma_reload_sector:
 
 			if (self_hit) {
 				session->destroyed = true;
-				if (!yt_player_cache_set(&session->player_cache, basic,
-				    YT_PLAYER_CACHE_SECTOR, 0.0f))
+				if (!yt_player_cache_set_sector(&session->player_cache,
+				    basic, 0))
 					return false;
 			}
 			else if (!yt_session_kill_player(session, basic,

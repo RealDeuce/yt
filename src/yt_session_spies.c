@@ -107,8 +107,8 @@ spy_first_finding(struct yt_session *session, size_t spy, int sector,
 static void
 spy_clear_cached_cloak(struct yt_session *session, int player_record)
 {
-	(void)yt_player_cache_set(&session->player_cache, player_record,
-	    YT_PLAYER_CACHE_CLOAK, 0.0f);
+	(void)yt_player_cache_set_cloak(&session->player_cache, player_record,
+	    0.0f);
 }
 
 bool
@@ -191,15 +191,14 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 
 				if (!yt_sector_candidate_eligible(candidate,
 				    current_player_record,
-				    yt_player_cache_value(&session->player_cache,
-				    candidate, YT_PLAYER_CACHE_SECTOR),
-				    (float)sector_number))
+				    yt_player_cache_sector(&session->player_cache,
+				    candidate), sector_number))
 					continue;
 				if (!yt_random_next(&session->door->game.random, &draw,
 				    error))
 					return false;
-				cloak = yt_player_cache_value(&session->player_cache,
-				    candidate, YT_PLAYER_CACHE_CLOAK);
+				cloak = yt_player_cache_cloak(&session->player_cache,
+				    candidate);
 				detected = yt_sector_cloak_revealed(draw, cloak);
 				if (detected) {
 					if (!spy_first_finding(session, spy,
@@ -214,8 +213,8 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 					    "spy cloak sound", error))
 						return false;
 				}
-				if (yt_player_cache_value(&session->player_cache,
-				    candidate, YT_PLAYER_CACHE_CLOAK) != 0.0f
+				if (yt_player_cache_cloak(&session->player_cache,
+				    candidate) != 0.0f
 				    && !detected)
 					continue;
 				if (!spy_first_finding(session, spy, sector_number, error))

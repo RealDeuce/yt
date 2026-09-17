@@ -99,8 +99,7 @@ test_distinct_player_death(void)
 	CHECK(yt_session_kill_player(&session, 3, 2.0f, true, &error));
 	CHECK(!session.fatal_wait_complete);
 	CHECK(session.player.ports_owned == 0.0f);
-	CHECK(yt_player_cache_value(&session.player_cache, 3,
-	    YT_PLAYER_CACHE_SECTOR) == 0.0f);
+	CHECK(yt_player_cache_sector(&session.player_cache, 3) == 0);
 	CHECK(yt_game_read_player(&door.game, 3, &player, &error));
 	CHECK(player.killed_by == 2.0f && player.sector == 0.0f
 	    && player.ports_owned == 0.0f);

@@ -675,7 +675,7 @@ size_t yt_planet_stored_name(const struct yt_planet *planet,
 bool yt_sector_mine_warning_row(float mines, uint8_t *row,
     size_t capacity, size_t *length);
 bool yt_sector_candidate_eligible(int candidate, int current_player_record,
-    float cached_sector, float logical_sector);
+    int cached_sector, int logical_sector);
 bool yt_sector_cloak_revealed(float draw, float cached_cloak);
 size_t yt_sector_sensor_targets(const int caller_warps[6], int targets[6]);
 bool yt_sector_port_row(const struct yt_port *port, uint8_t *row,
@@ -698,7 +698,7 @@ enum yt_projectile_candidate_route {
 	YT_PROJECTILE_CANDIDATE_FRIENDSHIP
 };
 enum yt_projectile_candidate_route yt_projectile_candidate_route(
-    int candidate, int shooter, float cached_sector, float sector,
+    int candidate, int shooter, int cached_sector, int sector,
     float remaining);
 bool yt_projectile_candidate_admitted(int candidate, float cached_cloak,
     int xannor_provoker);

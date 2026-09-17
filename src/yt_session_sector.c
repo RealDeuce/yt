@@ -232,8 +232,8 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		float random_value;
 
 		if (!yt_sector_candidate_eligible(basic, session_record(session),
-		    yt_player_cache_value(&session->player_cache, basic,
-		    YT_PLAYER_CACHE_SECTOR), (float)logical_sector))
+		    yt_player_cache_sector(&session->player_cache, basic),
+		    logical_sector))
 			continue;
 		if (!yt_random_next(&session->door->game.random, &random_value,
 		    error))
@@ -248,8 +248,8 @@ display_sector_one(struct yt_session *session, int logical_sector,
 			    "sector cloak shimmer row", error))
 				return false;
 			yt_sector_pager_add(private_pager, 1.0f);
-			(void)yt_player_cache_set(&session->player_cache, basic,
-			    YT_PLAYER_CACHE_CLOAK, 0.0f);
+			(void)yt_player_cache_set_cloak(&session->player_cache,
+			    basic, 0.0f);
 			if (!session_sound(session, YT_SOUND_CUE_ACTION,
 			    "sector cloak-reveal sound", error))
 				return false;

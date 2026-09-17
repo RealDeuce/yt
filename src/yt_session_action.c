@@ -63,8 +63,8 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 		    session->player.cloak))
 			return false;
 		cache_record = session_record(session);
-		(void)yt_player_cache_set(&session->player_cache, cache_record,
-		    YT_PLAYER_CACHE_CLOAK, session->player.cloak);
+		(void)yt_player_cache_set_cloak(&session->player_cache,
+		    cache_record, session->player.cloak);
 		display = floorf(qb_single_multiply(session->player.cloak,
 		    cloak_display_scale));
 		qb_str_single(number, sizeof(number), display);
@@ -276,9 +276,8 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	    (size_t)session_record(session), &session->player.record, error)
 	    || !yt_database_flush(&session->door->game.database, error))
 		return false;
-	(void)yt_player_cache_set(&session->player_cache,
-	    session_record(session), YT_PLAYER_CACHE_SECTOR,
-	    session->player.sector);
+	(void)yt_player_cache_set_sector(&session->player_cache,
+	    session_record(session), (int)session->player.sector);
 	return true;
 }
 

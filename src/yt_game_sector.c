@@ -72,7 +72,7 @@ yt_sector_mine_warning_row(float mines, uint8_t *row,
 
 bool
 yt_sector_candidate_eligible(int candidate, int current_player_record,
-    float cached_sector, float logical_sector)
+    int cached_sector, int logical_sector)
 {
 	return candidate != current_player_record
 	    && cached_sector == logical_sector;

@@ -169,8 +169,8 @@ check_startup_configuration_transaction(void)
 	    || game.config.maximum_holds != 1000.0f
 	    || game.config.turns_per_day != 500.0f
 	    || local_screen != 0.0f
-	    || cache.sector[2] != 20.0f || cache.sector[3] != 30.0f
-	    || cache.sector[4] != 40.0f
+	    || cache.sector[2] != 20 || cache.sector[3] != 30
+	    || cache.sector[4] != 40
 	    || cache.cloak[2] != 0.0f || cache.cloak[3] != 1.0f
 	    || cache.cloak[4] != 1.0f
 	    || random.calls != 2U
@@ -1224,12 +1224,12 @@ check_projectile_sector_presence(void)
 	if (yt_projectile_sector_has_presence(&sector, 17, 3,
 	    &player_cache, 0))
 		return false;
-	player_cache.sector[2] = 17.0f;
+	player_cache.sector[2] = 17;
 	if (!yt_projectile_sector_has_presence(&sector, 17, 3,
 	    &player_cache, 0))
 		return false;
-	player_cache.sector[2] = 0.0f;
-	player_cache.sector[3] = 17.0f;
+	player_cache.sector[2] = 0;
+	player_cache.sector[3] = 17;
 	player_cache.cloak[3] = 1.0f;
 	return !yt_projectile_sector_has_presence(&sector, 17, 3,
 	    &player_cache, 0)
@@ -1465,13 +1465,13 @@ check_projectile_parent_model(void)
 	    && yt_record_get_number(&plasma_debit.record, YT_F97) == 23.0f
 	    && yt_record_get_number(&plasma_debit.record, YT_F113) == 6.0f
 	    && plasma_debit.record.bytes[YT_F93] == 0x5aU
-	    && yt_projectile_candidate_route(3, 2, 8.0f, 7.0f, 0.0f)
+	    && yt_projectile_candidate_route(3, 2, 8, 7, 0.0f)
 	    == YT_PROJECTILE_CANDIDATE_SKIP
-	    && yt_projectile_candidate_route(3, 2, 7.0f, 7.0f, 0.0f)
+	    && yt_projectile_candidate_route(3, 2, 7, 7, 0.0f)
 	    == YT_PROJECTILE_CANDIDATE_TERMINATE
-	    && yt_projectile_candidate_route(2, 2, 7.0f, 7.0f, 0.5f)
+	    && yt_projectile_candidate_route(2, 2, 7, 7, 0.5f)
 	    == YT_PROJECTILE_CANDIDATE_SKIP
-	    && yt_projectile_candidate_route(3, 2, 7.0f, 7.0f, 0.5f)
+	    && yt_projectile_candidate_route(3, 2, 7, 7, 0.5f)
 	    == YT_PROJECTILE_CANDIDATE_FRIENDSHIP
 	    && yt_projectile_candidate_admitted(3, 0.0f, 0)
 	    && !yt_projectile_candidate_admitted(3, 1.0f, 0)
@@ -11832,7 +11832,7 @@ direct_attack_fixture(struct direct_attack_tape *tape,
 	direct_attack_player_fixture(&tape->player[5], "Fight", 2.0f, 7.0f,
 	    0.0f);
 	for (index = 2U; index < 6U; ++index)
-		tape->player_cache.sector[index] = 7.0f;
+		tape->player_cache.sector[index] = 7;
 	tape->answers[0] = YT_DIRECT_ATTACK_CONFIRM_NO;
 	tape->answers[1] = YT_DIRECT_ATTACK_CONFIRM_YES;
 	tape->answer_count = 2U;
@@ -11955,9 +11955,9 @@ check_direct_attack_transaction(void)
 		return false;
 
 	direct_attack_fixture(&tape, &state);
-	tape.player_cache.sector[3] = 8.0f;
-	tape.player_cache.sector[4] = 8.0f;
-	tape.player_cache.sector[5] = 8.0f;
+	tape.player_cache.sector[3] = 8;
+	tape.player_cache.sector[4] = 8;
+	tape.player_cache.sector[5] = 8;
 	if (!test_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || state.route != YT_DIRECT_ATTACK_EXHAUSTED || !state.complete
 	    || !state.enter_sector || state.encountered

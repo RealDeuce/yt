@@ -471,8 +471,8 @@ missile_mines:
 
 		enum yt_projectile_candidate_route candidate_route =
 		    yt_projectile_candidate_route(basic, session_record(session),
-		    yt_player_cache_value(&session->player_cache, basic,
-		    YT_PLAYER_CACHE_SECTOR), (float)sector_number,
+		    yt_player_cache_sector(&session->player_cache, basic),
+		    sector_number,
 		    *remaining);
 
 		if (candidate_route == YT_PROJECTILE_CANDIDATE_TERMINATE)
@@ -491,8 +491,8 @@ missile_mines:
 		    error))
 			return false;
 		if (!yt_projectile_candidate_admitted(basic,
-		    yt_player_cache_value(&session->player_cache, basic,
-		    YT_PLAYER_CACHE_CLOAK), *xannor_provoker))
+		    yt_player_cache_cloak(&session->player_cache, basic),
+		    *xannor_provoker))
 			continue;
 		if (!session_sound(session, YT_SOUND_CUE_ATTACK,
 		    "cruise missile player-attack sound", error))

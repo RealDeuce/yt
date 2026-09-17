@@ -486,10 +486,10 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	memcpy(saved_name, saved_player.name, saved_name_length);
 	valid_cache = yt_player_cache_contains(saved_record);
 	if (valid_cache) {
-		saved_cloak = yt_player_cache_value(&session->player_cache,
-		    saved_record, YT_PLAYER_CACHE_CLOAK);
-		(void)yt_player_cache_set(&session->player_cache, saved_record,
-		    YT_PLAYER_CACHE_CLOAK, 0.0f);
+		saved_cloak = yt_player_cache_cloak(&session->player_cache,
+		    saved_record);
+		(void)yt_player_cache_set_cloak(&session->player_cache,
+		    saved_record, 0.0f);
 	}
 	session->active_player_record = *counterattacker;
 	stored_name_length = yt_player_stored_name(&attacker, stored_name);
@@ -540,8 +540,8 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	session->active_player_record = saved_record;
 	session->player = saved_player;
 	if (valid_cache)
-		(void)yt_player_cache_set(&session->player_cache, saved_record,
-		    YT_PLAYER_CACHE_CLOAK, saved_cloak);
+		(void)yt_player_cache_set_cloak(&session->player_cache,
+		    saved_record, saved_cloak);
 	if (!yt_game_read_player(&session->door->game, saved_record,
 	    &final_player, error))
 		return false;
