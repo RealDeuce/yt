@@ -80,8 +80,11 @@ maintenance_stdout_line(void *context, const uint8_t *line, size_t length,
     struct yt_error *error)
 {
 	(void)context;
-	if ((length > 0 && fwrite(line, 1, length, stdout) != length)
-	    || fputc('\n', stdout) == EOF) {
+	if (length > 0 && fwrite(line, 1, length, stdout) != length) {
+		set_error(error, YT_IO_ERROR, "write maintenance screen", "stdout");
+		return false;
+	}
+	if (fputc('\n', stdout) == EOF) {
 		set_error(error, YT_IO_ERROR, "write maintenance screen", "stdout");
 		return false;
 	}
@@ -175,14 +178,17 @@ yt_maintenance_finish(struct yt_game *game, int player_count,
 		return false;
 	if (!store_final_marker(game, error))
 		return false;
-	if (!yt_maintenance_scoreboard(game, line_output, line_context, error)
-	    || !maintenance_close_all(game, error))
+	if (!yt_maintenance_scoreboard(game, line_output, line_context, error))
 		return false;
-	if (!yt_maintenance_compose_wrapper(&wrapper_output)
-	    || !maintenance_emit_output_row(&wrapper_output,
+	if (!maintenance_close_all(game, error))
+		return false;
+	if (!yt_maintenance_compose_wrapper(&wrapper_output))
+		return false;
+	if (!maintenance_emit_output_row(&wrapper_output,
 	    YT_MAINT_ROW_WRAPPER_BLANK,
-	    line_output, line_context, error)
-	    || !maintenance_emit_output_row(&wrapper_output,
+	    line_output, line_context, error))
+		return false;
+	if (!maintenance_emit_output_row(&wrapper_output,
 	    YT_MAINT_ROW_WRAPPER_COMPLETED,
 	    line_output, line_context, error))
 		return false;
@@ -192,8 +198,9 @@ yt_maintenance_finish(struct yt_game *game, int player_count,
 static bool
 maintenance_close_all(struct yt_game *game, struct yt_error *error)
 {
-	return game->database.file == NULL
-	    || yt_database_close_all_single(&game->database, error);
+	if (game->database.file == NULL)
+		return true;
+	return yt_database_close_all_single(&game->database, error);
 }
 
 bool
@@ -210,10 +217,11 @@ yt_maintenance_run(struct yt_error *error)
 		return false;
 	/* The shipped 0244..0270 branch persists this before later defaults. */
 	if (yt_maintenance_default_headquarters(
-	    &state.game.config.headquarters)
-	    && !store_config_field(&state, YT_F117,
-	    state.game.config.headquarters, error))
-		goto done;
+	    &state.game.config.headquarters)) {
+		if (!store_config_field(&state, YT_F117,
+		    state.game.config.headquarters, error))
+			goto done;
+	}
 	yt_config_normalize_maintenance(&state.game.config);
 	state.player_count = (int)state.game.config.sector_offset - 1;
 	state.sector_count = (int)(state.game.config.port_offset
@@ -238,67 +246,93 @@ yt_maintenance_run(struct yt_error *error)
 		set_error(error, YT_NO_MEMORY, "maintenance player cache", "");
 		goto done;
 	}
-	if (!yt_maintenance_compose_entry(same_day, &entry_output)
-	    || (same_day
-	    && (!maintenance_emit_output_row(&entry_output,
-	    YT_MAINT_ROW_ENTRY_SAME_DAY_BLANK,
-	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output,
-	    YT_MAINT_ROW_ENTRY_SAME_DAY_MESSAGE,
-	    maintenance_stdout_line, NULL, error)))
-	    || !maintenance_emit_output_row(&entry_output,
+	if (!yt_maintenance_compose_entry(same_day, &entry_output))
+		goto done;
+	if (same_day) {
+		if (!maintenance_emit_output_row(&entry_output,
+		    YT_MAINT_ROW_ENTRY_SAME_DAY_BLANK,
+		    maintenance_stdout_line, NULL, error))
+			goto done;
+		if (!maintenance_emit_output_row(&entry_output,
+		    YT_MAINT_ROW_ENTRY_SAME_DAY_MESSAGE,
+		    maintenance_stdout_line, NULL, error))
+			goto done;
+	}
+	if (!maintenance_emit_output_row(&entry_output,
 	    YT_MAINT_ROW_ENTRY_BANNER_BLANK,
-	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, YT_MAINT_ROW_ENTRY_TITLE,
-	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, YT_MAINT_ROW_ENTRY_BYLINE,
-	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output,
+	    maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!maintenance_emit_output_row(&entry_output,
+	    YT_MAINT_ROW_ENTRY_TITLE, maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!maintenance_emit_output_row(&entry_output,
+	    YT_MAINT_ROW_ENTRY_BYLINE, maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!maintenance_emit_output_row(&entry_output,
 	    YT_MAINT_ROW_ENTRY_REVISION_LEADING_BLANK,
-	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output,
+	    maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!maintenance_emit_output_row(&entry_output,
 	    YT_MAINT_ROW_ENTRY_REVISION_INDENT,
-	    maintenance_stdout_semi, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, YT_MAINT_ROW_ENTRY_REVISION,
-	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output,
+	    maintenance_stdout_semi, NULL, error))
+		goto done;
+	if (!maintenance_emit_output_row(&entry_output,
+	    YT_MAINT_ROW_ENTRY_REVISION,
+	    maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!maintenance_emit_output_row(&entry_output,
 	    YT_MAINT_ROW_ENTRY_WARNING_BLANK,
-	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output, YT_MAINT_ROW_ENTRY_WARNING,
-	    maintenance_stdout_line, NULL, error)
-	    || !yt_maintenance_clear_protected_mines(&state.game, error)
-	    || !yt_maintenance_compose_message_compaction(&compaction_output)
-	    || !maintenance_emit_output_row(&compaction_output,
+	    maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!maintenance_emit_output_row(&entry_output,
+	    YT_MAINT_ROW_ENTRY_WARNING,
+	    maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!yt_maintenance_clear_protected_mines(&state.game, error))
+		goto done;
+	if (!yt_maintenance_compose_message_compaction(&compaction_output))
+		goto done;
+	if (!maintenance_emit_output_row(&compaction_output,
 	    YT_MAINT_ROW_MESSAGE_COMPACTION_BLANK,
-	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&compaction_output,
+	    maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!maintenance_emit_output_row(&compaction_output,
 	    YT_MAINT_ROW_MESSAGE_COMPACTION_HEADER,
-	    maintenance_stdout_line, NULL, error)
-	    || !yt_radio_compact(error)
-	    || !yt_news_rotate(error)
-	    || !yt_maintenance_write_header(&state.game.clock, error)
-	    || !maintenance_emit_output_row(&entry_output,
+	    maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!yt_radio_compact(error))
+		goto done;
+	if (!yt_news_rotate(error))
+		goto done;
+	if (!yt_maintenance_write_header(&state.game.clock, error))
+		goto done;
+	if (!maintenance_emit_output_row(&entry_output,
 	    YT_MAINT_ROW_ENTRY_PLAYER_PHASE_BLANK,
-	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output,
+	    maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!maintenance_emit_output_row(&entry_output,
 	    YT_MAINT_ROW_ENTRY_PLAYER_PHASE,
-	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&entry_output,
+	    maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!maintenance_emit_output_row(&entry_output,
 	    YT_MAINT_ROW_ENTRY_PLAYER_PHASE_TRAILING_BLANK,
-	    maintenance_stdout_line, NULL, error)
-	    || !yt_maintenance_players_run(&state, maintenance_stdout_line, NULL,
-	    error)
-	    || !yt_maintenance_maintain_ports(&state.game,
-	    NULL, 0U,
-	    maintenance_stdout_line, NULL, error)
-	    || !yt_maintenance_maintain_planets(&state.game,
-	    NULL, 0U,
-	    maintenance_stdout_line, NULL, error)
-	    || !yt_maintenance_maintain_wanderer(&state.game,
-	    NULL, 0U,
-	    maintenance_stdout_line, NULL, error)
-	    || !maintain_factions(&state, error)
-	    || !yt_maintenance_finish(&state.game, state.player_count,
+	    maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!yt_maintenance_players_run(&state, maintenance_stdout_line, NULL,
+	    error))
+		goto done;
+	if (!yt_maintenance_maintain_ports(&state.game, NULL, 0U,
+	    maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!yt_maintenance_maintain_planets(&state.game, NULL, 0U,
+	    maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!yt_maintenance_maintain_wanderer(&state.game, NULL, 0U,
+	    maintenance_stdout_line, NULL, error))
+		goto done;
+	if (!maintain_factions(&state, error))
+		goto done;
+	if (!yt_maintenance_finish(&state.game, state.player_count,
 	    state.planet_count, state.sector_count, maintenance_stdout_line,
 	    NULL, error))
 		goto done;
@@ -343,8 +377,9 @@ maintenance_emit_output_row(const struct yt_maintenance_output_result *output,
 static bool
 maintain_factions(struct maint_state *state, struct yt_error *error)
 {
-	return yt_maintenance_xannor_run(state, maintenance_stdout_line, NULL,
-	    error)
-	    && yt_maintenance_mercenaries_run(state, maintenance_stdout_line,
+	if (!yt_maintenance_xannor_run(state, maintenance_stdout_line, NULL,
+	    error))
+		return false;
+	return yt_maintenance_mercenaries_run(state, maintenance_stdout_line,
 	    NULL, error);
 }
