@@ -28,10 +28,10 @@ genesis_handoff_print_command(struct yt_text_output *output,
 	bool printed;
 
 	printed = yt_text_output_write(output, line, line_length, error);
-	if (!printed && output->last_write.basic_error != 0U)
+	if (!printed && output->last_write_basic_error != 0U)
 		(void)yt_error_attach_basic_fault_number(error,
 		    YT_BASIC_FAULT_GENESIS_PRINT_VALUE,
-		    output->last_write.basic_error);
+		    output->last_write_basic_error);
 	return printed;
 }
 

@@ -134,36 +134,13 @@ bool yt_text_input_close(struct yt_text_input *input,
 	struct yt_error *error);
 void yt_text_input_destroy(struct yt_text_input *input);
 
-enum yt_text_output_write_outcome {
-	YT_TEXT_OUTPUT_WRITE_NONE,
-	YT_TEXT_OUTPUT_WRITE_RETURNED,
-	YT_TEXT_OUTPUT_WRITE_SHORT_ERROR,
-	YT_TEXT_OUTPUT_WRITE_DISK_ERROR,
-	YT_TEXT_OUTPUT_WRITE_PROVIDER_ERROR,
-};
-
-struct yt_text_output_write_result {
-	enum yt_text_output_write_outcome outcome;
-	size_t flush_count;
-	size_t accepted;
-	size_t failed_flush_accepted;
-	uint16_t dos_error;
-	uint16_t basic_error;
-	uint16_t cleanup_dos_error;
-	int64_t terminal_position;
-	bool physical_unknown;
-	bool cleanup_close_attempted;
-	bool registered;
-	bool handle_open;
-};
-
 struct yt_text_output {
 	FILE *file;
 	FILE *orphaned_file;
 	char path[512];
 	uint8_t pending[YT_TEXT_OUTPUT_BUFFER_SIZE];
 	size_t pending_count;
-	struct yt_text_output_write_result last_write;
+	uint16_t last_write_basic_error;
 	struct yt_text_close_result last_close;
 	struct yt_text_open_result last_output_open;
 	struct yt_text_open_result last_append_open;

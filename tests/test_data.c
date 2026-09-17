@@ -690,7 +690,6 @@ test_text_output_write(void)
 		yt_text_free(&text);
 	}
 	CHECK(yt_text_output_write(&output, bytes, sizeof(bytes), &error)
-	    && output.last_write.flush_count == 2U
 	    && output.pending_count == 44U
 	    && yt_text_output_close(&output, &error));
 	CHECK(yt_text_read(path, &text, &error));
