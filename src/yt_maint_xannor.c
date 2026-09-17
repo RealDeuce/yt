@@ -84,18 +84,17 @@ bool
 yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
     const float *player_sector, const float *player_cloak,
     size_t cache_count, int current_sector, int revenge_live_sector,
-    int revenge_cached_target,
-    struct yt_maintenance_xannor_discovery_result *result,
+    int revenge_cached_target, int *target_sector,
     struct yt_error *error)
 {
-	struct yt_maintenance_xannor_discovery_result local = {0};
-	uint64_t starting_draws;
 	int sector_count;
 	int attempt_limit;
+	int initial_target;
+	int discovery_target;
 	int attempt;
 
 	if (game == NULL || player_sector == NULL || player_cloak == NULL
-	    || result == NULL || cache_count <= 2U
+	    || target_sector == NULL || cache_count <= 2U
 	    || (revenge_live_sector == 0 && revenge_cached_target != 0)) {
 		set_error(error, YT_INVALID, "Xannor candidate discovery", "");
 		return false;
@@ -107,14 +106,12 @@ yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
 		set_error(error, YT_RANGE, "Xannor candidate discovery", "");
 		return false;
 	}
-	starting_draws = game->random.draws;
 	do {
 		if (!yt_random_integer(&game->random, sector_count,
-		    &local.initial_target, error))
+		    &initial_target, error))
 			return false;
-		++local.initial_draws;
-	} while (local.initial_target == current_sector);
-	local.discovery_target = revenge_cached_target;
+	} while (initial_target == current_sector);
+	discovery_target = revenge_cached_target;
 	attempt_limit = revenge_live_sector != 0 ? 25 : 1;
 	for (attempt = 0; attempt < attempt_limit; ++attempt) {
 		struct yt_sector sector;
@@ -125,36 +122,30 @@ yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
 		    &candidate, error)
 		    || !yt_game_read_sector(game, candidate, &sector, error))
 			return false;
-		++local.attempts;
 		if ((sector.fighters > 1.0f
 		    && sector.fighter_owner != -1.0f)
 		    || sector.planet > 1.0f)
-			local.discovery_target = candidate;
-		if (local.discovery_target == 0) {
+			discovery_target = candidate;
+		if (discovery_target == 0) {
 			for (player = 2U; player < cache_count; ++player) {
 				float cloak_draw;
 
 				if (!yt_random_next(&game->random, &cloak_draw, error))
 					return false;
-				++local.player_draws;
 				if (player_sector[player] == (float)candidate
 				    && (cloak_draw > player_cloak[player]
 				    || revenge_live_sector != 0)) {
-					local.discovery_target =
+					discovery_target =
 					    (int)player_sector[player];
-					local.selected_player_record = (int)player;
 					break;
 				}
 			}
 		}
-		if (local.discovery_target != 0)
+		if (discovery_target != 0)
 			break;
 	}
-	local.target_sector = local.initial_target;
-	if (local.discovery_target > 7)
-		local.target_sector = local.discovery_target;
-	local.draws_consumed = game->random.draws - starting_draws;
-	*result = local;
+	*target_sector = discovery_target > 7
+	    ? discovery_target : initial_target;
 	return true;
 }
 
@@ -679,23 +670,23 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
     const float *player_sector, size_t cache_count,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_maintenance_xannor_revenge_result *result,
+    int *live_sector, int *cached_target,
     struct yt_error *error)
 {
 	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x28, 0x00};
-	struct yt_maintenance_xannor_revenge_result local = {0};
 	struct yt_maintenance_output_result output;
 	struct yt_sector metadata;
 	float slot_value;
 	int record;
 
 	if (game == NULL || player_sector == NULL || line_output == NULL
+	    || live_sector == NULL || cached_target == NULL
 	    || (blank == NULL && blank_length != 0U)) {
 		set_error(error, YT_INVALID, "Xannor revenge slot", "YTDATA.DAT");
 		return false;
 	}
-	if (result != NULL)
-		memset(result, 0, sizeof(*result));
+	*live_sector = 0;
+	*cached_target = 0;
 	if (!yt_game_read_sector(game, 21, &metadata, error))
 		return false;
 	slot_value = metadata.metadata;
@@ -711,9 +702,8 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 		if (!yt_game_read_player(game, record, &player, error))
 			return false;
 		if (player.sector > 7.0f) {
-			local.live_sector = (int)player.sector;
-			local.cached_target = (int)player_sector[record];
-			local.eligible = true;
+			*live_sector = (int)player.sector;
+			*cached_target = (int)player_sector[record];
 			if (!yt_maintenance_compose_xannor_revenge(blank,
 			    blank_length, &output)
 			    || !line_output(line_context, output.rows[0].data,
@@ -737,8 +727,6 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 			    "YTDATA.DAT");
 		return false;
 	}
-	if (result != NULL)
-		*result = local;
 	return true;
 }
 

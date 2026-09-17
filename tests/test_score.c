@@ -8572,7 +8572,6 @@ check_maintenance_xannor_revenge_slot_pass(void)
 	static const uint8_t cleared_raw[4] = {0x00, 0x00, 0x28, 0x00};
 	static const uint8_t input_dirty_zero[4] = {0x12, 0x34, 0x56, 0x00};
 	struct score_line_tape screen = {0};
-	struct yt_maintenance_xannor_revenge_result revenge;
 	struct yt_text_file news = {0};
 	struct yt_record metadata_before;
 	struct yt_record metadata_after;
@@ -8580,6 +8579,8 @@ check_maintenance_xannor_revenge_slot_pass(void)
 	struct yt_game game;
 	struct yt_error error;
 	float player_sector[8] = {0};
+	int live_sector;
+	int cached_target;
 	size_t offset;
 	bool valid = false;
 
@@ -8605,9 +8606,8 @@ check_maintenance_xannor_revenge_slot_pass(void)
 	player_sector[4] = 902.0f;
 	if (!yt_maintenance_xannor_revenge_slot(&game, player_sector,
 	    YT_ARRAY_LEN(player_sector), NULL, 0U,
-	    score_line_collect, &screen, &revenge, &error)
-	    || !revenge.eligible || revenge.live_sector != 733
-	    || revenge.cached_target != 902
+	    score_line_collect, &screen, &live_sector, &cached_target, &error)
+	    || live_sector != 733 || cached_target != 902
 	    || screen.length != sizeof(expected_screen) - 1U
 	    || memcmp(screen.data, expected_screen,
 	    sizeof(expected_screen) - 1U) != 0
@@ -8638,9 +8638,8 @@ check_maintenance_xannor_revenge_slot_pass(void)
 	    &metadata_before, &error)
 	    || !yt_maintenance_xannor_revenge_slot(&game, player_sector,
 	    YT_ARRAY_LEN(player_sector), NULL, 0U,
-	    score_line_collect, &screen, &revenge, &error)
-	    || revenge.eligible || revenge.live_sector != 0
-	    || revenge.cached_target != 0 || screen.length != 0U
+	    score_line_collect, &screen, &live_sector, &cached_target, &error)
+	    || live_sector != 0 || cached_target != 0 || screen.length != 0U
 	    || !yt_database_read(&game.database,
 	    (size_t)yt_sector_basic_record(&game.config, 21),
 	    &metadata_after, &error)
@@ -8656,8 +8655,8 @@ check_maintenance_xannor_revenge_slot_pass(void)
 	    &metadata_before, &error)
 	    || !yt_maintenance_xannor_revenge_slot(&game, player_sector,
 	    YT_ARRAY_LEN(player_sector), NULL, 0U,
-	    score_line_collect, &screen, &revenge, &error)
-	    || revenge.eligible || screen.length != 0U
+	    score_line_collect, &screen, &live_sector, &cached_target, &error)
+	    || live_sector != 0 || cached_target != 0 || screen.length != 0U
 	    || !yt_database_read(&game.database,
 	    (size_t)yt_sector_basic_record(&game.config, 21),
 	    &metadata_after, &error)
@@ -8849,7 +8848,6 @@ check_maintenance_xannor_candidate_discovery(void)
 	struct score_random_script script = {
 		player_match_draws, sizeof(player_match_draws), 0U
 	};
-	struct yt_maintenance_xannor_discovery_result discovery;
 	struct yt_record before[10];
 	struct yt_record after;
 	struct yt_game game;
@@ -8886,12 +8884,8 @@ check_maintenance_xannor_candidate_discovery(void)
 	player_cloak[6] = 0.25f;
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 1, 0, 0,
-	    &discovery, &error)
-	    || discovery.initial_target != 2 || discovery.initial_draws != 2
-	    || discovery.discovery_target != 8 || discovery.target_sector != 8
-	    || discovery.attempts != 1 || discovery.player_draws != 5
-	    || discovery.selected_player_record != 6
-	    || discovery.draws_consumed != 8U || game.random.draws != 8U
+	    &target, &error)
+	    || target != 8 || game.random.draws != 8U
 	    || script.position != sizeof(player_match_draws))
 		goto done;
 
@@ -8908,9 +8902,8 @@ check_maintenance_xannor_candidate_discovery(void)
 	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 1, 22, 9,
-	    &discovery, &error)
-	    || discovery.discovery_target != 8 || discovery.target_sector != 8
-	    || discovery.player_draws != 0 || discovery.draws_consumed != 2U
+	    &target, &error)
+	    || target != 8 || game.random.draws != 2U
 	    || script.position != sizeof(immediate_draws))
 		goto done;
 
@@ -8927,9 +8920,8 @@ check_maintenance_xannor_candidate_discovery(void)
 	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 1, 22, 9,
-	    &discovery, &error)
-	    || discovery.discovery_target != 9 || discovery.target_sector != 9
-	    || discovery.player_draws != 0 || discovery.draws_consumed != 2U)
+	    &target, &error)
+	    || target != 9 || game.random.draws != 2U)
 		goto done;
 
 	/* Xannor-owned fighters are uninteresting; a planet link still wins. */
@@ -8945,7 +8937,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 1, 22, 9,
-	    &discovery, &error) || discovery.discovery_target != 9)
+	    &target, &error) || target != 9)
 		goto done;
 	if (!yt_record_set_number(&before[7], YT_F81, 0.0f)
 	    || !yt_record_set_number(&before[7], YT_F85, 0.0f)
@@ -8960,7 +8952,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 1, 22, 9,
-	    &discovery, &error) || discovery.discovery_target != 8)
+	    &target, &error) || target != 8)
 		goto done;
 	if (!yt_record_set_number(&before[7], YT_F93, 0.0f)
 	    || !yt_database_write(&game.database,
@@ -8976,11 +8968,8 @@ check_maintenance_xannor_candidate_discovery(void)
 	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 10, 0, 0,
-	    &discovery, &error)
-	    || discovery.initial_target != 1 || discovery.discovery_target != 0
-	    || discovery.target_sector != 1 || discovery.attempts != 1
-	    || discovery.player_draws != 50
-	    || discovery.draws_consumed != 52U
+	    &target, &error)
+	    || target != 1 || game.random.draws != 52U
 	    || script.position != sizeof(ordinary_failure_draws))
 		goto done;
 
@@ -8990,9 +8979,8 @@ check_maintenance_xannor_candidate_discovery(void)
 	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 10, 22, 0,
-	    &discovery, &error)
-	    || discovery.attempts != 25 || discovery.player_draws != 1250
-	    || discovery.draws_consumed != 1276U
+	    &target, &error)
+	    || target != 1 || game.random.draws != 1276U
 	    || script.position != sizeof(revenge_failure_draws))
 		goto done;
 
@@ -9005,11 +8993,8 @@ check_maintenance_xannor_candidate_discovery(void)
 	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 10, 22, 0,
-	    &discovery, &error)
-	    || discovery.initial_target != 2 || discovery.discovery_target != 1
-	    || discovery.target_sector != 2 || discovery.player_draws != 1
-	    || discovery.selected_player_record != 2
-	    || discovery.draws_consumed != 3U)
+	    &target, &error)
+	    || target != 2 || game.random.draws != 3U)
 		goto done;
 
 	if (!yt_maintenance_xannor_target_override(2, 23, 100.0f,

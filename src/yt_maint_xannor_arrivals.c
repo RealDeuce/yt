@@ -111,15 +111,11 @@ consume_revenge_slot(struct maint_state *state, int *live_sector,
     int *cached_target, yt_maintenance_score_line_fn line_output,
     void *line_context, struct yt_error *error)
 {
-	struct yt_maintenance_xannor_revenge_result revenge;
-
 	if (!yt_maintenance_xannor_revenge_slot(&state->game,
 	    state->player_sector, (size_t)state->player_count + 2U,
 	    NULL, 0U,
-	    line_output, line_context, &revenge, error))
+	    line_output, line_context, live_sector, cached_target, error))
 		return false;
-	*live_sector = revenge.live_sector;
-	*cached_target = revenge.cached_target;
 	return true;
 }
 
@@ -128,7 +124,6 @@ xannor_candidate_target(struct maint_state *state, float current_location,
     int revenge_live, int revenge_cached, int *target,
     struct yt_error *error)
 {
-	struct yt_maintenance_xannor_discovery_result discovery;
 	bool overflow;
 	int32_t current = qb_cint(current_location, &overflow);
 
@@ -140,9 +135,8 @@ xannor_candidate_target(struct maint_state *state, float current_location,
 	if (!yt_maintenance_xannor_candidate_discovery(&state->game,
 	    state->player_sector, state->player_cloak,
 	    (size_t)state->player_count + 2U, current, revenge_live,
-	    revenge_cached, &discovery, error))
+	    revenge_cached, target, error))
 		return false;
-	*target = discovery.target_sector;
 	return true;
 }
 

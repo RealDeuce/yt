@@ -154,23 +154,6 @@ struct yt_maintenance_xannor_hunt_result {
 	uint64_t draws_consumed;
 };
 
-struct yt_maintenance_xannor_revenge_result {
-	bool eligible;
-	int live_sector;
-	int cached_target;
-};
-
-struct yt_maintenance_xannor_discovery_result {
-	int initial_target;
-	int discovery_target;
-	int target_sector;
-	int initial_draws;
-	int attempts;
-	int player_draws;
-	int selected_player_record;
-	uint64_t draws_consumed;
-};
-
 struct yt_maintenance_mercenary_tax_result {
 	float tax_pool;
 	float fleet_strength;
@@ -369,7 +352,7 @@ bool yt_maintenance_xannor_revenge_slot(struct yt_game *game,
     const float *player_sector, size_t cache_count,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_maintenance_xannor_revenge_result *result,
+    int *live_sector, int *cached_target,
     struct yt_error *error);
 bool yt_maintenance_xannor_roaming_split(struct yt_random *random,
     int group_number, float *group_one, float *group_size,
@@ -379,8 +362,7 @@ bool yt_maintenance_xannor_roaming_split(struct yt_random *random,
 bool yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
     const float *player_sector, const float *player_cloak,
     size_t cache_count, int current_sector, int revenge_live_sector,
-    int revenge_cached_target,
-    struct yt_maintenance_xannor_discovery_result *result,
+    int revenge_cached_target, int *target_sector,
     struct yt_error *error);
 bool yt_maintenance_xannor_target_override(int group_number,
     int discovered_target, float group_one, float top_score,
