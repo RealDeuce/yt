@@ -38,8 +38,9 @@ append_line(struct yt_config_output_result *result, const char *text)
 {
 	static const uint8_t newline = '\r';
 
-	return append_literal(result, text)
-	    && append_bytes(result, &newline, 1U);
+	if (!append_literal(result, text))
+		return false;
+	return append_bytes(result, &newline, 1U);
 }
 
 static bool
@@ -48,8 +49,9 @@ append_binary_line(struct yt_config_output_result *result,
 {
 	static const uint8_t newline = '\r';
 
-	return append_bytes(result, text, length)
-	    && append_bytes(result, &newline, 1U);
+	if (!append_bytes(result, text, length))
+		return false;
+	return append_bytes(result, &newline, 1U);
 }
 
 static bool
@@ -61,8 +63,9 @@ append_single(struct yt_config_output_result *result, float value,
 	    ? qb_print_single(number, sizeof(number), value)
 	    : qb_str_single(number, sizeof(number), value);
 
-	return length >= 0 && append_bytes(result, (const uint8_t *)number,
-	    (size_t)length);
+	if (length < 0)
+		return false;
+	return append_bytes(result, (const uint8_t *)number, (size_t)length);
 }
 
 static bool
@@ -71,9 +74,11 @@ append_numeric_line(struct yt_config_output_result *result,
 {
 	static const uint8_t newline = '\r';
 
-	return append_literal(result, prefix)
-	    && append_single(result, value, true)
-	    && append_bytes(result, &newline, 1U);
+	if (!append_literal(result, prefix))
+		return false;
+	if (!append_single(result, value, true))
+		return false;
+	return append_bytes(result, &newline, 1U);
 }
 
 static bool
@@ -140,46 +145,74 @@ yt_config_compose_menu_prompt(const struct yt_config *config,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	if (!append_line(result, "Yankee Trader Configuration Program")
-	    || !append_line(result, "By Alan Davenport")
-	    || !append_line(result, "")
-	    || !append_line(result, "Version 1.8 -=- 03/13/94")
-	    || !append_line(result, "")
-	    || !append_literal(result, "<A> Maximum Number of Holds:")
-	    || !append_single(result, working->maximum_holds, false)
-	    || !append_bytes(result, &newline, 1U)
-	    || !append_numeric_line(result, "<B> Turns per day:",
-		config->turns_per_day)
-	    || !append_numeric_line(result, "<C> Initial fighters:",
-		config->initial_fighters)
-	    || !append_numeric_line(result, "<D> Initial credits:",
-		config->initial_credits)
-	    || !append_numeric_line(result, "<E> Initial cargo holds:",
-		config->initial_holds)
-	    || !append_numeric_line(result,
-		"<F> Days until a dead player is deleted:",
-		config->retention_days)
-	    || !append_literal(result, "<G> OK to run Maintenance?:")
-	    || !append_line(result, config->last_maintenance == (float)today
-		? " No, Ran Today Already" : " Yes")
-	    || !append_numeric_line(result,
-		"<H> Xannor Headquarters is in:", config->headquarters)
-	    || !append_literal(result, "<I> Scoreboard File Path\\Name: ")
-	    || !append_binary_line(result, working->scoreboard_path,
-		working->scoreboard_path_length)
-	    || !append_literal(result,
-		"<J> Local Screen With Remote Callers: ")
-	    || !append_line(result, working->local_screen ? "On" : "Off")
-	    || !append_numeric_line(result,
-		"<K> Maximum Lottery Plays Per Day :", working->lottery_plays)
-	    || !append_genesis_line(result, config->genesis_ports)
-	    || !append_line(result, "<N> Player NAME/ALIAS editor.")
-	    || !append_line(result, "<O> pOrt name editor.")
-	    || !append_line(result, "<P> Planet name editor.")
-	    || !append_line(result, "")
-	    || !append_line(result, "<X> Exit Program")
-	    || !append_line(result, "")
-	    || !append_literal(result, "Command: "))
+	if (!append_line(result, "Yankee Trader Configuration Program"))
+		return false;
+	if (!append_line(result, "By Alan Davenport"))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	if (!append_line(result, "Version 1.8 -=- 03/13/94"))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	if (!append_literal(result, "<A> Maximum Number of Holds:"))
+		return false;
+	if (!append_single(result, working->maximum_holds, false))
+		return false;
+	if (!append_bytes(result, &newline, 1U))
+		return false;
+	if (!append_numeric_line(result, "<B> Turns per day:",
+	    config->turns_per_day))
+		return false;
+	if (!append_numeric_line(result, "<C> Initial fighters:",
+	    config->initial_fighters))
+		return false;
+	if (!append_numeric_line(result, "<D> Initial credits:",
+	    config->initial_credits))
+		return false;
+	if (!append_numeric_line(result, "<E> Initial cargo holds:",
+	    config->initial_holds))
+		return false;
+	if (!append_numeric_line(result,
+	    "<F> Days until a dead player is deleted:",
+	    config->retention_days))
+		return false;
+	if (!append_literal(result, "<G> OK to run Maintenance?:"))
+		return false;
+	if (!append_line(result, config->last_maintenance == (float)today
+	    ? " No, Ran Today Already" : " Yes"))
+		return false;
+	if (!append_numeric_line(result,
+	    "<H> Xannor Headquarters is in:", config->headquarters))
+		return false;
+	if (!append_literal(result, "<I> Scoreboard File Path\\Name: "))
+		return false;
+	if (!append_binary_line(result, working->scoreboard_path,
+	    working->scoreboard_path_length))
+		return false;
+	if (!append_literal(result,
+	    "<J> Local Screen With Remote Callers: "))
+		return false;
+	if (!append_line(result, working->local_screen ? "On" : "Off"))
+		return false;
+	if (!append_numeric_line(result,
+	    "<K> Maximum Lottery Plays Per Day :", working->lottery_plays))
+		return false;
+	if (!append_genesis_line(result, config->genesis_ports))
+		return false;
+	if (!append_line(result, "<N> Player NAME/ALIAS editor."))
+		return false;
+	if (!append_line(result, "<O> pOrt name editor."))
+		return false;
+	if (!append_line(result, "<P> Planet name editor."))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	if (!append_line(result, "<X> Exit Program"))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	if (!append_literal(result, "Command: "))
 		return false;
 	return true;
 }
@@ -235,14 +268,17 @@ yt_config_compose_genesis_prompt(const uint8_t *current_value,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_line(result,
-	    "There are 1000 ports in the game, enter a number")
-	    && append_line(result,
-		"greater than 1000 to TURN OFF the Genesis Function.")
-	    && append_binary_line(result, current_value, current_value_length)
-	    && append_literal(result,
-		"How many ports will a player need to initiate Genesis? "
-		"[50 - 1000] ");
+	if (!append_line(result,
+	    "There are 1000 ports in the game, enter a number"))
+		return false;
+	if (!append_line(result,
+	    "greater than 1000 to TURN OFF the Genesis Function."))
+		return false;
+	if (!append_binary_line(result, current_value, current_value_length))
+		return false;
+	return append_literal(result,
+	    "How many ports will a player need to initiate Genesis? "
+	    "[50 - 1000] ");
 }
 
 bool
@@ -273,13 +309,18 @@ yt_config_compose_hq_prompt(float current_hq, float upper_bound,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_literal(result,
-	    "The Xannor Headquarters is currently in sector:")
-	    && append_single(result, current_hq, true)
-	    && append_bytes(result, &newline, 1U)
-	    && append_literal(result, "Location? [ 8 to ")
-	    && append_single(result, upper_bound, true)
-	    && append_literal(result, "] -=> ");
+	if (!append_literal(result,
+	    "The Xannor Headquarters is currently in sector:"))
+		return false;
+	if (!append_single(result, current_hq, true))
+		return false;
+	if (!append_bytes(result, &newline, 1U))
+		return false;
+	if (!append_literal(result, "Location? [ 8 to "))
+		return false;
+	if (!append_single(result, upper_bound, true))
+		return false;
+	return append_literal(result, "] -=> ");
 }
 
 bool
@@ -354,10 +395,12 @@ yt_config_compose_scalar_prompt(enum yt_config_scalar_key key,
 		return append_literal(result,
 		    "Starting credits? (25 to 10,000) -=> ");
 	case YT_CONFIG_SCALAR_INITIAL_HOLDS:
-		return append_literal(result,
-		    "Starting Amount of Holds? (1 to ")
-		    && append_single(result, working_maximum, true)
-		    && append_literal(result, ") -=> ");
+		if (!append_literal(result,
+		    "Starting Amount of Holds? (1 to "))
+			return false;
+		if (!append_single(result, working_maximum, true))
+			return false;
+		return append_literal(result, ") -=> ");
 	case YT_CONFIG_SCALAR_DEAD_DAYS:
 		return append_literal(result, "Days until deleted? ");
 	case YT_CONFIG_SCALAR_MAINTENANCE:
@@ -387,11 +430,13 @@ yt_config_compose_scalar_rejection(enum yt_config_scalar_key key,
 		return true;
 	case YT_CONFIG_SCALAR_TURNS:
 	case YT_CONFIG_SCALAR_INITIAL_HOLDS:
-		return append_line(result, "")
-		    && append_line(result, " Invalid Range!");
+		if (!append_line(result, ""))
+			return false;
+		return append_line(result, " Invalid Range!");
 	case YT_CONFIG_SCALAR_FIGHTERS:
-		return append_line(result, "")
-		    && append_line(result, "Invalid Range!");
+		if (!append_line(result, ""))
+			return false;
+		return append_line(result, "Invalid Range!");
 	case YT_CONFIG_SCALAR_LOTTERY:
 		return append_line(result, "Range is 1 to 10!");
 	default:
@@ -439,17 +484,22 @@ yt_config_compose_planet_entry(unsigned active_count, size_t initial_column,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	if (!append_line(result, "Loading planet names...")
-	    || !append_line(result, "")
-	    || !append_literal(result, "There are")
-	    || !append_single(result, (float)active_count, true)
-	    || !append_line(result, " planets in your game."))
+	if (!append_line(result, "Loading planet names..."))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	if (!append_literal(result, "There are"))
+		return false;
+	if (!append_single(result, (float)active_count, true))
+		return false;
+	if (!append_line(result, " planets in your game."))
 		return false;
 	if (active_count != 0U)
 		return true;
 	result->local_beeps = 1U;
-	return append_bytes(result, &newline, 1U)
-	    && append_line(result, "YOUR GAME HAS NO PLANETS!");
+	if (!append_bytes(result, &newline, 1U))
+		return false;
+	return append_line(result, "YOUR GAME HAS NO PLANETS!");
 }
 
 bool
@@ -460,12 +510,17 @@ yt_config_compose_planet_menu(size_t initial_column,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_line(result, "Press enter to quit. Please Select:")
-	    && append_line(result, "")
-	    && append_line(result, "[L] List planets")
-	    && append_line(result, "[C] Choose a planet to edit")
-	    && append_line(result, "")
-	    && append_literal(result, "-+> ");
+	if (!append_line(result, "Press enter to quit. Please Select:"))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	if (!append_line(result, "[L] List planets"))
+		return false;
+	if (!append_line(result, "[C] Choose a planet to edit"))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	return append_literal(result, "-+> ");
 }
 
 bool
@@ -525,8 +580,9 @@ yt_config_compose_planet_list_header(size_t initial_column,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_literal(result, "  #   Name")
-	    && append_line(result, rule);
+	if (!append_literal(result, "  #   Name"))
+		return false;
+	return append_line(result, rule);
 }
 
 bool
@@ -540,10 +596,15 @@ yt_config_compose_planet_list_row(int logical, const uint8_t *name,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return (logical >= 10 || append_literal(result, " "))
-	    && append_single(result, (float)logical, true)
-	    && append_literal(result, ": ")
-	    && append_binary_line(result, name, name_length);
+	if (logical < 10) {
+		if (!append_literal(result, " "))
+			return false;
+	}
+	if (!append_single(result, (float)logical, true))
+		return false;
+	if (!append_literal(result, ": "))
+		return false;
+	return append_binary_line(result, name, name_length);
 }
 
 bool
@@ -579,9 +640,11 @@ yt_config_compose_planet_invalid(const uint8_t *entered,
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
 	result->local_beeps = 1U;
-	return append_line(result, "")
-	    && append_line(result, "INVALID PLANET NUMBER!!")
-	    && append_binary_line(result, entered, entered_length);
+	if (!append_line(result, ""))
+		return false;
+	if (!append_line(result, "INVALID PLANET NUMBER!!"))
+		return false;
+	return append_binary_line(result, entered, entered_length);
 }
 
 bool
@@ -593,9 +656,10 @@ yt_config_compose_planet_protected(size_t initial_column,
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
 	result->local_beeps = 1U;
-	return append_line(result,
-	    "The planets \"The Wanderer\" and \"Xannoron\" cannot be re-named!")
-	    && append_line(result, "");
+	if (!append_line(result,
+	    "The planets \"The Wanderer\" and \"Xannoron\" cannot be re-named!"))
+		return false;
+	return append_line(result, "");
 }
 
 bool
@@ -607,12 +671,17 @@ yt_config_compose_planet_edit(const uint8_t *name, size_t name_length,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_literal(result, "Editing: ")
-	    && append_binary_line(result, name, name_length)
-	    && append_line(result, "")
-	    && append_line(result, "Press enter to quit.")
-	    && append_binary_line(result, name, name_length)
-	    && append_literal(result, "Please enter new name. -=> ");
+	if (!append_literal(result, "Editing: "))
+		return false;
+	if (!append_binary_line(result, name, name_length))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	if (!append_line(result, "Press enter to quit."))
+		return false;
+	if (!append_binary_line(result, name, name_length))
+		return false;
+	return append_literal(result, "Please enter new name. -=> ");
 }
 
 bool
@@ -625,10 +694,13 @@ yt_config_compose_planet_confirmation(const uint8_t *name,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_line(result, "")
-	    && append_literal(result, "Change name to ")
-	    && append_bytes(result, name, name_length)
-	    && append_literal(result, "? [Y/N] -=> ");
+	if (!append_line(result, ""))
+		return false;
+	if (!append_literal(result, "Change name to "))
+		return false;
+	if (!append_bytes(result, name, name_length))
+		return false;
+	return append_literal(result, "? [Y/N] -=> ");
 }
 
 bool
@@ -640,9 +712,11 @@ yt_config_compose_planet_cancel(const uint8_t *name, size_t name_length,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_line(result, "")
-	    && append_line(result, "Canceled!")
-	    && append_binary_line(result, name, name_length);
+	if (!append_line(result, ""))
+		return false;
+	if (!append_line(result, "Canceled!"))
+		return false;
+	return append_binary_line(result, name, name_length);
 }
 
 bool
@@ -682,10 +756,12 @@ yt_config_compose_port_search_prompt(size_t initial_column,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_line(result, "Press enter to quit.")
-	    && append_line(result, "")
-	    && append_literal(result,
-		"Enter port name to change (Search String) -+> ");
+	if (!append_line(result, "Press enter to quit."))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	return append_literal(result,
+	    "Enter port name to change (Search String) -+> ");
 }
 
 bool
@@ -711,9 +787,11 @@ yt_config_compose_port_match_prompt(const uint8_t *name,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_literal(result, "Change \"")
-	    && append_bytes(result, name, name_length)
-	    && append_literal(result, "\" [Y/N]? ");
+	if (!append_literal(result, "Change \""))
+		return false;
+	if (!append_bytes(result, name, name_length))
+		return false;
+	return append_literal(result, "\" [Y/N]? ");
 }
 
 bool
@@ -775,9 +853,11 @@ yt_config_compose_port_replacement_prompt(size_t initial_column,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_line(result, "")
-	    && append_line(result, "Please enter a new name for this port.")
-	    && append_literal(result, "-=> ");
+	if (!append_line(result, ""))
+		return false;
+	if (!append_line(result, "Please enter a new name for this port."))
+		return false;
+	return append_literal(result, "-=> ");
 }
 
 bool
@@ -790,9 +870,11 @@ yt_config_compose_port_confirmation(const uint8_t *name,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_literal(result, "\"")
-	    && append_bytes(result, name, name_length)
-	    && append_literal(result, "\" Is this OK? [Y/N]? ");
+	if (!append_literal(result, "\""))
+		return false;
+	if (!append_bytes(result, name, name_length))
+		return false;
+	return append_literal(result, "\" Is this OK? [Y/N]? ");
 }
 
 bool
@@ -827,17 +909,22 @@ yt_config_compose_alias_entry(unsigned player_count, size_t initial_column,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	if (!append_line(result, "Loading names...")
-	    || !append_line(result, "")
-	    || !append_literal(result, "There are")
-	    || !append_single(result, (float)player_count, true)
-	    || !append_line(result, " players in your game."))
+	if (!append_line(result, "Loading names..."))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	if (!append_literal(result, "There are"))
+		return false;
+	if (!append_single(result, (float)player_count, true))
+		return false;
+	if (!append_line(result, " players in your game."))
 		return false;
 	if (player_count != 0U)
 		return true;
 	result->local_beeps = 1U;
-	return append_bytes(result, &newline, 1U)
-	    && append_line(result, "YOUR GAME HAS NO PLAYERS!");
+	if (!append_bytes(result, &newline, 1U))
+		return false;
+	return append_line(result, "YOUR GAME HAS NO PLAYERS!");
 }
 
 bool
@@ -848,12 +935,17 @@ yt_config_compose_alias_menu(size_t initial_column,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_line(result, "Press enter to quit. Please Select:")
-	    && append_line(result, "")
-	    && append_line(result, "[L] List players/alias's")
-	    && append_line(result, "[C] Choose player to edit")
-	    && append_line(result, "")
-	    && append_literal(result, "-+> ");
+	if (!append_line(result, "Press enter to quit. Please Select:"))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	if (!append_line(result, "[L] List players/alias's"))
+		return false;
+	if (!append_line(result, "[C] Choose player to edit"))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	return append_literal(result, "-+> ");
 }
 
 bool
@@ -886,9 +978,11 @@ yt_config_compose_alias_list_header(size_t initial_column,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_literal(result, "  #   Real Name")
-	    && append_line(result, "Alias")
-	    && append_line(result, rule);
+	if (!append_literal(result, "  #   Real Name"))
+		return false;
+	if (!append_line(result, "Alias"))
+		return false;
+	return append_line(result, rule);
 }
 
 bool
@@ -908,15 +1002,25 @@ yt_config_compose_alias_list_row(int logical,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return (logical >= 10 || append_literal(result, " "))
-	    && append_single(result, (float)logical, true)
-	    && append_literal(result, ": ")
-	    && append_bytes(result, real_first, real_first_length)
-	    && append_literal(result, " ")
-	    && append_bytes(result, real_last, real_last_length)
-	    && append_bytes(result, alias_first, alias_first_length)
-	    && append_literal(result, " ")
-	    && append_binary_line(result, alias_last, alias_last_length);
+	if (logical < 10) {
+		if (!append_literal(result, " "))
+			return false;
+	}
+	if (!append_single(result, (float)logical, true))
+		return false;
+	if (!append_literal(result, ": "))
+		return false;
+	if (!append_bytes(result, real_first, real_first_length))
+		return false;
+	if (!append_literal(result, " "))
+		return false;
+	if (!append_bytes(result, real_last, real_last_length))
+		return false;
+	if (!append_bytes(result, alias_first, alias_first_length))
+		return false;
+	if (!append_literal(result, " "))
+		return false;
+	return append_binary_line(result, alias_last, alias_last_length);
 }
 
 bool
@@ -963,9 +1067,11 @@ yt_config_compose_alias_invalid(const uint8_t *entered,
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
 	result->local_beeps = 1U;
-	return append_line(result, "")
-	    && append_line(result, "INVALID PLAYER NUMBER!!")
-	    && append_binary_line(result, entered, entered_length);
+	if (!append_line(result, ""))
+		return false;
+	if (!append_line(result, "INVALID PLAYER NUMBER!!"))
+		return false;
+	return append_binary_line(result, entered, entered_length);
 }
 
 bool
@@ -985,18 +1091,29 @@ yt_config_compose_alias_edit(const uint8_t *real_first,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_literal(result, "Editing: ")
-	    && append_bytes(result, real_first, real_first_length)
-	    && append_literal(result, " ")
-	    && append_bytes(result, real_last, real_last_length)
-	    && append_literal(result, " a.k.a. ")
-	    && append_bytes(result, alias_first, alias_first_length)
-	    && append_literal(result, " ")
-	    && append_binary_line(result, alias_last, alias_last_length)
-	    && append_line(result, "")
-	    && append_line(result, "Press enter to quit.")
-	    && append_line(result, "")
-	    && append_literal(result, "Please enter new Alias. -=> ");
+	if (!append_literal(result, "Editing: "))
+		return false;
+	if (!append_bytes(result, real_first, real_first_length))
+		return false;
+	if (!append_literal(result, " "))
+		return false;
+	if (!append_bytes(result, real_last, real_last_length))
+		return false;
+	if (!append_literal(result, " a.k.a. "))
+		return false;
+	if (!append_bytes(result, alias_first, alias_first_length))
+		return false;
+	if (!append_literal(result, " "))
+		return false;
+	if (!append_binary_line(result, alias_last, alias_last_length))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	if (!append_line(result, "Press enter to quit."))
+		return false;
+	if (!append_line(result, ""))
+		return false;
+	return append_literal(result, "Please enter new Alias. -=> ");
 }
 
 bool
@@ -1009,10 +1126,13 @@ yt_config_compose_alias_confirmation(const uint8_t *alias,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_line(result, "")
-	    && append_literal(result, "Change player Alias to \"")
-	    && append_bytes(result, alias, alias_length)
-	    && append_literal(result, "\"? [Y/N] -=> ");
+	if (!append_line(result, ""))
+		return false;
+	if (!append_literal(result, "Change player Alias to \""))
+		return false;
+	if (!append_bytes(result, alias, alias_length))
+		return false;
+	return append_literal(result, "\"? [Y/N] -=> ");
 }
 
 bool
@@ -1040,7 +1160,9 @@ yt_config_compose_alias_cancel(size_t initial_column,
 		return false;
 	memset(result, 0, sizeof(*result));
 	result->final_column = initial_column;
-	return append_line(result, "Canceled!") && append_line(result, "");
+	if (!append_line(result, "Canceled!"))
+		return false;
+	return append_line(result, "");
 }
 
 bool
