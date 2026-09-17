@@ -94,7 +94,7 @@ test_activate_and_deactivate(void)
 	session.io.typeahead_position = 0U;
 	CHECK(yt_session_computer_planet_report(&session, &error));
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
-	CHECK(session.planet.current_physical_record == 44.0f);
+	CHECK(session.planet.current_record == 44U);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);
 }
@@ -120,7 +120,7 @@ test_port_visibility_through_report(void)
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.planet.inherited_record_index = 52.0f;
+	session.planet.fallback_index = 52;
 	session.pager.nonstop = -1.0f;
 	door.game.config.sector_offset = 51.0f;
 	door.game.config.port_offset = 2055.0f;
@@ -153,7 +153,7 @@ test_port_visibility_through_report(void)
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(session.player_reference.friendly);
 	CHECK(session.navigation.route_marker == 0.0f);
-	CHECK(session.planet.current_physical_record == 3107.0f);
+	CHECK(session.planet.current_record == 3107U);
 
 	owner.team = 8.0f;
 	yt_player_encode(&owner);

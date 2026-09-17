@@ -303,7 +303,7 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 	if (!session_read_sector(session,
 	    (int)session->player.sector, &sector, error))
 		return false;
-	session->planet.inherited_record_index = sector.planet;
+	session->planet.fallback_index = (int)sector.planet;
 	if (sector.planet == 0.0f) {
 		bool created = create_planet(session, error);
 
@@ -315,8 +315,8 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 	if (!session_present_paged_line(session, landing, sizeof(landing) - 1U,
 	    "planet landing progress", error))
 		return false;
-	session->planet.current_physical_record = qb_single_add(
-	    session_planet_offset(session), sector.planet);
+	session->planet.current_record = session_planet_basic_record(session,
+	    (int)sector.planet);
 	logical = (int)sector.planet;
 	physical = session_planet_basic_record(session, logical);
 	if (!yt_session_planet_permission(session, logical, &permission_denied,

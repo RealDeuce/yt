@@ -25,8 +25,8 @@ yt_session_planet_menu(struct yt_session *session, int logical_planet,
 	static const uint8_t prompt_body[] =
 	    "Planet command (?=help) [A]? ";
 
-	session->planet.current_physical_record = qb_single_add(
-	    session_planet_offset(session), (float)logical_planet);
+	session->planet.current_record = session_planet_basic_record(session,
+	    logical_planet);
 	for (;;) {
 		char upper[80];
 		char free_text[64];

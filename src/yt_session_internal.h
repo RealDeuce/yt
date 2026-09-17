@@ -67,8 +67,8 @@ struct session_spy_state {
 };
 
 struct session_planet_state {
-	float inherited_record_index;
-	float current_physical_record;
+	int fallback_index;
+	uint32_t current_record;
 	char name[42];
 	struct yt_planet_economy economy;
 };
