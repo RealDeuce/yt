@@ -182,15 +182,6 @@ struct yt_maintenance_xannor_revenge_result {
 	int cached_target;
 };
 
-struct yt_maintenance_xannor_split_result {
-	bool split;
-	bool skip_group;
-	float group_one_after;
-	float group_size_after;
-	float group_location_after;
-	uint64_t draws_consumed;
-};
-
 struct yt_maintenance_xannor_discovery_result {
 	int initial_target;
 	int discovery_target;
@@ -406,7 +397,7 @@ bool yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 bool yt_maintenance_xannor_roaming_split(struct yt_random *random,
     int group_number, float *group_one, float *group_size,
     float *group_location, float top_score, float headquarters,
-    struct yt_maintenance_xannor_split_result *result,
+    bool *skip_group,
     struct yt_error *error);
 bool yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
     const float *player_sector, const float *player_cloak,

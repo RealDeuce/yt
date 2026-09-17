@@ -38,38 +38,28 @@ bool
 yt_maintenance_xannor_roaming_split(struct yt_random *random,
     int group_number, float *group_one, float *group_size,
     float *group_location, float top_score, float headquarters,
-    struct yt_maintenance_xannor_split_result *result,
+    bool *skip_group,
     struct yt_error *error)
 {
-	struct yt_maintenance_xannor_split_result local;
-	uint64_t starting_draws;
 	bool overflow;
 	int range;
 	int split;
 
 	if (random == NULL || group_one == NULL || group_size == NULL
-	    || group_location == NULL || result == NULL
+	    || group_location == NULL || skip_group == NULL
 	    || group_number < 2 || group_number > 20
 	    || *group_one < 0.0f || *group_size < 0.0f
 	    || top_score < 0.0f) {
 		set_error(error, YT_INVALID, "Xannor roaming split", "");
 		return false;
 	}
-	memset(&local, 0, sizeof(local));
-	local.group_one_after = *group_one;
-	local.group_size_after = *group_size;
-	local.group_location_after = *group_location;
-	if (*group_size >= 1.0f && *group_location >= 1.0f) {
-		*result = local;
+	*skip_group = false;
+	if (*group_size >= 1.0f && *group_location >= 1.0f)
 		return true;
-	}
 	if (*group_one < qb_single_divide(top_score, 2000.0f)) {
-		local.skip_group = true;
-		*result = local;
+		*skip_group = true;
 		return true;
 	}
-	local.split = true;
-	starting_draws = random->draws;
 	if (*group_one == 0.0f) {
 		split = 0;
 	}
@@ -87,11 +77,6 @@ yt_maintenance_xannor_roaming_split(struct yt_random *random,
 	*group_size = (float)split;
 	*group_one = qb_single_subtract(*group_one, *group_size);
 	*group_location = headquarters;
-	local.group_one_after = *group_one;
-	local.group_size_after = *group_size;
-	local.group_location_after = *group_location;
-	local.draws_consumed = random->draws - starting_draws;
-	*result = local;
 	return true;
 }
 

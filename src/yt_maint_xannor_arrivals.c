@@ -884,15 +884,15 @@ yt_maintenance_xannor_roaming_groups(struct maint_state *state, float score,
 	int group = 2;
 
 	for (;;) {
-		struct yt_maintenance_xannor_split_result split_result;
+		bool skip_group;
 		bool retarget;
 
 		if (!yt_maintenance_xannor_roaming_split(
 		    &state->game.random, group, &size[1], &size[group],
 		    &location[group], score, state->game.config.headquarters,
-		    &split_result, error))
+		    &skip_group, error))
 			return false;
-		if (!split_result.skip_group) {
+		if (!skip_group) {
 			do {
 				int target;
 				struct yt_maintenance_output_result group_output;

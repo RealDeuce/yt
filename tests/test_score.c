@@ -8697,7 +8697,6 @@ check_maintenance_xannor_roaming_split(void)
 	struct score_random_script script = {
 		half_draws, sizeof(half_draws), 0U
 	};
-	struct yt_maintenance_xannor_split_result split;
 	struct yt_maintenance_output_result output;
 	struct yt_random random;
 	struct yt_error error;
@@ -8705,6 +8704,7 @@ check_maintenance_xannor_roaming_split(void)
 	float group_one;
 	float group_size;
 	float location;
+	bool skip_group;
 
 	if (!yt_maintenance_compose_xannor_roaming(
 	    NULL, 0U, &output)
@@ -8785,8 +8785,8 @@ check_maintenance_xannor_roaming_split(void)
 	group_size = 1.0f;
 	location = 1.0f;
 	if (!yt_maintenance_xannor_roaming_split(&random, 2, &group_one,
-	    &group_size, &location, 200000.0f, 733.0f, &split, &error)
-	    || split.split || split.skip_group || split.draws_consumed != 0U
+	    &group_size, &location, 200000.0f, 733.0f, &skip_group, &error)
+	    || skip_group
 	    || group_one != 100.0f || group_size != 1.0f || location != 1.0f
 	    || random.draws != 0U || script.position != 0U)
 		return false;
@@ -8796,11 +8796,8 @@ check_maintenance_xannor_roaming_split(void)
 	group_size = 10.0f;
 	location = 0.0f;
 	if (!yt_maintenance_xannor_roaming_split(&random, 2, &group_one,
-	    &group_size, &location, 200000.0f, 733.0f, &split, &error)
-	    || !split.split || split.skip_group || split.draws_consumed != 4U
-	    || split.group_one_after != 92.0f
-	    || split.group_size_after != 8.0f
-	    || split.group_location_after != 733.0f
+	    &group_size, &location, 200000.0f, 733.0f, &skip_group, &error)
+	    || skip_group
 	    || group_one != 92.0f || group_size != 8.0f
 	    || location != 733.0f || random.draws != 4U
 	    || script.position != sizeof(half_draws))
@@ -8815,8 +8812,8 @@ check_maintenance_xannor_roaming_split(void)
 	group_size = 0.5f;
 	location = 900.0f;
 	if (!yt_maintenance_xannor_roaming_split(&random, 19, &group_one,
-	    &group_size, &location, 200000.0f, 733.0f, &split, &error)
-	    || split.split || !split.skip_group || split.draws_consumed != 0U
+	    &group_size, &location, 200000.0f, 733.0f, &skip_group, &error)
+	    || !skip_group
 	    || group_one != 99.0f || group_size != 0.5f
 	    || location != 900.0f || random.draws != 0U
 	    || script.position != 0U)
@@ -8827,8 +8824,8 @@ check_maintenance_xannor_roaming_split(void)
 	group_size = 10.0f;
 	location = 0.0f;
 	if (!yt_maintenance_xannor_roaming_split(&random, 20, &group_one,
-	    &group_size, &location, 0.0f, 733.0f, &split, &error)
-	    || !split.split || split.skip_group || split.draws_consumed != 0U
+	    &group_size, &location, 0.0f, 733.0f, &skip_group, &error)
+	    || skip_group
 	    || group_one != 0.0f || group_size != 0.0f
 	    || location != 733.0f || random.draws != 0U
 	    || script.position != 0U)
