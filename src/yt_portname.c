@@ -269,14 +269,6 @@ yt_portname_compose_output(enum yt_portname_output_kind kind,
 	return copy_output(output, fixed, fixed_length);
 }
 
-uint32_t
-yt_portname_record_number(float port_offset, float logical_port)
-{
-	float expression = qb_single_add(port_offset, logical_port);
-
-	return qb_brun_random_record_number(expression);
-}
-
 bool
 yt_portname_overlay_record(struct yt_record *record, const uint8_t *name,
     size_t name_length, struct yt_error *error)

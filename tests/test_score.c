@@ -13205,13 +13205,6 @@ check_hostile_menu_front(void)
 		if (!yt_port_link_missing(0.0f)
 		    || yt_port_link_missing(-1.0f)
 		    || yt_port_link_missing(0.5f)
-		    || yt_port_selected_expression(2055.0f, 2.75f) != 2057.75f
-		    || qb_brun_random_record_number(
-		    yt_port_selected_expression(2055.0f, 2.75f)) != 2057U
-		    || qb_brun_random_record_number(
-		    yt_port_selected_expression(0.0f, 0.5f)) != 0U
-		    || qb_brun_random_record_number(
-		    yt_port_selected_expression(0.0f, 16777216.0f)) != 0U
 		    || yt_computer_selector_position("+") != 1
 		    || yt_computer_selector_position("+!") != 1
 		    || yt_computer_selector_position("!L") != 2
@@ -15155,7 +15148,7 @@ main(void)
 		goto close;
 	game.config.sector_offset = 99.0f;
 	game.config.port_offset = 100.0f;
-	if (!yt_scoreboard_prepare(&scoreboard, &game, 3.0f, 5.0f, &error)
+	if (!yt_scoreboard_prepare(&scoreboard, &game, 3, 5, &error)
 	    || !yt_scoreboard_load_players(&scoreboard, &error)
 	    || !yt_scoreboard_score_sectors(&scoreboard, &error))
 		goto close;

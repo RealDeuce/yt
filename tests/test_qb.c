@@ -245,10 +245,6 @@ test_numeric(void)
 	CHECK(qb_cint_mode(-2.25, 4, &overflow) == -3 && !overflow);
 	CHECK(qb_cint_mode(0.75, 4, &overflow) == 0 && !overflow);
 	CHECK(qb_cint_mode(2.5, 0xa5, &overflow) == 3 && !overflow);
-	CHECK(qb_brun_random_record_number(2057.5f) == 2057U);
-	CHECK(qb_brun_random_record_number(-1.25f) == 0x00fffffeU);
-	CHECK(qb_brun_random_record_number(16777216.0f) == 0U);
-	CHECK(qb_brun_random_record_number(-16777216.0f) == 0x00ffffffU);
 	CHECK(qb_cint(32767.49, &overflow) == 32767 && !overflow);
 	CHECK(qb_cint(-32767.5, &overflow) == -32768 && !overflow);
 	(void)qb_cint(32767.6, &overflow);

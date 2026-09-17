@@ -183,11 +183,7 @@ test_portname_controller(void)
 	    || memcmp(output.bytes, missing, sizeof(missing) - 1U) != 0
 	    || !yt_portname_compose_output(YT_PORTNAME_OUTPUT_PROGRESS, 1.0f,
 	    (const uint8_t *)"Earth", 5U, &output)
-	    || output.length != 9U || memcmp(output.bytes, " 1 Earth\r", 9U) != 0
-	    || yt_portname_record_number(1.5f, 1.0f) != 2U
-	    || yt_portname_record_number(-2.0f, 0.5f) != 0x00fffffeU
-	    || yt_portname_record_number(16777216.0f, 1.0f) != 0U
-	    || yt_portname_record_number(-16777216.0f, -1.0f) != 0x00ffffffU)
+	    || output.length != 9U || memcmp(output.bytes, " 1 Earth\r", 9U) != 0)
 		return false;
 	memset(&record, 0x91, sizeof(record));
 	record.bytes[YT_RECORD_TAIL_OFFSET] = 0xe1U;

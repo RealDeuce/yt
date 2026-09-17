@@ -11,7 +11,8 @@ yt_session_generate_scoreboard(struct yt_session *session,
 	struct yt_scoreboard scoreboard;
 
 	if (!yt_scoreboard_prepare(&scoreboard, &session->door->game,
-	    session_sector_offset(session), session_port_offset(session), error)
+	    (int)session_sector_offset(session), (int)session_port_offset(session),
+	    error)
 	    || !session_present_text(session, dot, sizeof(dot) - 1U,
 	    SESSION_PRESENT_RAW, "scoreboard progress dot", error)
 	    || !yt_scoreboard_load_players(&scoreboard, error)

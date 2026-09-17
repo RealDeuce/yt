@@ -12,14 +12,6 @@ yt_port_link_missing(float link)
 	return link == 0.0f;
 }
 
-float
-yt_port_selected_expression(float port_offset, float logical_link)
-{
-	volatile float expression = port_offset + logical_link;
-
-	return expression;
-}
-
 bool
 yt_computer_port_maximum(float port_offset, float sector_offset,
     float *maximum, struct yt_error *error)

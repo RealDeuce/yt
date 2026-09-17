@@ -54,7 +54,6 @@ double qb_double_divide(double left, double right);
 double qb_int(double value);
 int32_t qb_cint(double value, bool *overflow);
 int32_t qb_cint_mode(double value, uint8_t mode, bool *overflow);
-uint32_t qb_brun_random_record_number(float expression);
 struct qb_val_result qb_val(const char *text);
 struct qb_val_result qb_val_n(const uint8_t *text, size_t length);
 

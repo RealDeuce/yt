@@ -17,7 +17,7 @@ struct yt_score_team {
 
 struct yt_scoreboard {
 	struct yt_game *game;
-	float sector_record_offset;
+	int sector_record_offset;
 	int player_count;
 	int sector_count;
 	double xannor;
@@ -28,8 +28,8 @@ struct yt_scoreboard {
 
 bool yt_score_generate(struct yt_game *game, struct yt_error *error);
 bool yt_scoreboard_prepare(struct yt_scoreboard *scoreboard,
-    struct yt_game *game, float sector_record_offset,
-    float port_record_offset, struct yt_error *error);
+    struct yt_game *game, int sector_record_offset,
+    int port_record_offset, struct yt_error *error);
 bool yt_scoreboard_load_players(struct yt_scoreboard *scoreboard,
     struct yt_error *error);
 bool yt_scoreboard_score_sectors(struct yt_scoreboard *scoreboard,

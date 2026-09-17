@@ -384,7 +384,6 @@ enum yt_sector_mine_admission yt_sector_mine_admit(
     float carried, float amount);
 bool yt_no_turn_gate_denied(float turns);
 bool yt_port_link_missing(float link);
-float yt_port_selected_expression(float port_offset, float logical_link);
 enum yt_computer_port_selection_route {
 	YT_COMPUTER_PORT_SELECTION_EMPTY,
 	YT_COMPUTER_PORT_SELECTION_INVALID,

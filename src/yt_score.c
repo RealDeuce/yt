@@ -139,19 +139,15 @@ format_nonhuman_row(char *dest, size_t size, double xannor,
 }
 
 static bool
-score_read_sector(struct yt_game *game, float sector_record_offset,
-    int logical_sector, struct yt_sector *sector, uint32_t *physical_record,
-    struct yt_error *error)
+score_read_sector(struct yt_game *game, int sector_record_offset,
+    int logical_sector, struct yt_sector *sector, struct yt_error *error)
 {
 	struct yt_record record;
-	uint32_t physical = qb_brun_random_record_number(qb_single_add(
-	    sector_record_offset, (float)logical_sector));
+	int physical = sector_record_offset + logical_sector;
 
 	if (!yt_database_read(&game->database, (size_t)physical, &record, error))
 		return false;
 	yt_sector_decode(sector, &record);
-	if (physical_record != NULL)
-		*physical_record = physical;
 	return true;
 }
 
@@ -218,7 +214,7 @@ sort_teams(struct yt_score_team *teams, size_t count)
 
 bool
 yt_scoreboard_prepare(struct yt_scoreboard *scoreboard, struct yt_game *game,
-    float sector_record_offset, float port_record_offset,
+    int sector_record_offset, int port_record_offset,
     struct yt_error *error)
 {
 	int index;
@@ -228,9 +224,8 @@ yt_scoreboard_prepare(struct yt_scoreboard *scoreboard, struct yt_game *game,
 	memset(scoreboard, 0, sizeof(*scoreboard));
 	scoreboard->game = game;
 	scoreboard->sector_record_offset = sector_record_offset;
-	scoreboard->player_count = (int)sector_record_offset - 1;
-	scoreboard->sector_count = (int)qb_single_subtract(port_record_offset,
-	    sector_record_offset);
+	scoreboard->player_count = sector_record_offset - 1;
+	scoreboard->sector_count = port_record_offset - sector_record_offset;
 	if (scoreboard->player_count < 0
 	    || scoreboard->player_count > YT_DEFAULT_PLAYER_COUNT) {
 		if (error != NULL)
@@ -279,7 +274,7 @@ yt_scoreboard_score_sectors(struct yt_scoreboard *scoreboard,
 		int owner;
 
 		if (!score_read_sector(scoreboard->game,
-		    scoreboard->sector_record_offset, index, &sector, NULL, error))
+		    scoreboard->sector_record_offset, index, &sector, error))
 			return false;
 		contribution = (double)qb_single_multiply(sector.fighters, 100.0f);
 		owner = (int)sector.fighter_owner;
@@ -421,7 +416,7 @@ yt_scoreboard_write(struct yt_scoreboard *scoreboard, struct yt_error *error)
 				continue;
 			++rank;
 			if (!score_read_sector(game, scoreboard->sector_record_offset,
-			    team->id, &overlay, NULL, error))
+			    team->id, &overlay, error))
 				goto failure;
 			yt_record_get_text(&overlay.record, team_name,
 			    sizeof(team_name));
@@ -472,7 +467,7 @@ yt_score_generate(struct yt_game *game, struct yt_error *error)
 	struct yt_scoreboard scoreboard;
 
 	return yt_scoreboard_prepare(&scoreboard, game,
-	    game->config.sector_offset, game->config.port_offset, error)
+	    (int)game->config.sector_offset, (int)game->config.port_offset, error)
 	    && yt_scoreboard_load_players(&scoreboard, error)
 	    && yt_scoreboard_score_sectors(&scoreboard, error)
 	    && (yt_scoreboard_rank_players(&scoreboard), true)
