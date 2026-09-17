@@ -60,7 +60,8 @@ yt_session_sector_force_is_friendly(struct yt_session *session,
 	enum yt_sector_force_route route;
 	int owner;
 
-	route = yt_sector_force_route(sector->fighters, sector->fighter_owner,
+	route = yt_sector_force_route(sector->fighters,
+	    (int)sector->fighter_owner,
 	    session_record(session), &owner);
 	if (route == YT_SECTOR_FORCE_FRIENDLY)
 		return true;

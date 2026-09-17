@@ -127,17 +127,17 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 
 
 enum yt_sector_force_route
-yt_sector_force_route(float fighters, float owner, int current_player_record,
+yt_sector_force_route(float fighters, int owner, int current_player_record,
     int *owner_record)
 {
 	if (owner_record != NULL)
 		*owner_record = 0;
-	if (fighters == 0.0f || owner == (float)current_player_record)
+	if (fighters == 0.0f || owner == current_player_record)
 		return YT_SECTOR_FORCE_FRIENDLY;
-	if (owner <= 0.0f)
+	if (owner <= 0)
 		return YT_SECTOR_FORCE_HOSTILE;
 	if (owner_record != NULL)
-		*owner_record = (int)owner;
+		*owner_record = owner;
 	return YT_SECTOR_FORCE_OWNER_GET;
 }
 
@@ -154,17 +154,17 @@ yt_sector_force_same_team(float current_team, float owner_team)
 }
 
 enum yt_port_owner_kind
-yt_port_owner_classify(float owner, int current_player_record,
+yt_port_owner_classify(int owner, int current_player_record,
     int *owner_record)
 {
 	if (owner_record != NULL)
 		*owner_record = 0;
-	if (owner <= 1.0f)
+	if (owner <= 1)
 		return YT_PORT_OWNER_SILENT;
-	if (owner == (float)current_player_record)
+	if (owner == current_player_record)
 		return YT_PORT_OWNER_SELF;
 	if (owner_record != NULL)
-		*owner_record = (int)owner;
+		*owner_record = owner;
 	return YT_PORT_OWNER_OTHER;
 }
 

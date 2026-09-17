@@ -82,7 +82,7 @@ port_report_owner(struct yt_session *session,
 	size_t row_length;
 	int owner_record;
 
-	kind = yt_port_owner_classify(market->port.owner,
+	kind = yt_port_owner_classify((int)market->port.owner,
 	    session_record(session), &owner_record);
 	if (kind == YT_PORT_OWNER_SILENT)
 		return true;

@@ -81,11 +81,11 @@ yt_earth_purchase_quantity(double value)
 }
 
 float
-yt_earth_receipt_amount(float owner, int buyer_record, float cost)
+yt_earth_receipt_amount(int owner, int buyer_record, float cost)
 {
-	if (owner == 0.0f)
+	if (owner == 0)
 		return 0.0f;
-	if (owner == (float)buyer_record)
+	if (owner == buyer_record)
 		return floorf(qb_single_multiply(0.009999999776482582f, cost));
 	return cost;
 }
@@ -165,4 +165,3 @@ yt_lottery_award(int matches)
 
 	return matches < 1 || matches > 6 ? 0.0f : awards[matches - 1];
 }
-

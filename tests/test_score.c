@@ -390,13 +390,13 @@ check_port_owner_row_model(void)
 	size_t length = 99U;
 	int owner_record = -1;
 
-	if (yt_port_owner_classify(0.0f, 7, &owner_record)
+	if (yt_port_owner_classify(0, 7, &owner_record)
 	    != YT_PORT_OWNER_SILENT || owner_record != 0
-	    || yt_port_owner_classify(1.0f, 1, &owner_record)
+	    || yt_port_owner_classify(1, 1, &owner_record)
 	    != YT_PORT_OWNER_SILENT
-	    || yt_port_owner_classify(7.0f, 7, &owner_record)
+	    || yt_port_owner_classify(7, 7, &owner_record)
 	    != YT_PORT_OWNER_SELF
-	    || yt_port_owner_classify(8.0f, 7, &owner_record)
+	    || yt_port_owner_classify(8, 7, &owner_record)
 	    != YT_PORT_OWNER_OTHER || owner_record != 8)
 		return false;
 	if (!yt_port_owner_compose(YT_PORT_OWNER_SILENT, 0.0f,
@@ -12629,10 +12629,10 @@ check_earth_report_model(void)
 		return false;
 	if (yt_earth_purchase_quantity(3.9) != 3.0f
 	    || yt_earth_purchase_quantity(-0.1) != -1.0f
-	    || yt_earth_receipt_amount(0.0f, 2, 250.0f) != 0.0f
-	    || yt_earth_receipt_amount(3.0f, 2, 250.0f) != 250.0f
-	    || yt_earth_receipt_amount(2.0f, 2, 250.0f) != 2.0f
-	    || yt_earth_receipt_amount(2.0f, 2, 50.0f) != 0.0f
+	    || yt_earth_receipt_amount(0, 2, 250.0f) != 0.0f
+	    || yt_earth_receipt_amount(3, 2, 250.0f) != 250.0f
+	    || yt_earth_receipt_amount(2, 2, 250.0f) != 2.0f
+	    || yt_earth_receipt_amount(2, 2, 50.0f) != 0.0f
 	    || yt_earth_cloak_points(0.5f) != 25.0f
 	    || yt_earth_cloak_default(25.0f, 12345.0f) != 12.0f
 	    || yt_earth_cloak_default(25.0f, 25000.0f) != 25.0f
@@ -12755,16 +12755,16 @@ check_sector_force_routes(void)
 	enum yt_sector_force_route route;
 	int owner;
 
-	route = yt_sector_force_route(0.0f, -1.0f, 2, &owner);
+	route = yt_sector_force_route(0.0f, -1, 2, &owner);
 	if (route != YT_SECTOR_FORCE_FRIENDLY || owner != 0)
 		return false;
-	route = yt_sector_force_route(-7.0f, 2.0f, 2, &owner);
+	route = yt_sector_force_route(-7.0f, 2, 2, &owner);
 	if (route != YT_SECTOR_FORCE_FRIENDLY || owner != 0)
 		return false;
-	route = yt_sector_force_route(-1.0f, -1.0f, 2, &owner);
+	route = yt_sector_force_route(-1.0f, -1, 2, &owner);
 	if (route != YT_SECTOR_FORCE_HOSTILE || owner != 0)
 		return false;
-	route = yt_sector_force_route(10.0f, 3.0f, 2, &owner);
+	route = yt_sector_force_route(10.0f, 3, 2, &owner);
 	if (route != YT_SECTOR_FORCE_OWNER_GET || owner != 3)
 		return false;
 	if (!yt_sector_mines_admitted(0.4f, 0.0f)

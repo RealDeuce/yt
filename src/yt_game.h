@@ -328,11 +328,11 @@ bool yt_game_construct_player(struct yt_game *game, int basic_record,
     float today, float turns,
     struct yt_player *player, enum yt_player_constructor_failure *failure,
     struct yt_error *error);
-enum yt_sector_force_route yt_sector_force_route(float fighters, float owner,
+enum yt_sector_force_route yt_sector_force_route(float fighters, int owner,
     int current_player_record, int *owner_record);
 bool yt_sector_mines_admitted(float mines, float suppression);
 bool yt_sector_force_same_team(float current_team, float owner_team);
-enum yt_port_owner_kind yt_port_owner_classify(float owner,
+enum yt_port_owner_kind yt_port_owner_classify(int owner,
     int current_player_record, int *owner_record);
 bool yt_port_owner_compose(enum yt_port_owner_kind kind, float treasury,
     const uint8_t *owner_name, size_t owner_name_length,
@@ -655,7 +655,7 @@ void yt_earth_prices(const float discount[4], float price[4]);
 double yt_earth_affordable(float credits, float price);
 int yt_earth_selector_position(const char *command);
 float yt_earth_purchase_quantity(double value);
-float yt_earth_receipt_amount(float owner, int buyer_record, float cost);
+float yt_earth_receipt_amount(int owner, int buyer_record, float cost);
 float yt_earth_cloak_points(float cloak);
 float yt_earth_cloak_default(float deficit, float credits);
 float yt_earth_cloak_overlay(float points, float quantity);
