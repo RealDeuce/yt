@@ -73,6 +73,11 @@ struct session_planet_state {
 	struct yt_planet_economy economy;
 };
 
+struct session_player_reference_state {
+	float record;
+	bool friendly;
+};
+
 struct session_io_state {
 	struct yt_input input;
 	char typeahead[YT_COMMAND_SIZE];
@@ -96,8 +101,7 @@ struct yt_session {
 	struct session_spy_state spies;
 	bool destroyed;
 	float low_time_remembered;
-	float shared_target_record;
-	bool relationship_friendly;
+	struct session_player_reference_state player_reference;
 	struct yt_player player;
 	struct session_combat_state combat;
 	float market_bases[3];

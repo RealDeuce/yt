@@ -338,7 +338,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 
-		session->shared_target_record = candidate;
+		session->player_reference.record = candidate;
 		if (!session_read_combat_player(session, record,
 		    &candidate_player, error))
 			return false;

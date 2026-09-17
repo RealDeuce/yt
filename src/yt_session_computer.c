@@ -30,7 +30,7 @@ yt_session_computer_owner_is_friendly(struct yt_session *session, float owner,
 	if (friendly == NULL)
 		return false;
 	*friendly = false;
-	session->relationship_friendly = false;
+	session->player_reference.friendly = false;
 	if (owner < 2.0f
 	    || owner > session_sector_offset(session)
 	    || (float)session_record(session) < 2.0f
@@ -39,7 +39,7 @@ yt_session_computer_owner_is_friendly(struct yt_session *session, float owner,
 		return true;
 	if (owner == (float)session_record(session)) {
 		*friendly = true;
-		session->relationship_friendly = true;
+		session->player_reference.friendly = true;
 		return true;
 	}
 	if (!session_read_player_at_fault(session, session_record(session),
@@ -52,7 +52,7 @@ yt_session_computer_owner_is_friendly(struct yt_session *session, float owner,
 		return false;
 	*friendly = other.team == current.team;
 	if (*friendly)
-		session->relationship_friendly = true;
+		session->player_reference.friendly = true;
 	return true;
 }
 
@@ -236,8 +236,8 @@ yt_session_computer_planet_report(struct yt_session *session,
 
 			session->combat.deployed_fighters =
 			    (double)sector.fighters;
-			session->shared_target_record = sector.fighter_owner;
-			fighter_owner = session->shared_target_record;
+			session->player_reference.record = sector.fighter_owner;
+			fighter_owner = session->player_reference.record;
 			if (!yt_session_computer_owner_is_friendly(session,
 			    fighter_owner, &fighter_friendly, error))
 				return false;
@@ -297,8 +297,8 @@ yt_session_computer_planet_report(struct yt_session *session,
 		}
 		else {
 			sector_fighters = session->combat.deployed_fighters;
-			fighter_owner = session->shared_target_record;
-			relationship_friendly = session->relationship_friendly;
+			fighter_owner = session->player_reference.record;
+			relationship_friendly = session->player_reference.friendly;
 			scratch = link;
 		}
 		{

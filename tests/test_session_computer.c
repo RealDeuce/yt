@@ -151,7 +151,7 @@ test_port_visibility_through_report(void)
 	CHECK(yt_session_computer_port_report(&session, &enter_sector, &error));
 	CHECK(!enter_sector);
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
-	CHECK(session.relationship_friendly);
+	CHECK(session.player_reference.friendly);
 	CHECK(session.navigation.route_marker == 0.0f);
 	CHECK(session.planet.current_physical_record == 3107.0f);
 
@@ -163,7 +163,7 @@ test_port_visibility_through_report(void)
 	session.io.typeahead_length = sizeof(sector_number) - 1U;
 	session.io.typeahead_position = 0U;
 	CHECK(yt_session_computer_port_report(&session, &enter_sector, &error));
-	CHECK(!session.relationship_friendly);
+	CHECK(!session.player_reference.friendly);
 
 	sector.fighter_owner = 2.0f;
 	yt_sector_encode(&sector);
@@ -173,7 +173,7 @@ test_port_visibility_through_report(void)
 	session.io.typeahead_length = sizeof(sector_number) - 1U;
 	session.io.typeahead_position = 0U;
 	CHECK(yt_session_computer_port_report(&session, &enter_sector, &error));
-	CHECK(session.relationship_friendly);
+	CHECK(session.player_reference.friendly);
 
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);

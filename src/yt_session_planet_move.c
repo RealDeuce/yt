@@ -20,13 +20,13 @@ planet_move_friendship(struct yt_session *session, float owner,
 	if (friendly == NULL)
 		return false;
 	*friendly = false;
-	session->relationship_friendly = false;
+	session->player_reference.friendly = false;
 	if (owner < 2.0f || owner > (float)last_player
 	    || session_record(session) < 2 || session_record(session) > last_player)
 		return true;
 	if (owner == (float)session_record(session)) {
 		*friendly = true;
-		session->relationship_friendly = true;
+		session->player_reference.friendly = true;
 		return true;
 	}
 	if (!yt_game_read_player(&session->door->game, session_record(session),
@@ -40,7 +40,7 @@ planet_move_friendship(struct yt_session *session, float owner,
 		return false;
 	*friendly = other.team == current.team;
 	if (*friendly)
-		session->relationship_friendly = true;
+		session->player_reference.friendly = true;
 	return true;
 }
 
