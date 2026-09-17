@@ -203,13 +203,6 @@ test_counted_combined_route(void)
 	uint8_t *large;
 	size_t index;
 
-	reset_calls();
-	yt_out_plain("abc");
-	CHECK(output_call_count == 1U
-	    && output_calls[0].length == 3U
-	    && output_calls[0].local_echo
-	    && memcmp(output_calls[0].data, "abc", 3U) == 0);
-
 	large = malloc(32768U);
 	CHECK(large != NULL);
 	if (large == NULL)

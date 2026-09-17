@@ -9,12 +9,6 @@
 #include <string.h>
 
 void
-yt_out_plain(const char *text)
-{
-	od_disp(text, (INT)strlen(text), TRUE);
-}
-
-void
 yt_out_plain_bytes(const void *data, size_t length)
 {
 	const uint8_t *cursor = data;
