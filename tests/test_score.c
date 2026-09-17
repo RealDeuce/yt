@@ -13920,8 +13920,6 @@ check_computer_path_numeric_boundary(void)
 		{"16777217", 16777216.0f},
 	};
 	struct yt_error error;
-	uint8_t expected_raw[4];
-	uint8_t selected_raw[4];
 	float largest = qb_mbf32_decode(
 	    (const uint8_t[]){0xff, 0xff, 0x7f, 0xff});
 	float maximum;
@@ -13930,41 +13928,33 @@ check_computer_path_numeric_boundary(void)
 	char scratch[32] = "1";
 	size_t scratch_length = 1U;
 	float hops = 0.0f;
-	uint8_t hops_raw[4];
 
 	if (!yt_computer_path_maximum(2055.0f, 51.0f, &maximum, NULL)
 	    || maximum != 2004.0f)
 		return false;
 	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
-		if (qb_mbf32_encode(cases[index].expected, expected_raw)
-		    != QB_MBF_OK
-		    || !yt_computer_path_parse(cases[index].response, &selected,
-		    selected_raw, NULL)
-		    || selected != cases[index].expected
-		    || memcmp(selected_raw, expected_raw,
-		    sizeof(selected_raw)) != 0)
+		if (!yt_computer_path_parse(cases[index].response, &selected,
+		    NULL)
+		    || selected != cases[index].expected)
 			return false;
 	}
-	if (qb_mbf32_encode(0.0f, hops_raw) != QB_MBF_OK
+	if (!yt_computer_path_append_hop(scratch, sizeof(scratch),
+	    &scratch_length, 2.0f, &hops, NULL)
 	    || !yt_computer_path_append_hop(scratch, sizeof(scratch),
-	    &scratch_length, 2.0f, &hops, hops_raw, NULL)
-	    || !yt_computer_path_append_hop(scratch, sizeof(scratch),
-	    &scratch_length, 12.0f, &hops, hops_raw, NULL)
+	    &scratch_length, 12.0f, &hops, NULL)
 	    || scratch_length != 12U
 	    || memcmp(scratch, "1\rM\r 2\rM\r 12", 13U) != 0
 	    || hops != 2.0f
-	    || memcmp(hops_raw, (const uint8_t[]){0x00, 0x00, 0x00, 0x82},
-	    sizeof(hops_raw)) != 0
 	    || yt_computer_path_wrap_required(74)
 	    || !yt_computer_path_wrap_required(75))
 		return false;
 	yt_error_clear(&error);
 	if (yt_computer_path_parse("1.7014118E+38", &selected,
-	    selected_raw, &error) || error.status != YT_RANGE
+	    &error) || error.status != YT_RANGE
 	    || strcmp(error.operation, "computer path sector CSNG") != 0)
 		return false;
 	yt_error_clear(&error);
-	if (yt_computer_path_parse("1E+9999", &selected, selected_raw,
+	if (yt_computer_path_parse("1E+9999", &selected,
 	    &error) || error.status != YT_RANGE
 	    || strcmp(error.operation, "computer path sector VAL") != 0)
 		return false;
@@ -13975,10 +13965,9 @@ check_computer_path_numeric_boundary(void)
 	    "computer path maximum subtraction") != 0)
 		return false;
 	yt_error_clear(&error);
-	return !yt_computer_path_parse(NULL, &selected, selected_raw, &error)
+	return !yt_computer_path_parse(NULL, &selected, &error)
 	    && error.status == YT_INVALID
-	    && !yt_computer_path_parse("1", NULL, selected_raw, &error)
-	    && !yt_computer_path_parse("1", &selected, NULL, &error)
+	    && !yt_computer_path_parse("1", NULL, &error)
 	    && !yt_computer_path_maximum(1.0f, 1.0f, NULL, &error);
 }
 

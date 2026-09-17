@@ -50,8 +50,6 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	float start_value;
 	float destination_value;
 	float hop_count;
-	uint8_t parsed_raw[4];
-	uint8_t hop_count_raw[4];
 	bool stale_marker = autopilot && session->navigation.route_marker == 9999.0f;
 	int start;
 	int destination;
@@ -72,8 +70,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 			return false;
 		if (response[0] == '\0')
 			return true;
-		if (!yt_computer_path_parse(response, &start_value, parsed_raw,
-		    error))
+		if (!yt_computer_path_parse(response, &start_value, error))
 			return false;
 		session->navigation.route_start_sector = start_value;
 	}
@@ -88,8 +85,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		return false;
 	if (response[0] == '\0')
 		return true;
-	if (!yt_computer_path_parse(response, &destination_value, parsed_raw,
-	    error))
+	if (!yt_computer_path_parse(response, &destination_value, error))
 		return false;
 	if (!yt_computer_path_maximum(session_port_offset(session),
 	    session_sector_offset(session), &maximum, error))
@@ -162,7 +158,6 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	programmed_moves[1] = '\0';
 	programmed_moves_length = 1U;
 	hop_count = 0.0f;
-	(void)qb_mbf32_encode(hop_count, hop_count_raw);
 	{
 		char number[64];
 
@@ -202,7 +197,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 			return false;
 		if (!yt_computer_path_append_hop(programmed_moves,
 		    sizeof(programmed_moves), &programmed_moves_length,
-		    (float)program_vertex, &hop_count, hop_count_raw, error))
+		    (float)program_vertex, &hop_count, error))
 			return false;
 		yt_out_cursor_position(&ignored_row, &column);
 		if (yt_computer_path_wrap_required(column)

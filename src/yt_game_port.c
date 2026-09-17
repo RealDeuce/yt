@@ -99,13 +99,14 @@ yt_computer_path_maximum(float port_offset, float sector_offset,
 
 bool
 yt_computer_path_parse(const char *response, float *selected,
-    uint8_t selected_raw[4], struct yt_error *error)
+    struct yt_error *error)
 {
 	struct qb_val_result parsed;
 	uint8_t integer_raw[8];
+	uint8_t selected_raw[4];
 	enum qb_mbf_status status;
 
-	if (response == NULL || selected == NULL || selected_raw == NULL)
+	if (response == NULL || selected == NULL)
 		return yt_game_error(error, YT_INVALID,
 		    "computer path parse arguments");
 	parsed = qb_val(response);
@@ -129,16 +130,17 @@ yt_computer_path_parse(const char *response, float *selected,
 bool
 yt_computer_path_append_hop(char *scratch, size_t capacity,
     size_t *length, float next_sector, float *hop_count,
-    uint8_t hop_count_raw[4], struct yt_error *error)
+    struct yt_error *error)
 {
 	char number[64];
+	uint8_t hop_count_raw[4];
 	int number_length;
 	volatile float incremented;
 	enum qb_mbf_status status;
 
 	if (scratch == NULL || capacity == 0U || length == NULL
 	    || *length >= capacity || scratch[*length] != '\0'
-	    || hop_count == NULL || hop_count_raw == NULL)
+	    || hop_count == NULL)
 		return yt_game_error(error, YT_INVALID,
 		    "computer path scratch arguments");
 	number_length = qb_str_single(number, sizeof(number), next_sector);

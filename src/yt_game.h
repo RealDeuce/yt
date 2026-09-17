@@ -406,10 +406,10 @@ bool yt_computer_port_select(const char *response, float maximum,
 bool yt_computer_path_maximum(float port_offset, float sector_offset,
 	float *maximum, struct yt_error *error);
 bool yt_computer_path_parse(const char *response, float *selected,
-	uint8_t selected_raw[4], struct yt_error *error);
+	struct yt_error *error);
 bool yt_computer_path_append_hop(char *scratch, size_t capacity,
 	size_t *length, float next_sector, float *hop_count,
-	uint8_t hop_count_raw[4], struct yt_error *error);
+	struct yt_error *error);
 bool yt_computer_path_wrap_required(int local_column);
 enum yt_computer_avoid_selection_route {
 	YT_COMPUTER_AVOID_SELECTION_INVALID,
