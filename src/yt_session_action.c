@@ -11,16 +11,13 @@ yt_session_fresh_no_turn_gate(struct yt_session *session, bool *denied,
     struct yt_error *error)
 {
 	static const uint8_t notice[] = "Sorry but you have no turns left.";
-	uint8_t result_raw[4];
 
 	if (!session_reload_player(session, error))
 		return false;
-	yt_no_turn_gate_result_raw(false, result_raw);
-	session->shared_status = qb_mbf32_decode(result_raw);
+	session->shared_status = 0.0f;
 	*denied = yt_no_turn_gate_denied(session->player.turns);
 	if (*denied) {
-		yt_no_turn_gate_result_raw(true, result_raw);
-		session->shared_status = qb_mbf32_decode(result_raw);
+		session->shared_status = -1.0f;
 		return session_present_alert(session, notice, sizeof(notice) - 1U,
 		    "no-turn gate notice", error);
 	}

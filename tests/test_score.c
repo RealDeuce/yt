@@ -13026,16 +13026,8 @@ check_hostile_menu_front(void)
 	{
 		double threshold = yt_bribe_offer_threshold(10.0f, 0.5f);
 		double precise = 16777215.5;
-		uint8_t gate_raw[4];
 
-		yt_no_turn_gate_result_raw(false, gate_raw);
-		if (memcmp(gate_raw,
-		    (const uint8_t[]){0x00, 0x00, 0x7d, 0x00}, 4U) != 0)
-			return false;
-		yt_no_turn_gate_result_raw(true, gate_raw);
-		if (memcmp(gate_raw,
-		    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
-		    || threshold != 20.0
+		if (threshold != 20.0
 		    || yt_bribe_offer_threshold(precise, 0.0f) != precise
 		    || !yt_bribe_ordinary_forces(3.0f, precise,
 		    16777215.25, 0.0f)

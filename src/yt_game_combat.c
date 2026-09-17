@@ -275,16 +275,6 @@ yt_no_turn_gate_denied(float turns)
 	return turns <= 0.0f;
 }
 
-void
-yt_no_turn_gate_result_raw(bool denied, uint8_t raw[4])
-{
-	static const uint8_t false_value[4] = {0x00, 0x00, 0x7d, 0x00};
-	static const uint8_t true_value[4] = {0x00, 0x00, 0x00, 0x81};
-
-	if (raw != NULL)
-		memcpy(raw, denied ? true_value : false_value, 4U);
-}
-
 bool
 yt_action_finalizer_turn_raw(const uint8_t before[4], uint8_t after[4])
 {
@@ -319,4 +309,3 @@ yt_action_finalizer_cloak_raw(const uint8_t before[4],
 	}
 	return true;
 }
-

@@ -643,11 +643,9 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 		    || !session_reload_player(session, error)
 		    || !session_reload_player(session, error))
 			return false;
-		yt_no_turn_gate_result_raw(false, target_raw);
-		session->shared_status = qb_mbf32_decode(target_raw);
+		session->shared_status = 0.0f;
 		if (session->player.turns <= 0.0f) {
-			yt_no_turn_gate_result_raw(true, target_raw);
-			session->shared_status = qb_mbf32_decode(target_raw);
+			session->shared_status = -1.0f;
 			return session_present_alert(session, no_turns,
 			    sizeof(no_turns) - 1U, "no-turn gate notice", error);
 		}

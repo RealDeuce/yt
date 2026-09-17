@@ -6,6 +6,15 @@
 #include <stdio.h>
 #include <string.h>
 
+static void
+turn_gate_result_raw(bool denied, uint8_t raw[4])
+{
+	static const uint8_t false_value[4] = {0x00, 0x00, 0x7d, 0x00};
+	static const uint8_t true_value[4] = {0x00, 0x00, 0x00, 0x81};
+
+	memcpy(raw, denied ? true_value : false_value, 4U);
+}
+
 static bool
 projectile_command_error(struct yt_error *error, enum yt_status status,
     const char *operation)
@@ -87,13 +96,13 @@ test_projectile_command_run(struct test_projectile_command_state *state,
 		    &state->live_hydration, error))
 			return false;
 		state->hydrations++;
-		yt_no_turn_gate_result_raw(false, state->turn_gate_result_raw);
+		turn_gate_result_raw(false, state->turn_gate_result_raw);
 		state->turn_gate_result_stores++;
 		if (ops->store_turn_gate_result != NULL)
 			ops->store_turn_gate_result(context,
 			    state->turn_gate_result_raw);
 		if (state->live_hydration.turns <= 0.0f) {
-			yt_no_turn_gate_result_raw(true,
+			turn_gate_result_raw(true,
 			    state->turn_gate_result_raw);
 			state->turn_gate_result_stores++;
 			if (ops->store_turn_gate_result != NULL)
