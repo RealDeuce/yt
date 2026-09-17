@@ -31,13 +31,14 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	float start_value;
 	float destination_value;
 	float hop_count;
-	bool stale_marker = autopilot && session->navigation.route_marker == 9999.0f;
+	bool reuse_retained_start = autopilot
+	    && session->navigation.reuse_route_start;
 	int start;
 	int destination;
 	int cursor;
 
 	if (!autopilot) {
-		session->navigation.route_marker = 9999.0f;
+		session->navigation.reuse_route_start = true;
 		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "path start blank", error)
 		    || !session_present_timed_paged_row(session, start_prompt,
@@ -51,7 +52,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 			return false;
 		session->navigation.route_start_sector = start_value;
 	}
-	else if (!stale_marker)
+	else if (!reuse_retained_start)
 		session->navigation.route_start_sector =
 		    (float)session->player.sector;
 	start_value = session->navigation.route_start_sector;
@@ -167,8 +168,8 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		    "path course row", error))
 			return false;
 	}
-	session->navigation.route_marker = 0.0f;
-	if (!autopilot || stale_marker)
+	session->navigation.reuse_route_start = false;
+	if (!autopilot || reuse_retained_start)
 		return true;
 	if (!session_reload_player(session, error))
 		return false;

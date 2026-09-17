@@ -78,7 +78,7 @@ test_activate_and_deactivate(void)
 	session.io.typeahead_position = 0U;
 	CHECK(yt_session_computer_route(&session, false, &error));
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
-	CHECK(session.navigation.route_marker == 0.0f);
+	CHECK(!session.navigation.reuse_route_start);
 	yt_record_blank(&sector.record);
 	sector.planet = 1;
 	yt_sector_encode(&sector);
@@ -152,7 +152,7 @@ test_port_visibility_through_report(void)
 	CHECK(!enter_sector);
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(session.player_reference.friendly);
-	CHECK(session.navigation.route_marker == 0.0f);
+	CHECK(!session.navigation.reuse_route_start);
 	CHECK(session.planet.current_record == 3107U);
 
 	owner.team = 8;

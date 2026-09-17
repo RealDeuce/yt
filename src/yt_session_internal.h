@@ -50,7 +50,7 @@ struct session_combat_state {
 struct session_navigation_state {
 	int current_sector_physical_record;
 	int current_warps[6];
-	float route_marker;
+	bool reuse_route_start;
 	float route_start_sector;
 	float avoided_sectors[YT_ROUTE_AVOID_COUNT];
 	bool self_mines_suppressed;
