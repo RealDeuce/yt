@@ -106,19 +106,6 @@ yt_projectile_survivor_sets_counterattack(int shooter)
 }
 
 bool
-yt_projectile_survivor_store_counterattack(int shooter, int player_record,
-    int *counterattack, uint8_t raw[4])
-{
-	if (counterattack == NULL || raw == NULL
-	    || !yt_projectile_survivor_sets_counterattack(shooter))
-		return false;
-	if (qb_mbf32_encode((float)player_record, raw) != QB_MBF_OK)
-		return false;
-	*counterattack = player_record;
-	return true;
-}
-
-bool
 yt_projectile_damage_iteration(float counter, float saved_missiles)
 {
 	return counter <= saved_missiles;
@@ -338,13 +325,6 @@ yt_projectile_sector_mines_overlay(struct yt_sector *sector,
 		return false;
 	sector->mines = qb_single_add(sector->mines, carried_mines);
 	return yt_record_set_number(&sector->record, YT_F129, sector->mines);
-}
-
-uint32_t
-yt_projectile_physical_record(float offset, float logical)
-{
-	return qb_brun_random_record_number(qb_single_add(offset,
-	    logical));
 }
 
 bool

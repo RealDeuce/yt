@@ -744,8 +744,6 @@ bool yt_projectile_salvage_admitted(int counterattack, int xannor_provoker);
 enum yt_projectile_death_route yt_projectile_death_continuation(
     float remaining, float saved_mines);
 bool yt_projectile_survivor_sets_counterattack(int shooter);
-bool yt_projectile_survivor_store_counterattack(int shooter,
-    int player_record, int *counterattack, uint8_t raw[4]);
 struct yt_projectile_damage_result {
 	double fighters;
 	float shields;
@@ -759,7 +757,6 @@ bool yt_projectile_victim_mines_overlay(struct yt_player *player,
     float *saved_mines);
 bool yt_projectile_sector_mines_overlay(struct yt_sector *sector,
     float carried_mines);
-uint32_t yt_projectile_physical_record(float offset, float logical);
 bool yt_projectile_planet_ground_overlay(struct yt_planet *planet,
     float ground, float owner);
 bool yt_projectile_planet_productivity_overlay(struct yt_planet *planet,

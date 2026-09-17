@@ -579,10 +579,7 @@ check_projectile_persistence_model(void)
 	if (!yt_record_set_number(&expected, YT_F129, 1.75f)
 	    || !yt_projectile_sector_mines_overlay(&sector, 0.5f)
 	    || sector.mines != 1.75f
-	    || memcmp(&sector.record, &expected, sizeof(expected)) != 0
-	    || yt_projectile_physical_record(10.75f, 0.5f) != 11U
-	    || yt_projectile_physical_record(16777216.0f, 1.0f)
-	    != 0U)
+	    || memcmp(&sector.record, &expected, sizeof(expected)) != 0)
 		return false;
 
 	memset(&planet, 0, sizeof(planet));
@@ -1334,8 +1331,6 @@ check_projectile_parent_model(void)
 	size_t terminal_length;
 	size_t news_length;
 	size_t defense_length;
-	int counterattack = 77;
-	uint8_t counterattack_raw[4] = {0xdeU, 0xadU, 0xbeU, 0xefU};
 
 	if (!yt_projectile_target_prompt(false, 5.0f, 2004.0f,
 	    prompt, sizeof(prompt), &length)
@@ -1347,21 +1342,6 @@ check_projectile_parent_model(void)
 	    || memcmp(prompt, plasma, length) != 0
 	    || yt_projectile_target_prompt(false, 5.0f, 2004.0f,
 	    prompt, 8U, &length))
-		return false;
-	if (yt_projectile_survivor_store_counterattack(-1, 3,
-	    &counterattack, counterattack_raw)
-	    || counterattack != 77
-	    || memcmp(counterattack_raw,
-	    (const uint8_t[]){0xdeU, 0xadU, 0xbeU, 0xefU}, 4U) != 0
-	    || !yt_projectile_survivor_store_counterattack(2, 3,
-	    &counterattack, counterattack_raw)
-	    || counterattack != 3
-	    || memcmp(counterattack_raw,
-	    (const uint8_t[]){0x00U, 0x00U, 0x40U, 0x82U}, 4U) != 0
-	    || yt_projectile_survivor_store_counterattack(2, 3, NULL,
-	    counterattack_raw)
-	    || yt_projectile_survivor_store_counterattack(2, 3,
-	    &counterattack, NULL))
 		return false;
 	memset(&debit, 0, sizeof(debit));
 	memset(debit.record.bytes, 0xa5, sizeof(debit.record.bytes));

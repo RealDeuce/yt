@@ -38,10 +38,9 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	logical_planet = (int)sector->planet;
 	if (logical_planet == 0)
 		return true;
-	physical_planet = yt_projectile_physical_record(
-	    session_planet_offset(session), sector->planet);
-	physical_sector = yt_projectile_physical_record(
-	    session_sector_offset(session), (float)sector_number);
+	physical_planet = session_planet_basic_record(session, sector->planet);
+	physical_sector = session_sector_basic_record(session,
+	    (float)sector_number);
 	if (!yt_session_update_planet_physical(session, physical_planet,
 	    &updater_planet, NULL, error))
 		return false;
@@ -607,14 +606,10 @@ missile_mines:
 			if (!yt_database_write(&session->door->game.database,
 			    (size_t)basic, &persistence.record, error))
 				return false;
-			{
-				uint8_t counterattack_raw[4];
-
-				if (yt_projectile_survivor_store_counterattack(
-				    session_record(session), basic, counterattack,
-				    counterattack_raw))
-					session->projectile.pending_counterattack_player =
-					    (int)qb_mbf32_decode(counterattack_raw);
+			if (yt_projectile_survivor_sets_counterattack(
+			    session_record(session))) {
+				*counterattack = basic;
+				session->projectile.pending_counterattack_player = basic;
 			}
 			return true;
 		}
