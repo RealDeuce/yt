@@ -19,6 +19,27 @@ spy_failure(struct yt_error *error, const char *operation)
 	return false;
 }
 
+struct spy_route_choices {
+	int destinations[6];
+};
+
+static bool
+spy_route_choices_decode(const struct yt_sector *sector,
+    struct spy_route_choices *choices, struct yt_error *error)
+{
+	size_t slot;
+
+	for (slot = 0U; slot < YT_ARRAY_LEN(choices->destinations); ++slot) {
+		bool overflow;
+
+		choices->destinations[slot] = qb_cint_mbf32(
+		    sector->record.bytes + YT_F105 + 4U * slot, 0U, &overflow);
+		if (overflow)
+			return spy_failure(error, "active spy warp CINT");
+	}
+	return true;
+}
+
 bool
 yt_session_list_spies(struct yt_session *session, struct yt_error *error)
 {
@@ -189,7 +210,6 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 		return true;
 	for (spy_index = 0; spy_index < active_spies; ++spy_index) {
 		struct yt_sector sector;
-		bool overflow;
 		size_t spy = (size_t)spy_index;
 		int sector_number = session->spies.sectors[spy];
 		bool first_ship = true;
@@ -356,16 +376,10 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 		if (!session_read_sector(session, sector_number, &sector, error))
 			return false;
 		{
-			int32_t warps[6];
-			size_t slot;
+			struct spy_route_choices routes;
 
-			for (slot = 0U; slot < YT_ARRAY_LEN(warps); ++slot) {
-				warps[slot] = qb_cint_mbf32(sector.record.bytes
-				    + YT_F105 + 4U * slot, 0U, &overflow);
-				if (overflow)
-					return spy_failure(error,
-					    "active spy warp CINT");
-			}
+			if (!spy_route_choices_decode(&sector, &routes, error))
+				return false;
 			for (;;) {
 				float draw;
 				int selected;
@@ -377,8 +391,9 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				if (selected < 0 || selected >= 6)
 					return spy_failure(error,
 					    "active spy RND slot");
-				if (warps[selected] != 0) {
-					session->spies.sectors[spy] = warps[selected];
+				if (routes.destinations[selected] != 0) {
+					session->spies.sectors[spy] =
+					    routes.destinations[selected];
 					break;
 				}
 			}
