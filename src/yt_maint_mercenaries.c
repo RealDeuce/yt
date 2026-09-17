@@ -196,16 +196,17 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 
 bool
 yt_maintenance_collect_mercenary_tax(struct yt_game *game, int port_count,
-    struct yt_maintenance_mercenary_tax_result *result,
-    struct yt_error *error)
+    float *tax_pool, float *fleet_strength, struct yt_error *error)
 {
-	struct yt_maintenance_mercenary_tax_result local = {0};
 	int port_number;
 
-	if (game == NULL || result == NULL || port_count < 0) {
+	if (game == NULL || tax_pool == NULL || fleet_strength == NULL
+	    || port_count < 0) {
 		set_error(error, YT_INVALID, "Mercenary port tax", "");
 		return false;
 	}
+	*tax_pool = 0.0f;
+	*fleet_strength = 0.0f;
 	for (port_number = 1; port_number <= port_count; ++port_number) {
 		struct yt_port port;
 		float tax;
@@ -216,17 +217,15 @@ yt_maintenance_collect_mercenary_tax(struct yt_game *game, int port_count,
 			continue;
 		tax = yt_maintenance_sint(
 		    qb_single_divide(port.treasury, 10.0f));
-		local.tax_pool = qb_single_add(local.tax_pool, tax);
+		*tax_pool = qb_single_add(*tax_pool, tax);
 		port.treasury = qb_single_subtract(port.treasury,
 		    yt_maintenance_sint(
 		    qb_single_divide(port.treasury, 10.0f)));
 		if (!yt_game_write_port(game, port_number, &port, error))
 			return false;
-		++local.taxed_ports;
 	}
-	local.fleet_strength = yt_maintenance_sint(
-	    qb_single_divide(local.tax_pool, 10.0f));
-	*result = local;
+	*fleet_strength = yt_maintenance_sint(
+	    qb_single_divide(*tax_pool, 10.0f));
 	return true;
 }
 
@@ -597,9 +596,10 @@ yt_maintenance_mercenaries_run(struct maint_state *state,
     struct yt_error *error)
 {
 	static const char report[] = "  -  Mercenary Report:";
-	struct yt_maintenance_mercenary_tax_result tax;
 	struct yt_maintenance_output_result output;
 	bool rebuilt;
+	float tax_pool;
+	float fleet_strength;
 	float hired;
 
 	if (!yt_maintenance_compose_mercenary_phase(
@@ -612,12 +612,12 @@ yt_maintenance_mercenaries_run(struct maint_state *state,
 	    YT_MAINT_ROW_MERCENARY_START_SEPARATOR,
 	    line_output, line_context, error)
 	    || !yt_maintenance_collect_mercenary_tax(&state->game,
-	    state->port_count, &tax, error)
+	    state->port_count, &tax_pool, &fleet_strength, error)
 	    || !yt_maintenance_compose_mercenary_phase(
 	    NULL, 0U,
-	    tax.tax_pool, false, 0.0f, &output))
+	    tax_pool, false, 0.0f, &output))
 		return false;
-	if (tax.tax_pool != 0.0f
+	if (tax_pool != 0.0f
 	    && (!maintenance_emit_output_row(&output,
 	    YT_MAINT_ROW_MERCENARY_TAX_REPORT,
 	    line_output, line_context, error)
@@ -640,7 +640,7 @@ yt_maintenance_mercenaries_run(struct maint_state *state,
 		return false;
 	if (rebuilt) {
 		if (!yt_maintenance_compose_mercenary_phase(
-		    NULL, 0U, tax.tax_pool, true, 0.0f,
+		    NULL, 0U, tax_pool, true, 0.0f,
 		    &output)
 		    || !maintenance_emit_output_row(&output,
 		    YT_MAINT_ROW_MERCENARY_REBUILD_BLANK,
@@ -652,12 +652,12 @@ yt_maintenance_mercenaries_run(struct maint_state *state,
 			return false;
 	}
 	if (!yt_maintenance_place_mercenary_fleets(&state->game,
-	    state->sector_count, tax.fleet_strength, &hired, error))
+	    state->sector_count, fleet_strength, &hired, error))
 		return false;
 	if (hired != 0.0f
 	    && (!yt_maintenance_compose_mercenary_phase(
 	    NULL, 0U,
-	    tax.tax_pool, rebuilt, hired, &output)
+	    tax_pool, rebuilt, hired, &output)
 	    || !maintenance_emit_output_row(&output, YT_MAINT_ROW_MERCENARY_HIRED,
 	    line_output, line_context, error)
 	    || !maintenance_news_output_row(&output,

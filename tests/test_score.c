@@ -4490,12 +4490,13 @@ check_maintenance_mercenary_tax_pass(void)
 	static const float treasuries[] = {99.0f, 100.0f, 101.0f};
 	static const float expected_treasuries[] = {90.0f, 90.0f, 91.0f};
 	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x20, 0x00};
-	struct yt_maintenance_mercenary_tax_result tax;
 	struct yt_record before[4];
 	struct yt_record after;
 	struct yt_record expected;
 	struct yt_game game;
 	struct yt_error error;
+	float tax_pool;
+	float fleet_strength;
 	int record;
 	bool valid = false;
 
@@ -4520,9 +4521,9 @@ check_maintenance_mercenary_tax_pass(void)
 		    &before[record], &error))
 			goto done;
 	}
-	if (!yt_maintenance_collect_mercenary_tax(&game, 4, &tax, &error)
-	    || tax.tax_pool != 29.0f || tax.fleet_strength != 2.0f
-	    || tax.taxed_ports != 3)
+	if (!yt_maintenance_collect_mercenary_tax(&game, 4, &tax_pool,
+	    &fleet_strength, &error)
+	    || tax_pool != 29.0f || fleet_strength != 2.0f)
 		goto done;
 	for (record = 0; record < 4; ++record) {
 		if (!yt_database_read(&game.database, (size_t)record + 2U,
@@ -4536,12 +4537,15 @@ check_maintenance_mercenary_tax_pass(void)
 		if (memcmp(after.bytes, expected.bytes, YT_RECORD_SIZE) != 0)
 			goto done;
 	}
-	if (!yt_maintenance_collect_mercenary_tax(&game, 0, &tax, &error)
-	    || tax.tax_pool != 0.0f || tax.fleet_strength != 0.0f
-	    || tax.taxed_ports != 0
-	    || yt_maintenance_collect_mercenary_tax(NULL, 0, &tax, &error)
-	    || yt_maintenance_collect_mercenary_tax(&game, -1, &tax, &error)
-	    || yt_maintenance_collect_mercenary_tax(&game, 0, NULL, &error))
+	if (!yt_maintenance_collect_mercenary_tax(&game, 0, &tax_pool,
+	    &fleet_strength, &error)
+	    || tax_pool != 0.0f || fleet_strength != 0.0f
+	    || yt_maintenance_collect_mercenary_tax(NULL, 0, &tax_pool,
+	    &fleet_strength, &error)
+	    || yt_maintenance_collect_mercenary_tax(&game, -1, &tax_pool,
+	    &fleet_strength, &error)
+	    || yt_maintenance_collect_mercenary_tax(&game, 0, NULL,
+	    &fleet_strength, &error))
 		goto done;
 	valid = true;
 

@@ -145,12 +145,6 @@ struct yt_maintenance_planet_result {
 	uint64_t draws_consumed;
 };
 
-struct yt_maintenance_mercenary_tax_result {
-	float tax_pool;
-	float fleet_strength;
-	int taxed_ports;
-};
-
 bool yt_maintenance_xannor_should_retarget(float group_location,
     float group_size);
 bool yt_maintenance_xannor_route_complete(float group_location,
@@ -205,7 +199,7 @@ bool yt_maintenance_compose_mercenary_phase(const uint8_t *blank,
 bool yt_maintenance_compose_mercenary_movement(double moving_fighters,
     float origin_sector, struct yt_maintenance_output_result *result);
 bool yt_maintenance_collect_mercenary_tax(struct yt_game *game,
-    int port_count, struct yt_maintenance_mercenary_tax_result *result,
+    int port_count, float *tax_pool, float *fleet_strength,
     struct yt_error *error);
 bool yt_maintenance_maintain_mercenary_base(struct yt_game *game,
     int sector_count, int planet_number, bool *rebuilt,
