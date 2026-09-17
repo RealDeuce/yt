@@ -41,9 +41,6 @@ struct yt_present_event {
 struct yt_present_time_state {
 	uint8_t text[64];
 	size_t text_length;
-	float remaining_minutes;
-	uint8_t seconds_text[16];
-	size_t seconds_length;
 };
 
 struct yt_present_state {

@@ -734,7 +734,6 @@ format_remaining(float deadline, float timer,
 	int second_length;
 	size_t length;
 
-	time->remaining_minutes = remaining;
 	minute_length = qb_str_single(minutes, sizeof(minutes), whole);
 	second_length = qb_str_single(seconds, sizeof(seconds), seconds_value);
 
@@ -744,8 +743,7 @@ format_remaining(float deadline, float timer,
 	if (second_length == 2)
 		++length;
 	length += (size_t)second_length - 1U + 2U;
-	if (length > sizeof(time->text)
-	    || (size_t)second_length - 1U > sizeof(time->seconds_text))
+	if (length > sizeof(time->text))
 		return YT_PRESENT_CAPACITY;
 	memcpy(time->text, minutes, (size_t)minute_length);
 	time->text[minute_length] = ':';
@@ -757,9 +755,6 @@ format_remaining(float deadline, float timer,
 	time->text_length += (size_t)second_length - 1U;
 	time->text[time->text_length++] = ' ';
 	time->text[time->text_length++] = ' ';
-	memcpy(time->seconds_text, seconds + 1,
-	    (size_t)second_length - 1U);
-	time->seconds_length = (size_t)second_length - 1U;
 	return YT_PRESENT_OK;
 }
 

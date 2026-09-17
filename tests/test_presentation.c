@@ -3897,8 +3897,6 @@ test_time_helpers(void)
 	    == YT_PRESENT_OK);
 	CHECK(time.text_length == 7U
 	    && memcmp(time.text, " 5:59  ", 7U) == 0);
-	CHECK(time.remaining_minutes > 5.99f
-	    && time.remaining_minutes < 6.0f);
 
 	current = state(true);
 	CHECK(yt_present_low_time((const uint8_t *)" 5:59  ", 7,
