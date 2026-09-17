@@ -136,7 +136,7 @@ yt_session_bribe_deployed(struct yt_session *session,
 	name = (const uint8_t *)session->door->identity.real_first;
 	name_length = strlen(session->door->identity.real_first);
 
-	if (session->combat.hostile_owner != -2.0f) {
+	if (session->combat.hostile_owner != -2) {
 		if (!bribe_name_row(ordinary_prefix,
 		    sizeof(ordinary_prefix) - 1U, name, name_length, bang,
 		    sizeof(bang) - 1U, row, sizeof(row), &row_length)

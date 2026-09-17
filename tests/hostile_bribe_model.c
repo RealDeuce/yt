@@ -212,7 +212,7 @@ test_hostile_bribe_run(struct test_hostile_bribe_state *state,
 	state->route = YT_HOSTILE_BRIBE_INCOMPLETE;
 	state->complete = false;
 
-	if (state->owner != -2.0f) {
+	if (state->owner != -2) {
 		state->branch = YT_HOSTILE_BRIBE_ORDINARY_REFUSAL;
 		if (!bribe_name_row(ordinary_prefix,
 		    sizeof(ordinary_prefix) - 1U, state->real_first_name,

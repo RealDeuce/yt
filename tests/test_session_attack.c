@@ -262,7 +262,7 @@ test_accepted_bribe(void)
 	session.door = &door;
 	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
-	session.combat.hostile_owner = -2.0f;
+	session.combat.hostile_owner = -2;
 	session.combat.deployed_fighters = 10.0;
 	session.combat.ship_fighters = 20.0;
 	session.combat.ship_shields = 7.0f;

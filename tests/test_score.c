@@ -9361,7 +9361,7 @@ static const struct test_hostile_surrender_ops hostile_surrender_ops = {
 
 static void
 hostile_surrender_fixture(struct hostile_surrender_tape *tape,
-    struct test_hostile_surrender_state *state, float owner,
+    struct test_hostile_surrender_state *state, int owner,
     enum yt_hostile_surrender_answer answer)
 {
 	static const uint8_t cached_name[] = {'A', 0, 'B'};
@@ -9428,13 +9428,13 @@ check_hostile_surrender_transaction(void)
 	struct yt_error error;
 	size_t failure;
 
-	hostile_surrender_fixture(&tape, &state, 2.0f,
+	hostile_surrender_fixture(&tape, &state, 2,
 	    YT_HOSTILE_SURRENDER_ANSWER_EMPTY);
 	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL)
 	    || !state.accepted
 	    || state.ship_fighters != 21.0 || state.current.fighters != 21.0f
-	    || state.deployed_remaining != 0.0 || state.fighter_owner != 0.0f
+	    || state.deployed_remaining != 0.0 || state.fighter_owner != 0
 	    || tape.calls != YT_ARRAY_LEN(accepted_events)
 	    || memcmp(tape.events, accepted_events, sizeof(accepted_events)) != 0
 	    || tape.latch_store_count != 1U
@@ -9467,7 +9467,7 @@ check_hostile_surrender_transaction(void)
 	for (failure = 0U; failure < YT_ARRAY_LEN(failure_positions); ++failure) {
 		size_t position = failure_positions[failure];
 
-		hostile_surrender_fixture(&tape, &state, 2.0f,
+		hostile_surrender_fixture(&tape, &state, 2,
 		    YT_HOSTILE_SURRENDER_ANSWER_YES);
 		tape.fail_at = position;
 		yt_error_clear(&error);
@@ -9487,17 +9487,17 @@ check_hostile_surrender_transaction(void)
 			return false;
 	}
 
-	hostile_surrender_fixture(&tape, &state, 2.0f,
+	hostile_surrender_fixture(&tape, &state, 2,
 	    YT_HOSTILE_SURRENDER_ANSWER_NO);
 	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || state.accepted
 	    || tape.calls != 8U || tape.news_length != 0U
 	    || tape.latch_store_count != 1U
 	    || state.ship_fighters != 11.0
-	    || state.deployed_remaining != 10.0 || state.fighter_owner != 2.0f)
+	    || state.deployed_remaining != 10.0 || state.fighter_owner != 2)
 		return false;
 
-	hostile_surrender_fixture(&tape, &state, -1.0f,
+	hostile_surrender_fixture(&tape, &state, -1,
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
 	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || state.accepted || tape.calls != 7U
@@ -9512,7 +9512,7 @@ check_hostile_surrender_transaction(void)
 	    xannor, sizeof(xannor) - 1U) != 0)
 		return false;
 
-	hostile_surrender_fixture(&tape, &state, -2.0f,
+	hostile_surrender_fixture(&tape, &state, -2,
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
 	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || state.accepted || tape.calls != 7U
@@ -9706,7 +9706,7 @@ hostile_persistence_fixture(struct hostile_persistence_tape *tape,
 		.shields = 6.25f,
 		.deployed_fighters = 0.0,
 		.defender_loss = 2.0,
-		.old_owner = -2.0f,
+		.old_owner = -2,
 		.cached_player_name = cached_name,
 		.cached_player_name_length = sizeof(cached_name),
 		.owner_label = owner_label,
@@ -9958,7 +9958,7 @@ hostile_tail_fixture(struct hostile_tail_tape *tape,
 	tape->player.sector = 7.0f;
 	*state = (struct test_hostile_attack_tail_state){
 		.current_player_record = 2,
-		.old_owner = -1.0f,
+		.old_owner = -1,
 		.defender_loss = 512000.0,
 		.deployed_fighters = 0.0,
 		.ship_fighters = 19.0,
@@ -10051,7 +10051,7 @@ check_hostile_attack_tail_transaction(void)
 		return false;
 
 	hostile_tail_fixture(&tape, &state);
-	state.old_owner = -2.0f;
+	state.old_owner = -2;
 	state.deployed_fighters = 1.0;
 	if (!test_hostile_attack_tail_run(&state, &hostile_tail_ops, &tape, NULL)
 	    || tape.calls != 1U || tape.events[0] != HOSTILE_TAIL_RANDOM)
@@ -10450,7 +10450,7 @@ check_hostile_attack_combat_transaction(void)
 	    || state.quantum != 1.0f
 	    || tape.ship_store_count != 1U
 	    || tape.stored_ship_fighters != 2.0 || tape.ship_store_at != 6U
-	    || state.old_owner != 3.0f
+	    || state.old_owner != 3
 	    || tape.sound_selector_count != 1U || tape.sound_selector_at != 2U
 	    || memcmp(tape.sound_selector_raw, selector_two,
 	    sizeof(selector_two)) != 0
@@ -10527,7 +10527,7 @@ check_hostile_attack_combat_transaction(void)
 	    sizeof(surrender_events)) != 0
 	    || tape.persistence_input.ship_fighters != 21.0
 	    || tape.persistence_input.deployed_fighters != 0.0
-	    || tape.persistence_input.old_owner != 2.0f
+	    || tape.persistence_input.old_owner != 2
 	    || state.sector.fighter_owner != 0.0f)
 		return false;
 
@@ -11014,7 +11014,7 @@ hostile_bribe_fixture(struct hostile_bribe_tape *tape,
 	*state = (struct test_hostile_bribe_state){
 		.current_player_record = 2,
 		.current_sector = 733,
-		.owner = -2.0f,
+		.owner = -2,
 		.cached_defenders = 10.0f,
 		.ship_fighters = 20.0,
 		.shields = 5.0f,
@@ -11082,13 +11082,13 @@ check_hostile_bribe_transaction(void)
 
 	/* Ordinary quiet, Xannor force and occupied-planet partitions. */
 	hostile_bribe_fixture(&tape, &state);
-	state.owner = 3.0f;
+	state.owner = 3;
 	if (!test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.route != YT_HOSTILE_BRIBE_SCANNER
 	    || state.draws_consumed != 1U || tape.calls != 2U)
 		return false;
 	hostile_bribe_fixture(&tape, &state);
-	state.owner = -1.0f;
+	state.owner = -1;
 	if (!test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.route != YT_HOSTILE_BRIBE_COMBAT
 	    || !state.forced_attack
@@ -11155,7 +11155,7 @@ check_hostile_bribe_transaction(void)
 
 	/* Commitment conversion failure retains the selected forced branch. */
 	hostile_bribe_fixture(&tape, &state);
-	state.owner = -1.0f;
+	state.owner = -1;
 	state.ship_fighters = HUGE_VAL;
 	yt_error_clear(&error);
 	if (test_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, &error)
@@ -12864,15 +12864,15 @@ check_hostile_menu_front(void)
 	    || !yt_hostile_attack_loses_attacker(0.0f, 0.44f)
 	    || yt_hostile_attack_loses_attacker(0.0f,
 	    0.44999998807907104f)
-	    || yt_hostile_surrender_route(2.0f)
+	    || yt_hostile_surrender_route(2)
 	    != YT_HOSTILE_SURRENDER_PLAYER
-	    || yt_hostile_surrender_route(1.0f)
+	    || yt_hostile_surrender_route(1)
 	    != YT_HOSTILE_SURRENDER_QUIET
-	    || yt_hostile_surrender_route(0.0f)
+	    || yt_hostile_surrender_route(0)
 	    != YT_HOSTILE_SURRENDER_QUIET
-	    || yt_hostile_surrender_route(-1.0f)
+	    || yt_hostile_surrender_route(-1)
 	    != YT_HOSTILE_SURRENDER_XANNOR
-	    || yt_hostile_surrender_route(-2.0f)
+	    || yt_hostile_surrender_route(-2)
 	    != YT_HOSTILE_SURRENDER_MERCENARY
 	    || yt_xannor_attack_bonus(512000.0, 98.0f, 100.0f) != 2.0f
 	    || yt_xannor_attack_bonus(1280000.0, 99.0f, 100.0f) != 1.0f
@@ -12921,14 +12921,14 @@ check_hostile_menu_front(void)
 
 		if (threshold != 20.0
 		    || yt_bribe_offer_threshold(precise, 0.0f) != precise
-		    || !yt_bribe_ordinary_forces(3.0f, precise,
+		    || !yt_bribe_ordinary_forces(3, precise,
 		    16777215.25, 0.0f)
 		    || !yt_bribe_mercenary_forces(precise, 16777215.25,
 		    1.0f, 1.0f, false)
 		    || !yt_bribe_offer_accepted(20.0f, 20.0f, threshold)
 		    || yt_bribe_offer_accepted(19.0f, 20.0f, threshold)
-		    || !yt_bribe_ordinary_forces(-1.0f, 1.0f, 10.0f, 1.0f)
-		    || yt_bribe_ordinary_forces(3.0f, 10.0f, 5.0f,
+		    || !yt_bribe_ordinary_forces(-1, 1.0f, 10.0f, 1.0f)
+		    || yt_bribe_ordinary_forces(3, 10.0f, 5.0f,
 		    0.33000001311302185f)
 		    || !yt_bribe_mercenary_forces(10.0f, 20.0f,
 		    0.049999997f, 0.0f, false)

@@ -26815,7 +26815,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    &direct_warp_attack_combat_ops, &join, &error));
 		CHECK(combat.complete
 		    && combat.route == YT_HOSTILE_ATTACK_COMBAT_NORMAL
-		    && combat.old_owner == 2.0f && combat.old_count == 1250.0
+		    && combat.old_owner == 2 && combat.old_count == 1250.0
 		    && combat.old_ship == 1000.0 && combat.attacker_loss == 1.0
 		    && combat.defender_loss == 0.0
 		    && combat.ship_fighters == 999.0
@@ -27023,7 +27023,7 @@ test_direct_emergency_warp_hostile_attack_defenders_cleared(void)
 			    + sizeof(body) - 1U, return_bytes, return_length) == 0);
 			CHECK(combat.complete
 			    && combat.route == YT_HOSTILE_ATTACK_COMBAT_NORMAL
-			    && combat.old_owner == 2.0f && combat.old_count == 1.0
+			    && combat.old_owner == 2 && combat.old_count == 1.0
 			    && combat.old_ship == 3.0 && combat.attacker_loss == 0.0
 			    && combat.defender_loss == 1.0
 			    && combat.ship_fighters == 3.0
@@ -27526,7 +27526,7 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 		{false, true, (const uint8_t *)"WT", 2U, 1223U},
 	};
 	static const struct {
-		float owner;
+		int owner;
 		const uint8_t *owner_label;
 		size_t owner_label_length;
 		const uint8_t *amount_response;
@@ -27617,7 +27617,7 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 			joined.cycle = &cycle;
 			joined.attack = &attack;
 			joined.combat = &combat;
-			joined.owner = origins[origin].owner;
+			joined.owner = (float)origins[origin].owner;
 			joined.owner_label = origins[origin].owner_label;
 			joined.owner_label_length =
 			    origins[origin].owner_label_length;

@@ -351,7 +351,7 @@ enum yt_hostile_attack_admission yt_hostile_attack_admit(
 float yt_hostile_attack_quantum(double remaining_attacker,
     double remaining_defender);
 bool yt_hostile_attack_loses_attacker(float cloak, float draw);
-enum yt_hostile_surrender_route yt_hostile_surrender_route(float owner);
+enum yt_hostile_surrender_route yt_hostile_surrender_route(int owner);
 bool yt_fighter_shield_spill_step(double *fighters, float *shields,
     float draw);
 bool yt_fighter_shield_spill_rows(double fighters, float shields,
@@ -365,7 +365,7 @@ bool yt_xannor_attack_reward_rows(const uint8_t *name, size_t name_length,
     uint8_t *news, size_t news_capacity, size_t *news_length);
 float yt_xannor_attack_bonus(double defenders_destroyed, float turns,
     float turns_per_day);
-bool yt_bribe_ordinary_forces(float owner, double defenders,
+bool yt_bribe_ordinary_forces(int owner, double defenders,
     double ship_fighters, float draw);
 bool yt_bribe_mercenary_forces(double defenders, double ship_fighters,
     float first, float second, bool sticky);

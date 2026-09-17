@@ -112,7 +112,7 @@ test_hostile_attack_persistence_run(
 		    state->owner_label, state->owner_label_length)
 		    || !ops->append_news(context, news, position, error))
 			return false;
-		state->mercenaries_hurt = state->old_owner == -2.0f;
+		state->mercenaries_hurt = state->old_owner == -2;
 	}
 	return true;
 }
@@ -172,7 +172,7 @@ test_hostile_attack_combat_run(
 	if (!ops->read_sector(context, state->current_sector,
 	    &state->opened_sector, error))
 		return false;
-	state->old_owner = qb_mbf32_decode(
+	state->old_owner = (int)qb_mbf32_decode(
 	    &state->opened_sector.record.bytes[YT_F85]);
 	if (!ops->read_player(context, state->current_player_record,
 	    &state->current, error))
@@ -229,7 +229,7 @@ test_hostile_attack_combat_run(
 				state->deployed_remaining =
 				    state->surrender.deployed_remaining;
 				state->sector.fighter_owner =
-				    state->surrender.fighter_owner;
+				    (float)state->surrender.fighter_owner;
 				state->current.fighters =
 				    (float)state->ship_fighters;
 				ops->cache_player(context, &state->current);
@@ -385,7 +385,7 @@ test_hostile_attack_tail_run(struct test_hostile_attack_tail_state *state,
 	    || (state->cached_player_name_length != 0U
 	    && state->cached_player_name == NULL))
 		return false;
-	if (state->old_owner == -1.0f && state->defender_loss > 0.0) {
+	if (state->old_owner == -1 && state->defender_loss > 0.0) {
 		if (!ops->read_player(context, state->current_player_record,
 		    &state->current, error))
 			return false;
@@ -424,7 +424,7 @@ test_hostile_attack_tail_run(struct test_hostile_attack_tail_state *state,
 		    || !ops->present(context, defeated, defeated_length,
 		    YT_HOSTILE_ATTACK_TAIL_DEFEATED_ROW, error))
 			return false;
-		if (state->old_owner == -1.0f
+		if (state->old_owner == -1
 		    && state->current.sector == state->headquarters) {
 			if (!ops->victory(context, error))
 				return false;

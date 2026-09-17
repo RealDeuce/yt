@@ -179,7 +179,7 @@ test_hostile_attack_surrender_run(
 	    state->deployed_fighters);
 	state->current.fighters = (float)state->ship_fighters;
 	state->deployed_remaining = 0.0;
-	state->fighter_owner = 0.0f;
+	state->fighter_owner = 0;
 	ops->cache_forces(context, state->ship_fighters,
 	    state->deployed_remaining);
 	position = 0U;

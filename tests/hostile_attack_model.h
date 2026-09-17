@@ -16,7 +16,7 @@ struct test_hostile_attack_persistence_state {
 	float shields;
 	double deployed_fighters;
 	double defender_loss;
-	float old_owner;
+	int old_owner;
 	const uint8_t *cached_player_name;
 	size_t cached_player_name_length;
 	const uint8_t *owner_label;
@@ -30,7 +30,7 @@ struct test_hostile_attack_persistence_state {
 
 struct test_hostile_attack_tail_state {
 	int current_player_record;
-	float old_owner;
+	int old_owner;
 	double defender_loss;
 	double deployed_fighters;
 	double ship_fighters;
@@ -116,7 +116,7 @@ struct test_hostile_attack_combat_state {
 	size_t owner_label_length;
 	float turns_per_day;
 	float headquarters;
-	float old_owner;
+	int old_owner;
 	double old_count;
 	double old_ship;
 	double attacker_loss;

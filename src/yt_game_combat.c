@@ -38,13 +38,13 @@ yt_hostile_attack_loses_attacker(float cloak, float draw)
 }
 
 enum yt_hostile_surrender_route
-yt_hostile_surrender_route(float owner)
+yt_hostile_surrender_route(int owner)
 {
-	if (owner > 1.0f)
+	if (owner > 1)
 		return YT_HOSTILE_SURRENDER_PLAYER;
-	if (owner == -1.0f)
+	if (owner == -1)
 		return YT_HOSTILE_SURRENDER_XANNOR;
-	if (owner == -2.0f)
+	if (owner == -2)
 		return YT_HOSTILE_SURRENDER_MERCENARY;
 	return YT_HOSTILE_SURRENDER_QUIET;
 }
@@ -215,10 +215,10 @@ yt_xannor_attack_bonus(double defenders_destroyed, float turns,
 }
 
 bool
-yt_bribe_ordinary_forces(float owner, double defenders,
+yt_bribe_ordinary_forces(int owner, double defenders,
     double ship_fighters, float draw)
 {
-	return owner == -1.0f || (defenders > ship_fighters
+	return owner == -1 || (defenders > ship_fighters
 	    && draw < 0.33000001311302185f);
 }
 

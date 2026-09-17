@@ -70,7 +70,7 @@ enum test_hostile_bribe_output_kind {
 struct test_hostile_bribe_state {
 	int current_player_record;
 	int current_sector;
-	float owner;
+	int owner;
 	double cached_defenders;
 	double ship_fighters;
 	float shields;

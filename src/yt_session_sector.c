@@ -126,7 +126,7 @@ scanner_cache_hostile_sector(struct yt_session *session,
     const struct yt_sector *sector)
 {
 	session->combat.deployed_fighters = (double)sector->fighters;
-	session->combat.hostile_owner = sector->fighter_owner;
+	session->combat.hostile_owner = (int)sector->fighter_owner;
 }
 
 static bool

@@ -7,7 +7,7 @@
 
 struct hostile_surrender {
 	int current_player_record;
-	float old_owner;
+	int old_owner;
 	double attacker_loss;
 	double defender_loss;
 	double deployed_fighters;
@@ -18,7 +18,7 @@ struct hostile_surrender {
 	struct yt_player current;
 	double ship_fighters;
 	double deployed_remaining;
-	float fighter_owner;
+	int fighter_owner;
 	bool accepted;
 };
 
@@ -34,7 +34,7 @@ struct hostile_persistence {
 	float shields;
 	double deployed_fighters;
 	double defender_loss;
-	float old_owner;
+	int old_owner;
 	const uint8_t *cached_player_name;
 	size_t cached_player_name_length;
 	const uint8_t *owner_label;
@@ -48,7 +48,7 @@ struct hostile_persistence {
 
 struct hostile_tail {
 	int current_player_record;
-	float old_owner;
+	int old_owner;
 	double defender_loss;
 	double deployed_fighters;
 	double ship_fighters;
@@ -188,7 +188,7 @@ hostile_surrender_run(struct yt_session *session,
 	    state->defender_loss), state->deployed_fighters);
 	state->current.fighters = (float)state->ship_fighters;
 	state->deployed_remaining = 0.0;
-	state->fighter_owner = 0.0f;
+	state->fighter_owner = 0;
 	session->combat.ship_fighters = state->ship_fighters;
 	session->combat.deployed_fighters = state->deployed_remaining;
 	position = 0U;
@@ -263,7 +263,7 @@ hostile_attack_persistence_run(struct yt_session *session,
 		    state->owner_label, state->owner_label_length)
 		    || !yt_news_append_bytes(news, position, error))
 			return false;
-		state->mercenaries_hurt = state->old_owner == -2.0f;
+		state->mercenaries_hurt = state->old_owner == -2;
 	}
 	return true;
 }
@@ -282,7 +282,7 @@ hostile_attack_tail_run(struct yt_session *session,
 	float bonus;
 	float dominated_draw;
 
-	if (state->old_owner == -1.0f && state->defender_loss > 0.0) {
+	if (state->old_owner == -1 && state->defender_loss > 0.0) {
 		if (!session_read_combat_player(session,
 		    state->current_player_record, &state->current, error))
 			return false;
@@ -329,7 +329,7 @@ hostile_attack_tail_run(struct yt_session *session,
 		    || !session_present_paged_fragment(session, defeated,
 		    defeated_length))
 			return false;
-		if (state->old_owner == -1.0f
+		if (state->old_owner == -1
 		    && state->current.sector == state->headquarters) {
 			if (!yt_session_xannor_victory(session, error))
 				return false;
@@ -369,7 +369,7 @@ yt_session_attack_deployed(struct yt_session *session,
 	double defender_loss = 0.0;
 	double ship_fighters;
 	double deployed_remaining = old_count;
-	float old_owner;
+	int old_owner;
 	float quantum;
 	float last_draw;
 	int current_player_record = session_record(session);
@@ -386,7 +386,7 @@ yt_session_attack_deployed(struct yt_session *session,
 	    sizeof(cached_player_name_text), "%s", session->player.name);
 	if (!session_read_sector(session, current_sector, &opened_sector, error))
 		return false;
-	old_owner = opened_sector.fighter_owner;
+	old_owner = (int)opened_sector.fighter_owner;
 	if (!session_read_combat_player(session, current_player_record,
 	    &current, error))
 		return false;
@@ -456,7 +456,7 @@ yt_session_attack_deployed(struct yt_session *session,
 			if (surrendered) {
 				ship_fighters = surrender.ship_fighters;
 				deployed_remaining = surrender.deployed_remaining;
-				sector->fighter_owner = surrender.fighter_owner;
+				sector->fighter_owner = (float)surrender.fighter_owner;
 				current.fighters = (float)ship_fighters;
 				session->player = current;
 				(void)snprintf(session->player.name,

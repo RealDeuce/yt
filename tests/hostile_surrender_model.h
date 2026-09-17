@@ -29,7 +29,7 @@ enum yt_hostile_surrender_answer {
 
 struct test_hostile_surrender_state {
 	int current_player_record;
-	float old_owner;
+	int old_owner;
 	double attacker_loss;
 	double defender_loss;
 	double deployed_fighters;
@@ -40,7 +40,7 @@ struct test_hostile_surrender_state {
 	struct yt_player current;
 	double ship_fighters;
 	double deployed_remaining;
-	float fighter_owner;
+	int fighter_owner;
 	bool accepted;
 };
 

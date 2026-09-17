@@ -38,7 +38,7 @@ struct session_combat_state {
 	double ship_fighters;
 	float ship_shields;
 	double deployed_fighters;
-	float hostile_owner;
+	int hostile_owner;
 	uint8_t hostile_owner_label[160];
 	size_t hostile_owner_label_length;
 	bool mercenaries_hurt;
