@@ -320,28 +320,41 @@ yt_planet_update_record(struct yt_record *record,
 	if (elapsed > qb_mbf32_decode(updater_ten_s) || elapsed < 0.0f)
 		elapsed = qb_mbf32_decode(updater_ten_s);
 	if (!updater_encode_single(current_minute, work.current_minute, error,
-	    "planet updater minute MBF32")
-	    || !updater_encode_single(elapsed, elapsed_raw, error,
+	    "planet updater minute MBF32"))
+		return false;
+	if (!updater_encode_single(elapsed, elapsed_raw, error,
 	    "planet updater elapsed MBF32"))
 		return false;
 	updater_promote_single(elapsed_raw, elapsed_double);
 
 	if (!updater_contribution(quantity_raw[7], updater_ten_thousand_d, false,
-	    contribution_raw[1], error, "planet updater ore contribution")
-	    || !updater_contribution(quantity_raw[7], updater_twenty_thousand_d,
-	    false, contribution_raw[2], error, "planet updater organics contribution")
-	    || !updater_contribution(quantity_raw[7], updater_thirty_thousand_d,
-	    false, contribution_raw[3], error, "planet updater equipment contribution")
-	    || !updater_contribution(quantity_raw[7], updater_five_hundred_d, false,
-	    contribution_raw[4], error, "planet updater fighter contribution")
-	    || !updater_contribution(quantity_raw[7], updater_one_e_minus_five_d, true,
-	    contribution_raw[5], error, "planet updater missile contribution")
-	    || !updater_contribution(quantity_raw[7], updater_four_e_minus_six_d, true,
-	    contribution_raw[6], error, "planet updater mine contribution")
-	    || !updater_contribution(quantity_raw[7], updater_ten_thousand_d, false,
-	    contribution_raw[8], error, "planet updater force contribution")
-	    || !updater_contribution(quantity_raw[7], updater_four_e_minus_eight_d,
-	    true, contribution_raw[9], error, "planet updater plasma contribution"))
+	    contribution_raw[1], error, "planet updater ore contribution"))
+		return false;
+	if (!updater_contribution(quantity_raw[7], updater_twenty_thousand_d,
+	    false, contribution_raw[2], error,
+	    "planet updater organics contribution"))
+		return false;
+	if (!updater_contribution(quantity_raw[7], updater_thirty_thousand_d,
+	    false, contribution_raw[3], error,
+	    "planet updater equipment contribution"))
+		return false;
+	if (!updater_contribution(quantity_raw[7], updater_five_hundred_d, false,
+	    contribution_raw[4], error, "planet updater fighter contribution"))
+		return false;
+	if (!updater_contribution(quantity_raw[7], updater_one_e_minus_five_d,
+	    true, contribution_raw[5], error,
+	    "planet updater missile contribution"))
+		return false;
+	if (!updater_contribution(quantity_raw[7], updater_four_e_minus_six_d,
+	    true, contribution_raw[6], error,
+	    "planet updater mine contribution"))
+		return false;
+	if (!updater_contribution(quantity_raw[7], updater_ten_thousand_d, false,
+	    contribution_raw[8], error, "planet updater force contribution"))
+		return false;
+	if (!updater_contribution(quantity_raw[7], updater_four_e_minus_eight_d,
+	    true, contribution_raw[9], error,
+	    "planet updater plasma contribution"))
 		return false;
 	for (index = 1U; index <= 9U; ++index)
 		contribution[index] = qb_mbf32_decode(contribution_raw[index]);
@@ -352,9 +365,11 @@ yt_planet_update_record(struct yt_record *record,
 	updater_promote_single(fraction_raw, fraction_double);
 	if (quantity_raw[7][7] != 0U) {
 		if (!updater_raw_binary(qb_mbf64_mul_raw, quantity_raw[7],
-		    fraction_double, scratch, error, "planet updater bank growth")
-		    || !updater_raw_binary(qb_mbf64_add_raw, quantity_raw[7], scratch,
-		    scratch_two, error, "planet updater bank total"))
+		    fraction_double, scratch, error,
+		    "planet updater bank growth"))
+			return false;
+		if (!updater_raw_binary(qb_mbf64_add_raw, quantity_raw[7],
+		    scratch, scratch_two, error, "planet updater bank total"))
 			return false;
 		memcpy(scratch, scratch_two, 8U);
 	}
@@ -364,12 +379,15 @@ yt_planet_update_record(struct yt_record *record,
 	    "planet updater bank INT"))
 		return false;
 
-	if (!updater_raw_binary(qb_mbf64_mul_raw, elapsed_double, quantity_raw[8],
-	    scratch, error, "planet updater force growth elapsed")
-	    || !updater_raw_binary(qb_mbf64_mul_raw, scratch,
+	if (!updater_raw_binary(qb_mbf64_mul_raw, elapsed_double,
+	    quantity_raw[8], scratch, error,
+	    "planet updater force growth elapsed"))
+		return false;
+	if (!updater_raw_binary(qb_mbf64_mul_raw, scratch,
 	    updater_one_percent_d, scratch_two, error,
-	    "planet updater force growth rate")
-	    || !updater_encode_single(qb_single_multiply(contribution[8], elapsed),
+	    "planet updater force growth rate"))
+		return false;
+	if (!updater_encode_single(qb_single_multiply(contribution[8], elapsed),
 	    increment_raw, error, "planet updater force reinforcement"))
 		return false;
 	updater_promote_single(increment_raw, increment_double);
@@ -377,8 +395,9 @@ yt_planet_update_record(struct yt_record *record,
 		memcpy(scratch, quantity_raw[8], 8U);
 	else {
 		if (!updater_raw_binary(qb_mbf64_add_raw, quantity_raw[8], scratch_two,
-		    scratch, error, "planet updater force growth total")
-		    || !updater_raw_binary(qb_mbf64_add_raw, scratch,
+		    scratch, error, "planet updater force growth total"))
+			return false;
+		if (!updater_raw_binary(qb_mbf64_add_raw, scratch,
 		    increment_double, scratch_two, error,
 		    "planet updater force reinforcement total"))
 			return false;
@@ -430,11 +449,14 @@ yt_planet_update_record(struct yt_record *record,
 				updater_promote_single(contribution_raw[index], increment_double);
 				if (!updater_raw_binary(qb_mbf64_div_raw,
 				    quantity_raw[index], updater_ten_d, scratch, error,
-				    "planet updater commodity catchup division")
-				    || !updater_raw_binary(qb_mbf64_add_raw, scratch,
+				    "planet updater commodity catchup division"))
+					return false;
+				if (!updater_raw_binary(qb_mbf64_add_raw, scratch,
 				    increment_double, scratch_two, error,
-				    "planet updater commodity catchup addition")
-				    || !updater_csng(scratch_two, production_raw[index], error,
+				    "planet updater commodity catchup addition"))
+					return false;
+				if (!updater_csng(scratch_two,
+				    production_raw[index], error,
 				    "planet updater commodity catchup CSNG"))
 					return false;
 				production[index] = qb_mbf32_decode(production_raw[index]);
@@ -460,32 +482,43 @@ yt_planet_update_record(struct yt_record *record,
 
 	memcpy(float_residue, quantity_raw[9] + 4U, 4U);
 	for (index = 1U; index <= 3U; ++index) {
-		if (!updater_encode_single(production[index], production_raw[index], error,
-		    "planet updater base production MBF32")
-		    || !updater_subtract_single(production_raw[index], contribution_raw[index],
-		    float_residue, persisted[index], error))
+		if (!updater_encode_single(production[index],
+		    production_raw[index], error,
+		    "planet updater base production MBF32"))
+			return false;
+		if (!updater_subtract_single(production_raw[index],
+		    contribution_raw[index], float_residue, persisted[index],
+		    error))
 			return false;
 		memcpy(float_residue, persisted[index], 4U);
 	}
 	memcpy(persisted[0], work.current_day, 4U);
 	memcpy(persisted[9], work.current_minute, 4U);
 	if (!updater_csng(quantity_raw[1], persisted[4], error,
-	    "planet updater stock ore CSNG")
-	    || !updater_csng(quantity_raw[2], persisted[5], error,
-	    "planet updater stock organics CSNG")
-	    || !updater_csng(quantity_raw[3], persisted[6], error,
-	    "planet updater stock equipment CSNG")
-	    || !updater_csng(quantity_raw[5], persisted[7], error,
-	    "planet updater missiles CSNG")
-	    || !updater_csng(quantity_raw[8], persisted[8], error,
-	    "planet updater forces CSNG")
-	    || !updater_csng(quantity_raw[9], persisted[10], error,
-	    "planet updater plasma CSNG")
-	    || !updater_csng(quantity_raw[7], persisted[11], error,
-	    "planet updater bank CSNG")
-	    || !updater_csng(quantity_raw[6], persisted[12], error,
-	    "planet updater mines CSNG")
-	    || !updater_csng(quantity_raw[4], persisted[13], error,
+	    "planet updater stock ore CSNG"))
+		return false;
+	if (!updater_csng(quantity_raw[2], persisted[5], error,
+	    "planet updater stock organics CSNG"))
+		return false;
+	if (!updater_csng(quantity_raw[3], persisted[6], error,
+	    "planet updater stock equipment CSNG"))
+		return false;
+	if (!updater_csng(quantity_raw[5], persisted[7], error,
+	    "planet updater missiles CSNG"))
+		return false;
+	if (!updater_csng(quantity_raw[8], persisted[8], error,
+	    "planet updater forces CSNG"))
+		return false;
+	if (!updater_csng(quantity_raw[9], persisted[10], error,
+	    "planet updater plasma CSNG"))
+		return false;
+	if (!updater_csng(quantity_raw[7], persisted[11], error,
+	    "planet updater bank CSNG"))
+		return false;
+	if (!updater_csng(quantity_raw[6], persisted[12], error,
+	    "planet updater mines CSNG"))
+		return false;
+	if (!updater_csng(quantity_raw[4], persisted[13], error,
 	    "planet updater fighters CSNG"))
 		return false;
 	for (index = 0U; index < YT_ARRAY_LEN(persisted_offsets); ++index) {
