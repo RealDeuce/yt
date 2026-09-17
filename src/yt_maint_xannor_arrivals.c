@@ -34,7 +34,7 @@ xannor_quantum(float first, float second)
 static bool
 xannor_player_fighter_phase(struct yt_random *random,
     float *player_fighters, float original_xannor,
-    struct yt_maintenance_xannor_player_result *result,
+    float *player_fighter_losses, float *xannor_fighter_losses,
     struct yt_error *error)
 {
 	float original_player = *player_fighters;
@@ -57,18 +57,18 @@ xannor_player_fighter_phase(struct yt_random *random,
 	player_losses = fminf(player_losses, original_player);
 	xannor_losses = fminf(xannor_losses, original_xannor);
 	*player_fighters = qb_single_subtract(original_player, player_losses);
-	result->player_fighter_losses = player_losses;
-	result->xannor_losses = xannor_losses;
+	*player_fighter_losses = player_losses;
+	*xannor_fighter_losses = xannor_losses;
 	return true;
 }
 
 static bool
 xannor_player_shield_phase(struct yt_random *random, float player_fighters,
     float *player_shields, float original_xannor,
-    struct yt_maintenance_xannor_player_result *result,
+    float *xannor_fighter_losses,
     struct yt_error *error)
 {
-	float xannor_losses = result->xannor_losses;
+	float xannor_losses = *xannor_fighter_losses;
 
 	while (player_fighters < 1.0f
 	    && xannor_losses < original_xannor && *player_shields > 0.0f) {
@@ -85,7 +85,7 @@ xannor_player_shield_phase(struct yt_random *random, float player_fighters,
 	}
 	if (*player_shields < 0.0f)
 		*player_shields = 0.0f;
-	result->xannor_losses = fminf(xannor_losses, original_xannor);
+	*xannor_fighter_losses = fminf(xannor_losses, original_xannor);
 	return true;
 }
 
@@ -531,7 +531,8 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	float original_shields;
 	float remaining_fighters;
 	float remaining_shields;
-	struct yt_maintenance_xannor_player_result combat = {0};
+	float player_fighter_losses;
+	float xannor_fighter_losses;
 	uint8_t stored_name[YT_TEXT_FIELD_SIZE];
 	uint8_t line[420];
 	char radio_line[420];
@@ -562,14 +563,15 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	original_shields = player.shields;
 	remaining_shields = original_shields;
 	if (!xannor_player_fighter_phase(&game->random, &player.fighters,
-	    original_xannor, &combat, error))
+	    original_xannor, &player_fighter_losses, &xannor_fighter_losses,
+	    error))
 		return false;
 	remaining_fighters = player.fighters;
-	if (combat.player_fighter_losses > 0.0f) {
+	if (player_fighter_losses > 0.0f) {
 		char losses[48];
 
 		qb_str_double(losses, sizeof(losses),
-		    (double)combat.player_fighter_losses);
+		    (double)player_fighter_losses);
 		snprintf(radio_line, sizeof(radio_line),
 		    "Ha! We kilt%s of yoor fyterz hoo-man slyme!", losses);
 		if (!yt_radio_append_maintenance(radio_line, -1.0f,
@@ -583,7 +585,8 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	    || !yt_database_write(&game->database, (size_t)player_record,
 	    &player.record, error)
 	    || !xannor_player_shield_phase(&game->random, player.fighters,
-	    &remaining_shields, original_xannor, &combat, error))
+	    &remaining_shields, original_xannor, &xannor_fighter_losses,
+	    error))
 		return false;
 	if (original_shields - remaining_shields > 0.0f) {
 		char losses[48];
@@ -603,7 +606,8 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	    || !yt_database_write(&game->database, (size_t)player_record,
 	    &player.record, error))
 		return false;
-	*xannor_fighters = qb_single_subtract(original_xannor, combat.xannor_losses);
+	*xannor_fighters = qb_single_subtract(original_xannor,
+	    xannor_fighter_losses);
 	killed = player.shields < 1.0f;
 	if (killed) {
 		if (!yt_game_read_player(game, player_record, &player, error)
@@ -618,7 +622,8 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 		return false;
 	stored_name_length = yt_player_stored_name(&player, stored_name);
 	if (!yt_maintenance_xannor_player_line_bytes(stored_name,
-	    stored_name_length, &combat, *xannor_fighters, player.shields,
+	    stored_name_length, player_fighter_losses, xannor_fighter_losses,
+	    *xannor_fighters, player.shields,
 	    killed, line, sizeof(line), &line_length)
 	    || !yt_news_append_bytes(line, line_length, error)
 	    || !line_output(line_context, line, line_length, error))

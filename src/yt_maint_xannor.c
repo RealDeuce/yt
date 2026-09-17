@@ -300,8 +300,8 @@ yt_maintenance_xannor_defense(struct yt_random *random, float *group_size,
 
 bool
 yt_maintenance_xannor_player_line_bytes(const uint8_t *player_name,
-    size_t player_name_length,
-    const struct yt_maintenance_xannor_player_result *result,
+    size_t player_name_length, float player_fighter_losses,
+    float xannor_fighter_losses,
     float xannor_fighters, float player_shields, bool player_killed,
     uint8_t *line, size_t line_size, size_t *line_length)
 {
@@ -319,13 +319,13 @@ yt_maintenance_xannor_player_line_bytes(const uint8_t *player_name,
 	int shields_length;
 
 	if ((player_name == NULL && player_name_length != 0U)
-	    || result == NULL || line == NULL || line_length == NULL)
+	    || line == NULL || line_length == NULL)
 		return false;
 	*line_length = 0U;
 	player_length = qb_str_double(player_losses, sizeof(player_losses),
-	    (double)result->player_fighter_losses);
+	    (double)player_fighter_losses);
 	xannor_length = qb_str_double(xannor_losses, sizeof(xannor_losses),
-	    (double)result->xannor_losses);
+	    (double)xannor_fighter_losses);
 	shields_length = qb_str_double(shields, sizeof(shields),
 	    (double)player_shields);
 	if (player_length < 0 || xannor_length < 0 || shields_length < 0

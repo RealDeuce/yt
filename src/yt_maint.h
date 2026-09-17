@@ -156,11 +156,6 @@ struct yt_maintenance_route_cache {
 	int sector_count;
 };
 
-struct yt_maintenance_xannor_player_result {
-	float player_fighter_losses;
-	float xannor_losses;
-};
-
 typedef bool (*yt_maintenance_score_line_fn)(void *context,
     const uint8_t *line, size_t length, struct yt_error *error);
 
@@ -333,8 +328,8 @@ bool yt_maintenance_mercenary_stays(float planet_link, float draw);
 
 bool yt_maintenance_mercenary_attacks(float defense_owner, float draw);
 bool yt_maintenance_xannor_player_line_bytes(const uint8_t *player_name,
-    size_t player_name_length,
-    const struct yt_maintenance_xannor_player_result *result,
+    size_t player_name_length, float player_fighter_losses,
+    float xannor_losses,
     float xannor_fighters, float player_shields, bool player_killed,
     uint8_t *line, size_t line_size, size_t *line_length);
 bool yt_maintenance_xannor_player_arrival(struct yt_game *game,
