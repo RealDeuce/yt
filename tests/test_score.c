@@ -454,8 +454,7 @@ check_projectile_damage_model(void)
 	memset(&target, 0, sizeof(target));
 	target.fighters = 1000.0f;
 	target.shields = 100.0f;
-	target.danger_scanner = 2.0f;
-	(void)yt_record_set_number(&target.record, YT_F113, 2.0f);
+	target.danger_scanner = -1.0f;
 	remaining = 2.5f;
 	tape.values = lethal_draws;
 	tape.count = YT_ARRAY_LEN(lethal_draws);
@@ -469,7 +468,7 @@ check_projectile_damage_model(void)
 	    || remaining != 0.5f || damage.fighters != 1000.0
 	    || damage.shields != 100.0f || damage.scanner_disabled
 	    || target.fighters != 0.0f || target.shields != 0.0f
-	    || target.danger_scanner != 2.0f)
+	    || target.danger_scanner != -1.0f)
 		return false;
 
 	memset(&target, 0, sizeof(target));
@@ -489,8 +488,7 @@ check_projectile_damage_model(void)
 	memset(&target, 0, sizeof(target));
 	target.fighters = 1.0f;
 	target.shields = 1.0f;
-	target.danger_scanner = 7.0f;
-	(void)yt_record_set_number(&target.record, YT_F113, 7.0f);
+	target.danger_scanner = -1.0f;
 	remaining = 101.5f;
 	tape.values = scanner_draws;
 	tape.count = YT_ARRAY_LEN(scanner_draws);
@@ -505,36 +503,19 @@ check_projectile_damage_model(void)
 	memset(&target, 0, sizeof(target));
 	target.fighters = 10.0f;
 	target.shields = 10.0f;
-	target.danger_scanner = 1.0f;
-	(void)yt_record_set_number(&target.record, YT_F113, 1.0f);
+	target.danger_scanner = -1.0f;
 	remaining = 1.0f;
 	tape.values = no_shield_draws;
 	tape.count = YT_ARRAY_LEN(no_shield_draws);
 	tape.position = 0U;
 	tape.fail_at = 1U;
 	yt_error_clear(&error);
-	if (yt_projectile_player_damage(&target, &remaining,
-	    &random, &damage, &error)
-	    || tape.position != 2U || remaining != 0.0f
-	    || target.fighters != 10.0f || target.shields != 10.0f
-	    || error.status != YT_IO_ERROR
-	    || strcmp(error.operation, "projectile RND") != 0)
-		return false;
-
-	memset(&target, 0, sizeof(target));
-	target.fighters = 10.0f;
-	target.shields = 10.0f;
-	target.danger_scanner = INFINITY;
-	(void)yt_record_set_number(&target.record, YT_F113, 32767.5f);
-	remaining = 1.0f;
-	tape.position = 0U;
-	tape.fail_at = SIZE_MAX;
-	yt_error_clear(&error);
 	return !yt_projectile_player_damage(&target, &remaining,
 	    &random, &damage, &error)
-	    && tape.position == 1U && remaining == 0.0f
-	    && error.status == YT_RANGE
-	    && strcmp(error.operation, "cruise missile scanner CINT") == 0;
+	    && tape.position == 2U && remaining == 0.0f
+	    && target.fighters == 10.0f && target.shields == 10.0f
+	    && error.status == YT_IO_ERROR
+	    && strcmp(error.operation, "projectile RND") == 0;
 }
 
 static bool

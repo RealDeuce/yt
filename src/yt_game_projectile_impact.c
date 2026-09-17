@@ -596,7 +596,6 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 	float original_shields;
 	float shield_damage = 0.0f;
 	float saved_missiles;
-	uint8_t scanner_raw[4];
 	float counter = 1.0f;
 	bool scanner_disabled = false;
 	size_t iterations = 0U;
@@ -607,32 +606,18 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 	original_fighters = (double)target->fighters;
 	original_shields = target->shields;
 	saved_missiles = *remaining;
-	memcpy(scanner_raw, target->record.bytes + YT_F113,
-	    sizeof(scanner_raw));
 	while (yt_projectile_damage_iteration(counter, saved_missiles)) {
-		bool overflow;
 		float value;
 		float scanner_product;
-		int32_t scanner;
 
 		++iterations;
 		*remaining = qb_single_subtract(*remaining, 1.0f);
 		if (!yt_random_next(random, &value, error))
 			return false;
 		scanner_product = qb_single_multiply(value, *remaining);
-		scanner = qb_cint_mbf32(scanner_raw, 0U, &overflow);
-		if (overflow) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s",
-				    "cruise missile scanner CINT");
-			}
-			return false;
-		}
-		if (scanner_product > 100.0f && scanner != 0) {
+		if (scanner_product > 100.0f
+		    && target->danger_scanner != 0.0f) {
 			target->danger_scanner = 0.0f;
-			memset(scanner_raw, 0, sizeof(scanner_raw));
 			scanner_disabled = true;
 		}
 		if (!yt_random_next(random, &value, error))
