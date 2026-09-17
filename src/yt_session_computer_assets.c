@@ -249,7 +249,7 @@ yt_session_computer_owned_planets(struct yt_session *session,
 		    (size_t)physical_record, &record, error))
 			return false;
 		yt_planet_decode(&planet, &record);
-		if (planet.owner == (float)current_player) {
+		if (planet.owner == current_player) {
 			uint8_t row[128];
 			char number[64];
 			size_t length = 0U;

@@ -368,7 +368,7 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
 	if (planet.name_length == 0U
-	    || planet.owner == -1.0f)
+	    || planet.owner == -1)
 		return true;
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
@@ -435,7 +435,7 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 			planet.stock[index] = cap;
 	}
 	if (planet.ground_forces <= 0.0f)
-		planet.owner = 0.0f;
+		planet.owner = 0;
 	destroyed = planet.production[0] == 0.0f
 	    && planet.production[1] == 0.0f
 	    && planet.production[2] == 0.0f;
@@ -461,7 +461,8 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 	}
 	planet.owner = mutated.owner;
 	planet.ground_forces = mutated.ground_forces;
-	if (!yt_record_set_number(&planet.record, YT_F73, planet.owner)
+	if (!yt_record_set_number(&planet.record, YT_F73,
+	    (float)planet.owner)
 	    || !yt_record_set_number(&planet.record, YT_F77,
 	    planet.ground_forces))
 		goto encode_error;

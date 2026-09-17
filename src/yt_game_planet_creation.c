@@ -51,14 +51,15 @@ yt_planet_creation_overlay(struct yt_planet *planet,
 	}
 	planet->mines = 0.0f;
 	planet->missiles = 0.0f;
-	planet->owner = (float)current_player_record;
+	planet->owner = current_player_record;
 	planet->ground_forces = 1.0f;
 	planet->plasma = 0.0f;
 	planet->bank = 0.0f;
 	planet->fighters = 30.0f;
 	(void)yt_record_set_raw_number(&planet->record, YT_F125, dirty_zero);
 	(void)yt_record_set_raw_number(&planet->record, YT_F69, dirty_zero);
-	(void)yt_record_set_number(&planet->record, YT_F73, planet->owner);
+	(void)yt_record_set_number(&planet->record, YT_F73,
+	    (float)planet->owner);
 	(void)yt_record_set_number(&planet->record, YT_F77, 1.0f);
 	(void)yt_record_set_number(&planet->record, YT_F113, 0.0f);
 	(void)yt_record_set_number(&planet->record, YT_F117, 0.0f);

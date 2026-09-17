@@ -74,8 +74,9 @@ yt_session_planet_garrison(struct yt_session *session, int logical_planet,
 		yt_present_set_blink(&session->presentation, 1.0f);
 		if (!session_present_paged_fragment(session, success, success_length))
 			return false;
-		planet.owner = (float)session_record(session);
-		if (!yt_record_set_number(&planet.record, YT_F73, planet.owner)
+		planet.owner = session_record(session);
+		if (!yt_record_set_number(&planet.record, YT_F73,
+		    (float)planet.owner)
 		    || !session_sound(session, YT_SOUND_CUE_ACTION,
 		    "planet garrison sound", error))
 			return false;

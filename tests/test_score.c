@@ -604,7 +604,7 @@ check_projectile_persistence_model(void)
 	expected = planet.record;
 	if (!yt_record_set_number(&expected, YT_F77, 8.5f)
 	    || !yt_record_set_number(&expected, YT_F73, -2.0f)
-	    || !yt_projectile_planet_ground_overlay(&planet, 8.5f, -2.0f)
+	    || !yt_projectile_planet_ground_overlay(&planet, 8.5f, -2)
 	    || memcmp(&planet.record, &expected, sizeof(expected)) != 0)
 		return false;
 
@@ -669,18 +669,18 @@ check_projectile_planet_damage_model(void)
 	yt_random_init(&random);
 	yt_test_random_use_provider(&random, projectile_damage_fill, &tape);
 	remaining = 2.0f;
-	if (!yt_projectile_planet_ground_damage(20.0f, 7.0f, &remaining,
+	if (!yt_projectile_planet_ground_damage(20.0f, 7, &remaining,
 	    &random, &ground, &error)
 	    || tape.position != 2U
-	    || ground.ground != 0.0f || ground.owner != 0.0f
+	    || ground.ground != 0.0f || ground.owner != 0
 	    || remaining != 0.0f)
 		return false;
 	tape.position = 0U;
 	remaining = 3.0f;
-	if (!yt_projectile_planet_ground_damage(-2.5f, 7.0f, &remaining,
+	if (!yt_projectile_planet_ground_damage(-2.5f, 7, &remaining,
 	    &random, &ground, &error)
 	    || tape.position != 0U
-	    || ground.ground != 0.0f || ground.owner != 0.0f
+	    || ground.ground != 0.0f || ground.owner != 0
 	    || remaining != 3.0f)
 		return false;
 
@@ -1846,7 +1846,7 @@ check_planet_landing_model(void)
 		planet.record.bytes[index] = (uint8_t)(index ^ 0x96U);
 	before = planet.record;
 	yt_planet_landing_vacancy_overlay(&planet, 2.0f, 7);
-	if (planet.ground_forces != 2.0f || planet.owner != 7.0f
+	if (planet.ground_forces != 2.0f || planet.owner != 7
 	    || yt_record_get_number(&planet.record, YT_F77) != 2.0f
 	    || yt_record_get_number(&planet.record, YT_F73) != 7.0f)
 		return false;
@@ -1857,7 +1857,7 @@ check_planet_landing_model(void)
 			return false;
 	}
 	yt_planet_landing_vacancy_overlay(&planet, 0.0f, 7);
-	return planet.owner == 0.0f
+	return planet.owner == 0
 	    && yt_record_get_number(&planet.record, YT_F73) == 0.0f;
 }
 
@@ -1938,8 +1938,8 @@ check_planet_assault_model(void)
 			return false;
 	}
 	planet_before = planet.record;
-	yt_planet_assault_victory_overlay(&planet, 7.0f, 5.9f);
-	if (planet.owner != 7.0f || planet.ground_forces != 5.0f
+	yt_planet_assault_victory_overlay(&planet, 7, 5.9f);
+	if (planet.owner != 7 || planet.ground_forces != 5.0f
 	    || yt_record_get_number(&planet.record, YT_F73) != 7.0f
 	    || yt_record_get_number(&planet.record, YT_F77) != 5.0f)
 		return false;
@@ -1951,7 +1951,7 @@ check_planet_assault_model(void)
 	}
 	planet_before = planet.record;
 	yt_planet_assault_failure_overlay(&planet, 3.9f);
-	if (planet.owner != 7.0f || planet.ground_forces != 3.0f)
+	if (planet.owner != 7 || planet.ground_forces != 3.0f)
 		return false;
 	for (index = 0U; index < YT_RECORD_SIZE; ++index) {
 		if ((index < YT_F77 || index >= YT_F77 + 4U)
@@ -3282,7 +3282,7 @@ check_maintenance_mercenary_phase_pass(void)
 	    || memcmp(news.data, expected_news, sizeof(expected_news) - 1U)
 	    != 0
 	    || !yt_game_read_planet(&game, 1, &planet, &error)
-	    || planet.owner != -2.0f || planet.ground_forces != 1.0f
+	    || planet.owner != -2 || planet.ground_forces != 1.0f
 	    || planet.bank != 1.0f)
 		goto done;
 	radio_file = fopen("YTRMSG.DAT", "rb");
@@ -4630,7 +4630,7 @@ check_maintenance_mercenary_rebuild_phase_pass(void)
 	    || !yt_game_read_sector(&game, 1, &sector, &error)
 	    || sector.planet != 1
 	    || !yt_game_read_planet(&game, 1, &planet, &error)
-	    || planet.owner != -2.0f || planet.ground_forces != 150000.0f
+	    || planet.owner != -2 || planet.ground_forces != 150000.0f
 	    || planet.bank != 25000000.0f || planet.name_length != 14U
 	    || memcmp(planet.record.bytes, "Mercenary Base", 14U) != 0)
 		goto done;
@@ -4990,7 +4990,7 @@ check_maintenance_mercenary_mine_planet_phase_pass(void)
 	    || !yt_game_read_sector(&game, 2, &sector, &error)
 	    || sector.fighters != 0.0f || sector.fighter_owner != 0
 	    || !yt_game_read_planet(&game, 1, &planet, &error)
-	    || planet.fighters != 0.0f || planet.owner != -2.0f)
+	    || planet.fighters != 0.0f || planet.owner != -2)
 		goto done;
 	radio_file = fopen("YTRMSG.DAT", "rb");
 	valid = radio_file == NULL;
@@ -7958,7 +7958,7 @@ check_maintenance_xannor_phase_pass(void)
 	    || sector.fighters != 21.0f || sector.fighter_owner != -1
 	    || sector.planet != 100
 	    || !yt_game_read_planet(&game, 100, &planet, &error)
-	    || planet.owner != -1.0f || planet.ground_forces != 0.0f
+	    || planet.owner != -1 || planet.ground_forces != 0.0f
 	    || planet.bank != 1.0f || state.route_cache.warps == NULL
 	    || state.route_cache.sector_count != 40)
 		goto done;
@@ -8271,7 +8271,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 			goto done;
 	}
 	if (!yt_game_read_planet(&game, 1, &planet, &error)
-	    || planet.name_length != 0U || planet.owner != 0.0f)
+	    || planet.name_length != 0U || planet.owner != 0)
 		goto done;
 	for (size_t offset = 0U; offset < YT_RECORD_SIZE; ++offset) {
 		bool changed_lane = (offset >= YT_F73 && offset < YT_F73 + 4U)
@@ -12144,6 +12144,8 @@ check_planet_rename_model(void)
 
 	for (index = 0; index < sizeof(source.bytes); ++index)
 		source.bytes[index] = (uint8_t)(index * 37U + 11U);
+	if (!yt_record_set_number(&source, YT_F73, 23.0f))
+		return false;
 	yt_planet_decode(&planet, &source);
 	yt_planet_rename_overlay(&planet, "Nova", 4U);
 	yt_planet_encode(&planet);
@@ -12342,14 +12344,14 @@ check_planet_take_all_overlays(void)
 		    || player.equipment != 0.0f || player.credits != 777.0f)
 			return false;
 		memset(&planet, 0, sizeof(planet));
-		planet.owner = 23.0f;
+		planet.owner = 23;
 		yt_planet_transfer_cargo_planet_overlay(&planet, rate,
 		    cargo_quantity, contribution);
 		if (planet.production[0] != 10.5f
 		    || planet.production[1] != 28.0f
 		    || planet.production[2] != 37.0f
 		    || planet.stock[0] != 105.0f || planet.stock[1] != 60.0f
-		    || planet.stock[2] != 0.0f || planet.owner != 23.0f)
+		    || planet.stock[2] != 0.0f || planet.owner != 23)
 			return false;
 	}
 
@@ -12358,11 +12360,11 @@ check_planet_take_all_overlays(void)
 	player.plasma = 99.0f;
 	player.credits = 777.0f;
 	planet.plasma = 100.0f;
-	planet.owner = 23.0f;
+	planet.owner = 23;
 	yt_planet_transfer_direct_player_overlay(&player, 9);
 	yt_planet_transfer_direct_planet_overlay(&planet, 9, 10.25, 1.5f);
 	if (player.plasma != 0.0f || player.credits != 777.0f
-	    || planet.plasma != 11.75f || planet.owner != 23.0f)
+	    || planet.plasma != 11.75f || planet.owner != 23)
 		return false;
 	yt_planet_transfer_direct_player_overlay(&player, 5);
 	yt_planet_transfer_direct_planet_overlay(&planet, 5, 5.0, 2.0f);
@@ -12376,7 +12378,7 @@ check_planet_take_all_overlays(void)
 	yt_planet_transfer_fighter_player_overlay(&player, 7.0f, 1.5f);
 	yt_planet_transfer_fighter_planet_overlay(&planet, 404.0, 1.5f);
 	if (player.fighters != 5.5f || player.credits != 777.0f
-	    || planet.fighters != 405.5f || planet.owner != 23.0f)
+	    || planet.fighters != 405.5f || planet.owner != 23)
 		return false;
 	{
 		const double empty[3] = {0.0, -0.0, 0.0};
@@ -12521,7 +12523,7 @@ check_planet_productivity_overlays(void)
 	    || delta[2] != 1.0f || delta[3] != 1.0f)
 		return false;
 	memset(&planet, 0, sizeof(planet));
-	planet.owner = 23.0f;
+	planet.owner = 23;
 	contribution[1] = 1.0f;
 	contribution[2] = 2.0f;
 	contribution[3] = 3.0f;
@@ -12534,7 +12536,7 @@ check_planet_productivity_overlays(void)
 	    || planet.production[1] != 83332.0f
 	    || planet.production[2] != 83331.0f
 	    || planet.stock[0] != 11.0f || planet.stock[1] != 22.0f
-	    || planet.stock[2] != 33.0f || planet.owner != 23.0f)
+	    || planet.stock[2] != 33.0f || planet.owner != 23)
 		return false;
 	units = yt_planet_productivity_units(16777217.0);
 	argument = yt_planet_productivity_credit_argument(units);

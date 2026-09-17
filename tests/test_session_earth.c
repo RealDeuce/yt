@@ -45,7 +45,7 @@ test_earth_store_exit(void)
 	player.sector = 1.0f;
 	yt_player_encode(&player);
 	yt_record_blank(&earth.record);
-	earth.owner = 0.0f;
+	earth.owner = 0;
 	earth.treasury = 5000.0f;
 	yt_port_encode(&earth);
 	yt_error_clear(&error);

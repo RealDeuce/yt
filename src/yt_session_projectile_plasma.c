@@ -320,7 +320,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	remaining_ground = floorf(remaining_ground);
 	if (remaining_ground < 1.0f) {
 		remaining_ground = 0.0f;
-		persistence.owner = 0.0f;
+		persistence.owner = 0;
 		if (!yt_record_set_number(&persistence.record, YT_F73, 0.0f))
 			return false;
 	}

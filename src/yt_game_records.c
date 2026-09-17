@@ -254,7 +254,7 @@ yt_planet_decode(struct yt_planet *planet, const struct yt_record *record)
 		planet->stock[index] = yt_record_get_number(record, YT_F57 + index * 4U);
 	}
 	planet->missiles = yt_record_get_number(record, YT_F69);
-	planet->owner = yt_record_get_number(record, YT_F73);
+	planet->owner = (int)yt_record_get_number(record, YT_F73);
 	planet->ground_forces = yt_record_get_number(record, YT_F77);
 	planet->name_length = (size_t)yt_record_get_number(record, YT_F85);
 	planet->last_minute = yt_record_get_number(record, YT_F89);
@@ -284,7 +284,8 @@ yt_planet_encode(struct yt_planet *planet)
 	}
 	yt_record_set_number_if_changed(&planet->record, YT_F69,
 	    planet->missiles);
-	yt_record_set_number_if_changed(&planet->record, YT_F73, planet->owner);
+	yt_record_set_number_if_changed(&planet->record, YT_F73,
+	    (float)planet->owner);
 	yt_record_set_number_if_changed(&planet->record, YT_F77,
 	    planet->ground_forces);
 	yt_record_set_number_if_changed(&planet->record, YT_F85,

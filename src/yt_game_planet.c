@@ -20,15 +20,15 @@ void
 yt_planet_landing_vacancy_overlay(struct yt_planet *planet,
     float ground_forces, int current_player_record)
 {
-	float owner;
+	int owner;
 
 	if (planet == NULL)
 		return;
-	owner = ground_forces > 0.0f ? (float)current_player_record : 0.0f;
+	owner = ground_forces > 0.0f ? current_player_record : 0;
 	planet->ground_forces = ground_forces;
 	planet->owner = owner;
 	(void)yt_record_set_number(&planet->record, YT_F77, ground_forces);
-	(void)yt_record_set_number(&planet->record, YT_F73, owner);
+	(void)yt_record_set_number(&planet->record, YT_F73, (float)owner);
 }
 
 static bool
@@ -209,7 +209,7 @@ yt_planet_assault_player_overlay(struct yt_player *player, float commitment)
 }
 
 void
-yt_planet_assault_victory_overlay(struct yt_planet *planet, float owner,
+yt_planet_assault_victory_overlay(struct yt_planet *planet, int owner,
     float attackers)
 {
 	volatile float integral = floorf(attackers);
@@ -218,7 +218,7 @@ yt_planet_assault_victory_overlay(struct yt_planet *planet, float owner,
 		return;
 	planet->owner = owner;
 	planet->ground_forces = integral;
-	(void)yt_record_set_number(&planet->record, YT_F73, owner);
+	(void)yt_record_set_number(&planet->record, YT_F73, (float)owner);
 	(void)yt_record_set_number(&planet->record, YT_F77, integral);
 }
 

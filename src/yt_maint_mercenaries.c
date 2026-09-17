@@ -72,7 +72,8 @@ maintenance_write_mercenary_rebuild(struct yt_game *game,
 			goto range;
 	}
 	if (!yt_record_set_number(&planet->record, YT_F69, planet->missiles)
-	    || !yt_record_set_number(&planet->record, YT_F73, planet->owner)
+	    || !yt_record_set_number(&planet->record, YT_F73,
+	    (float)planet->owner)
 	    || !yt_record_set_number(&planet->record, YT_F77,
 	    planet->ground_forces)
 	    || !yt_record_set_number(&planet->record, YT_F85,
@@ -95,7 +96,8 @@ maintenance_write_mercenary_daily(struct yt_game *game, int planet_number,
     struct yt_planet *planet, bool ground_changed, bool bank_changed,
     struct yt_error *error)
 {
-	if (!yt_record_set_number(&planet->record, YT_F73, planet->owner)
+	if (!yt_record_set_number(&planet->record, YT_F73,
+	    (float)planet->owner)
 	    || (ground_changed && !yt_record_set_number(&planet->record, YT_F77,
 	    planet->ground_forces))
 	    || (bank_changed && !yt_record_set_number(&planet->record, YT_F117,
@@ -155,7 +157,7 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 		planet.production[2] = 100000.0f;
 		planet.stock[0] = planet.stock[1] = planet.stock[2] = 0.0f;
 		planet.missiles = 0.0f;
-		planet.owner = -2.0f;
+		planet.owner = -2;
 		planet.ground_forces = 150000.0f;
 		planet.bank = 25000000.0f;
 		planet.mines = 0.0f;
@@ -184,7 +186,7 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 	}
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
-	planet.owner = -2.0f;
+	planet.owner = -2;
 	ground_changed = planet.ground_forces < 1.0f;
 	if (ground_changed)
 		planet.ground_forces = 150000.0f;

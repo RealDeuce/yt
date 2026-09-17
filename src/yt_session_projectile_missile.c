@@ -50,11 +50,11 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	if (!read_planet_physical(session, physical_planet, &planet, error))
 		return false;
 	planet_name_length = yt_planet_stored_name(&planet, planet_name);
-	if (planet.owner == (float)session_record(session))
+	if (planet.owner == session_record(session))
 		friendly = true;
-	else if (planet.owner > 1.0f
-	    && planet.owner <= (float)session_sector_offset(session)) {
-		if (!yt_session_players_are_friendly(session, (int)planet.owner,
+	else if (planet.owner > 1
+	    && planet.owner <= session_sector_offset(session)) {
+		if (!yt_session_players_are_friendly(session, planet.owner,
 		    &friendly, error))
 			return false;
 		if (!read_planet_physical(session, physical_planet, &planet,

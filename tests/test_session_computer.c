@@ -85,7 +85,7 @@ test_activate_and_deactivate(void)
 	CHECK(yt_database_write_durable(&door.game.database, 10U,
 	    &sector.record, &error));
 	yt_record_blank(&planet.record);
-	planet.owner = 2.0f;
+	planet.owner = 2;
 	yt_planet_encode(&planet);
 	CHECK(yt_database_write_durable(&door.game.database, 44U,
 	    &planet.record, &error));

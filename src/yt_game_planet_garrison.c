@@ -56,11 +56,11 @@ yt_planet_garrison_overlay(struct yt_planet *planet, float desired,
 	planet->ground_forces = desired;
 	(void)yt_record_set_number(&planet->record, YT_F77, desired);
 	(void)yt_record_set_raw_number(&planet->record, YT_F73, dirty_zero);
-	planet->owner = 0.0f;
+	planet->owner = 0;
 	if (desired >= 1.0f && player_record != 0) {
-		planet->owner = (float)player_record;
+		planet->owner = player_record;
 		(void)yt_record_set_number(&planet->record, YT_F73,
-		    planet->owner);
+		    (float)planet->owner);
 	}
 }
 

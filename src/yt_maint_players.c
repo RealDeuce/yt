@@ -205,8 +205,8 @@ expire_player_impl(struct maint_state *state, int player_record,
 
 		if (!yt_game_read_planet(&state->game, logical, &planet, error))
 			return false;
-		if (planet.owner == (float)player_record) {
-			planet.owner = 0.0f;
+		if (planet.owner == player_record) {
+			planet.owner = 0;
 			planet.ground_forces = 0.0f;
 			if (!yt_game_write_planet(&state->game, logical, &planet,
 			    error))

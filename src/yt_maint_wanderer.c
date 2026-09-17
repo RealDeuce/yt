@@ -70,7 +70,8 @@ static bool
 maintenance_write_wanderer_planet(struct yt_game *game,
     struct yt_planet *planet, struct yt_error *error)
 {
-	if (!yt_record_set_number(&planet->record, YT_F73, planet->owner)
+	if (!yt_record_set_number(&planet->record, YT_F73,
+	    (float)planet->owner)
 	    || !yt_record_set_number(&planet->record, YT_F117, planet->bank)) {
 		set_error(error, YT_RANGE, "encode Wanderer planet", "YTDATA.DAT");
 		return false;
@@ -164,7 +165,7 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	if (!maintenance_write_wanderer_sector(game, logical, &sector, error)
 	    || !yt_game_read_planet(game, 1, &planet, error))
 		return false;
-	planet.owner = 0.0f;
+	planet.owner = 0;
 	if (planet.bank == 0.0f)
 		planet.bank = 250000.0f;
 	if (!maintenance_write_wanderer_planet(game, &planet, error))

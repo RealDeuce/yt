@@ -8,14 +8,14 @@
 
 bool
 yt_projectile_planet_ground_overlay(struct yt_planet *planet,
-    float ground, float owner)
+    float ground, int owner)
 {
 	if (planet == NULL)
 		return false;
 	planet->ground_forces = ground;
 	planet->owner = owner;
 	return yt_record_set_number(&planet->record, YT_F77, ground)
-	    && yt_record_set_number(&planet->record, YT_F73, owner);
+	    && yt_record_set_number(&planet->record, YT_F73, (float)owner);
 }
 
 bool
@@ -65,7 +65,7 @@ yt_projectile_sector_unlink_overlay(struct yt_sector *sector)
 }
 
 bool
-yt_projectile_planet_ground_damage(float ground, float owner,
+yt_projectile_planet_ground_damage(float ground, int owner,
     float *remaining, struct yt_random *random,
     struct yt_projectile_ground_result *result, struct yt_error *error)
 {
@@ -86,7 +86,7 @@ yt_projectile_planet_ground_damage(float ground, float owner,
 	ground = floorf(ground);
 	if (ground < 1.0f) {
 		ground = 0.0f;
-		owner = 0.0f;
+		owner = 0;
 	}
 	result->ground = ground;
 	result->owner = owner;

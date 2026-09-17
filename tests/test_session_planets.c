@@ -58,7 +58,7 @@ test_self_owned_planet(void)
 	    door.game.config.epoch_year, &today,
 	    &adjusted_year, &error));
 	planet.last_day = (float)today;
-	planet.owner = 2.0f;
+	planet.owner = 2;
 	planet.ground_forces = 5.0f;
 	yt_record_blank(&planet.record);
 	yt_planet_encode(&planet);
@@ -141,7 +141,7 @@ test_land_and_leave_owned_planet(void)
 	(void)snprintf(planet.name, sizeof(planet.name), "%s", "Home");
 	planet.name_length = 4U;
 	planet.last_day = (float)today;
-	planet.owner = 2.0f;
+	planet.owner = 2;
 	planet.ground_forces = 5.0f;
 	yt_planet_encode(&planet);
 

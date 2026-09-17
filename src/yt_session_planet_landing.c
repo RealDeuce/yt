@@ -90,7 +90,7 @@ yt_session_planet_assault(struct yt_session *session,
 	    "planet assault terminal blank", error))
 		return false;
 	if (defenders <= 0.0f) {
-		float owner = 0.0f;
+		int owner = 0;
 
 		if (!session_present_text(session, defenses,
 		    sizeof(defenses) - 1U, SESSION_PRESENT_BOLD_LINE,
@@ -101,7 +101,7 @@ yt_session_planet_assault(struct yt_session *session,
 		    "planet defenses destroyed sound", error))
 			return false;
 		if (attackers > 0.0f) {
-			owner = (float)session_record(session);
+			owner = session_record(session);
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE, "planet assault capture blank", error))
 				return false;

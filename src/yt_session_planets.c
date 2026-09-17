@@ -116,7 +116,7 @@ yt_session_planet_permission(struct yt_session *session,
 	    &planet, error))
 		return false;
 	cached_name_length = yt_planet_stored_name(&planet, cached_name);
-	cached_owner = (int)planet.owner;
+	cached_owner = planet.owner;
 	cached_ground_forces = planet.ground_forces;
 	if (floorf(cached_ground_forces) <= 0.0f
 	    || cached_owner == session_record(session))

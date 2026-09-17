@@ -244,8 +244,8 @@ yt_session_computer_planet_report(struct yt_session *session,
 			name_length = planet.name_length;
 			if (name_length > YT_TEXT_FIELD_SIZE)
 				name_length = YT_TEXT_FIELD_SIZE;
-			owner_differs = (float)session_record(session) != planet.owner;
-			owner_nonzero = planet.owner != 0.0f;
+			owner_differs = session_record(session) != planet.owner;
+			owner_nonzero = planet.owner != 0;
 			ground_nonzero = planet.ground_forces != 0.0f;
 			fighters_zero = sector_fighters == 0.0;
 			fighters_positive = sector_fighters > 0.0;
@@ -258,7 +258,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 				size_t length = 0;
 
 				if (!yt_session_computer_owner_is_friendly(session,
-				    (int)planet.owner, &last_friendly, error))
+				    planet.owner, &last_friendly, error))
 					return false;
 				relationship_friendly = last_friendly;
 				if (!relationship_friendly) {

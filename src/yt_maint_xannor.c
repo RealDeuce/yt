@@ -771,7 +771,8 @@ static bool
 maintenance_write_xannor_daily(struct yt_game *game, int logical,
     struct yt_planet *planet, struct yt_error *error)
 {
-	if (!yt_record_set_number(&planet->record, YT_F73, planet->owner)
+	if (!yt_record_set_number(&planet->record, YT_F73,
+	    (float)planet->owner)
 	    || !yt_record_set_number(&planet->record, YT_F77,
 	    planet->ground_forces)
 	    || !yt_record_set_number(&planet->record, YT_F117, planet->bank)) {
@@ -884,7 +885,7 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 		return false;
 	planet.ground_forces = qb_single_add(planet.ground_forces,
 	    yt_maintenance_sint(qb_single_multiply(sample, 25.0f)));
-	planet.owner = -1.0f;
+	planet.owner = -1;
 	if (planet.bank == 0.0f)
 		planet.bank = 16000000.0f;
 	if (!maintenance_write_xannor_daily(game, planet_count, &planet,

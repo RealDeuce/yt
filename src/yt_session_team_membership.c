@@ -434,7 +434,7 @@ session_team_search(struct yt_session *session, struct yt_error *error)
 			if (!session_read_planet(session,
 			    sector.planet, &planet, error))
 				return false;
-			if (planet.owner != (float)player_record)
+			if (planet.owner != player_record)
 				continue;
 			if (first && !session_present_text(session, planets,
 			    sizeof(planets) - 1U, SESSION_PRESENT_RAW,
