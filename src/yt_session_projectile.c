@@ -272,8 +272,7 @@ plasma_route_run(struct yt_session *session,
 static bool
 launch_projectile(struct yt_session *session, float *target, float *amount,
     bool plasma, struct projectile_route_state *route,
-    float *origin_alias, const uint8_t origin_raw[4],
-    const uint8_t target_raw[4], const uint8_t amount_raw[4],
+    float *origin_alias,
     int *pending_counterattack, int *pending_xannor, struct yt_error *error)
 {
 	float destination = *target;
@@ -296,16 +295,9 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 	int start = (int)(origin_alias != NULL
 	    ? *origin_alias : session->player.sector);
 
-	if (origin_raw != NULL && target_raw != NULL && amount_raw != NULL) {
-		route->origin = qb_mbf32_decode(origin_raw);
-		route->destination = qb_mbf32_decode(target_raw);
-		route->amount = qb_mbf32_decode(amount_raw);
-	}
-	else {
-		route->origin = *origin_alias;
-		route->destination = *target;
-		route->amount = *missiles;
-	}
+	route->origin = *origin_alias;
+	route->destination = *target;
+	route->amount = *missiles;
 	(void)qb_cint_mode((double)route->destination,
 	    session->presentation.sound.conversion_mode, &overflow);
 	if (overflow)
@@ -446,7 +438,7 @@ session_launch_projectile(struct yt_session *session, float *origin,
 	if (xannor_provoker != NULL)
 		*xannor_provoker = session->projectile.pending_xannor_provoker;
 	result = launch_projectile(session, target, amount, plasma, &route, origin,
-	    NULL, NULL, NULL, counterattack, xannor_provoker, error);
+	    counterattack, xannor_provoker, error);
 	if (counterattack != NULL)
 		*counterattack = session->projectile.pending_counterattack_player;
 	if (xannor_provoker != NULL)
@@ -468,7 +460,7 @@ session_counterlaunch_projectile(struct yt_session *session, float *origin,
 	if (xannor_provoker != NULL)
 		*xannor_provoker = session->projectile.pending_xannor_provoker;
 	result = launch_projectile(session, target, amount, plasma,
-	    &route, origin, NULL, NULL, NULL,
+	    &route, origin,
 	    counterattack, xannor_provoker, error);
 	if (counterattack != NULL)
 		*counterattack = session->projectile.pending_counterattack_player;
@@ -621,7 +613,6 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 	enum qb_mbf_status conversion;
 	uint8_t target_raw[4];
 	uint8_t amount_raw[4];
-	uint8_t origin_raw[4];
 	size_t prompt_length;
 	double integral;
 	float displayed = plasma ? session->player.plasma
@@ -706,8 +697,6 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 	if (!yt_session_finalize_action(session, error))
 		return error == NULL || error->status == YT_OK;
 	origin = session->player.sector;
-	memcpy(origin_raw, session->player.record.bytes + YT_F57,
-	    sizeof(origin_raw));
 	yt_projectile_debit_overlay(&session->player, plasma, amount);
 	if (!yt_game_write_player(&session->door->game, session_record(session),
 	    &session->player, error)
@@ -717,8 +706,7 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 	counterattack = session->projectile.pending_counterattack_player;
 	xannor_provoker = session->projectile.pending_xannor_provoker;
 	if (!launch_projectile(session, &target, &amount, plasma,
-	    &route, &origin, origin_raw, target_raw,
-	    amount_raw, &counterattack, &xannor_provoker, error))
+	    &route, &origin, &counterattack, &xannor_provoker, error))
 		return false;
 	counterattack = session->projectile.pending_counterattack_player;
 	xannor_provoker = session->projectile.pending_xannor_provoker;

@@ -32,8 +32,8 @@ spy_route_choices_decode(const struct yt_sector *sector,
 	for (slot = 0U; slot < YT_ARRAY_LEN(choices->destinations); ++slot) {
 		bool overflow;
 
-		choices->destinations[slot] = qb_cint_mbf32(
-		    sector->record.bytes + YT_F105 + 4U * slot, 0U, &overflow);
+		choices->destinations[slot] = qb_cint((double)yt_record_get_number(
+		    &sector->record, YT_F105 + 4U * slot), &overflow);
 		if (overflow)
 			return spy_failure(error, "active spy warp CINT");
 	}
