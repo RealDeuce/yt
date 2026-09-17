@@ -95,13 +95,13 @@ xannor_reclaim_and_relocate(struct maint_state *state, float location[21],
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error)
 {
-	struct yt_maintenance_xannor_reclaim_result reclaim;
+	bool original_hostile;
 
 	if (!yt_maintenance_xannor_headquarters_reclaim(&state->game,
-	    location, size, line_output, line_context, &reclaim, error))
+	    location, size, line_output, line_context, &original_hostile, error))
 		return false;
 	return yt_maintenance_xannor_headquarters_relocate(&state->game,
-	    location, reclaim.original_hostile, size[1], regeneration,
+	    location, original_hostile, size[1], regeneration,
 	    NULL, 0U,
 	    line_output, line_context, error);
 }

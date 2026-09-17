@@ -479,23 +479,22 @@ yt_maintenance_xannor_regeneration(float top_score, float size[21],
 bool
 yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
     float location[21], float size[21], yt_maintenance_score_line_fn line_output,
-    void *line_context, struct yt_maintenance_xannor_reclaim_result *result,
+    void *line_context, bool *original_hostile,
     struct yt_error *error)
 {
 	static const uint8_t mercenaries[] = "The Mercenaries";
-	struct yt_maintenance_xannor_reclaim_result local = {0};
 	struct yt_maintenance_output_result output;
 	struct yt_maintenance_text opponent = {
 		mercenaries, sizeof(mercenaries) - 1U
 	};
 	struct yt_sector host;
 	struct yt_player player;
-	uint64_t starting_draws;
 	double defenders;
+	bool successful;
 	int hq;
 
 	if (game == NULL || location == NULL || size == NULL
-	    || line_output == NULL) {
+	    || line_output == NULL || original_hostile == NULL) {
 		set_error(error, YT_INVALID, "Xannor headquarters reclaim",
 		    "YTDATA.DAT");
 		return false;
@@ -509,15 +508,10 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		return false;
 	}
 	defenders = (double)host.fighters;
-	local.original_hostile = host.fighters > 0.0f
+	*original_hostile = host.fighters > 0.0f
 	    && host.fighter_owner != -1.0f;
-	local.attempted = local.original_hostile && size[1] > 0.0f;
-	if (!local.attempted) {
-		local.defenders_after = defenders;
-		if (result != NULL)
-			*result = local;
+	if (!*original_hostile || size[1] <= 0.0f)
 		return true;
-	}
 	if (host.fighter_owner > 0.0f) {
 		int record = (int)host.fighter_owner;
 
@@ -537,7 +531,6 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 	    || !line_output(line_context, output.rows[0].data,
 	    output.rows[0].length, error))
 		return false;
-	starting_draws = game->random.draws;
 	while (defenders > 0.0 && size[1] > 0.0f) {
 		float sample;
 		float quantum = defenders > 250.0 && size[1] > 250.0f
@@ -550,12 +543,10 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		else
 			size[1] = qb_single_subtract(size[1], quantum);
 	}
-	local.draws_consumed = game->random.draws - starting_draws;
-	local.successful = defenders <= 0.0;
-	local.defenders_after = defenders;
+	successful = defenders <= 0.0;
 	if (!yt_game_read_sector(game, hq, &host, error))
 		return false;
-	if (local.successful) {
+	if (successful) {
 		if (!yt_record_set_number(&host.record, YT_F81, 0.0f)
 		    || !yt_record_set_number(&host.record, YT_F85, 0.0f))
 			goto encode_error;
@@ -570,14 +561,12 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 	    (size_t)yt_sector_basic_record(&game->config, hq),
 	    &host.record, error)
 	    || !yt_maintenance_compose_xannor_reclaim_result(
-	    local.successful, &output)
+	    successful, &output)
 	    || !line_output(line_context, output.rows[0].data,
 	    output.rows[0].length, error)
 	    || !yt_news_append_bytes(output.rows[0].data,
 	    output.rows[0].length, error))
 		return false;
-	if (result != NULL)
-		*result = local;
 	return true;
 
 encode_error:

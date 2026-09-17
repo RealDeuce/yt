@@ -154,14 +154,6 @@ struct yt_maintenance_xannor_hunt_result {
 	uint64_t draws_consumed;
 };
 
-struct yt_maintenance_xannor_reclaim_result {
-	bool original_hostile;
-	bool attempted;
-	bool successful;
-	double defenders_after;
-	uint64_t draws_consumed;
-};
-
 struct yt_maintenance_xannor_revenge_result {
 	bool eligible;
 	int live_sector;
@@ -366,7 +358,7 @@ bool yt_maintenance_xannor_regeneration(float top_score,
     float size[21], double *regeneration);
 bool yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
     float location[21], float size[21], yt_maintenance_score_line_fn line_output,
-    void *line_context, struct yt_maintenance_xannor_reclaim_result *result,
+    void *line_context, bool *original_hostile,
     struct yt_error *error);
 bool yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
     float location[21], bool original_hostile, float group_one,

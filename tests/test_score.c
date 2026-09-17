@@ -8334,7 +8334,6 @@ check_maintenance_xannor_headquarters_reclaim_pass(void)
 		success_draws, sizeof(success_draws), 0U
 	};
 	struct score_line_tape screen = {0};
-	struct yt_maintenance_xannor_reclaim_result reclaim;
 	struct yt_text_file news = {0};
 	struct yt_record player;
 	struct yt_record host_before;
@@ -8344,6 +8343,7 @@ check_maintenance_xannor_headquarters_reclaim_pass(void)
 	float location[21] = {0};
 	float size[21] = {0};
 	size_t offset;
+	bool original_hostile;
 	bool valid = false;
 
 	(void)remove("YTDATA.DAT");
@@ -8374,10 +8374,8 @@ check_maintenance_xannor_headquarters_reclaim_pass(void)
 	location[1] = 2.0f;
 	size[1] = 2.0f;
 	if (!yt_maintenance_xannor_headquarters_reclaim(&game, location, size,
-	    score_line_collect, &screen, &reclaim, &error)
-	    || !reclaim.original_hostile || !reclaim.attempted
-	    || !reclaim.successful || reclaim.defenders_after != 0.0
-	    || reclaim.draws_consumed != 2U || size[1] != 2.0f
+	    score_line_collect, &screen, &original_hostile, &error)
+	    || !original_hostile || size[1] != 2.0f
 	    || location[1] != 2.0f || game.random.draws != 2U
 	    || script.position != sizeof(success_draws)
 	    || screen.length != sizeof(success_screen) - 1U
@@ -8414,10 +8412,8 @@ check_maintenance_xannor_headquarters_reclaim_pass(void)
 	location[1] = 2.0f;
 	size[1] = 1.0f;
 	if (!yt_maintenance_xannor_headquarters_reclaim(&game, location, size,
-	    score_line_collect, &screen, &reclaim, &error)
-	    || !reclaim.original_hostile || !reclaim.attempted
-	    || reclaim.successful || reclaim.defenders_after != 1.0
-	    || reclaim.draws_consumed != 1U || size[1] != 0.0f
+	    score_line_collect, &screen, &original_hostile, &error)
+	    || !original_hostile || size[1] != 0.0f
 	    || location[1] != 2.0f || game.random.draws != 1U
 	    || script.position != sizeof(failure_draw)
 	    || screen.length != sizeof(failure_screen) - 1U
