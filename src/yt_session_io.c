@@ -397,7 +397,7 @@ bool
 session_present_paged_fragment(struct yt_session *session,
     const uint8_t *text, size_t length)
 {
-	session_set_pager_newline(session, 0.0f);
+	session_set_pager_newline(session, false);
 	return session_present_paged_row(session, text, length);
 }
 
@@ -454,7 +454,7 @@ session_present_timed_paged_row(struct yt_session *session,
 {
 	if (!session_low_time(session, operation, error))
 		return false;
-	session_set_pager_newline(session, 1.0f);
+	session_set_pager_newline(session, true);
 	return session_present_paged_row(session, text, length);
 }
 
