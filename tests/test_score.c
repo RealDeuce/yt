@@ -228,7 +228,7 @@ check_current_player_cache_model(void)
 	fresh.organics = 10.0f;
 	fresh.equipment = 11.0f;
 	fresh.credits = 12.0f;
-	fresh.team = 13.0f;
+	fresh.team = 13;
 	fresh.danger_scanner = 14.0f;
 	fresh.missiles = 15.0f;
 	fresh.score = 16.0f;
@@ -250,7 +250,7 @@ check_current_player_cache_model(void)
 	    || player.sector != 6 || player.fighters != 7.0f
 	    || player.holds != 8.0f || player.ore != 9.0f
 	    || player.organics != 10.0f || player.equipment != 11.0f
-	    || player.credits != 12.0f || player.team != 13.0f
+	    || player.credits != 12.0f || player.team != 13
 	    || player.danger_scanner != 14.0f || player.missiles != 15.0f
 	    || player.score != 0.0f || player.plasma != 17.0f
 	    || player.ports_owned != 18.0f || player.ground_forces != 19.0f
@@ -11809,7 +11809,7 @@ static const struct test_direct_attack_ops direct_attack_ops = {
 
 static void
 direct_attack_player_fixture(struct yt_player *player, const char *name,
-    float fighters, float sector, float team)
+    float fighters, float sector, int team)
 {
 	struct yt_record record;
 	size_t index;
@@ -11821,7 +11821,7 @@ direct_attack_player_fixture(struct yt_player *player, const char *name,
 	(void)yt_record_set_number(&record, YT_F57, sector);
 	(void)yt_record_set_number(&record, YT_F61, fighters);
 	(void)yt_record_set_number(&record, YT_F85, (float)name_length);
-	(void)yt_record_set_number(&record, YT_F89, team);
+	(void)yt_record_set_number(&record, YT_F89, (float)team);
 	yt_player_decode(player, &record);
 }
 
@@ -11834,13 +11834,13 @@ direct_attack_fixture(struct direct_attack_tape *tape,
 	memset(tape, 0, sizeof(*tape));
 	tape->fail_at = (size_t)-1;
 	direct_attack_player_fixture(&tape->player[2], "Ada", 5.0f, 7.0f,
-	    1.0f);
+	    1);
 	direct_attack_player_fixture(&tape->player[3], "Team", 2.0f, 7.0f,
-	    1.0f);
+	    1);
 	direct_attack_player_fixture(&tape->player[4], "Decline", 2.0f, 7.0f,
-	    0.0f);
+	    0);
 	direct_attack_player_fixture(&tape->player[5], "Fight", 2.0f, 7.0f,
-	    0.0f);
+	    0);
 	for (index = 2U; index < 6U; ++index)
 		tape->player_cache.sector[index] = 7;
 	tape->answers[0] = YT_DIRECT_ATTACK_CONFIRM_NO;
@@ -11992,7 +11992,7 @@ check_direct_attack_transaction(void)
 		return false;
 
 	direct_attack_fixture(&tape, &state);
-	tape.player[3].team = 0.0f;
+	tape.player[3].team = 0;
 	(void)yt_record_set_number(&tape.player[3].record, YT_F89, 0.0f);
 	tape.answers[0] = YT_DIRECT_ATTACK_CONFIRM_EMPTY;
 	tape.answer_count = 1U;
@@ -12721,7 +12721,7 @@ check_player_constructor_failures(void)
 	    || failure != YT_PLAYER_CONSTRUCTOR_PLAYER_PUT
 	    || strcmp(player.name, "Keep Name") != 0
 	    || player.name_length != 9U || player.score != 88.0f
-	    || player.team != 0.0f || player.last_active != 77.0f
+	    || player.team != 0 || player.last_active != 77.0f
 	    || player.turns != 123.0f || player.fighters != 45.0f
 	    || player.credits != 678.0f || player.holds != 9.0f)
 		goto close;
@@ -12951,14 +12951,14 @@ check_hostile_menu_front(void)
 		    || !yt_no_turn_gate_denied(-1.0f)
 		    || !yt_no_turn_gate_denied(0.0f)
 		    || yt_no_turn_gate_denied(0.00000001f)
-		    || yt_team_choice_rejected(1.0f, 0.0f, 0, 0)
-		    || !yt_team_choice_rejected(4.0f, 0.0f, 0, 0)
-		    || yt_team_choice_rejected(2.0f, 0.4f, 0, 0)
-		    || !yt_team_choice_rejected(2.0f, 0.6f, 0, 1)
-		    || yt_team_choice_rejected(7.0f, 7.0f, -1, 7)
-		    || !yt_team_choice_rejected(7.0f, 7.0f, 0, 7)
-		    || yt_team_choice_rejected(10.0f, 7.0f, -1, 7)
-		    || !yt_team_choice_rejected(10.00000095f, 7.0f, -1, 7))
+		    || yt_team_choice_rejected(1.0f, 0, 0)
+		    || !yt_team_choice_rejected(4.0f, 0, 0)
+		    || yt_team_choice_rejected(2.0f, 0, 0)
+		    || !yt_team_choice_rejected(2.0f, 1, 0)
+		    || yt_team_choice_rejected(7.0f, 7, -1)
+		    || !yt_team_choice_rejected(7.0f, 7, 0)
+		    || yt_team_choice_rejected(10.0f, 7, -1)
+		    || !yt_team_choice_rejected(10.00000095f, 7, -1))
 			return false;
 	}
 	{
@@ -13146,9 +13146,9 @@ check_hostile_menu_front(void)
 		sector.planet = 8;
 		player.sector = 99;
 		player.fighters = 12.0f;
-		player.team = 7.0f;
-		banished.team = 7.0f;
-		joined.team = 0.0f;
+		player.team = 7;
+		banished.team = 7;
+		joined.team = 0;
 		yt_team_transfer_apply_sector(&sector, 10.0, 5.0f);
 		yt_team_transfer_apply_player(&player, 5.0f);
 		yt_team_banish_apply_player(&banished);
@@ -13160,7 +13160,7 @@ check_hostile_menu_front(void)
 		yt_team_inactive_overlay(&inactive_record);
 		if (sector.fighters != 15.0f || sector.fighter_owner != 44
 		    || sector.planet != 8 || player.fighters != 7.0f
-		    || player.sector != 99 || player.team != 7.0f
+		    || player.sector != 99 || player.team != 7
 		    || memcmp(sector.record.bytes, sector_record, YT_F81) != 0
 		    || memcmp(sector.record.bytes + YT_F85,
 		    sector_record + YT_F85, YT_RECORD_SIZE - YT_F85) != 0
@@ -13169,13 +13169,13 @@ check_hostile_menu_front(void)
 		    || memcmp(player.record.bytes + YT_F65,
 		    player_record + YT_F65, YT_RECORD_SIZE - YT_F65) != 0
 		    || yt_record_get_number(&player.record, YT_F61) != 7.0f
-		    || banished.team != 0.0f
+		    || banished.team != 0
 		    || yt_record_get_number(&banished.record, YT_F89) != 0.0f
 		    || memcmp(banished.record.bytes, banished_record, YT_F89) != 0
 		    || memcmp(banished.record.bytes + YT_F93,
 		    banished_record + YT_F93,
 		    YT_RECORD_SIZE - YT_F93) != 0
-		    || joined.team != 7.0f
+		    || joined.team != 7
 		    || yt_record_get_number(&joined.record, YT_F89) != 7.0f
 		    || memcmp(joined.record.bytes, joined_record, YT_F89) != 0
 		    || memcmp(joined.record.bytes + YT_F93,
@@ -14868,7 +14868,7 @@ main(void)
 	yt_player_decode(&player, &blank);
 	strcpy(player.name, "Old Trader");
 	player.name_length = 10U;
-	player.team = 4.0f;
+	player.team = 4;
 	player.score = 77.5f;
 	memcpy(player.record.bytes + YT_RECORD_TAIL_OFFSET, player_tail,
 	    sizeof(player_tail));
@@ -14893,7 +14893,7 @@ main(void)
 	    || player.last_active != 321.0f || player.killed_by != 0
 	    || player.turns != 500.0f || player.fighters != 45.0f
 	    || player.credits != 678.0f || player.holds != 9.0f
-	    || player.team != 0.0f
+	    || player.team != 0
 	    || memcmp(player.record.bytes + YT_F41,
 	    constructor_date_raw, 4U) != 0
 	    || memcmp(player.record.bytes + YT_F45,
@@ -15025,7 +15025,7 @@ main(void)
 	strcpy(player.name, "Alice");
 	player.name_length = 5U;
 	player.credits = 100.0f;
-	player.team = 1.0f;
+	player.team = 1;
 	if (!yt_game_write_player(&game, 2, &player, &error))
 		goto close;
 	yt_player_decode(&player, &blank);
@@ -15033,7 +15033,7 @@ main(void)
 	player.name_length = 3U;
 	player.killed_by = -1;
 	player.credits = 9999.0f;
-	player.team = 2.0f;
+	player.team = 2;
 	if (!yt_game_write_player(&game, 3, &player, &error))
 		goto close;
 	memset(&sector, 0, sizeof(sector));

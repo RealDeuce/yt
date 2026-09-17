@@ -41,7 +41,7 @@ test_teamless_exit(void)
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Teamless");
 	player.name_length = 8U;
 	player.sector = 1.0f;
-	player.team = 0.0f;
+	player.team = 0;
 	yt_player_encode(&player);
 
 	yt_error_clear(&error);
@@ -54,7 +54,7 @@ test_teamless_exit(void)
 
 	CHECK(yt_session_command_team(&session, &error));
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
-	CHECK(session.player.team == 0.0f);
+	CHECK(session.player.team == 0);
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
 	CHECK(memcmp(persisted.bytes, player.record.bytes,
 	    sizeof(persisted.bytes)) == 0);

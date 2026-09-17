@@ -299,10 +299,10 @@ test_player_friendship(void)
 	session.active_player_record = 2;
 	door.game.config.sector_offset = 51.0f;
 	yt_record_blank(&current.record);
-	current.team = 7.0f;
+	current.team = 7;
 	yt_player_encode(&current);
 	yt_record_blank(&candidate.record);
-	candidate.team = 7.0f;
+	candidate.team = 7;
 	yt_player_encode(&candidate);
 	yt_error_clear(&error);
 	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
@@ -315,7 +315,7 @@ test_player_friendship(void)
 	CHECK(yt_session_players_are_friendly(&session, 3, &friendly,
 	    &error));
 	CHECK(friendly);
-	candidate.team = 8.0f;
+	candidate.team = 8;
 	yt_player_encode(&candidate);
 	CHECK(yt_database_write_durable(&door.game.database, 3U,
 	    &candidate.record, &error));
@@ -332,7 +332,7 @@ test_player_friendship(void)
 	    &error));
 	CHECK(!friendly);
 
-	current.team = 0.0f;
+	current.team = 0;
 	yt_player_encode(&current);
 	CHECK(yt_database_write_durable(&door.game.database, 2U,
 	    &current.record, &error));

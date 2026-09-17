@@ -214,7 +214,7 @@ expire_player_impl(struct maint_state *state, int player_record,
 		}
 	}
 	player->name_length = 0U;
-	player->team = 0.0f;
+	player->team = 0;
 	if (!yt_game_write_player(&state->game, player_record, player, error))
 		return false;
 	for (logical = 1; logical <= state->sector_count; ++logical) {
@@ -432,12 +432,13 @@ immediate_death_cleanup_impl(struct maint_state *state, int victim_record,
 	}
 	if (!yt_maintenance_remove_player_from_teams(state, victim_record, error))
 		return false;
-	victim->team = 0.0f;
+	victim->team = 0;
 	if (!yt_record_set_number(&victim->record, YT_F45,
 	    (float)victim->killed_by)
 	    || !yt_record_set_number(&victim->record, YT_F57,
 	    (float)victim->sector)
-	    || !yt_record_set_number(&victim->record, YT_F89, victim->team)
+	    || !yt_record_set_number(&victim->record, YT_F89,
+	    (float)victim->team)
 	    || !yt_record_set_number(&victim->record, YT_F121,
 	    victim->ground_forces)) {
 		set_error(error, YT_RANGE, "encode immediate death player",

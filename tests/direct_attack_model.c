@@ -326,7 +326,7 @@ test_direct_attack_run(struct test_direct_attack_state *state,
 			return false;
 		target_name_length = yt_player_stored_name(
 		    &state->candidate_player, target_name);
-		positive_team = state->candidate_player.team > 0.0f;
+		positive_team = state->candidate_player.team > 0;
 		same_team = state->candidate_player.team == state->current.team;
 		if (positive_team && same_team) {
 			if (!yt_direct_attack_team_row(target_name,

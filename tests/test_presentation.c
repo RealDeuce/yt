@@ -2634,7 +2634,7 @@ test_sector_scanner_rows(void)
 	memset(&sector, 0, sizeof(sector));
 	sector.fighters = 123.0f;
 	sector.fighter_owner = 3;
-	player.team = -4.0f;
+	player.team = 4;
 	yt_record_blank(&record);
 	memcpy(record.bytes, raw_team_name, sizeof(raw_team_name));
 	yt_record_set_number(&record, YT_F73, 3.0f);
@@ -12956,7 +12956,7 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 		static const uint8_t valid_captain_name[] = "LongCaptainName";
 		static const uint8_t stale_captain_name[] = "Wrong Team";
 
-		fixture.team_current.team = 7.0f;
+		fixture.team_current.team = 7;
 		(void)yt_record_set_number(&fixture.team_current.record, YT_F89,
 		    7.0f);
 		fixture.team.id = 7;
@@ -12968,7 +12968,7 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 			memcpy(fixture.team_captain.name, valid_captain_name,
 			    sizeof(valid_captain_name) - 1U);
 			fixture.team_captain.name_length = 4U;
-			fixture.team_captain.team = 7.0f;
+			fixture.team_captain.team = 7;
 		}
 		else if (fixture.team_route
 		    == NORMAL_EXIT_INFO_TEAM_PROMOTION) {
@@ -12976,7 +12976,7 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 			    sizeof(stale_captain_name) - 1U);
 			fixture.team_captain.name_length =
 			    sizeof(stale_captain_name) - 1U;
-			fixture.team_captain.team = 8.0f;
+			fixture.team_captain.team = 8;
 		}
 		(void)yt_record_set_number(&fixture.team_captain.record, YT_F85,
 		    (float)fixture.team_captain.name_length);

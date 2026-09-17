@@ -144,12 +144,11 @@ yt_team_cache_load(struct yt_team_cache *cache,
 }
 
 bool
-yt_team_choice_rejected(float choice, float raw_team,
-    int32_t captain_cint, int32_t team_cint)
+yt_team_choice_rejected(float choice, int team, int32_t captain_cint)
 {
-	return (choice > 3.0f && raw_team == 0.0f)
+	return (choice > 3.0f && team == 0)
 	    || (choice > 6.0f && captain_cint != -1)
-	    || (choice > 1.0f && choice < 4.0f && team_cint != 0)
+	    || (choice > 1.0f && choice < 4.0f && team != 0)
 	    || choice < 1.0f || choice > 10.0f;
 }
 
@@ -183,7 +182,7 @@ yt_team_membership_apply_player(struct yt_player *player, int team)
 {
 	if (player == NULL)
 		return;
-	player->team = (float)team;
+	player->team = team;
 	(void)yt_record_set_number(&player->record, YT_F89, (float)team);
 }
 

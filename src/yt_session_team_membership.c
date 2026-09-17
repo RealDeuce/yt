@@ -106,7 +106,7 @@ session_team_create(struct yt_session *session, struct yt_error *error)
 	if (!session_present_alert(session, entering, sizeof(entering) - 1U,
 	    "team create heading", error))
 		return false;
-	selected = (int)session->player.team;
+	selected = session->player.team;
 	for (id = 1; id <= YT_DEFAULT_PLAYER_COUNT; ++id) {
 		if (!session_load_team(session, id, &team, error))
 			return false;
@@ -301,7 +301,7 @@ session_team_quit(struct yt_session *session, struct yt_team *team,
 	if (!yt_game_read_player(&session->door->game, session_record(session),
 	    &session->player, error))
 		return false;
-	old_team = (int)session->player.team;
+	old_team = session->player.team;
 	yt_team_membership_apply_player(&session->player, 0);
 	persisted = session->player;
 	if (!yt_game_write_player(&session->door->game, session_record(session),
@@ -352,7 +352,7 @@ session_team_search(struct yt_session *session, struct yt_error *error)
 	static const uint8_t defending[] = "Defending;";
 	static const uint8_t planets[] = "Planets;";
 	static const uint8_t none[] = "None Found";
-	const float cached_team = session->player.team;
+	const int cached_team = session->player.team;
 	int player_record;
 	bool found = false;
 

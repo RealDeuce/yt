@@ -23,7 +23,7 @@ struct yt_player {
 	float equipment;
 	float credits;
 	size_t name_length;
-	float team;
+	int team;
 	float danger_scanner;
 	float missiles;
 	float lottery_plays;
@@ -331,7 +331,7 @@ bool yt_game_construct_player(struct yt_game *game, int basic_record,
 enum yt_sector_force_route yt_sector_force_route(float fighters, int owner,
     int current_player_record, int *owner_record);
 bool yt_sector_mines_admitted(float mines, float suppression);
-bool yt_sector_force_same_team(float current_team, float owner_team);
+bool yt_sector_force_same_team(int current_team, int owner_team);
 enum yt_port_owner_kind yt_port_owner_classify(int owner,
     int current_player_record, int *owner_record);
 bool yt_port_owner_compose(enum yt_port_owner_kind kind, float treasury,

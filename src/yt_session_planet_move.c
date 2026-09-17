@@ -30,7 +30,7 @@ planet_move_friendship(struct yt_session *session, int owner,
 	if (!yt_game_read_player(&session->door->game, session_record(session),
 	    &current, error))
 		return false;
-	if (current.team == 0.0f)
+	if (current.team == 0)
 		return true;
 	if (!yt_game_read_player(&session->door->game, owner,
 	    &other, error))

@@ -19,7 +19,7 @@ struct nearest_scan {
 	struct yt_port port;
 	struct yt_player owner;
 	struct yt_nearest_market market;
-	float current_team;
+	int current_team;
 	int display_sector;
 	float current_day;
 	float timer_seconds;
@@ -107,8 +107,8 @@ nearest_filter(const struct nearest_scan *scan, bool member)
 	} else if (scan->selector == 7) {
 		accepted = owner > 0
 		    && owner != scan->actor_number
-		    && (scan->current_team == 0.0f
-		    || (scan->current_team > 0.0f && !member));
+		    && (scan->current_team == 0
+		    || (scan->current_team > 0 && !member));
 	} else if (scan->selector == 8) {
 		accepted = owner == 0;
 	}
@@ -327,7 +327,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				bool member = false;
 				int port_owner = scan.port.owner;
 
-				if (scan.current_team != 0.0f) {
+				if (scan.current_team != 0) {
 					for (slot = 0U; slot < 4U; ++slot) {
 						if (scan.cached_roster[slot]
 						    == port_owner)
@@ -555,7 +555,7 @@ yt_session_computer_nearest_ports(struct yt_session *session,
 	    response_length);
 	if (selector == 0)
 		return true;
-	if (selector == 5 && session->player.team == 0.0f)
+	if (selector == 5 && session->player.team == 0)
 		return session_present_alert(session, no_team,
 		    sizeof(no_team) - 1U, "nearest-port team rejection", error);
 	if (selector == 6 && session->player.ports_owned == 0.0f)

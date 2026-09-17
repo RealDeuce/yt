@@ -43,7 +43,7 @@ yt_session_computer_owner_is_friendly(struct yt_session *session, int owner,
 	if (!session_read_player_at_fault(session, session_record(session),
 	    &current, YT_BASIC_FAULT_PORT_FRIENDSHIP_CURRENT_GET, error))
 		return false;
-	if (current.team == 0.0f)
+	if (current.team == 0)
 		return true;
 	if (!session_read_player_at_fault(session, owner, &other,
 	    YT_BASIC_FAULT_PORT_FRIENDSHIP_CANDIDATE_GET, error))
@@ -56,7 +56,7 @@ yt_session_computer_owner_is_friendly(struct yt_session *session, int owner,
 
 static bool
 yt_session_computer_check_port_visibility(struct yt_session *session,
-    const struct yt_sector *sector, float cached_team, bool *unavailable,
+    const struct yt_sector *sector, int cached_team, bool *unavailable,
     struct yt_error *error)
 {
 	bool friendly;
@@ -71,8 +71,8 @@ yt_session_computer_check_port_visibility(struct yt_session *session,
 	session->planet.current_record = session_planet_basic_record(session,
 	    session->planet.fallback_index);
 	*unavailable = (sector->port == 0)
-	    | (sector->fighters > 0.0f && cached_team > 0.0f && !friendly)
-	    | (sector->fighters > 0.0f && cached_team == 0.0f
+	    | (sector->fighters > 0.0f && cached_team > 0 && !friendly)
+	    | (sector->fighters > 0.0f && cached_team == 0
 	    && sector->fighter_owner != session_record(session));
 	return true;
 }
@@ -85,7 +85,7 @@ yt_session_computer_port_report(struct yt_session *session,
 	    "Enter sector number port is in -=> ";
 	static const uint8_t unavailable[] = "No information available.";
 	float maximum = (float)session_sector_count(session);
-	float cached_team = session->player.team;
+	int cached_team = session->player.team;
 	char response[80];
 	float selected;
 	int sector_number;
@@ -297,8 +297,8 @@ yt_session_computer_planet_report(struct yt_session *session,
 		{
 			bool scratch_zero = scratch == 0.0f;
 			bool fighters_positive = sector_fighters > 0.0;
-			bool team_positive = session->player.team > 0.0f;
-			bool team_zero = session->player.team == 0.0f;
+			bool team_positive = session->player.team > 0;
+			bool team_zero = session->player.team == 0;
 			bool relation_not = !relationship_friendly;
 			bool fighter_owner_differs =
 			    session_record(session) != fighter_owner;

@@ -125,7 +125,7 @@ session_team_banish(struct yt_session *session, struct yt_team *team,
 
 	if (!session_reload_player(session, error))
 		return false;
-	team_id = (int)session->player.team;
+	team_id = session->player.team;
 	if (!session_load_team(session, team_id, team, error))
 		return false;
 	for (index = 0; index < 4; ++index) {

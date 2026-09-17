@@ -300,8 +300,8 @@ yt_scoreboard_score_sectors(struct yt_scoreboard *scoreboard,
 		player->player.score = cached.score;
 		if (!player->occupied)
 			continue;
-		if (player->player.team >= 1.0f && player->player.team <= 50.0f)
-			scoreboard->teams[(int)player->player.team - 1].score
+		if (player->player.team >= 1 && player->player.team <= 50)
+			scoreboard->teams[player->player.team - 1].score
 			    += player->score;
 	}
 	return true;
@@ -375,13 +375,13 @@ yt_scoreboard_write(struct yt_scoreboard *scoreboard, struct yt_error *error)
 			++rank;
 			if (denominator == 0)
 				return scoreboard_division_error(&output, path, error);
-			if (row_player.team == 0.0f)
+			if (row_player.team == 0)
 				strcpy(team_text, "None");
 			else {
 				size_t length;
 
 				qb_str_single(team_text, sizeof(team_text),
-				    row_player.team);
+				    (float)row_player.team);
 				length = strlen(team_text);
 				if (length + 1U < sizeof(team_text)) {
 					team_text[length] = ' ';

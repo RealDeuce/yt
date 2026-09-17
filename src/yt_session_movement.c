@@ -162,7 +162,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 			if (!danger_append(row, sizeof(row), &row_length,
 			    owner_player.record.bytes, name_length))
 				return movement_range_error(error, "danger owner name row");
-			if (owner_player.team != 0.0f) {
+			if (owner_player.team != 0) {
 				struct yt_team team;
 				bool friendly;
 
@@ -172,7 +172,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 					return false;
 				session->player_reference.friendly = friendly;
 				number_length = qb_str_single(number, sizeof(number),
-				    owner_player.team);
+				    (float)owner_player.team);
 				if (number_length < 1
 				    || !danger_append(row, sizeof(row), &row_length,
 				    team_prefix, sizeof(team_prefix) - 1U)
@@ -183,7 +183,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 					return movement_range_error(error,
 					    "danger team number row");
 				if (!yt_game_read_team(&session->door->game,
-				    (int)owner_player.team, &team, error))
+				    owner_player.team, &team, error))
 					return false;
 				if (team.name_length > 0U) {
 					if (!danger_append(row, sizeof(row), &row_length,

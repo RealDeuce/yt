@@ -276,9 +276,9 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 					    owner, &owner_player, error))
 						return false;
 					owner_pointer = &owner_player;
-					if (owner_player.team != 0.0f) {
+					if (owner_player.team != 0) {
 						if (!yt_game_read_team(&session->door->game,
-						    (int)owner_player.team, &team, error))
+						    owner_player.team, &team, error))
 							return false;
 						team_pointer = &team;
 					}

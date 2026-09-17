@@ -125,7 +125,7 @@ yt_session_planet_permission(struct yt_session *session,
 		if (!yt_game_read_player(&session->door->game,
 		    session_record(session), &current, error))
 			return false;
-		if (current.team != 0.0f) {
+		if (current.team != 0) {
 			if (!yt_game_read_player(&session->door->game,
 			    cached_owner, &owner, error))
 				return false;

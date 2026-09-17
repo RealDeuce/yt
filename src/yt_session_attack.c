@@ -320,7 +320,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 			return false;
 		target_name_length = yt_player_stored_name(&candidate_player,
 		    target_name);
-		positive_team = candidate_player.team > 0.0f;
+		positive_team = candidate_player.team > 0;
 		same_team = candidate_player.team == current.team;
 		if (positive_team && same_team) {
 			if (!yt_direct_attack_team_row(target_name,

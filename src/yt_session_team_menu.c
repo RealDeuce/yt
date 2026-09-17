@@ -40,7 +40,6 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 		size_t index;
 		float numeric;
 		int32_t captain_cint;
-		int32_t team_cint;
 		bool invalid;
 
 		session_set_foreground(session, 6.0f);
@@ -55,7 +54,7 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 		    "team exit row", error)
 		    || !session_reload_player(session, error))
 			return false;
-		if (session->player.team == 0.0f) {
+		if (session->player.team == 0) {
 			for (index = 0; index < YT_ARRAY_LEN(teamless_rows); ++index)
 				if (!session_present_paged_fragment(session,
 				    (const uint8_t *)teamless_rows[index],
@@ -123,9 +122,8 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 		}
 		numeric = qb_mbf32_decode(numeric_raw);
 		captain_cint = captain ? -1 : 0;
-		team_cint = (int)session->player.team;
 		invalid = yt_team_choice_rejected(numeric, session->player.team,
-		    captain_cint, team_cint);
+		    captain_cint);
 		if (invalid) {
 			if (!session_present_alert(session, invalid_row,
 			    sizeof(invalid_row) - 1U, "team invalid choice", error))

@@ -136,9 +136,9 @@ yt_sector_mines_admitted(float mines, float suppression)
 }
 
 bool
-yt_sector_force_same_team(float current_team, float owner_team)
+yt_sector_force_same_team(int current_team, int owner_team)
 {
-	return current_team != 0.0f && owner_team == current_team;
+	return current_team != 0 && owner_team == current_team;
 }
 
 enum yt_port_owner_kind

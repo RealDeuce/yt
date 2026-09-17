@@ -2380,7 +2380,7 @@ test_expired_player_cleanup(struct yt_error *error)
 		goto done;
 	strcpy(victim.name, "Victim Pilot");
 	victim.name_length = 12U;
-	victim.team = 10.0f;
+	victim.team = 10;
 	victim.lottery_plays = 7.0f;
 	victim.credits = 123.0f;
 	victim.fighters = 45.0f;
@@ -2446,7 +2446,7 @@ test_expired_player_cleanup(struct yt_error *error)
 	}
 	valid = sector_cache[2] == 0 && cloak_cache[2] == 0.0f
 	    && sector_cache[3] == 30 && cloak_cache[3] == 0.25f
-	    && victim.name_length == 0U && victim.team == 0.0f
+	    && victim.name_length == 0U && victim.team == 0
 	    && victim.lottery_plays == 0.0f && victim.credits == 123.0f
 	    && victim.fighters == 45.0f
 	    && memcmp(victim.record.bytes, "Victim Pilot", 12U) == 0
@@ -2510,7 +2510,7 @@ test_immediate_death_cleanup(struct yt_error *error)
 	victim.killed_by = 0;
 	victim.sector = 20.0f;
 	victim.ground_forces = 6.0f;
-	victim.team = 10.0f;
+	victim.team = 10;
 	victim.fighters = 45.0f;
 	victim.credits = 123.0f;
 	victim.cloak = 0.5f;
@@ -2550,7 +2550,7 @@ test_immediate_death_cleanup(struct yt_error *error)
 	valid = sector_cache[2] == 0 && cloak_cache[2] == 0.0f
 	    && sector_cache[3] == 30 && cloak_cache[3] == 0.25f
 	    && victim.killed_by == -1 && victim.sector == 0
-	    && victim.ground_forces == 0.0f && victim.team == 0.0f
+	    && victim.ground_forces == 0.0f && victim.team == 0
 	    && victim.name_length == 13U && victim.fighters == 45.0f
 	    && victim.credits == 123.0f && victim.cloak == 0.5f
 	    && victim.score == 789.0f
@@ -2660,7 +2660,7 @@ test_xannor_player_arrival(struct yt_error *error)
 	player.sector = 42.0f;
 	player.cloak = 0.25f;
 	player.killed_by = 0;
-	player.team = 0.0f;
+	player.team = 0;
 	player.ground_forces = 0.0f;
 	if (!yt_game_write_player(&game, 2, &player, error))
 		goto done;
@@ -2673,7 +2673,7 @@ test_xannor_player_arrival(struct yt_error *error)
 	survivor.sector = 43.0f;
 	survivor.cloak = 0.75f;
 	survivor.killed_by = 0;
-	survivor.team = 0.0f;
+	survivor.team = 0;
 	survivor.ground_forces = 0.0f;
 	if (!yt_game_write_player(&game, 3, &survivor, error)
 	    || !yt_game_read_player(&game, 3, &survivor, error))
@@ -2688,7 +2688,7 @@ test_xannor_player_arrival(struct yt_error *error)
 	large_player.sector = 44.0f;
 	large_player.cloak = 0.5f;
 	large_player.killed_by = 0;
-	large_player.team = 0.0f;
+	large_player.team = 0;
 	large_player.ground_forces = 0.0f;
 	if (!yt_game_write_player(&game, 4, &large_player, error)
 	    || !yt_game_read_player(&game, 4, &large_player, error))

@@ -73,7 +73,7 @@ death_remove_from_team(struct yt_session *session, int victim,
 
 	if (!yt_game_read_player(&session->door->game, victim, &player, error))
 		return false;
-	team_id = (int)player.team;
+	team_id = player.team;
 	if (team_id == 0)
 		return true;
 
@@ -98,7 +98,7 @@ death_remove_from_team(struct yt_session *session, int victim,
 	    || !yt_game_read_player(&session->door->game, victim, &player,
 	    error))
 		return false;
-	player.team = 0.0f;
+	player.team = 0;
 	(void)yt_record_set_number(&player.record, YT_F89, 0.0f);
 	return yt_game_write_player(&session->door->game, victim, &player,
 	    error);

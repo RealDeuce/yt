@@ -33,8 +33,8 @@ bool yt_info_team_row(enum yt_info_team_row_kind kind, int team_id,
     size_t capacity, size_t *length);
 void yt_team_cache_load(struct yt_team_cache *cache,
     const struct yt_record *record, int current_player_record, bool *live);
-bool yt_team_choice_rejected(float choice, float raw_team,
-    int32_t captain_cint, int32_t team_cint);
+bool yt_team_choice_rejected(float choice, int team,
+    int32_t captain_cint);
 void yt_team_transfer_apply_sector(struct yt_sector *sector,
     double initial_fighters, float amount);
 void yt_team_transfer_apply_player(struct yt_player *player, float amount);

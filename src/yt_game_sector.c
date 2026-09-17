@@ -179,9 +179,9 @@ yt_sector_player_row(const struct yt_player *player, uint8_t *row,
 	if (!yt_game_row_append(&builder, indent, sizeof(indent) - 1U)
 	    || !yt_game_row_append(&builder, name, name_length))
 		return false;
-	if (player->team > 0.0f
+	if (player->team > 0
 	    && (!yt_game_row_append(&builder, team, sizeof(team) - 1U)
-	    || !yt_game_row_number(&builder, player->team, false)))
+	    || !yt_game_row_number(&builder, (float)player->team, false)))
 		return false;
 	if (!yt_game_row_append(&builder, fighters, sizeof(fighters) - 1U)
 	    || !yt_game_row_number(&builder, player->fighters, true)
@@ -251,9 +251,9 @@ yt_sector_fighter_row(const struct yt_sector *sector,
 			    owner_name_length))
 				return false;
 			changed = true;
-			if (owner->team != 0.0f) {
+			if (owner->team != 0) {
 				number_length = qb_str_single(number, sizeof(number),
-				    owner->team);
+				    (float)owner->team);
 				if (number_length < 1 || team == NULL
 				    || !yt_game_row_append(&scratch_builder,
 				    team_prefix, sizeof(team_prefix) - 1U)

@@ -32,7 +32,7 @@ yt_session_players_are_friendly(struct yt_session *session,
 	if (!yt_game_read_player(&session->door->game, current_record,
 	    &current, error))
 		return false;
-	if (current.team == 0.0f)
+	if (current.team == 0)
 		return true;
 	if (!yt_game_read_player(&session->door->game, candidate_record,
 	    &candidate, error))
@@ -302,7 +302,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 			    sector.fighter_owner, &owner, error))
 				return false;
 			owner_pointer = &owner;
-			owner_team_nonzero = owner.team != 0.0f;
+			owner_team_nonzero = owner.team != 0;
 			if (owner_team_nonzero) {
 				uint8_t owner_name[YT_TEXT_FIELD_SIZE];
 				size_t owner_name_length;
@@ -313,7 +313,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 				owner_name_length = yt_player_stored_name(&owner,
 				    owner_name);
 				team_number_length = qb_str_single(team_number,
-				    sizeof(team_number), owner.team);
+				    sizeof(team_number), (float)owner.team);
 				if (team_number_length < 1
 				    || owner_name_length + sizeof(team_prefix) - 1U
 				    + (size_t)team_number_length >
@@ -332,7 +332,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 				session->combat.hostile_owner_label[scratch_length++] = ']';
 				session->combat.hostile_owner_label_length = scratch_length;
 				if (!yt_game_read_team(&session->door->game,
-				    (int)owner.team, &team, error))
+				    owner.team, &team, error))
 					return false;
 				team_pointer = &team;
 			}

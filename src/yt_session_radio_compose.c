@@ -274,11 +274,11 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 
 		if (!session_reload_player(session, error))
 			return false;
-		if (session->player.team == 0.0f) {
+		if (session->player.team == 0) {
 			return session_present_alert(session, teamless,
 			    sizeof(teamless) - 1U, "radio teamless row", error);
 		}
-		if (!yt_session_load_team_cache(session, (int)session->player.team,
+		if (!yt_session_load_team_cache(session, session->player.team,
 		    session_record(session), NULL, NULL, NULL, error))
 			return false;
 		for (index = 0; index < 4; ++index)

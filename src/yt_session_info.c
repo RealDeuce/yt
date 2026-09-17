@@ -86,7 +86,7 @@ yt_session_info_team_lines(struct yt_session *session,
 	if (!yt_game_read_player(&session->door->game, current_record,
 	    &current_player, error))
 		return false;
-	team_id = (int)current_player.team;
+	team_id = current_player.team;
 	if (team_id == 0) {
 		if (!info_line(session, none, sizeof(none) - 1U, error)
 		    || !info_line(session, NULL, 0U, error))
@@ -124,7 +124,7 @@ yt_session_info_team_lines(struct yt_session *session,
 		if (captain.name_length > 0U) {
 			captain_name_length = yt_player_stored_name(&captain,
 			    captain_name);
-			valid_captain = captain.team == (float)team_id;
+			valid_captain = captain.team == team_id;
 		}
 	}
 	if (!valid_captain) {

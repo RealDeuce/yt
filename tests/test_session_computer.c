@@ -126,10 +126,10 @@ test_port_visibility_through_report(void)
 	door.game.config.port_offset = 2055.0f;
 	door.game.config.planet_offset = 3055.0f;
 	yt_record_blank(&current.record);
-	current.team = 7.0f;
+	current.team = 7;
 	yt_player_encode(&current);
 	yt_record_blank(&owner.record);
-	owner.team = 7.0f;
+	owner.team = 7;
 	yt_player_encode(&owner);
 	yt_record_blank(&sector.record);
 	sector.port = 0;
@@ -155,7 +155,7 @@ test_port_visibility_through_report(void)
 	CHECK(session.navigation.route_marker == 0.0f);
 	CHECK(session.planet.current_record == 3107U);
 
-	owner.team = 8.0f;
+	owner.team = 8;
 	yt_player_encode(&owner);
 	CHECK(yt_database_write_durable(&door.game.database, 3U,
 	    &owner.record, &error));

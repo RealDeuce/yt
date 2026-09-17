@@ -15,7 +15,7 @@ static int failures;
 } while (0)
 
 static void
-write_player(struct yt_game *game, int record, const char *name, float team,
+write_player(struct yt_game *game, int record, const char *name, int team,
     struct yt_error *error)
 {
 	struct yt_player player;
@@ -75,8 +75,8 @@ test_destination_danger(void)
 	yt_error_clear(&error);
 	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
 	    &error));
-	write_player(&door.game, 2, "CURRENT", 7.0f, &error);
-	write_player(&door.game, 3, "ALLY", 7.0f, &error);
+	write_player(&door.game, 2, "CURRENT", 7, &error);
+	write_player(&door.game, 3, "ALLY", 7, &error);
 	write_team_overlay(&door.game, &door.game.config, 7, "TEAM", &error);
 	memset(&sector, 0, sizeof(sector));
 	yt_record_blank(&sector.record);
@@ -91,9 +91,9 @@ test_destination_danger(void)
 	CHECK(session.player_reference.friendly);
 	CHECK(session.presentation.foreground == 7.0f);
 	CHECK(yt_present_background(&session.presentation) == 0.0f);
-	CHECK(session.player.team == 7.0f);
+	CHECK(session.player.team == 7);
 
-	write_player(&door.game, 3, "SOLO", 0.0f, &error);
+	write_player(&door.game, 3, "SOLO", 0, &error);
 	session.player_reference.friendly = true;
 	CHECK(yt_session_destination_is_dangerous(&session, 13.0f,
 	    &dangerous, &error));
