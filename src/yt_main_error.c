@@ -47,8 +47,6 @@ static const struct yt_basic_fault_identity basic_faults[] = {
 	    40001, GET_ERRORS, 6U),
 	MAIN_FAULT("current-player A41C GET", 0xA428U, 0xA42BU, 0xA41DU,
 	    33990, GET_ERRORS, 6U),
-	MAIN_FAULT("current-player A41C sector ADD_FLOAT", 0xA44CU,
-	    0xA44FU, 0xA446U, 33990, CINT_ERRORS, 1U),
 	MAIN_FAULT("current-player A41C player-index CINT", 0xA557U,
 	    0xA55AU, 0xA554U, 33990, CINT_ERRORS, 1U),
 	MAIN_FAULT("hostile Attack opening sector GET", 0x0BC0U, 0x0BC3U,

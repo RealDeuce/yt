@@ -149,13 +149,11 @@ yt_session_computer_port_report(struct yt_session *session,
 		return true;
 	}
 	{
-		float sector_record_expression = yt_port_selected_expression(
-		    session_sector_offset(session), (float)sector_number);
 		struct yt_port_market_state market;
 
-		return yt_session_update_port(session, sector_number,
-		    &sector_record_expression, NULL, &market, error)
-		    && yt_session_port_report(session, (int)market.logical_port,
+		return yt_session_update_port(session, sector_number, NULL,
+		    &market, error)
+		    && yt_session_port_report(session, market.logical_port,
 		    &market, NULL, error);
 	}
 }

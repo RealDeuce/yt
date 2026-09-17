@@ -45,7 +45,7 @@ struct session_combat_state {
 };
 
 struct session_navigation_state {
-	float current_sector_physical_record;
+	int current_sector_physical_record;
 	float current_warps[6];
 	float route_marker;
 	float route_start_sector;
@@ -282,7 +282,6 @@ bool yt_session_update_planet(struct yt_session *session,
     int logical_planet, struct yt_planet *planet,
     struct yt_planet_economy *economy, struct yt_error *error);
 bool yt_session_update_port(struct yt_session *session, int sector_number,
-    const float *sector_record_expression,
     const struct yt_sector *loaded_sector,
     struct yt_port_market_state *market, struct yt_error *error);
 bool yt_session_port_report(struct yt_session *session, int logical_port,
@@ -301,8 +300,7 @@ bool yt_session_command_rename_port(struct yt_session *session,
 bool yt_session_command_buy_port(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_ordinary_commerce(struct yt_session *session,
-    int sector_number, float sector_record_expression,
-    struct yt_error *error);
+    int sector_number, struct yt_error *error);
 bool yt_session_command_trade(struct yt_session *session,
     bool *enter_sector, struct yt_error *error);
 bool yt_session_fresh_no_turn_gate(struct yt_session *session, bool *denied,

@@ -158,7 +158,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 	bool first_warp = true;
 
 	session->navigation.current_sector_physical_record =
-	    (float)session_sector_basic_record(session, logical_sector);
+	    (int)session_sector_basic_record(session, logical_sector);
 	if (!scanner_read_sector(session, logical_sector, &sector, error))
 		return false;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,

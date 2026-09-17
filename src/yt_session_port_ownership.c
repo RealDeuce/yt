@@ -374,7 +374,7 @@ purchase_report(struct yt_session *session, int logical_port, bool earth,
 		struct yt_sector updater_sector = {0};
 
 		updater_sector.port = (float)logical_port;
-		if (!yt_session_update_port(session, 0, NULL, &updater_sector,
+		if (!yt_session_update_port(session, 0, &updater_sector,
 		    &market, error))
 			return false;
 		*early_port = market.port;

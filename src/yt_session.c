@@ -333,9 +333,9 @@ session_reload_player(struct yt_session *session, struct yt_error *error)
 	if (!session_read_player_at_fault(session, session_record(session), &fresh,
 	    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET, error)
 	    || !yt_current_player_hydrate(&session->player, &fresh,
-	    session_record(session), session_sector_offset(session),
+	    session_record(session), (int)session_sector_offset(session),
 	    session->earth.anti_cloak_enabled, &session->navigation.current_sector_physical_record,
-	    &session->player_cache, error))
+	    &session->player_cache))
 		return false;
 	session->combat.ship_fighters = session->player.fighters;
 	session->combat.ship_shields = session->player.shields;

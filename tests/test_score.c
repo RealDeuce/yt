@@ -205,8 +205,7 @@ check_current_player_cache_model(void)
 	struct yt_player fresh;
 	struct yt_player player;
 	struct yt_player_cache player_cache = {0};
-	float current_sector = -1.0f;
-	struct yt_error error;
+	int current_sector = -1;
 
 	memset(&player, 0, sizeof(player));
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Cached Name");
@@ -242,8 +241,8 @@ check_current_player_cache_model(void)
 	memcpy(fresh.record.bytes + YT_F109, "\x11\x22\x33\0", 4U);
 	fresh.score = qb_mbf32_decode(fresh.record.bytes + YT_F109);
 	fresh.record.bytes[YT_RECORD_TAIL_OFFSET] = 0x7f;
-	if (!yt_current_player_hydrate(&player, &fresh, 2, 51.0f, false,
-	    &current_sector, &player_cache, NULL)
+	if (!yt_current_player_hydrate(&player, &fresh, 2, 51, false,
+	    &current_sector, &player_cache)
 	    || strcmp(player.name, "Cached Name") != 0
 	    || player.name_length != 11U || player.last_active != 71.0f
 	    || player.killed_by != 72.0f || player.lottery_plays != 73.0f
@@ -258,43 +257,19 @@ check_current_player_cache_model(void)
 	    || player.cloak != 20.0f || player.mines != 21.0f
 	    || memcmp(&player.record, &fresh.record,
 	    sizeof(player.record)) != 0
-	    || current_sector != 57.0f
+	    || current_sector != 57
 	    || player_cache.cloak[2] != 20.0f)
 		return false;
 
 	fresh.sector = 22.0f;
 	fresh.cloak = 23.0f;
 	yt_player_encode(&fresh);
-	if (!yt_current_player_hydrate(&player, &fresh, 2, 51.0f, true,
-	    &current_sector, &player_cache, NULL)
+	if (!yt_current_player_hydrate(&player, &fresh, 2, 51, true,
+	    &current_sector, &player_cache)
 	    || player_cache.cloak[2] != 20.0f
-	    || current_sector != 73.0f)
+	    || current_sector != 73)
 		return false;
-
-	fresh.sector = 1.0e38f;
-	fresh.fighters = 7.0f;
-	yt_player_encode(&fresh);
-	current_sector = 77.0f;
-	yt_error_clear(&error);
-	if (yt_current_player_hydrate(&player, &fresh, 2, 1.0e38f, false,
-	    &current_sector, &player_cache, &error)
-	    || error.status != YT_RANGE || !error.basic_fault_valid
-	    || !error.basic_error_valid || error.basic_error != 6U
-	    || error.basic_fault_site
-	    != YT_BASIC_FAULT_CURRENT_PLAYER_A41C_SECTOR_ADD
-	    || current_sector != 77.0f)
-		return false;
-
-	fresh.sector = 5.0f;
-	fresh.fighters = 0.0f;
-	yt_player_encode(&fresh);
-	memcpy(fresh.record.bytes + YT_F61,
-	    (const uint8_t[4]){0xA1U, 0xB2U, 0xC3U, 0x00U}, 4U);
-	yt_error_clear(&error);
-	return yt_current_player_hydrate(&player, &fresh, 2, -5.0f, false,
-	    &current_sector, &player_cache, &error) && current_sector == 0.0f
-	    && memcmp(player.record.bytes + YT_F61,
-	    (const uint8_t[4]){0xA1U, 0xB2U, 0xC3U, 0x00U}, 4U) == 0;
+	return true;
 }
 
 static bool

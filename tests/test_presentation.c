@@ -3372,8 +3372,6 @@ test_basic_fault_registry(void)
 		    0xB2DAU, 0U},
 		{YT_BASIC_FAULT_MAIN, 0xA428U, 0xA42BU, 0xA41DU, 33990,
 		    0xB2DAU, 0U},
-		{YT_BASIC_FAULT_MAIN, 0xA44CU, 0xA44FU, 0xA446U, 33990,
-		    0xB2DAU, 2U},
 		{YT_BASIC_FAULT_MAIN, 0xA557U, 0xA55AU, 0xA554U, 33990,
 		    0xB2DAU, 2U},
 		{YT_BASIC_FAULT_MAIN, 0x0BC0U, 0x0BC3U, 0x0BB5U, 20430,
@@ -20097,181 +20095,6 @@ direct_warp_attack_read_player(void *context, int player_record,
 	return false;
 }
 
-enum direct_warp_gate_runtime_failure {
-	DIRECT_WARP_GATE_SECTOR_ADD,
-};
-
-struct direct_warp_gate_runtime_state {
-	struct yt_player fresh;
-	enum direct_warp_gate_runtime_failure failure;
-	size_t read_count;
-};
-
-static bool
-direct_emergency_warp_gate_runtime_failure_run(
-    struct hostile_mines_hazard_fixture *fixture, bool hostile, bool ansi,
-    const uint8_t *command, size_t command_length,
-    enum direct_warp_gate_runtime_failure failure,
-    struct direct_warp_gate_runtime_state *gate,
-    struct yt_basic_fault_projection *projection, size_t ends[2])
-{
-	static const uint8_t scanner_gate_raw[4] = {0x00U, 0x00U, 0x60U, 0x00U};
-	static const uint8_t main_gate_raw[4] = {0x00U, 0x00U, 0x00U, 0x00U};
-	const uint8_t *expected_gate_raw = hostile
-	    ? scanner_gate_raw : main_gate_raw;
-	struct yt_player before;
-	struct yt_player expected;
-	struct yt_record fresh_record;
-	struct yt_error error;
-	float current_sector = 784.0f;
-	float cloak_cache[4] = {-1.0f, -2.0f, 0.5f, -4.0f};
-	uint8_t gate_raw[4];
-
-	if (gate == NULL || projection == NULL || ends == NULL)
-		return false;
-	memset(gate, 0, sizeof(*gate));
-	gate->failure = failure;
-	memcpy(gate_raw, expected_gate_raw, sizeof(gate_raw));
-	if ((hostile && !direct_emergency_warp_hostile_menu_prefix(fixture,
-	    ansi, command, command_length, &ends[0]))
-	    || (!hostile && (command_length != 1U || command[0] != 'W'
-	    || !direct_emergency_warp_main_command_prefix(fixture, ansi,
-	    &ends[0]))))
-		return false;
-	ends[1] = ends[0];
-	before = fixture->emergency_player;
-	fresh_record = before.record;
-	(void)yt_record_set_number(&fresh_record, YT_F49, 104.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F53, 105.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F57, 1.0e38f);
-	(void)yt_record_set_number(&fresh_record, YT_F61, 107.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F65, 108.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F69, 109.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F73, 110.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F77, 111.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F81, 112.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F89, 113.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F93, 114.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F97, 115.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F109, 116.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F113, 117.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F117, 118.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F121, 119.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F125, 120.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F129, 121.0f);
-	yt_player_decode(&gate->fresh, &fresh_record);
-	++gate->read_count;
-	yt_error_clear(&error);
-	if (yt_current_player_hydrate(&fixture->emergency_player, &gate->fresh,
-	    2, 1.0e38f, false, &current_sector, NULL, &error)
-	    || !yt_basic_fault_project(&error, NULL, 0U, NULL, 0U, NULL, 0U,
-	    projection)
-	    || gate->read_count != 1U
-	    || memcmp(gate_raw, expected_gate_raw, sizeof(gate_raw)) != 0)
-		return false;
-	expected = before;
-	expected.record = gate->fresh.record;
-	expected.sector = gate->fresh.sector;
-	expected.fighters = gate->fresh.fighters;
-	return current_sector == 784.0f
-	    && memcmp(cloak_cache,
-	    (const float[4]){-1.0f, -2.0f, 0.5f, -4.0f},
-	    sizeof(cloak_cache)) == 0
-	    && memcmp(&fixture->emergency_player, &expected,
-	    sizeof(expected)) == 0;
-}
-
-static void
-test_direct_emergency_warp_gate_runtime_failures(void)
-{
-	static const struct {
-		bool hostile;
-		bool ansi;
-		const uint8_t *command;
-		size_t command_length;
-		size_t expected_length;
-		uint64_t expected_hash;
-	} modes[] = {
-		{true, false, (const uint8_t *)"W", 1U, 63U,
-		    UINT64_C(0x0b6904cbde91e151)},
-		{true, false, (const uint8_t *)"WT", 2U, 64U,
-		    UINT64_C(0x4715406bf12b49e1)},
-		{true, true, (const uint8_t *)"W", 1U, 73U,
-		    UINT64_C(0x1f8739c8faadb88e)},
-		{true, true, (const uint8_t *)"WT", 2U, 74U,
-		    UINT64_C(0x2e092d830cad0828)},
-		{false, false, (const uint8_t *)"W", 1U, 41U,
-		    UINT64_C(0x84059a449d6d0449)},
-		{false, true, (const uint8_t *)"W", 1U, 41U,
-		    UINT64_C(0x84059a449d6d0449)},
-	};
-	static const struct {
-		enum direct_warp_gate_runtime_failure failure;
-		enum yt_basic_fault_site site;
-		uint16_t instruction;
-		uint16_t saved_ip;
-		uint16_t statement;
-	} cuts[] = {
-		{DIRECT_WARP_GATE_SECTOR_ADD,
-		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_SECTOR_ADD,
-		    0xA44CU, 0xA44FU, 0xA446U},
-	};
-	struct physical_viewer_join viewer;
-	struct viewer_file_fixture stream;
-	struct hostile_mines_hazard_fixture fixture;
-	struct direct_warp_gate_runtime_state gate;
-	struct yt_basic_fault_projection projection;
-	struct yt_record record;
-	uint8_t remote[96];
-	size_t ends[2];
-	size_t cut;
-	size_t mode;
-
-	for (mode = 0U; mode < YT_ARRAY_LEN(modes); ++mode) {
-		for (cut = 0U; cut < YT_ARRAY_LEN(cuts); ++cut) {
-			memset(&viewer, 0, sizeof(viewer));
-			fixture_viewer_initialize(&viewer, &stream,
-			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-			    "YTSCORE.ASC", modes[mode].ansi, remote, sizeof(remote));
-			memset(&fixture, 0, sizeof(fixture));
-			fixture.presentation.viewer = &viewer;
-			memset(&record, 0xa5, sizeof(record));
-			(void)yt_record_set_number(&record, YT_F49, 17.0f);
-			(void)yt_record_set_number(&record, YT_F57, 733.0f);
-			(void)yt_record_set_number(&record, YT_F61, 1000.0f);
-			yt_player_decode(&fixture.emergency_player, &record);
-			fixture.hazard_player = fixture.emergency_player;
-			CHECK(direct_emergency_warp_gate_runtime_failure_run(
-			    &fixture, modes[mode].hostile, modes[mode].ansi,
-			    modes[mode].command, modes[mode].command_length,
-			    cuts[cut].failure, &gate, &projection, ends));
-			CHECK(ends[0] == modes[mode].expected_length
-			    && ends[1] == ends[0]
-			    && viewer.join.remote_length == modes[mode].expected_length
-			    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
-			    == modes[mode].expected_hash
-			    && projection.site == cuts[cut].site
-			    && projection.error_number == 6U
-			    && projection.identity->instruction
-			    == cuts[cut].instruction
-			    && projection.identity->saved_ip == cuts[cut].saved_ip
-			    && projection.identity->retry_statement
-			    == cuts[cut].statement
-			    && projection.identity->source_line == 33990
-			    && projection.identity->handler == 0xB2DAU
-			    && projection.disposition
-			    == YT_BASIC_FAULT_RESUME_GAMEPLAY
-			    && projection.main.route == YT_MAIN_ERROR_GAMEPLAY);
-			CHECK(!fixture.warp_called && fixture.draw_position == 0U
-			    && fixture.emergency_player_reads == 0U
-			    && fixture.emergency_player_put_attempts == 0U
-			    && fixture.emergency_player_writes == 0U
-			    && fixture.emergency_flushes == 0U
-			    && fixture.emergency_waits == 0U);
-		}
-	}
-}
-
 struct direct_warp_hostile_parent_copy_cycle_state {
 	size_t entry_player_reads;
 	size_t gate_player_reads;
@@ -21769,7 +21592,7 @@ struct direct_warp_attack_opening_state {
 	struct yt_record player_source;
 	struct yt_record player_field;
 	struct yt_player expected_player;
-	float current_sector;
+	int current_sector;
 	struct yt_player_cache player_cache;
 };
 
@@ -21849,7 +21672,7 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 		return false;
 	}
 	before = fixture->emergency_player;
-	entry->current_sector = 1054.0f;
+	entry->current_sector = 1054;
 	entry->player_cache.cloak[0] = -1.0f;
 	entry->player_cache.cloak[1] = -2.0f;
 	entry->player_cache.cloak[2] = -3.0f;
@@ -21858,8 +21681,7 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 	yt_error_clear(&error);
 	if (!direct_warp_attack_read_player(io, 2, &fresh, &error)
 	    || !yt_current_player_hydrate(&fixture->emergency_player, &fresh,
-	    2, 51.0f, false, &entry->current_sector, &entry->player_cache,
-	    &error)) {
+	    2, 51, false, &entry->current_sector, &entry->player_cache)) {
 		yt_database_close(&io->database);
 		return false;
 	}
@@ -21943,8 +21765,8 @@ struct direct_warp_attack_combat_join {
 	struct yt_player written_player;
 	struct yt_player cached_player;
 	struct fighter_shield_spill_observation spill;
-	float current_sector_record;
-	float sector_record_offset;
+	int current_sector_record;
+	int sector_record_offset;
 	struct yt_player_cache player_cache;
 	uint8_t selector_raw[4];
 	uint8_t ship_raw[8];
@@ -22057,7 +21879,7 @@ direct_warp_attack_combat_read_player(void *context, int player_record,
 	    &fresh, error)
 	    || !yt_current_player_hydrate(&join->fixture->emergency_player,
 	    &fresh, player_record, join->sector_record_offset, false,
-	    &join->current_sector_record, &join->player_cache, error)) {
+	    &join->current_sector_record, &join->player_cache)) {
 		memset(join->ship_raw, 0, 4U);
 		memcpy(join->ship_raw + 4U,
 		    join->fixture->emergency_player.record.bytes + YT_F61, 4U);
@@ -22791,8 +22613,8 @@ direct_warp_attack_cleared_join_run(
 	memset(join, 0, sizeof(*join));
 	join->fixture = fixture;
 	join->cycle = cycle;
-	join->current_sector_record = 1054.0f;
-	join->sector_record_offset = 51.0f;
+	join->current_sector_record = 1054;
+	join->sector_record_offset = 51;
 	join->player_cache.cloak[0] = -1.0f;
 	join->player_cache.cloak[1] = -2.0f;
 	join->player_cache.cloak[2] = -3.0f;
@@ -22861,8 +22683,8 @@ direct_warp_attack_surrender_join_run(
 	memset(join, 0, sizeof(*join));
 	join->fixture = fixture;
 	join->cycle = cycle;
-	join->current_sector_record = 1054.0f;
-	join->sector_record_offset = 51.0f;
+	join->current_sector_record = 1054;
+	join->sector_record_offset = 51;
 	join->surrender_answer = answer;
 	join->allow_tail_player = owner == -1.0f;
 	memset(&record, 0x3c, sizeof(record));
@@ -26804,7 +26626,7 @@ test_direct_emergency_warp_hostile_attack_opening_success(void)
 		CHECK(memcmp(&fixture.emergency_player,
 		    &entry.expected_player,
 		    sizeof(entry.expected_player)) == 0
-		    && entry.current_sector == 1054.0f
+		    && entry.current_sector == 1054
 		    && entry.player_cache.cloak[0] == -1.0f
 		    && entry.player_cache.cloak[1] == -2.0f
 		    && entry.player_cache.cloak[2] == 36.0f
@@ -26871,15 +26693,9 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
 	struct test_hostile_attack_combat_state combat;
-	struct direct_warp_main_cycle_state cycle_before_return;
-	struct direct_warp_attack_combat_join join_before_return;
-	struct yt_basic_fault_projection projection;
 	struct yt_player expected_player;
 	struct yt_sector expected_sector;
-	struct yt_player failed_player;
-	struct yt_player player_before_return;
 	struct yt_record record;
-	struct yt_record corrupt_return;
 	struct yt_error error;
 	uint8_t remote[1600];
 	size_t ends[3];
@@ -26926,8 +26742,8 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		memset(&join, 0, sizeof(join));
 		join.fixture = &fixture;
 		join.cycle = &cycle;
-		join.current_sector_record = 1054.0f;
-		join.sector_record_offset = 51.0f;
+		join.current_sector_record = 1054;
+		join.sector_record_offset = 51;
 		join.player_cache.cloak[0] = -1.0f;
 		join.player_cache.cloak[1] = -2.0f;
 		join.player_cache.cloak[2] = -3.0f;
@@ -27038,7 +26854,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    && cycle.fresh_hostile_player_reads == 2U
 		    && cycle.final_field_record == 1054
 		    && !cycle.final_field_player
-		    && join.current_sector_record == 1054.0f
+		    && join.current_sector_record == 1054
 		    && join.player_cache.cloak[2] == 0.0f);
 		CHECK(viewer.join.remote_length
 		    == callers[caller].total_length + sizeof(body) - 1U
@@ -27061,48 +26877,6 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 			    == join.persistence_sector.record.bytes[index]);
 		}
 		fixture.hazard_sector.record = join.written_sector.record;
-		cycle_before_return = cycle;
-		player_before_return = fixture.emergency_player;
-		fixture.emergency_player = player_before_return;
-		join_before_return = join;
-		corrupt_return = join.return_player.record;
-		(void)yt_record_set_number(&corrupt_return, YT_F57, 1.0e38f);
-		yt_player_decode(&join.return_player, &corrupt_return);
-		join.sector_record_offset = 1.0e38f;
-		yt_error_clear(&error);
-		CHECK(!direct_warp_attack_combat_read_player(&join, 2,
-		    &failed_player, &error)
-		    && yt_basic_fault_project(&error, NULL, 0U, NULL, 0U, NULL,
-		    0U, &projection));
-		CHECK(projection.site
-		    == YT_BASIC_FAULT_CURRENT_PLAYER_A41C_SECTOR_ADD
-		    && projection.error_number == 6U
-		    && projection.identity->instruction == 0xA44CU
-		    && projection.identity->saved_ip == 0xA44FU
-		    && projection.identity->retry_statement == 0xA446U
-		    && projection.identity->source_line == 33990
-		    && projection.identity->handler == 0xB2DAU
-		    && projection.disposition == YT_BASIC_FAULT_RESUME_GAMEPLAY
-		    && projection.main.route == YT_MAIN_ERROR_GAMEPLAY);
-		CHECK(join.a41c_reads == 2U
-		    && cycle.fresh_hostile_player_reads == 3U
-		    && cycle.final_field_record == 2 && cycle.final_field_player
-		    && memcmp(&fixture.emergency_player.record, &corrupt_return,
-		    sizeof(corrupt_return)) == 0
-		    && fixture.emergency_player.sector == 1.0e38f
-		    && fixture.emergency_player.fighters == 7.0f
-		    && fixture.emergency_player.shields == 5.0f
-		    && join.current_sector_record == 1054.0f
-		    && memcmp(join.ship_raw, raw_zero_double, 4U) == 0
-		    && memcmp(join.ship_raw + 4U,
-		    corrupt_return.bytes + YT_F61, 4U) == 0
-		    && memcmp(join.shield_raw,
-		    join.attack_player.record.bytes + YT_F53, 4U) == 0
-		    && viewer.join.remote_length
-		    == callers[caller].total_length + sizeof(body) - 1U);
-		join = join_before_return;
-		cycle = cycle_before_return;
-		fixture.emergency_player = player_before_return;
 		CHECK(direct_warp_attack_return_hostile_menu(&join,
 		    combat.deployed_remaining));
 		CHECK(viewer.join.remote_length == callers[caller].total_length
@@ -27125,7 +26899,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    join.return_player.record.bytes + YT_F61, 4U) == 0
 		    && memcmp(join.shield_raw,
 		    join.return_player.record.bytes + YT_F53, 4U) == 0
-		    && join.current_sector_record == 1054.0f
+		    && join.current_sector_record == 1054
 		    && join.player_cache.cloak[2] == 13.0f
 		    && cycle.fresh_hostile_selected == 'B'
 		    && viewer.join.accumulator[0] == 'B'
@@ -28515,8 +28289,8 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 		memset(&attack, 0, sizeof(attack));
 		attack.fixture = &fixture;
 		attack.cycle = &cycle;
-		attack.current_sector_record = 1054.0f;
-		attack.sector_record_offset = 51.0f;
+		attack.current_sector_record = 1054;
+		attack.sector_record_offset = 51;
 		attack.allow_spill = true;
 		memset(&record, 0x3c, sizeof(record));
 		(void)yt_record_set_number(&record, YT_F81, 2.0f);
@@ -28688,8 +28462,8 @@ direct_warp_attack_fatal_prefix_setup(struct physical_viewer_join *viewer,
 	memset(attack, 0, sizeof(*attack));
 	attack->fixture = fixture;
 	attack->cycle = cycle;
-	attack->current_sector_record = 1054.0f;
-	attack->sector_record_offset = 51.0f;
+	attack->current_sector_record = 1054;
+	attack->sector_record_offset = 51;
 	attack->allow_spill = true;
 	memset(&record, 0x3c, sizeof(record));
 	(void)yt_record_set_number(&record, YT_F81, 2.0f);
@@ -28942,8 +28716,8 @@ test_xannor_attack_tail_clearance_join(void)
 		memset(&join, 0, sizeof(join));
 		join.fixture = &fixture;
 		join.cycle = &cycle;
-		join.current_sector_record = 1054.0f;
-		join.sector_record_offset = 51.0f;
+		join.current_sector_record = 1054;
+		join.sector_record_offset = 51;
 		join.allow_tail_player = true;
 		join.allow_clearance = true;
 		memset(&record, 0xa5, sizeof(record));
@@ -37543,7 +37317,6 @@ main(void)
 	test_direct_emergency_warp_accepted_modes();
 	test_direct_emergency_warp_inherited_pager();
 	test_direct_emergency_warp_invalid_boundaries();
-	test_direct_emergency_warp_gate_runtime_failures();
 	test_direct_emergency_warp_parent_copy_failures();
 	test_direct_emergency_warp_hostile_parent_copy_failures();
 	test_direct_emergency_warp_warning_carrier();

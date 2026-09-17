@@ -21,12 +21,11 @@ session_read_port_physical(struct yt_session *session,
 
 bool
 yt_session_update_port(struct yt_session *session, int sector_number,
-    const float *sector_record_expression, const struct yt_sector *loaded_sector,
+    const struct yt_sector *loaded_sector,
     struct yt_port_market_state *market, struct yt_error *error)
 {
 	struct yt_sector sector;
 	struct yt_record record;
-	float sector_expression;
 	uint32_t sector_physical_record;
 	int today;
 	int adjusted_year;
@@ -37,29 +36,17 @@ yt_session_update_port(struct yt_session *session, int sector_number,
 	if (loaded_sector != NULL)
 		sector = *loaded_sector;
 	else {
-		sector_expression = sector_record_expression != NULL
-		    ? *sector_record_expression
-		    : qb_single_add(session_sector_offset(session),
-		    (float)sector_number);
-		sector_physical_record = qb_brun_random_record_number(
-		    sector_expression);
-		if (sector_physical_record == 0U)
-			return session_range_error(error,
-			    "ordinary port sector record conversion");
+		sector_physical_record = session_sector_basic_record(session,
+		    sector_number);
 		if (!read_database_record_at_fault(session,
 		    sector_physical_record, &record,
 		    YT_BASIC_FAULT_PORT_UPDATER_SECTOR_GET, error))
 			return false;
 		yt_sector_decode(&sector, &record);
 	}
-	market->logical_port = sector.port;
-	market->port_record_expression = qb_single_add(
-	    session_port_offset(session), market->logical_port);
-	market->port_physical_record = qb_brun_random_record_number(
-	    market->port_record_expression);
-	if (market->port_physical_record == 0U)
-		return session_range_error(error,
-		    "ordinary port record conversion");
+	market->logical_port = (int)sector.port;
+	market->port_physical_record = session_port_basic_record(session,
+	    market->logical_port);
 	if (!yt_current_date_serial(&session->door->game.clock,
 	    session->door->game.config.epoch_year,
 	    &today, &adjusted_year, error))
@@ -144,10 +131,7 @@ yt_session_port_report(struct yt_session *session, int logical_port,
 		return false;
 	physical_record = market->port_physical_record != 0U
 	    ? market->port_physical_record
-	    : qb_brun_random_record_number(qb_single_add(
-	    session_port_offset(session), (float)logical_port));
-	if (physical_record == 0U)
-		return session_range_error(error, "port report record conversion");
+	    : session_port_basic_record(session, logical_port);
 	session_set_pager_line_count(session, 0.0f);
 	if (!port_report_owner(session, market, error)
 	    || !session_reload_player(session, error))

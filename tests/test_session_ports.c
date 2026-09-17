@@ -71,9 +71,8 @@ test_port_update(void)
 	    &error));
 	CHECK(yt_database_write_durable(&door.game.database, 2057U,
 	    &port.record, &error));
-	CHECK(yt_session_update_port(&session, 7, NULL, NULL, &market,
-	    &error));
-	CHECK(market.logical_port == 2.0f);
+	CHECK(yt_session_update_port(&session, 7, NULL, &market, &error));
+	CHECK(market.logical_port == 2);
 	CHECK(market.port_physical_record == 2057U);
 	CHECK(market.current_day == (float)today);
 	CHECK(yt_database_read(&door.game.database, 2057U, &persisted,

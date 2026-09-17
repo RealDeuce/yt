@@ -48,10 +48,10 @@ test_current_sector_from_real_records(void)
 	CHECK(yt_database_write_durable(&door.game.database, 4U,
 	    &sector.record, &error));
 	CHECK(yt_session_display_sector(&session, false, &error));
-	CHECK(session.navigation.current_sector_physical_record == 4.0f);
+	CHECK(session.navigation.current_sector_physical_record == 4);
 	CHECK(session.player.sector == 1.0f);
 	CHECK(yt_session_sector_entry(&session, &error));
-	CHECK(session.navigation.current_sector_physical_record == 4.0f);
+	CHECK(session.navigation.current_sector_physical_record == 4);
 	CHECK(session.player.sector == 1.0f);
 	sector.fighters = 1.0f;
 	sector.fighter_owner = 2.0f;

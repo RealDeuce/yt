@@ -1,80 +1,20 @@
 #include "yt_game.h"
 
-#include "qb.h"
-#include "yt_main_error.h"
-
-#include <stdio.h>
 #include <string.h>
-
-static bool
-current_player_hydration_fault(struct yt_error *error,
-    enum yt_basic_fault_site site, const char *operation)
-{
-	if (error != NULL) {
-		error->status = YT_RANGE;
-		error->system_error = 0;
-		(void)snprintf(error->operation, sizeof(error->operation), "%s",
-		    operation);
-		error->path[0] = '\0';
-		(void)yt_error_attach_basic_fault_number(error, site, 6U);
-	}
-	return false;
-}
-
-static enum qb_mbf_status
-current_player_add_single_raw(const uint8_t left[4], const uint8_t right[4],
-    const uint8_t dirty_zero_source[4], uint8_t result[4])
-{
-	volatile float sum;
-	enum qb_mbf_status status;
-
-	if (right[3] == 0U) {
-		memcpy(result, left, 4U);
-		return QB_MBF_OK;
-	}
-	if (left[3] == 0U) {
-		memcpy(result, right, 4U);
-		return QB_MBF_OK;
-	}
-	sum = qb_mbf32_decode(left) + qb_mbf32_decode(right);
-	status = qb_mbf32_encode(sum, result);
-	if (status == QB_MBF_OVERFLOW || status == QB_MBF_DOMAIN)
-		return status;
-	if (status == QB_MBF_UNDERFLOW || sum == 0.0f) {
-		memcpy(result, dirty_zero_source, 3U);
-		result[3] = 0U;
-	}
-	return status;
-}
 
 bool
 yt_current_player_hydrate(struct yt_player *player,
     const struct yt_player *fresh, int player_record,
-    float sector_record_offset, bool anti_cloak_enabled,
-    float *current_sector_record, struct yt_player_cache *player_cache,
-    struct yt_error *error)
+    int sector_record_offset, bool anti_cloak_enabled,
+    int *current_sector_record, struct yt_player_cache *player_cache)
 {
-	uint8_t sector_record_offset_raw[4];
-	uint8_t current_sector_raw[8] = {0};
-	enum qb_mbf_status add_status;
-
 	if (player == NULL || fresh == NULL || current_sector_record == NULL)
-		return false;
-	if (qb_mbf32_encode(sector_record_offset, sector_record_offset_raw)
-	    != QB_MBF_OK)
 		return false;
 
 	player->record = fresh->record;
 	player->sector = fresh->sector;
 	player->fighters = fresh->fighters;
-	add_status = current_player_add_single_raw(sector_record_offset_raw,
-	    fresh->record.bytes + YT_F57, fresh->record.bytes + YT_F61,
-	    current_sector_raw);
-	if (add_status == QB_MBF_OVERFLOW || add_status == QB_MBF_DOMAIN)
-		return current_player_hydration_fault(error,
-		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_SECTOR_ADD,
-		    "current-player A41C sector ADD_FLOAT");
-	*current_sector_record = qb_mbf32_decode(current_sector_raw);
+	*current_sector_record = sector_record_offset + (int)fresh->sector;
 	player->turns = fresh->turns;
 	player->credits = fresh->credits;
 	player->danger_scanner = fresh->danger_scanner;

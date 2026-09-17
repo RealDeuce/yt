@@ -362,7 +362,8 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 	struct yt_port source_port;
 	struct yt_nearest_market source_market;
 	float source_prices[4];
-	float current_sector_record;
+	float current_sector_record = (float)
+	    session->navigation.current_sector_physical_record;
 	float source_record;
 	float display_source;
 	int warps[6];
@@ -375,8 +376,6 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 	    SESSION_PRESENT_BOLD_LINE, "adjacent profit title", error)
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "adjacent profit title blank", error)
-	    || !profit_single(session->navigation.current_sector_physical_record,
-	    &current_sector_record, error, "profit current sector record")
 	    || !profit_read(session, current_sector_record, &raw, error))
 		return false;
 	yt_sector_decode(&sector, &raw);

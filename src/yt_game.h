@@ -576,8 +576,7 @@ bool yt_movement_confirmation_prompt(float target, uint8_t *row,
 void yt_movement_player_overlay(struct yt_player *player, float target);
 struct yt_port_market_state {
 	struct yt_port port;
-	float logical_port;
-	float port_record_expression;
+	int logical_port;
 	uint32_t port_physical_record;
 	float current_day;
 	float timer_seconds;
@@ -895,8 +894,7 @@ bool yt_nearest_market_project(struct yt_nearest_market *market,
 
 bool yt_current_player_hydrate(struct yt_player *player,
     const struct yt_player *fresh, int player_record,
-    float sector_record_offset, bool anti_cloak_enabled,
-    float *current_sector_record, struct yt_player_cache *player_cache,
-    struct yt_error *error);
+    int sector_record_offset, bool anti_cloak_enabled,
+    int *current_sector_record, struct yt_player_cache *player_cache);
 
 #endif
