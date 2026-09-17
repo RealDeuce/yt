@@ -117,18 +117,29 @@ maintenance_write_port(struct yt_game *game, int logical,
 	int commodity;
 
 	if (!yt_record_set_number(&port->record, YT_F41,
-	    (float)port->commodity_class)
-	    || !yt_record_set_number(&port->record, YT_F45, port->last_day)) {
+	    (float)port->commodity_class)) {
+		set_error(error, YT_RANGE, "encode maintained port", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_record_set_number(&port->record, YT_F45, port->last_day)) {
 		set_error(error, YT_RANGE, "encode maintained port", "YTDATA.DAT");
 		return false;
 	}
 	for (commodity = 0; commodity < 3; ++commodity) {
 		if (!yt_record_set_number(&port->record,
-		    YT_F49 + (size_t)commodity * 4U, port->stock[commodity])
-		    || !yt_record_set_number(&port->record,
+		    YT_F49 + (size_t)commodity * 4U, port->stock[commodity])) {
+			set_error(error, YT_RANGE, "encode maintained port",
+			    "YTDATA.DAT");
+			return false;
+		}
+		if (!yt_record_set_number(&port->record,
 		    YT_F61 + (size_t)commodity * 4U,
-		    port->production[commodity])
-		    || !yt_record_set_number(&port->record,
+		    port->production[commodity])) {
+			set_error(error, YT_RANGE, "encode maintained port",
+			    "YTDATA.DAT");
+			return false;
+		}
+		if (!yt_record_set_number(&port->record,
 		    YT_F73 + (size_t)commodity * 4U,
 		    port->factor[commodity])) {
 			set_error(error, YT_RANGE, "encode maintained port",
@@ -164,8 +175,11 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 	}
 	port_count = (int)(game->config.planet_offset
 	    - game->config.port_offset);
-	if (port_count < 1 || port_count > 1000
-	    || !yt_maintenance_compose_port_phase(blank,
+	if (port_count < 1 || port_count > 1000) {
+		set_error(error, YT_RANGE, "maintain ports", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_maintenance_compose_port_phase(blank,
 	    blank_length, 0, &output)) {
 		set_error(error, YT_RANGE, "maintain ports", "YTDATA.DAT");
 		return false;
@@ -181,11 +195,14 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 		float minute;
 		bool port_plagued;
 
-		if (!yt_game_read_port(game, logical, &port, error)
-		    || !current_day_minute(game, &day, &minute, error)
-		    || !yt_maintenance_update_port(&game->random, &port, day,
-		    minute, &port_plagued, error)
-		    || !maintenance_write_port(game, logical, &port, error))
+		if (!yt_game_read_port(game, logical, &port, error))
+			return false;
+		if (!current_day_minute(game, &day, &minute, error))
+			return false;
+		if (!yt_maintenance_update_port(&game->random, &port, day,
+		    minute, &port_plagued, error))
+			return false;
+		if (!maintenance_write_port(game, logical, &port, error))
 			return false;
 		if (port_plagued)
 			++plagued;
@@ -197,10 +214,12 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 	}
 	if (plagued != 0) {
 		if (!line_output(line_context, output.rows[2].data,
-		    output.rows[2].length, error)
-		    || !line_output(line_context, output.rows[3].data,
-		    output.rows[3].length, error)
-		    || !yt_news_append_bytes(output.rows[3].data,
+		    output.rows[2].length, error))
+			return false;
+		if (!line_output(line_context, output.rows[3].data,
+		    output.rows[3].length, error))
+			return false;
+		if (!yt_news_append_bytes(output.rows[3].data,
 		    output.rows[3].length, error))
 			return false;
 	}
@@ -289,8 +308,9 @@ yt_maintenance_update_planet(struct yt_random *random,
 
 	old_total = qb_single_add(qb_single_add(production[0], production[1]), production[2]);
 	old_ground = quantity[7];
-	if (!yt_random_next(random, &first, error)
-	    || !yt_random_next(random, &second, error))
+	if (!yt_random_next(random, &first, error))
+		return false;
+	if (!yt_random_next(random, &second, error))
 		return false;
 	if (qb_single_multiply(first, old_total)
 	    > qb_single_add(qb_single_multiply(second, 16000000.0f), 100000.0f))
@@ -313,8 +333,9 @@ yt_maintenance_update_planet(struct yt_random *random,
 			float a;
 			float b;
 
-			if (!yt_random_next(random, &a, error)
-			    || !yt_random_next(random, &b, error))
+			if (!yt_random_next(random, &a, error))
+				return false;
+			if (!yt_random_next(random, &b, error))
 				return false;
 			quantity[7] = qb_single_subtract(quantity[7],
 			    qb_single_multiply(qb_single_multiply(quantity[7], a), b));
@@ -372,20 +393,27 @@ maintenance_write_planet(struct yt_game *game, int logical,
 		goto range;
 	for (index = 0; index < 3; ++index) {
 		if (!yt_record_set_number(&planet->record,
-		    production_offsets[index], planet->production[index])
-		    || !yt_record_set_number(&planet->record,
+		    production_offsets[index], planet->production[index]))
+			goto range;
+		if (!yt_record_set_number(&planet->record,
 		    stock_offsets[index], planet->stock[index]))
 			goto range;
 	}
-	if (!yt_record_set_number(&planet->record, YT_F69, planet->missiles)
-	    || !yt_record_set_number(&planet->record, YT_F77,
-	    planet->ground_forces)
-	    || !yt_record_set_number(&planet->record, YT_F89,
-	    planet->last_minute)
-	    || !yt_record_set_number(&planet->record, YT_F113, planet->plasma)
-	    || !yt_record_set_number(&planet->record, YT_F117, planet->bank)
-	    || !yt_record_set_number(&planet->record, YT_F125, planet->mines)
-	    || !yt_record_set_number(&planet->record, YT_F129,
+	if (!yt_record_set_number(&planet->record, YT_F69, planet->missiles))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F77,
+	    planet->ground_forces))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F89,
+	    planet->last_minute))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F113, planet->plasma))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F117, planet->bank))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F125, planet->mines))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F129,
 	    planet->fighters))
 		goto range;
 	return yt_database_write(&game->database,
@@ -414,8 +442,11 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 	}
 	planet_count = (int)(game->config.total_records
 	    - game->config.planet_offset);
-	if (planet_count < 1 || planet_count > 100
-	    || !yt_maintenance_compose_planet_phase(blank,
+	if (planet_count < 1 || planet_count > 100) {
+		set_error(error, YT_RANGE, "maintain planets", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_maintenance_compose_planet_phase(blank,
 	    blank_length, NULL, NULL, &output)) {
 		set_error(error, YT_RANGE, "maintain planets", "YTDATA.DAT");
 		return false;
@@ -440,19 +471,23 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 		name.data = planet.record.bytes;
 		name.length = planet.name_length < YT_TEXT_FIELD_SIZE
 		    ? planet.name_length : YT_TEXT_FIELD_SIZE;
-		if (!current_day_minute(game, &day, &minute, error)
-		    || !yt_maintenance_update_planet(&game->random, &planet, day,
-		    minute, &mutation, error)
-		    || !yt_maintenance_compose_planet_phase(blank,
+		if (!current_day_minute(game, &day, &minute, error))
+			return false;
+		if (!yt_maintenance_update_planet(&game->random, &planet, day,
+		    minute, &mutation, error))
+			return false;
+		if (!yt_maintenance_compose_planet_phase(blank,
 		    blank_length, &name, &mutation, &output))
 			return false;
 		for (row = 2U; row < output.row_count; ++row) {
 			if (!line_output(line_context, output.rows[row].data,
 			    output.rows[row].length, error))
 				return false;
-			if (row > 2U && !yt_news_append_bytes(
-			    output.rows[row].data, output.rows[row].length, error))
-				return false;
+			if (row > 2U) {
+				if (!yt_news_append_bytes(output.rows[row].data,
+				    output.rows[row].length, error))
+					return false;
+			}
 		}
 		if (!maintenance_write_planet(game, logical, &planet, error))
 			return false;
