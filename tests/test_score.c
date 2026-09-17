@@ -45,6 +45,22 @@ fail(const char *message)
 	return EXIT_FAILURE;
 }
 
+struct startup_random {
+	size_t calls;
+};
+
+static bool
+startup_random_fill(void *context, void *buffer, size_t length,
+    struct yt_error *error)
+{
+	struct startup_random *random = context;
+
+	(void)error;
+	memset(buffer, 0, length);
+	++random->calls;
+	return true;
+}
+
 static bool
 check_startup_configuration_transaction(void)
 {
@@ -57,7 +73,7 @@ check_startup_configuration_transaction(void)
 	struct yt_error error;
 	float disruption_sectors[2] = {0.0f, 0.0f};
 	float local_screen = 99.0f;
-	uint64_t draws_before;
+	struct startup_random random = {0U};
 	int record;
 	bool passed = false;
 
@@ -66,6 +82,7 @@ check_startup_configuration_transaction(void)
 	memset(&source, 0, sizeof(source));
 	memset(&cache, 0, sizeof(cache));
 	yt_random_init(&game.random);
+	yt_test_random_use_provider(&game.random, startup_random_fill, &random);
 	yt_record_blank(&source.record);
 	memcpy(source.scoreboard, "YTSCORE.ASC", sizeof("YTSCORE.ASC"));
 	source.epoch_year = 26.0f;
@@ -103,7 +120,6 @@ check_startup_configuration_transaction(void)
 	}
 	if (!yt_database_flush(&game.database, &error))
 		goto done;
-	draws_before = game.random.draws;
 	if (!yt_game_load_startup_configuration(&game, path, false, &cache,
 	    disruption_sectors, &local_screen, &error)
 	    || game.database.file == NULL
@@ -118,7 +134,7 @@ check_startup_configuration_transaction(void)
 	    || cache.sector[4] != 40.0f
 	    || cache.cloak[2] != 0.0f || cache.cloak[3] != 1.0f
 	    || cache.cloak[4] != 1.0f
-	    || game.random.draws != draws_before + 2U
+	    || random.calls != 2U
 	    || disruption_sectors[0] < 2.0f
 	    || disruption_sectors[0] > 5.0f
 	    || disruption_sectors[1] < 2.0f
@@ -3051,7 +3067,7 @@ check_maintenance_port_model(void)
 	yt_test_random_use_provider(&random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_maintenance_update_port(&random, &port, 105.0f, 720.0f,
-	    &plagued, &error) || plagued || random.draws != 0U
+	    &plagued, &error) || plagued || TEST_DRAWS(random) != 0U
 	    || port.stock[0] != 9000.0f || port.stock[1] != 15000.0f
 	    || port.stock[2] != 30000.0f
 	    || port.production[0] != 900.0f
@@ -3075,7 +3091,7 @@ check_maintenance_port_model(void)
 	script.position = 0U;
 	yt_test_random_use_provider(&random, score_random_fill, &script);
 	if (!yt_maintenance_update_port(&random, &port, 1.0f, 0.0f,
-	    &plagued, &error) || !plagued || random.draws != 3U
+	    &plagued, &error) || !plagued || TEST_DRAWS(random) != 3U
 	    || script.position != sizeof(draws)
 	    || port.production[0] != 2500500.0f
 	    || port.production[1] != 2500500.0f
@@ -3267,7 +3283,7 @@ check_maintenance_mercenary_phase_pass(void)
 		goto done;
 	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
-	    || game.random.draws != 0U || cache.warps != NULL
+	    || TEST_DRAWS(game.random) != 0U || cache.warps != NULL
 	    || cache.successors != NULL || cache.sector_count != 0
 	    || screen.lines != 6U
 	    || screen.length != sizeof(expected_screen) - 1U
@@ -3382,7 +3398,7 @@ check_maintenance_mercenary_active_phase_pass(void)
 		goto done;
 	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
-	    || game.random.draws != 5U
+	    || TEST_DRAWS(game.random) != 5U
 	    || script.position != sizeof(random_bytes)
 	    || cache.warps == NULL || cache.successors == NULL
 	    || cache.sector_count != 2 || screen.lines != 8U
@@ -3495,7 +3511,7 @@ check_maintenance_mercenary_defection_phase_pass(void)
 		goto done;
 	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
-	    || game.random.draws != 2U
+	    || TEST_DRAWS(game.random) != 2U
 	    || script.position != sizeof(random_bytes)
 	    || cache.warps != NULL || cache.successors != NULL
 	    || cache.sector_count != 0 || screen.lines != 7U
@@ -3603,7 +3619,7 @@ check_maintenance_planet_model(void)
 	    || planet.production[2] != 303.0f
 	    || planet.stock[0] != 101.0f || planet.stock[1] != 202.0f
 	    || planet.stock[2] != 303.0f || planet.fighters != 600.0f
-	    || random.draws != 3U)
+	    || TEST_DRAWS(random) != 3U)
 		return false;
 
 	memset(&planet, 0, sizeof(planet));
@@ -3788,14 +3804,14 @@ check_maintenance_xannor_target_model(void)
 	if (!yt_maintenance_xannor_target(&random, 2004, &hunt_player,
 	    &target_sector, &error)
 	    || hunt_player != 2 || target_sector != 8
-	    || random.draws != 0U || script.position != 0U)
+	    || TEST_DRAWS(random) != 0U || script.position != 0U)
 		return false;
 	hunt_player = 0;
 	target_sector = 2004;
 	if (!yt_maintenance_xannor_target(&random, 2004, &hunt_player,
 	    &target_sector, &error)
 	    || hunt_player != 0 || target_sector != 8
-	    || random.draws != 1U || script.position != sizeof(low_draw))
+	    || TEST_DRAWS(random) != 1U || script.position != sizeof(low_draw))
 		return false;
 	script = (struct score_random_script){
 		high_draw, sizeof(high_draw), 0U
@@ -3806,7 +3822,7 @@ check_maintenance_xannor_target_model(void)
 	if (!yt_maintenance_xannor_target(&random, 2004, &hunt_player,
 	    &target_sector, &error)
 	    || hunt_player != 0 || target_sector != 2004
-	    || random.draws != 1U || script.position != sizeof(high_draw))
+	    || TEST_DRAWS(random) != 1U || script.position != sizeof(high_draw))
 		return false;
 	return !yt_maintenance_xannor_target(NULL, 2004, &hunt_player,
 	    &target_sector, &error)
@@ -4424,7 +4440,7 @@ check_maintenance_port_pass(void)
 	    NULL, 0U, score_line_collect, &screen,
 	    &error) || clock_script.position != 4U
 	    || random_script.position != sizeof(random_bytes)
-	    || game.random.draws != 3U
+	    || TEST_DRAWS(game.random) != 3U
 	    || screen.lines != 4U
 	    || screen.length != sizeof(expected_screen) - 1U
 	    || memcmp(screen.data, expected_screen,
@@ -4607,7 +4623,7 @@ check_maintenance_mercenary_rebuild_phase_pass(void)
 	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
-	    || game.random.draws != 1U
+	    || TEST_DRAWS(game.random) != 1U
 	    || random_script.position != sizeof(random_bytes)
 	    || clock_script.position != 1U
 	    || cache.warps != NULL || cache.successors != NULL
@@ -4727,7 +4743,7 @@ check_maintenance_mercenary_funding_phase_pass(void)
 		goto done;
 	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
-	    || game.random.draws != 30U
+	    || TEST_DRAWS(game.random) != 30U
 	    || script.position != sizeof(random_bytes)
 	    || cache.warps != NULL || cache.successors != NULL
 	    || cache.sector_count != 0 || screen.lines != 8U
@@ -4847,7 +4863,7 @@ check_maintenance_mercenary_attack_phase_pass(void)
 		goto done;
 	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
-	    || game.random.draws != 6U
+	    || TEST_DRAWS(game.random) != 6U
 	    || script.position != sizeof(random_bytes)
 	    || cache.warps == NULL || cache.successors == NULL
 	    || cache.sector_count != 2 || screen.lines != 9U
@@ -4965,7 +4981,7 @@ check_maintenance_mercenary_mine_planet_phase_pass(void)
 		goto done;
 	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
-	    || game.random.draws != 6U
+	    || TEST_DRAWS(game.random) != 6U
 	    || script.position != sizeof(random_bytes)
 	    || cache.warps == NULL || cache.successors == NULL
 	    || cache.sector_count != 2 || screen.lines != 10U
@@ -5071,7 +5087,7 @@ check_maintenance_mercenary_disconnected_phase_pass(void)
 		goto done;
 	if (!run_mercenary_phase(&game, &cache,
 	    score_line_collect, &screen, &error)
-	    || game.random.draws != 4U
+	    || TEST_DRAWS(game.random) != 4U
 	    || script.position != sizeof(random_bytes)
 	    || cache.warps == NULL || cache.successors == NULL
 	    || cache.sector_count != 2 || cache.successors[2] != 0
@@ -5191,7 +5207,7 @@ check_maintenance_mercenary_base_pass(void)
 		goto done;
 	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	if (!yt_maintenance_maintain_mercenary_base(&game, 3, 4,
-	    &rebuilt, &error) || !rebuilt || game.random.draws != 2U
+	    &rebuilt, &error) || !rebuilt || TEST_DRAWS(game.random) != 2U
 	    || script.position != sizeof(random_bytes)
 	    || clock_script.position != 1U)
 		goto done;
@@ -5209,7 +5225,7 @@ check_maintenance_mercenary_base_pass(void)
 	if (!yt_database_read(&game.database, 8U, &after, &error)
 	    || memcmp(after.bytes, planet_expected.bytes, YT_RECORD_SIZE) != 0
 	    || !yt_maintenance_maintain_mercenary_base(&game, 3, 4,
-	    &rebuilt, &error) || rebuilt || game.random.draws != 2U
+	    &rebuilt, &error) || rebuilt || TEST_DRAWS(game.random) != 2U
 	    || clock_script.position != 1U
 	    || !yt_database_read(&game.database, 8U, &after, &error)
 	    || memcmp(after.bytes, planet_expected.bytes, YT_RECORD_SIZE) != 0
@@ -5281,7 +5297,7 @@ check_maintenance_mercenary_funding_pass(void)
 			goto done;
 	}
 	if (!yt_maintenance_place_mercenary_fleets(&game, 12, 2.0f,
-	    &hired, &error) || hired != 20.0f || game.random.draws != 11U
+	    &hired, &error) || hired != 20.0f || TEST_DRAWS(game.random) != 11U
 	    || script.position != sizeof(random_bytes))
 		goto done;
 	for (sector = 1; sector <= 12; ++sector) {
@@ -5296,7 +5312,7 @@ check_maintenance_mercenary_funding_pass(void)
 			goto done;
 	}
 	if (!yt_maintenance_place_mercenary_fleets(&game, 12, 0.0f,
-	    &hired, &error) || hired != 0.0f || game.random.draws != 11U
+	    &hired, &error) || hired != 0.0f || TEST_DRAWS(game.random) != 11U
 	    || yt_maintenance_place_mercenary_fleets(NULL, 12, 1.0f,
 	    &hired, &error)
 	    || yt_maintenance_place_mercenary_fleets(&game, 1, 1.0f,
@@ -5378,7 +5394,7 @@ check_maintenance_mercenary_defection_pass(void)
 	}
 	if (!yt_maintenance_mercenary_defections(&game, 5,
 	    score_line_collect, &screen, &error)
-	    || game.random.draws != 5U || script.position != sizeof(random_bytes)
+	    || TEST_DRAWS(game.random) != 5U || script.position != sizeof(random_bytes)
 	    || screen.lines != 1U
 	    || screen.length != sizeof(expected_screen) - 1U
 	    || memcmp(screen.data, expected_screen,
@@ -5486,7 +5502,7 @@ check_maintenance_mercenary_movement_pass(void)
 	}
 	if (!run_mercenary_movement(&game, 4, score_line_collect,
 	    &screen, &error)
-	    || game.random.draws != 4U
+	    || TEST_DRAWS(game.random) != 4U
 	    || script.position != sizeof(random_bytes)
 	    || screen.lines != 3U
 	    || screen.length != sizeof(expected_screen) - 1U
@@ -5587,7 +5603,7 @@ check_maintenance_mercenary_lower_reentry_pass(void)
 	}
 	if (!run_mercenary_movement(&game, 4, score_line_collect,
 	    &screen, &error)
-	    || game.random.draws != 7U
+	    || TEST_DRAWS(game.random) != 7U
 	    || script.position != sizeof(random_bytes)
 	    || screen.lines != 5U
 	    || screen.length != sizeof(expected_screen) - 1U
@@ -5708,28 +5724,28 @@ check_maintenance_mercenary_destination_pass(void)
 	    score_line_collect, &screen, &arrival, &moving_after, &continues,
 	    &error)
 	    || arrival.fighters != 7.0f || arrival.fighter_owner != -2.0f
-	    || game.random.draws != 0U || screen.lines != 0U)
+	    || TEST_DRAWS(game.random) != 0U || screen.lines != 0U)
 		goto done;
 	if (!yt_game_read_sector(&game, 2, &arrival, &error)
 	    || !yt_maintenance_mercenary_destination(&game, 2, 6.0f,
 	    score_line_collect, &screen, &arrival, &moving_after, &continues,
 	    &error)
 	    || arrival.fighters != 8.0f || arrival.fighter_owner != 2.0f
-	    || game.random.draws != 1U)
+	    || TEST_DRAWS(game.random) != 1U)
 		goto done;
 	if (!yt_game_read_sector(&game, 3, &arrival, &error)
 	    || !yt_maintenance_mercenary_destination(&game, 3, 5.0f,
 	    score_line_collect, &screen, &arrival, &moving_after, &continues,
 	    &error)
 	    || arrival.fighters != 5.0f || arrival.fighter_owner != -2.0f
-	    || game.random.draws != 4U)
+	    || TEST_DRAWS(game.random) != 4U)
 		goto done;
 	if (!yt_game_read_sector(&game, 4, &arrival, &error)
 	    || !yt_maintenance_mercenary_destination(&game, 4, 1.0f,
 	    score_line_collect, &screen, &arrival, &moving_after, &continues,
 	    &error)
 	    || arrival.fighters != 2.0f || arrival.fighter_owner != -1.0f
-	    || game.random.draws != 6U
+	    || TEST_DRAWS(game.random) != 6U
 	    || script.position != sizeof(random_bytes)
 	    || screen.lines != 5U
 	    || screen.length != sizeof(expected_first_screen) - 1U
@@ -5744,7 +5760,7 @@ check_maintenance_mercenary_destination_pass(void)
 	    score_line_collect, &screen, &arrival, &moving_after, &continues,
 	    &error)
 	    || arrival.fighters != 201.0f || arrival.fighter_owner != -2.0f
-	    || game.random.draws != 53U
+	    || TEST_DRAWS(game.random) != 53U
 	    || large_script.position != sizeof(large_random_bytes)
 	    || screen.lines != 7U
 	    || screen.length != sizeof(expected_screen) - 1U
@@ -5851,7 +5867,7 @@ check_maintenance_mercenary_mine_pass(void)
 	if (!yt_maintenance_mercenary_mines(&game, 7, &moving,
 	    score_line_collect, &screen, &arrival, &error)
 	    || moving != 9.0f
-	    || game.random.draws != 2U || script.position != 6U
+	    || TEST_DRAWS(game.random) != 2U || script.position != 6U
 	    || arrival.mines != 2.0f || arrival.fighters != 23.0f
 	    || arrival.fighter_owner != 4.0f || arrival.planet != 9.0f
 	    || screen.lines != 2U
@@ -5879,7 +5895,7 @@ check_maintenance_mercenary_mine_pass(void)
 	    || !yt_maintenance_mercenary_mines(&game, 9, &moving,
 	    score_line_collect, &screen, &arrival, &error)
 	    || moving != 0.5f
-	    || game.random.draws != 4U || script.position != 12U
+	    || TEST_DRAWS(game.random) != 4U || script.position != 12U
 	    || screen.lines != 2U
 	    || !yt_database_read(&game.database, 10U, &after, &error)
 	    || memcmp(after.bytes, fractional.bytes, YT_RECORD_SIZE) != 0)
@@ -5893,7 +5909,7 @@ check_maintenance_mercenary_mine_pass(void)
 	    || !yt_maintenance_mercenary_mines(&game, 10, &moving,
 	    score_line_collect, &screen, &arrival, &error)
 	    || moving != 0.0f
-	    || game.random.draws != 6U || script.position != sizeof(random_bytes)
+	    || TEST_DRAWS(game.random) != 6U || script.position != sizeof(random_bytes)
 	    || arrival.mines != 1.0f || arrival.fighters != 41.0f
 	    || screen.lines != 4U
 	    || screen.length != sizeof(expected_screen) - 1U
@@ -5915,7 +5931,7 @@ check_maintenance_mercenary_mine_pass(void)
 	    || !yt_database_write(&game.database, 9U, &before, &error)
 	    || !yt_maintenance_mercenary_mines(&game, 8, &moving,
 	    score_line_collect, &screen, &arrival, &error)
-	    || moving != 10.0f || game.random.draws != 6U
+	    || moving != 10.0f || TEST_DRAWS(game.random) != 6U
 	    || screen.lines != 4U
 	    || yt_maintenance_mercenary_mines(NULL, 7, &moving,
 	    score_line_collect, &screen, &arrival, &error)
@@ -6143,7 +6159,7 @@ check_maintenance_super_lottery_pass(void)
 	if (!yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen,
 	    &error)
-	    || game.random.draws != 12U
+	    || TEST_DRAWS(game.random) != 12U
 	    || script.position != sizeof(success_draws)
 	    || screen.lines != 3U
 	    || screen.length != sizeof(expected_screen) - 1U
@@ -6209,7 +6225,7 @@ check_maintenance_super_lottery_pass(void)
 	    || !yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen,
 	    &error)
-	    || game.random.draws != 2U
+	    || TEST_DRAWS(game.random) != 2U
 	    || screen.length != sizeof(expected_failure) - 1U
 	    || memcmp(screen.data, expected_failure,
 	    sizeof(expected_failure) - 1U) != 0)
@@ -6225,7 +6241,7 @@ check_maintenance_super_lottery_pass(void)
 	    || !yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen,
 	    &error)
-	    || game.random.draws != 3U
+	    || TEST_DRAWS(game.random) != 3U
 	    || screen.length != sizeof(expected_failure) - 1U
 	    || memcmp(screen.data, expected_failure,
 	    sizeof(expected_failure) - 1U) != 0)
@@ -6241,7 +6257,7 @@ check_maintenance_super_lottery_pass(void)
 	    || !yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen,
 	    &error)
-	    || game.random.draws != 4U
+	    || TEST_DRAWS(game.random) != 4U
 	    || screen.length != sizeof(expected_failure) - 1U
 	    || memcmp(screen.data, expected_failure,
 	    sizeof(expected_failure) - 1U) != 0)
@@ -6253,7 +6269,7 @@ check_maintenance_super_lottery_pass(void)
 	if (!yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen,
 	    &error)
-	    || game.random.draws != 1U
+	    || TEST_DRAWS(game.random) != 1U
 	    || screen.length != sizeof(expected_failure) - 1U
 	    || memcmp(screen.data, expected_failure,
 	    sizeof(expected_failure) - 1U) != 0
@@ -6283,7 +6299,7 @@ check_maintenance_super_lottery_pass(void)
 		if (yt_maintenance_super_lottery(&game, 1, 1, 1,
 		    NULL, 0U, score_line_collect, &screen, &error)
 		    || error.status != YT_RANDOM_ERROR
-		    || game.random.draws != index || script.position != index * 3U
+		    || TEST_DRAWS(game.random) != index || script.position != index * 3U
 		    || screen.lines != 2U
 		    || screen.length != sizeof(phase_prefix) - 1U
 		    || memcmp(screen.data, phase_prefix,
@@ -6315,7 +6331,7 @@ check_maintenance_super_lottery_pass(void)
 	if (yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_fail, &line_fault, &error)
 	    || error.status != YT_IO_ERROR || line_fault.calls != 3U
-	    || line_fault.tape.lines != 2U || game.random.draws != 12U
+	    || line_fault.tape.lines != 2U || TEST_DRAWS(game.random) != 12U
 	    || line_fault.tape.length != sizeof(phase_prefix) - 1U
 	    || memcmp(line_fault.tape.data, phase_prefix,
 	    sizeof(phase_prefix) - 1U) != 0
@@ -6368,7 +6384,7 @@ check_maintenance_super_lottery_pass(void)
 		    || error.status != YT_IO_ERROR
 		    || line_fault.calls != index + 1U
 		    || line_fault.tape.lines != index
-		    || game.random.draws != (index == 2U ? 1U : 0U)
+		    || TEST_DRAWS(game.random) != (index == 2U ? 1U : 0U)
 		    || script.position != (index == 2U ? sizeof(coin_draw) : 0U))
 			goto done;
 		if ((index == 0U && line_fault.tape.length != 0U)
@@ -6389,7 +6405,7 @@ check_maintenance_super_lottery_pass(void)
 	yt_error_clear(&error);
 	if (yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen, &error)
-	    || error.status != YT_RANDOM_ERROR || game.random.draws != 0U
+	    || error.status != YT_RANDOM_ERROR || TEST_DRAWS(game.random) != 0U
 	    || script.position != 0U || screen.lines != 2U
 	    || screen.length != sizeof(phase_prefix) - 1U
 	    || memcmp(screen.data, phase_prefix, sizeof(phase_prefix) - 1U) != 0)
@@ -6573,7 +6589,7 @@ check_maintenance_final_suffix_pass(void)
 	    || !yt_maintenance_finish(&game, 1, 1, 1,
 	    maintenance_final_suffix_collect, &tape,
 	    &error)
-	    || game.database.file != NULL || game.random.draws != 1U
+	    || game.database.file != NULL || TEST_DRAWS(game.random) != 1U
 	    || random_script.position != sizeof(coin_draw)
 	    || clock_script.position != 3U
 	    || game.config.last_maintenance != 204.0f
@@ -6654,7 +6670,7 @@ check_maintenance_final_suffix_pass(void)
 		    || output_fault.tape.screen.length != cut_length
 		    || memcmp(output_fault.tape.screen.data, expected_screen,
 		    cut_length) != 0
-		    || game.database.file == NULL || game.random.draws != 1U
+		    || game.database.file == NULL || TEST_DRAWS(game.random) != 1U
 		    || clock_script.position != 3U
 		    || game.config.last_maintenance != 204.0f
 		    || !yt_database_read(&game.database, 2U, &after, &error)
@@ -6742,7 +6758,7 @@ check_maintenance_final_suffix_pass(void)
 	if (yt_maintenance_finish(&game, 1, 1, 1,
 	    maintenance_final_suffix_collect, &tape, &error)
 	    || error.status != YT_IO_ERROR
-	    || game.database.file == NULL || game.random.draws != 1U
+	    || game.database.file == NULL || TEST_DRAWS(game.random) != 1U
 	    || random_script.position != sizeof(coin_draw)
 	    || tape.first_closed_line != (size_t)-1
 	    || tape.screen.lines != 3U
@@ -6877,7 +6893,7 @@ check_maintenance_planet_pass(void)
 	    NULL, 0U, score_line_collect, &screen,
 	    &error) || clock_script.position != 4U
 	    || random_script.position != sizeof(random_bytes)
-	    || game.random.draws != 12U || screen.lines != 7U
+	    || TEST_DRAWS(game.random) != 12U || screen.lines != 7U
 	    || screen.length != sizeof(expected_screen) - 1U
 	    || memcmp(screen.data, expected_screen,
 	    sizeof(expected_screen) - 1U) != 0)
@@ -7020,7 +7036,7 @@ check_maintenance_wanderer_pass(void)
 	if (!yt_maintenance_maintain_wanderer(&game,
 	    NULL, 0U, score_line_collect, &screen,
 	    &error)
-	    || game.random.draws != 2U
+	    || TEST_DRAWS(game.random) != 2U
 	    || random_script.position != sizeof(existing_draws)
 	    || screen.lines != 4U
 	    || screen.length != sizeof(expected_existing) - 1U
@@ -7079,7 +7095,7 @@ check_maintenance_wanderer_pass(void)
 	if (!yt_maintenance_maintain_wanderer(&game,
 	    NULL, 0U, score_line_collect, &screen,
 	    &error)
-	    || game.random.draws != 2U
+	    || TEST_DRAWS(game.random) != 2U
 	    || random_script.position != sizeof(missing_draws)
 	    || clock_script.position != 1U || screen.lines != 6U
 	    || screen.length != sizeof(expected_missing) - 1U
@@ -7203,7 +7219,7 @@ check_maintenance_xannor_home_pass(void)
 	if (!yt_maintenance_maintain_xannor_home(&game,
 	    NULL, 0U, score_line_collect, &screen,
 	    &error)
-	    || game.random.draws != 3U
+	    || TEST_DRAWS(game.random) != 3U
 	    || random_script.position != sizeof(rebuild_draws)
 	    || clock_script.position != 2U || screen.lines != 5U
 	    || screen.length != sizeof(expected_rebuild) - 1U
@@ -7260,7 +7276,7 @@ check_maintenance_xannor_home_pass(void)
 	if (!yt_maintenance_maintain_xannor_home(&game,
 	    NULL, 0U, score_line_collect, &screen,
 	    &error)
-	    || game.random.draws != 1U
+	    || TEST_DRAWS(game.random) != 1U
 	    || random_script.position != sizeof(bypass_draw)
 	    || clock_script.position != 0U || screen.lines != 2U
 	    || screen.length != sizeof(expected_bypass) - 1U
@@ -7296,7 +7312,7 @@ check_maintenance_xannor_home_pass(void)
 	if (!yt_maintenance_maintain_xannor_home(&game,
 	    NULL, 0U, score_line_collect, &screen,
 	    &error)
-	    || game.random.draws != 1U
+	    || TEST_DRAWS(game.random) != 1U
 	    || random_script.position != sizeof(existing_draw)
 	    || clock_script.position != 0U || screen.lines != 2U
 	    || screen.length != sizeof(expected_bypass) - 1U
@@ -7398,7 +7414,7 @@ check_maintenance_xannor_hunt_pass(void)
 	    &target_sector, &error)
 	    || hunt_player != 2 || top_score != 2500000.0f
 	    || target_sector != 10
-	    || game.random.draws != 2U
+	    || TEST_DRAWS(game.random) != 2U
 	    || random_script.position != sizeof(selected_draws)
 	    || screen.lines != 6U
 	    || screen.length != sizeof(selected_screen) - 1U
@@ -7439,7 +7455,7 @@ check_maintenance_xannor_hunt_pass(void)
 	    &target_sector, &error)
 	    || hunt_player != 0 || top_score != 2499999.0f
 	    || target_sector != 0
-	    || game.random.draws != 1U
+	    || TEST_DRAWS(game.random) != 1U
 	    || random_script.position != sizeof(rejected_draw)
 	    || screen.lines != 4U
 	    || screen.length != sizeof(rejected_screen) - 1U
@@ -7784,7 +7800,7 @@ check_maintenance_xannor_roaming_groups_pass(void)
 	if (!yt_maintenance_xannor_roaming_groups(&state,
 	    2000.0f, 40, 0, 0, 0, location, size, score_line_collect,
 	    &screen, &error)
-	    || state.game.random.draws != 57U
+	    || TEST_DRAWS(state.game.random) != 57U
 	    || script.position != sizeof(zero_draws)
 	    || screen.lines != 19U || screen.length != expected_length
 	    || memcmp(screen.data, expected, expected_length) != 0
@@ -7928,7 +7944,7 @@ check_maintenance_xannor_phase_pass(void)
 	state.planet_count = 100;
 	if (!yt_maintenance_xannor_run(&state, score_line_collect,
 	    &screen, &error)
-	    || state.game.random.draws != 60U
+	    || TEST_DRAWS(state.game.random) != 60U
 	    || script.position != sizeof(zero_draws)
 	    || screen.lines != 30U || screen.length != expected_length
 	    || memcmp(screen.data, expected, expected_length) != 0
@@ -8022,7 +8038,7 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	    &sector, score_line_collect, &screen, &error)
 	    || group_size != 9.0f || sector.mines != 0.0f
 	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f
-	    || game.random.draws != 2U
+	    || TEST_DRAWS(game.random) != 2U
 	    || script.position != sizeof(zero_draws)
 	    || screen.lines != 3U
 	    || screen.length != sizeof(player_screen) - 1U
@@ -8053,7 +8069,7 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	if (!yt_maintenance_xannor_sector_arrival(&game, 42, &group_size,
 	    &sector, score_line_collect, &screen, &error)
 	    || group_size != 0.0f || sector.fighters != 1.0f
-	    || sector.fighter_owner != -2.0f || game.random.draws != 1U
+	    || sector.fighter_owner != -2.0f || TEST_DRAWS(game.random) != 1U
 	    || script.position != sizeof(high_draw) || screen.lines != 1U
 	    || screen.length != sizeof(mercenary_screen) - 1U
 	    || memcmp(screen.data, mercenary_screen,
@@ -8083,7 +8099,7 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	    &sector, score_line_collect, &screen, &error)
 	    || group_size != 4.0f || sector.mines != 0.0f
 	    || sector.fighters != 7.0f || sector.fighter_owner != 0.0f
-	    || game.random.draws != 0U || script.position != 0U
+	    || TEST_DRAWS(game.random) != 0U || script.position != 0U
 	    || screen.lines != 0U || screen.length != 0U)
 		goto done;
 	valid = true;
@@ -8208,7 +8224,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	    &reached_target, &error)
 	    || !reached_target
 	    || location[2] != 3.0f || size[2] != 9.0f
-	    || state.game.random.draws != 7U
+	    || TEST_DRAWS(state.game.random) != 7U
 	    || random_script.position != sizeof(seven_zero_draws)
 	    || !yt_text_read("YTNEWS.DAT", &news, &error)
 	    || news.length != sizeof(expected_news) - 1U
@@ -8374,7 +8390,7 @@ check_maintenance_xannor_headquarters_reclaim_pass(void)
 	if (!yt_maintenance_xannor_headquarters_reclaim(&game, location, size,
 	    score_line_collect, &screen, &original_hostile, &error)
 	    || !original_hostile || size[1] != 2.0f
-	    || location[1] != 2.0f || game.random.draws != 2U
+	    || location[1] != 2.0f || TEST_DRAWS(game.random) != 2U
 	    || script.position != sizeof(success_draws)
 	    || screen.length != sizeof(success_screen) - 1U
 	    || memcmp(screen.data, success_screen,
@@ -8412,7 +8428,7 @@ check_maintenance_xannor_headquarters_reclaim_pass(void)
 	if (!yt_maintenance_xannor_headquarters_reclaim(&game, location, size,
 	    score_line_collect, &screen, &original_hostile, &error)
 	    || !original_hostile || size[1] != 0.0f
-	    || location[1] != 2.0f || game.random.draws != 1U
+	    || location[1] != 2.0f || TEST_DRAWS(game.random) != 1U
 	    || script.position != sizeof(failure_draw)
 	    || screen.length != sizeof(failure_screen) - 1U
 	    || memcmp(screen.data, failure_screen,
@@ -8505,14 +8521,14 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 	if (!yt_maintenance_xannor_headquarters_relocate(&game, location,
 	    false, 1.0f, 2.0, NULL, 0U,
 	    score_line_collect, &screen, &error)
-	    || game.random.draws != 0U || script.position != 0U
+	    || TEST_DRAWS(game.random) != 0U || script.position != 0U
 	    || screen.length != 0U || location[1] != 8.0f
 	    || game.config.headquarters != 8.0f)
 		goto done;
 	if (!yt_maintenance_xannor_headquarters_relocate(&game, location,
 	    true, 1.0f, 0.0, NULL, 0U,
 	    score_line_collect, &screen, &error)
-	    || game.random.draws != 2U
+	    || TEST_DRAWS(game.random) != 2U
 	    || script.position != sizeof(success_draws)
 	    || game.config.headquarters != 11.0f || location[1] != 11.0f
 	    || screen.length != sizeof(expected_screen) - 1U
@@ -8780,7 +8796,7 @@ check_maintenance_xannor_roaming_split(void)
 	    &group_size, &location, 200000.0f, 733.0f, &skip_group, &error)
 	    || skip_group
 	    || group_one != 100.0f || group_size != 1.0f || location != 1.0f
-	    || random.draws != 0U || script.position != 0U)
+	    || TEST_DRAWS(random) != 0U || script.position != 0U)
 		return false;
 
 	/* A zero location admits and overwrites an existing positive size. */
@@ -8791,7 +8807,7 @@ check_maintenance_xannor_roaming_split(void)
 	    &group_size, &location, 200000.0f, 733.0f, &skip_group, &error)
 	    || skip_group
 	    || group_one != 92.0f || group_size != 8.0f
-	    || location != 733.0f || random.draws != 4U
+	    || location != 733.0f || TEST_DRAWS(random) != 4U
 	    || script.position != sizeof(half_draws))
 		return false;
 
@@ -8807,7 +8823,7 @@ check_maintenance_xannor_roaming_split(void)
 	    &group_size, &location, 200000.0f, 733.0f, &skip_group, &error)
 	    || !skip_group
 	    || group_one != 99.0f || group_size != 0.5f
-	    || location != 900.0f || random.draws != 0U
+	    || location != 900.0f || TEST_DRAWS(random) != 0U
 	    || script.position != 0U)
 		return false;
 
@@ -8819,7 +8835,7 @@ check_maintenance_xannor_roaming_split(void)
 	    &group_size, &location, 0.0f, 733.0f, &skip_group, &error)
 	    || skip_group
 	    || group_one != 0.0f || group_size != 0.0f
-	    || location != 733.0f || random.draws != 0U
+	    || location != 733.0f || TEST_DRAWS(random) != 0U
 	    || script.position != 0U)
 		return false;
 	return true;
@@ -8883,7 +8899,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 1, 0, 0,
 	    &target, &error)
-	    || target != 8 || game.random.draws != 8U
+	    || target != 8 || TEST_DRAWS(game.random) != 8U
 	    || script.position != sizeof(player_match_draws))
 		goto done;
 
@@ -8901,7 +8917,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 1, 22, 9,
 	    &target, &error)
-	    || target != 8 || game.random.draws != 2U
+	    || target != 8 || TEST_DRAWS(game.random) != 2U
 	    || script.position != sizeof(immediate_draws))
 		goto done;
 
@@ -8919,7 +8935,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 1, 22, 9,
 	    &target, &error)
-	    || target != 9 || game.random.draws != 2U)
+	    || target != 9 || TEST_DRAWS(game.random) != 2U)
 		goto done;
 
 	/* Xannor-owned fighters are uninteresting; a planet link still wins. */
@@ -8967,7 +8983,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 10, 0, 0,
 	    &target, &error)
-	    || target != 1 || game.random.draws != 52U
+	    || target != 1 || TEST_DRAWS(game.random) != 52U
 	    || script.position != sizeof(ordinary_failure_draws))
 		goto done;
 
@@ -8978,7 +8994,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 10, 22, 0,
 	    &target, &error)
-	    || target != 1 || game.random.draws != 1276U
+	    || target != 1 || TEST_DRAWS(game.random) != 1276U
 	    || script.position != sizeof(revenge_failure_draws))
 		goto done;
 
@@ -8992,7 +9008,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 10, 22, 0,
 	    &target, &error)
-	    || target != 2 || game.random.draws != 3U)
+	    || target != 2 || TEST_DRAWS(game.random) != 3U)
 		goto done;
 
 	if (!yt_maintenance_xannor_target_override(2, 23, 100.0f,

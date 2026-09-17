@@ -86,7 +86,7 @@ test_shielded_encounter(void)
 	CHECK(yt_session_mine_encounter(&session, &terminal, &error));
 	CHECK(!terminal);
 	CHECK(!session.destroyed);
-	CHECK(random.calls == 3U && door.game.random.draws == 3U);
+	CHECK(random.calls == 3U && TEST_DRAWS(door.game.random) == 3U);
 	CHECK(session.player.shields == 100.0f);
 	CHECK(session.presentation.foreground == 3.0f);
 	CHECK(yt_present_background(&session.presentation) == 1.0f);
@@ -161,7 +161,7 @@ test_unshielded_missile_draw(void)
 	    &sector.record, &error));
 	CHECK(yt_session_mine_encounter(&session, &terminal, &error));
 	CHECK(!terminal && !session.destroyed);
-	CHECK(random.calls == 2U && door.game.random.draws == 2U);
+	CHECK(random.calls == 2U && TEST_DRAWS(door.game.random) == 2U);
 	CHECK(yt_database_read(&door.game.database, 2U, &record, &error));
 	yt_player_decode(&player, &record);
 	CHECK(player.missiles == 2.0f);

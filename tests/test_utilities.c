@@ -124,17 +124,17 @@ test_port_name_generator(void)
 	yt_random_init(&random);
 	yt_test_random_use_provider(&random, utility_random_fill, &zero);
 	if (!yt_generate_port_name(&random, name, &error)
-	    || strcmp(name, "Inging") != 0 || random.draws != 4U
+	    || strcmp(name, "Inging") != 0 || TEST_DRAWS(random) != 4U
 	    || zero.position != sizeof(zero_draws) / 2U)
 		return false;
 	if (!yt_generate_port_name(&random, name, &error)
-	    || strcmp(name, "Inging") != 0 || random.draws != 8U
+	    || strcmp(name, "Inging") != 0 || TEST_DRAWS(random) != 8U
 	    || zero.position != sizeof(zero_draws))
 		return false;
 	yt_test_random_use_provider(&random, utility_random_fill, &longest);
 	return yt_generate_port_name(&random, name, &error)
 	    && strcmp(name, "Monkey Kangeroo Tractor Lightning") == 0
-	    && random.draws == 6U && longest.position == sizeof(long_draws);
+	    && TEST_DRAWS(random) == 6U && longest.position == sizeof(long_draws);
 }
 
 static bool
@@ -749,21 +749,21 @@ test_maintenance_random_helpers(void)
 	    || !yt_random_integer(&random, 1000, &value, &error)
 	    || value != 1000
 	    || !yt_random_nested_integer(&random, 2, 100, &value, &error)
-	    || value != 1 || random.draws != 5U
+	    || value != 1 || TEST_DRAWS(random) != 5U
 	    || script.position != sizeof(draws))
 		return false;
 	yt_error_clear(&error);
 	if (yt_random_integer(&random, 0, &value, &error)
-	    || error.status != YT_RANGE || random.draws != 5U)
+	    || error.status != YT_RANGE || TEST_DRAWS(random) != 5U)
 		return false;
 	yt_error_clear(&error);
 	value = 37;
 	if (!yt_random_nested_integer(&random, 0, 100, &value, &error)
-	    || error.status != YT_OK || value != 37 || random.draws != 5U)
+	    || error.status != YT_OK || value != 37 || TEST_DRAWS(random) != 5U)
 		return false;
 	yt_error_clear(&error);
 	if (!yt_random_nested_integer(&random, 2, 0, &value, &error)
-	    || error.status != YT_OK || value != 37 || random.draws != 5U)
+	    || error.status != YT_OK || value != 37 || TEST_DRAWS(random) != 5U)
 		return false;
 	script.position = 0;
 	script.length = 3;
@@ -772,7 +772,7 @@ test_maintenance_random_helpers(void)
 	yt_error_clear(&error);
 	return !yt_random_nested_integer(&random, 2, 100, &value, &error)
 	    && error.status == YT_RANDOM_ERROR && value == 1
-	    && random.draws == 1U && script.position == 3U;
+	    && TEST_DRAWS(random) == 1U && script.position == 3U;
 }
 
 static bool
@@ -795,24 +795,24 @@ test_maintenance_xannor_defense(void)
 	owner = 0.0f;
 	if (!yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) || group != 10.0f || fighters != 2.0f
-	    || owner != 0.0f || random.draws != 0U || script.position != 0U)
+	    || owner != 0.0f || TEST_DRAWS(random) != 0U || script.position != 0U)
 		return false;
 	owner = -1.0f;
 	if (!yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) || group != 10.0f || fighters != 2.0f
-	    || owner != -1.0f || random.draws != 0U)
+	    || owner != -1.0f || TEST_DRAWS(random) != 0U)
 		return false;
 	owner = 7.0f;
 	fighters = 0.0f;
 	if (!yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) || group != 10.0f || fighters != 0.0f
-	    || owner != 7.0f || random.draws != 0U)
+	    || owner != 7.0f || TEST_DRAWS(random) != 0U)
 		return false;
 	group = 0.0f;
 	fighters = 2.0f;
 	if (!yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) || group != 0.0f || fighters != 2.0f
-	    || owner != 7.0f || random.draws != 0U)
+	    || owner != 7.0f || TEST_DRAWS(random) != 0U)
 		return false;
 
 	group = 1.0f;
@@ -822,7 +822,7 @@ test_maintenance_xannor_defense(void)
 	if (yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) || error.status != YT_RANDOM_ERROR
 	    || group != 1.0f || fighters != 1.0f || owner != 7.0f
-	    || random.draws != 0U)
+	    || TEST_DRAWS(random) != 0U)
 		return false;
 
 	script = (struct utility_random_script){zero_draw,
@@ -831,7 +831,7 @@ test_maintenance_xannor_defense(void)
 	yt_error_clear(&error);
 	if (!yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) || group != 1.0f || fighters != 0.0f
-	    || owner != 0.0f || random.draws != 1U
+	    || owner != 0.0f || TEST_DRAWS(random) != 1U
 	    || script.position != sizeof(zero_draw))
 		return false;
 
@@ -843,7 +843,7 @@ test_maintenance_xannor_defense(void)
 	owner = 7.0f;
 	return yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) && group == 0.0f && fighters == 1.0f
-	    && owner == 7.0f && random.draws == 1U
+	    && owner == 7.0f && TEST_DRAWS(random) == 1U
 	    && script.position == sizeof(high_draw);
 }
 
@@ -1189,7 +1189,7 @@ test_yt_init_pre_input_presentation(void)
 	    &error)) {
 		return false;
 	}
-	if (random.draws != 1U || lcg.state != UINT32_C(0x5dd6b4)
+	if (TEST_DRAWS(random) != 1U || lcg.state != UINT32_C(0x5dd6b4)
 	    || clock.calls != 2U
 	    || preparation.config.epoch_year != 26.0f
 	    || preparation.config.headquarters != 733.0f
@@ -1324,7 +1324,7 @@ test_yt_init_presented_world(void)
 		return false;
 	}
 	tape_hash = yt_init_capture_hash(&capture);
-	ok = random.draws == 31297U && lcg.state == UINT32_C(0x9f26f4)
+	ok = TEST_DRAWS(random) == 31297U && lcg.state == UINT32_C(0x9f26f4)
 	    && clock.calls == 17U
 	    && database_length == 432235U
 	    && utility_fnv1a64(database, database_length)
@@ -1364,7 +1364,7 @@ test_yt_init_presentation_before_first_record(void)
 	read = read_file("YTDATA.DAT", &database, &database_length);
 	free(database);
 	return !initialized && read && error.status == YT_IO_ERROR
-	    && random.draws == 1U && lcg.state == UINT32_C(0x5dd6b4)
+	    && TEST_DRAWS(random) == 1U && lcg.state == UINT32_C(0x5dd6b4)
 	    && capture.calls == 0U && database_length == 0U;
 }
 
@@ -1398,7 +1398,7 @@ test_yt_init_presentation_after_config_record(void)
 	read = read_file("YTDATA.DAT", &database, &database_length);
 	free(database);
 	return !initialized && read && error.status == YT_IO_ERROR
-	    && random.draws == 1U && lcg.state == UINT32_C(0x5dd6b4)
+	    && TEST_DRAWS(random) == 1U && lcg.state == UINT32_C(0x5dd6b4)
 	    && capture.calls == 2U
 	    && capture.events[1].entry == YT_INIT_OUTPUT_LINE
 	    && capture.events[1].length == sizeof(sector_offset_raw)
@@ -1528,10 +1528,10 @@ test_initializer_world_image(void)
 	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	ok = initialize_unprepared_yt("YTSCORE.ASC", &utility_fixed_clock_source,
 	    &random, &error);
-	if (!ok || random.draws != 31297U || lcg.state != UINT32_C(0x9f26f4)
+	if (!ok || TEST_DRAWS(random) != 31297U || lcg.state != UINT32_C(0x9f26f4)
 	    || !read_file("YTDATA.DAT", &database, &length)) {
 		fprintf(stderr, "initializer image setup: ok=%d status=%d draws=%zu state=%06x length=%zu\n",
-		    ok, error.status, random.draws, lcg.state, length);
+		    ok, error.status, TEST_DRAWS(random), lcg.state, length);
 		free(database);
 		return false;
 	}
@@ -1578,11 +1578,11 @@ test_initializer_graph_retries(void)
 	yt_random_init(&random);
 	yt_test_random_use_provider(&random, utility_graph_retry_fill, &script);
 	ok = yt_initialize_world(&options, &random, &error);
-	if (!ok || random.draws != 105U || script.draws != 105U
+	if (!ok || TEST_DRAWS(random) != 105U || script.draws != 105U
 	    || !read_file("YTDATA.DAT", &database, &length)
 	    || length != 2055U) {
 		fprintf(stderr, "initializer graph retry: ok=%d status=%d draws=%zu/%zu length=%zu\n",
-		    ok, error.status, (size_t)random.draws, script.draws, length);
+		    ok, error.status, (size_t)TEST_DRAWS(random), script.draws, length);
 		free(database);
 		return false;
 	}
@@ -1656,10 +1656,10 @@ test_rmt_initializer_world_image(void)
 	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	ok = yt_initialize_rmt_presented(&config, "The Sysop",
 	    &utility_fixed_clock_source, &random, &presenter, &error);
-	if (!ok || random.draws != 245U || lcg.state != UINT32_C(0x3fed05)
+	if (!ok || TEST_DRAWS(random) != 245U || lcg.state != UINT32_C(0x3fed05)
 	    || !read_file("YTDATA.DAT", &database, &length)) {
 		fprintf(stderr, "RMT initializer image setup: ok=%d status=%d draws=%zu state=%06x length=%zu\n",
-		    ok, error.status, random.draws, lcg.state, length);
+		    ok, error.status, TEST_DRAWS(random), lcg.state, length);
 		free(database);
 		return false;
 	}
@@ -1725,7 +1725,7 @@ test_rmt_presentation_failure_prefixes(void)
 		ok = yt_initialize_rmt_presented(&config, "The Sysop",
 		    &utility_fixed_clock_source, &random, &presenter, &error);
 		if (ok || error.status != YT_IO_ERROR
-		    || random.draws != cases[index].draws
+		    || TEST_DRAWS(random) != cases[index].draws
 		    || !read_file("YTDATA.DAT", &database, &length)
 		    || length != cases[index].file_length
 		    || (cases[index].preserves_old
@@ -1733,7 +1733,7 @@ test_rmt_presentation_failure_prefixes(void)
 			fprintf(stderr,
 			    "RMT presentation cut during %s: ok=%d status=%d "
 			    "draws=%zu length=%zu\n",
-			    cases[index].phase, ok, error.status, random.draws,
+			    cases[index].phase, ok, error.status, TEST_DRAWS(random),
 			    length);
 			free(database);
 			return false;
@@ -1780,7 +1780,7 @@ test_rmt_dynamic_presentation(void)
 		yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 		ok = yt_initialize_rmt_presented(&config, "The Sysop",
 		    &utility_fixed_clock_source, &random, &presenter, &error);
-		if (!ok || random.draws != cases[index].draws
+		if (!ok || TEST_DRAWS(random) != cases[index].draws
 		    || lcg.state != cases[index].final_state
 		    || tape.calls != cases[index].calls
 		    || tape.local_length != 0U
@@ -1790,7 +1790,7 @@ test_rmt_dynamic_presentation(void)
 		    || tape.entries[YT_RMT_OUTPUT_WORMHOLE]
 		    != cases[index].long_links) {
 			fprintf(stderr, "RMT dynamic presentation seed=%06x: ok=%d status=%d draws=%zu state=%06x calls=%zu serial=%zu/%016llx\n",
-			    cases[index].seed, ok, error.status, random.draws,
+			    cases[index].seed, ok, error.status, TEST_DRAWS(random),
 			    lcg.state, tape.calls, tape.serial_length,
 			    (unsigned long long)utility_fnv1a64(tape.serial,
 			    tape.serial_length));
@@ -1818,14 +1818,14 @@ test_rmt_dynamic_presentation(void)
 		yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 		ok = yt_initialize_rmt_presented(&config, "The Sysop",
 		    &utility_fixed_clock_source, &random, &presenter, &error);
-		if (!ok || random.draws != 1288U
+		if (!ok || TEST_DRAWS(random) != 1288U
 		    || lcg.state != UINT32_C(0x5473de)
 		    || tape.calls != 68U || tape.local_length != 1386U
 		    || utility_fnv1a64(tape.local, tape.local_length)
 		    != UINT64_C(0xa45455d8e52700d9)
 		    || tape.serial_length != 0U) {
 			fprintf(stderr, "RMT progress presentation: ok=%d status=%d draws=%zu state=%06x calls=%zu local=%zu/%016llx\n",
-			    ok, error.status, random.draws, lcg.state, tape.calls,
+			    ok, error.status, TEST_DRAWS(random), lcg.state, tape.calls,
 			    tape.local_length,
 			    (unsigned long long)utility_fnv1a64(tape.local,
 			    tape.local_length));
@@ -2744,7 +2744,7 @@ test_xannor_player_arrival(struct yt_error *error)
 	    && location == 42.0f && xannor == 1.0f
 	    && survivor_location == 0.0f && survivor_xannor == 0.0f
 	    && large_location == 0.0f && large_xannor == 0.0f
-	    && game.random.draws == 5U
+	    && TEST_DRAWS(game.random) == 5U
 	    && script.position == sizeof(draws)
 	    && tape.calls == 3U && strcmp(tape.line[0], expected_line) == 0
 	    && strcmp(tape.line[1], expected_survivor_line) == 0
@@ -2847,7 +2847,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 	if (!yt_maintenance_xannor_planet_arrival(&game, &location,
 	    &group_size, &sector, utility_capture_line, &tape, error)
 	    || location != 733.0f || group_size != 2.0f
-	    || sector.planet != 1.0f || game.random.draws != 0U
+	    || sector.planet != 1.0f || TEST_DRAWS(game.random) != 0U
 	    || script.position != 0U || tape.calls != 0U)
 		goto done;
 
@@ -2874,7 +2874,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 	    || planet.ground_forces != 0.0f
 	    || planet.production[0] != 501.0f
 	    || planet.stock[0] != 5010.0f || planet.name_length != 5U
-	    || game.random.draws != 2U
+	    || TEST_DRAWS(game.random) != 2U
 	    || script.position != sizeof(high_draws) || tape.calls != 2U
 	    || strcmp(tape.line[0], attack_line) != 0
 	    || strcmp(tape.line[1], fighters_line) != 0
@@ -2915,7 +2915,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 	valid = location == 733.0f && group_size == 2.0f
 	    && sector.planet == 0.0f && planet.owner == 0.0f
 	    && planet.ground_forces == 0.0f && planet.name_length == 0U
-	    && planet.stock[0] == 0.0f && game.random.draws == 0U
+	    && planet.stock[0] == 0.0f && TEST_DRAWS(game.random) == 0U
 	    && script.position == 0U && tape.calls == 2U
 	    && strcmp(tape.line[0], attack_line) == 0
 	    && strcmp(tape.line[1], planet_line) == 0

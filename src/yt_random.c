@@ -29,7 +29,6 @@ yt_random_next(struct yt_random *random, float *value, struct yt_error *error)
 		return false;
 	sample = (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8)
 	    | ((uint32_t)bytes[2] << 16);
-	++random->draws;
 	*value = (float)sample / 16777216.0f;
 	return true;
 }
@@ -73,13 +72,14 @@ yt_random_integer(struct yt_random *random, int range, int *value,
 	return true;
 }
 
-bool
-yt_random_nested_single(struct yt_random *random, float count, float *range,
-    float *value, struct yt_error *error)
+static bool
+nested_single(struct yt_random *random, float count, float *range,
+    float *value, bool *produced, struct yt_error *error)
 {
 	float index;
 	float terminal;
 
+	*produced = false;
 	if (random == NULL || range == NULL || value == NULL) {
 		if (error != NULL) {
 			error->status = YT_INVALID;
@@ -103,8 +103,18 @@ yt_random_nested_single(struct yt_random *random, float count, float *range,
 		result = qb_single_add(integral, 1.0f);
 		*value = result;
 		*range = result;
+		*produced = true;
 	}
 	return true;
+}
+
+bool
+yt_random_nested_single(struct yt_random *random, float count, float *range,
+    float *value, struct yt_error *error)
+{
+	bool produced;
+
+	return nested_single(random, count, range, value, &produced, error);
 }
 
 bool
@@ -113,7 +123,7 @@ yt_random_nested_integer(struct yt_random *random, int count, int range,
 {
 	float current;
 	float result;
-	uint64_t starting_draws;
+	bool produced;
 	bool succeeded;
 
 	if (value == NULL) {
@@ -126,10 +136,9 @@ yt_random_nested_integer(struct yt_random *random, int count, int range,
 	}
 	current = (float)range;
 	result = 0.0f;
-	starting_draws = random != NULL ? random->draws : 0U;
-	succeeded = yt_random_nested_single(random, (float)count, &current,
-	    &result, error);
-	if (random != NULL && random->draws != starting_draws)
+	succeeded = nested_single(random, (float)count, &current, &result,
+	    &produced, error);
+	if (produced)
 		*value = (int)result;
 	return succeeded;
 }

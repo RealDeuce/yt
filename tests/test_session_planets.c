@@ -2,11 +2,22 @@
 #include "session_test_runtime.h"
 
 #include "yt_file.h"
+#include "random_test_support.h"
 
 #include <stdio.h>
 #include <string.h>
 
 static int failures;
+
+static bool
+zero_random_fill(void *context, void *buffer, size_t length,
+    struct yt_error *error)
+{
+	(void)context;
+	(void)error;
+	memset(buffer, 0, length);
+	return true;
+}
 
 #define CHECK(expression) do { \
 	if (!(expression)) { \
@@ -35,6 +46,8 @@ test_self_owned_planet(void)
 	memset(&session, 0, sizeof(session));
 	memset(&player, 0, sizeof(player));
 	memset(&planet, 0, sizeof(planet));
+	yt_random_init(&door.game.random);
+	yt_test_random_use_provider(&door.game.random, zero_random_fill, NULL);
 	session.door = &door;
 	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
@@ -62,7 +75,7 @@ test_self_owned_planet(void)
 	    &error));
 	CHECK(yt_session_planet_permission(&session, 1, &denied, &error));
 	CHECK(!denied);
-	CHECK(door.game.random.draws == 0U);
+	CHECK(TEST_DRAWS(door.game.random) == 0U);
 	CHECK(session.planet.economy.current_day == (float)today);
 	CHECK(yt_database_read(&door.game.database, 4U, &persisted, &error));
 	CHECK(yt_record_get_number(&persisted, YT_F41) == (float)today);
@@ -96,6 +109,8 @@ test_land_and_leave_owned_planet(void)
 	memset(&player, 0, sizeof(player));
 	memset(&sector, 0, sizeof(sector));
 	memset(&planet, 0, sizeof(planet));
+	yt_random_init(&door.game.random);
+	yt_test_random_use_provider(&door.game.random, zero_random_fill, NULL);
 	session.door = &door;
 	session.active_player_record = 2;
 	session.pager.nonstop = -1.0f;
@@ -149,7 +164,7 @@ test_land_and_leave_owned_planet(void)
 	CHECK(yt_session_planet_move(&session, &enter_sector, &error));
 	CHECK(!enter_sector);
 	CHECK(session.io.typeahead_length == 0U);
-	CHECK(door.game.random.draws == 0U);
+	CHECK(TEST_DRAWS(door.game.random) == 0U);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);
 }

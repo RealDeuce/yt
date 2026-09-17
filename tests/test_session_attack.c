@@ -136,7 +136,7 @@ test_combat_attrition(void)
 
 	CHECK(yt_session_attack_player(&session, 3, 3.0, &error));
 	CHECK(random.calls == 3U);
-	CHECK(door.game.random.draws == 3U);
+	CHECK(TEST_DRAWS(door.game.random) == 3U);
 	CHECK(yt_game_read_player(&door.game, 2, &player, &error));
 	CHECK(player.fighters == 2.0f);
 	CHECK(player.shields == 8.0f);
@@ -207,7 +207,7 @@ test_deployed_surrender(void)
 
 	CHECK(yt_session_attack_deployed(&session, &sector, 120.0, true,
 	    &error));
-	CHECK(random.calls == 11U && door.game.random.draws == 11U);
+	CHECK(random.calls == 11U && TEST_DRAWS(door.game.random) == 11U);
 	CHECK(session.shared_status == 1.0f);
 	CHECK(session.combat.ship_fighters == 11.0);
 	CHECK(session.combat.deployed_fighters == 0.0);
@@ -291,7 +291,7 @@ test_accepted_bribe(void)
 	CHECK(yt_session_bribe_deployed(&session, &sector,
 	    &direct_hostile_menu, &forced_attack, &error));
 	CHECK(!direct_hostile_menu && !forced_attack);
-	CHECK(random.calls == 3U && door.game.random.draws == 3U);
+	CHECK(random.calls == 3U && TEST_DRAWS(door.game.random) == 3U);
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(session.player.fighters == 20.0f);
 	CHECK(session.player.credits == 100.0f);

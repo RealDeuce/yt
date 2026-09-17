@@ -9,7 +9,6 @@ typedef bool (*yt_random_fill_fn)(void *context, void *buffer, size_t length,
 struct yt_random {
 	yt_random_fill_fn fill;
 	void *context;
-	uint64_t draws;
 };
 
 void yt_random_init(struct yt_random *random);
