@@ -116,12 +116,6 @@ present_local_beep(void)
 	od_putch((char)bell);
 }
 
-static void
-present_local_clear(void)
-{
-	od_clr_scr();
-}
-
 void
 yt_out_present_result(const struct yt_present_result *result)
 {
@@ -166,7 +160,7 @@ yt_out_present_result(const struct yt_present_result *result)
 			break;
 		case YT_PRESENT_LOCAL_CLEAR:
 			if (local)
-				present_local_clear();
+				od_clr_scr();
 			break;
 		}
 	}
@@ -233,12 +227,6 @@ out_opening_poll_local(struct yt_input *input, bool *ready,
 	}
 	*ready = local.length != 0U;
 	return true;
-}
-
-static bool
-out_opening_poll_remote(struct yt_input *input, bool *ready)
-{
-	return yt_input_source_ready(input, true, ready);
 }
 
 static bool
@@ -343,7 +331,8 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 			out_emulated_bytes(line, length);
 			out_emulated_bytes(remote_newline,
 			    sizeof(remote_newline));
-			OPENING_RETRY(out_opening_poll_remote(session_input, &ready));
+			OPENING_RETRY(yt_input_source_ready(session_input, true,
+			    &ready));
 			if (ready)
 				break;
 		}

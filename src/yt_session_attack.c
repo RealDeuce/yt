@@ -297,7 +297,6 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 	size_t row_length;
 	size_t target_name_length;
 	float candidate = 2.0f;
-	float target_record_cell = 0.0f;
 	bool encountered = false;
 
 	if (enter_sector == NULL)
@@ -339,7 +338,6 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 
-		target_record_cell = candidate;
 		session->shared_target_record = candidate;
 		if (!session_read_combat_player(session, record,
 		    &candidate_player, error))
@@ -378,8 +376,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		    sizeof(response)))
 			return false;
 		parsed = qb_val(response);
-		if ((parsed.valid ? parsed.value : 0.0) < 1.0
-		    || target_record_cell < 1.0f)
+		if ((parsed.valid ? parsed.value : 0.0) < 1.0)
 			return true;
 		return yt_session_attack_player(session, record, parsed.value,
 		    error);
