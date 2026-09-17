@@ -149,22 +149,6 @@ yt_radio_set_text(struct yt_radio_record *record, const uint8_t *text,
 }
 
 bool
-yt_radio_message_record(struct yt_radio_record *record,
-    const uint8_t *text, size_t length, float sender, float recipient)
-{
-	if (record == NULL || (text == NULL && length != 0))
-		return false;
-	memset(record, 0, sizeof(*record));
-	if (!yt_radio_set_number(record, 0,
-	    recipient == -2.0f ? 30.0f : 1.0f)
-	    || !yt_radio_set_number(record, 4, recipient)
-	    || !yt_radio_set_number(record, 8, sender))
-		return false;
-	yt_radio_set_text(record, text, length, 74U);
-	return true;
-}
-
-bool
 yt_radio_reader_decide(float counter, float recipient, float sender,
     float current_player, float reader_mode,
     struct yt_radio_reader_decision *decision, struct yt_error *error)

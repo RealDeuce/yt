@@ -79,8 +79,6 @@ bool yt_radio_set_raw_number(struct yt_radio_record *record, size_t offset,
     const uint8_t raw[4]);
 void yt_radio_set_text(struct yt_radio_record *record, const uint8_t *text,
     size_t length, size_t field_width);
-bool yt_radio_message_record(struct yt_radio_record *record,
-    const uint8_t *text, size_t length, float sender, float recipient);
 bool yt_radio_reader_decide(float counter, float recipient, float sender,
     float current_player, float reader_mode,
     struct yt_radio_reader_decision *decision, struct yt_error *error);

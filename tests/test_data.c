@@ -122,19 +122,11 @@ test_record(void)
 	struct yt_radio_reader_decision decision;
 	struct yt_error error;
 	uint8_t header[64];
-	uint8_t long_radio_text[75];
 	size_t header_length;
-	size_t index;
 	char name[64];
 	uint8_t tail[4] = {1, 2, 3, 4};
 	static const uint8_t dirty_zero[4] = {0x12, 0x34, 0x80, 0x00};
 	static const uint8_t radio_dirty_zero[4] = {0x00, 0x00, 0x80, 0x00};
-	static const uint8_t personal_prefix[14] = {
-		0x00, 0x00, 0x00, 0x81,
-		0x00, 0x00, 0x00, 0x82,
-		0x00, 0x00, 0x40, 0x82,
-		'H', 'i'
-	};
 
 	yt_record_blank(&record);
 	memcpy(record.bytes + YT_RECORD_TAIL_OFFSET, tail, sizeof(tail));
@@ -160,28 +152,6 @@ test_record(void)
 	    sizeof(radio_dirty_zero)) == 0);
 	CHECK(!yt_radio_set_raw_number(&radio, 2, radio_dirty_zero));
 	CHECK(!yt_radio_set_raw_number(&radio, 12, radio_dirty_zero));
-	CHECK(yt_radio_message_record(&radio, (const uint8_t *)"Hi", 2,
-	    3.0f, 2.0f));
-	CHECK(memcmp(radio.bytes, personal_prefix, sizeof(personal_prefix)) == 0);
-	CHECK(memcmp(radio.bytes + sizeof(personal_prefix),
-	    "                                                                        ",
-	    sizeof(radio.bytes) - sizeof(personal_prefix)) == 0);
-	CHECK(yt_radio_message_record(&radio, (const uint8_t *)"A", 1,
-	    3.0f, -2.0f));
-	CHECK(yt_radio_get_number(&radio, 0) == 30.0f
-	    && yt_radio_get_number(&radio, 4) == -2.0f
-	    && yt_radio_get_number(&radio, 8) == 3.0f
-	    && radio.bytes[12] == 'A' && radio.bytes[85] == ' ');
-	for (index = 0; index < sizeof(long_radio_text); ++index)
-		long_radio_text[index] = (uint8_t)index;
-	CHECK(yt_radio_message_record(&radio, long_radio_text,
-	    sizeof(long_radio_text), -2.0f, -2.0f));
-	CHECK(yt_radio_get_number(&radio, 0) == 30.0f
-	    && yt_radio_get_number(&radio, 4) == -2.0f
-	    && yt_radio_get_number(&radio, 8) == -2.0f
-	    && memcmp(radio.bytes + 12U, long_radio_text, 74U) == 0
-	    && radio.bytes[85] == long_radio_text[73]);
-	CHECK(!yt_radio_message_record(NULL, NULL, 0, 0.0f, 0.0f));
 	memset(&mutated, 0xaa, sizeof(mutated));
 	before_mutation = mutated;
 	CHECK(yt_radio_reader_mutate(&mutated, 30.0f));
@@ -1123,8 +1093,11 @@ test_radio_file(void)
 	CHECK(strcmp(radio.random.path, second_path) == 0
 	    && yt_radio_file_size(&radio, &size, &error) && size == 0U);
 	CHECK(yt_radio_file_next_record(&radio, &next, &error) && next == 1U);
-	CHECK(yt_radio_message_record(&written, (const uint8_t *)"A\0B", 3U,
-	    7.0f, -2.0f));
+	memset(&written, 0, sizeof(written));
+	CHECK(yt_radio_set_number(&written, 0U, 30.0f)
+	    && yt_radio_set_number(&written, 4U, -2.0f)
+	    && yt_radio_set_number(&written, 8U, 7.0f));
+	yt_radio_set_text(&written, (const uint8_t *)"A\0B", 3U, 74U);
 	CHECK(yt_radio_file_get(&radio, next, &record, &accepted, &error)
 	    && accepted == 0U);
 	record = written;
