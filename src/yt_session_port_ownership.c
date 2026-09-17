@@ -318,7 +318,6 @@ yt_session_command_rename_port(struct yt_session *session,
 	uint8_t cached_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_name_length;
 	int logical_port;
-	float relative_port;
 
 	if (session == NULL || !session_reload_player(session, error)
 	    || !session_read_sector(session, (int)session->player.sector,
@@ -328,7 +327,6 @@ yt_session_command_rename_port(struct yt_session *session,
 		return session_present_alert(session, no_port,
 		    sizeof(no_port) - 1U, "rename no-port row", error);
 	logical_port = (int)sector.port;
-	relative_port = sector.port;
 	if (!session_read_port_physical(session,
 	    session_port_basic_record(session, logical_port),
 	    &port, error))
@@ -336,7 +334,7 @@ yt_session_command_rename_port(struct yt_session *session,
 	if (port.owner != (float)session_record(session))
 		return session_present_alert(session, not_owner,
 		    sizeof(not_owner) - 1U, "rename ownership row", error);
-	if (relative_port == 1.0f)
+	if (logical_port == 1)
 		return session_present_alert(session, earth, sizeof(earth) - 1U,
 		    "rename Earth row", error);
 	cached_name_length = port.name_length;
@@ -391,9 +389,8 @@ purchase_present_sold(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-purchase_accept(struct yt_session *session, int logical_port,
-    float relative_port, float old_owner, double price,
-    float cached_buyer_sector, const uint8_t *cached_trader,
+purchase_accept(struct yt_session *session, int logical_port, int old_owner,
+    double price, float cached_buyer_sector, const uint8_t *cached_trader,
     size_t cached_trader_length, const uint8_t *old_name,
     size_t old_name_length, const uint8_t *owner_name,
     size_t owner_name_length, struct yt_error *error)
@@ -425,9 +422,7 @@ purchase_accept(struct yt_session *session, int logical_port,
 	if (!purchase_present_sold(session, error)
 	    || !session_read_port_physical(session, physical_port, &port, error))
 		return false;
-	if (old_owner != 0.0f) {
-		int seller_record;
-
+	if (old_owner != 0) {
 		length = 0U;
 		if (!session_buffer_append(row, sizeof(row), &length, transfer_prefix,
 		    sizeof(transfer_prefix) - 1U)
@@ -440,13 +435,12 @@ purchase_accept(struct yt_session *session, int logical_port,
 		    "buy seller transfer leading blank", error)
 		    || !session_present_paged_fragment(session, row, length))
 			return false;
-		seller_record = (int)old_owner;
-		if (!yt_game_read_player(&session->door->game, seller_record,
+		if (!yt_game_read_player(&session->door->game, old_owner,
 		    &player, error)
 		    || !yt_port_purchase_seller_overlay(&player, port.treasury,
 		    price)
 		    || !yt_database_write(&session->door->game.database,
-		    (size_t)seller_record, &player.record, error))
+		    (size_t)old_owner, &player.record, error))
 			return false;
 		if (qb_str_single(sector_text, sizeof(sector_text),
 		    cached_buyer_sector) < 0
@@ -470,11 +464,11 @@ purchase_accept(struct yt_session *session, int logical_port,
 		    || !session_buffer_append(message, sizeof(message), &length, radio_four,
 		    sizeof(radio_four) - 1U)
 		    || !session_append_radio_bytes(message, length, -2.0f,
-		    old_owner, error)
+		    (float)old_owner, error)
 		    || !session_read_port_physical(session, physical_port, &port, error))
 			return false;
 	}
-	if (relative_port > 1.0f
+	if (logical_port > 1
 	    && !yt_session_edit_port_name(session, logical_port, old_name,
 	    old_name_length, &port, error))
 		return false;
@@ -534,8 +528,7 @@ yt_session_command_buy_port(struct yt_session *session,
 	float production[3];
 	float cached_buyer_credits;
 	float cached_buyer_sector;
-	float old_owner;
-	float relative_port;
+	int old_owner;
 	double price;
 	uint8_t row[512];
 	char price_text[64];
@@ -560,12 +553,11 @@ yt_session_command_buy_port(struct yt_session *session,
 		return session_present_alert(session, no_port,
 		    sizeof(no_port) - 1U, "buy no-port row", error);
 	logical_port = (int)sector.port;
-	relative_port = sector.port;
-	earth = sector.port == 1.0f;
+	earth = logical_port == 1;
 	if (!purchase_report(session, logical_port, earth, &early_port,
 	    &terminal_port, production, error))
 		return false;
-	old_owner = early_port.owner;
+	old_owner = (int)early_port.owner;
 	if (earth) {
 		price = 1000000000.0;
 		memcpy(old_name, earth_name, sizeof(earth_name) - 1U);
@@ -578,7 +570,7 @@ yt_session_command_buy_port(struct yt_session *session,
 		memcpy(old_name, terminal_port.record.bytes, old_name_length);
 		price = yt_port_purchase_price(production);
 	}
-	if (old_owner == (float)session_record(session)) {
+	if (old_owner == session_record(session)) {
 		length = 0U;
 		if (!session_buffer_append(row, sizeof(row), &length, already_prefix,
 		    sizeof(already_prefix) - 1U)
@@ -609,9 +601,9 @@ yt_session_command_buy_port(struct yt_session *session,
 	if ((double)cached_buyer_credits < price)
 		return session_present_alert(session, unaffordable,
 		    sizeof(unaffordable) - 1U, "buy unaffordable row", error);
-	if (old_owner != 0.0f) {
+	if (old_owner != 0) {
 		display_port = terminal_port;
-		display_port.owner = old_owner;
+		display_port.owner = (float)old_owner;
 		if (!session_port_owner_row_capture(session, &display_port,
 		    owner_name, sizeof(owner_name), &owner_name_length, error)
 		    || !session_present_text(session, NULL, 0U,
@@ -635,7 +627,7 @@ yt_session_command_buy_port(struct yt_session *session,
 	if (answer != YT_YES_NO_YES)
 		return session_present_alert(session, declined,
 		    sizeof(declined) - 1U, "buy declined row", error);
-	return purchase_accept(session, logical_port, relative_port, old_owner,
-	    price, cached_buyer_sector, cached_trader, cached_trader_length,
+	return purchase_accept(session, logical_port, old_owner, price,
+	    cached_buyer_sector, cached_trader, cached_trader_length,
 	    old_name, old_name_length, owner_name, owner_name_length, error);
 }

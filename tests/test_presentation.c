@@ -17963,7 +17963,7 @@ main_buy_confirm(void *context, const uint8_t *prompt, size_t length,
 
 static bool
 main_buy_accept_direct(struct main_buy_cycle_fixture *fixture,
-    int logical_port, float relative_port, float old_owner, double price,
+    int logical_port, int old_owner, double price,
     float buyer_sector, const uint8_t *trader, size_t trader_length,
     const uint8_t *old_name, size_t old_name_length,
     const uint8_t *owner_name, size_t owner_name_length,
@@ -17986,7 +17986,7 @@ main_buy_accept_direct(struct main_buy_cycle_fixture *fixture,
 	    MAIN_BUY_ACCEPT_SOLD_ROW, error)
 	    || !main_buy_accept_read_port(fixture, logical_port, &port, error))
 		return false;
-	if (old_owner != 0.0f) {
+	if (old_owner != 0) {
 		result = snprintf((char *)row, sizeof(row),
 		    "Credits transferred to %.*s's account!",
 		    (int)owner_name_length, owner_name);
@@ -17995,7 +17995,7 @@ main_buy_accept_direct(struct main_buy_cycle_fixture *fixture,
 		    MAIN_BUY_ACCEPT_TRANSFER_BLANK, error)
 		    || !main_buy_accept_present(fixture, row, (size_t)result,
 		    MAIN_BUY_ACCEPT_TRANSFER_ROW, error)
-		    || !main_buy_accept_read_player(fixture, (int)old_owner,
+		    || !main_buy_accept_read_player(fixture, old_owner,
 		    &player, error)
 		    || !yt_port_purchase_seller_overlay(&player, port.treasury,
 		    price)
@@ -18009,12 +18009,12 @@ main_buy_accept_direct(struct main_buy_cycle_fixture *fixture,
 		    sector, amount);
 		if (result < 0 || (size_t)result >= sizeof(radio)
 		    || !main_buy_accept_radio(fixture, radio, (size_t)result,
-		    -2.0f, old_owner, error)
+		    -2.0f, (float)old_owner, error)
 		    || !main_buy_accept_read_port(fixture, logical_port, &port,
 		    error))
 			return false;
 	}
-	if (relative_port > 1.0f
+	if (logical_port > 1
 	    && !main_buy_accept_rename(fixture, logical_port, old_name,
 	    old_name_length, &port, error))
 		return false;
@@ -18059,7 +18059,6 @@ main_buy_cycle_purchase(void *context, struct yt_error *error)
 	size_t old_name_length;
 	size_t owner_name_length;
 	float production[3];
-	float relative_port;
 	int logical_port;
 	int32_t converted_length;
 	bool overflow = false;
@@ -18090,7 +18089,6 @@ main_buy_cycle_purchase(void *context, struct yt_error *error)
 	    &terminal_port, production, error))
 		return false;
 	logical_port = (int)sector.port;
-	relative_port = sector.port;
 	converted_length = qb_cint_mode((double)qb_mbf32_decode(
 	    terminal_port.record.bytes + YT_F85), 4U, &overflow);
 	if (overflow || converted_length < 0)
@@ -18128,8 +18126,8 @@ main_buy_cycle_purchase(void *context, struct yt_error *error)
 	    || !main_buy_confirm(fixture, prompt, sizeof(prompt) - 1U,
 	    &accepted, error)
 	    || !accepted
-	    || !main_buy_accept_direct(fixture, logical_port, relative_port,
-	    early_port.owner, fixture->purchase_price, buyer.sector, trader,
+	    || !main_buy_accept_direct(fixture, logical_port,
+	    (int)early_port.owner, fixture->purchase_price, buyer.sector, trader,
 	    trader_length, old_name, old_name_length, owner_name,
 	    owner_name_length, error))
 		return false;
@@ -18367,7 +18365,6 @@ struct main_rename_cycle_fixture {
 	uint8_t cached_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_name_length;
 	int logical_port;
-	float relative_port;
 	bool editor_called;
 	bool complete;
 	enum main_rename_route route;
@@ -18424,14 +18421,13 @@ main_rename_cycle_rename(void *context, struct yt_error *error)
 		    sizeof(no_port) - 1U);
 	}
 	fixture->logical_port = (int)fixture->sector.port;
-	fixture->relative_port = fixture->sector.port;
 	if (fixture->port.owner != 2.0f) {
 		fixture->route = MAIN_RENAME_NOT_OWNER;
 		fixture->complete = true;
 		return main_rename_present(fixture, not_owner,
 		    sizeof(not_owner) - 1U);
 	}
-	if (fixture->relative_port == 1.0f) {
+	if (fixture->logical_port == 1) {
 		fixture->route = MAIN_RENAME_EARTH;
 		fixture->complete = true;
 		return main_rename_present(fixture, earth, sizeof(earth) - 1U);
@@ -18569,7 +18565,6 @@ test_main_rename_cycle_presentation(void)
 		    cases[pass].expected_length) == 0);
 		CHECK(fixture.complete && fixture.route == MAIN_RENAME_EDITED
 		    && fixture.logical_port == 3
-		    && fixture.relative_port == 3.0f
 		    && fixture.cached_name_length == 8U
 		    && memcmp(fixture.cached_name, "Old Port", 8U) == 0);
 		CHECK(fixture.presentation.name_write_count == 1U
