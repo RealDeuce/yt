@@ -37,8 +37,9 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 	char row[128];
 	bool anti_cloak_allows;
 
-	if (!yt_session_spy_sweep(session, error)
-	    || !session_reload_player(session, error))
+	if (!yt_session_spy_sweep(session, error))
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	session->player.turns = qb_single_subtract(session->player.turns, 1.0f);
 	if (!yt_record_set_number(&session->player.record, YT_F49,
@@ -88,8 +89,9 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 		else {
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE,
-			    "action-finalizer cloak first blank", error)
-			    || !session_present_text(session, NULL, 0,
+			    "action-finalizer cloak first blank", error))
+				return false;
+			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE,
 			    "action-finalizer cloak second blank", error))
 				return false;
@@ -153,22 +155,26 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	size_t row_length;
 
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "emergency warp leading blank", error)
-	    || !session_attention_bytes(session, attention,
-	    sizeof(attention) - 1U,
-	    "emergency warp attention", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "emergency warp post-title blank", error)
-	    || !session_present_text(session, wormhole, sizeof(wormhole) - 1U,
-	    SESSION_PRESENT_BOLD_LINE, "emergency warp wormhole row", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "emergency warp leading blank", error))
+		return false;
+	if (!session_attention_bytes(session, attention,
+	    sizeof(attention) - 1U, "emergency warp attention", error))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "emergency warp post-title blank", error))
+		return false;
+	if (!session_present_text(session, wormhole, sizeof(wormhole) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "emergency warp wormhole row", error))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "emergency warp pre-temperature blank", error))
 		return false;
 	session_set_foreground(session, 6);
 	if (!session_present_text(session, temperature,
 	    sizeof(temperature) - 1U, SESSION_PRESENT_BOLD_LINE,
-	    "emergency warp temperature title", error)
-	    || !session_present_text(session, scale, sizeof(scale) - 1U,
+	    "emergency warp temperature title", error))
+		return false;
+	if (!session_present_text(session, scale, sizeof(scale) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "emergency warp temperature scale", error))
 		return false;
 	session_set_foreground(session, 2);
@@ -178,9 +184,11 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	session_set_foreground(session, 6);
 	if (!session_present_text(session, gauge_open,
 	    sizeof(gauge_open) - 1U, SESSION_PRESENT_BOLD_RAW,
-	    "emergency warp gauge open", error)
-	    || !yt_random_next(&session->door->game.random, &first, error)
-	    || !yt_random_next(&session->door->game.random, &second, error))
+	    "emergency warp gauge open", error))
+		return false;
+	if (!yt_random_next(&session->door->game.random, &first, error))
+		return false;
+	if (!yt_random_next(&session->door->game.random, &second, error))
 		return false;
 	duration = yt_emergency_warp_duration(first, second);
 	for (;;) {
@@ -215,14 +223,18 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	}
 	session_set_foreground(session, 2);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "emergency warp post-gauge blank one", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "emergency warp post-gauge blank two", error)
-	    || !session_reload_player(session, error))
+	    "emergency warp post-gauge blank one", error))
 		return false;
-	if (!yt_random_next(&session->door->game.random, &first, error)
-	    || !yt_random_next(&session->door->game.random, &override, error)
-	    || !yt_random_next(&session->door->game.random, &turn_draw, error))
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "emergency warp post-gauge blank two", error))
+		return false;
+	if (!session_reload_player(session, error))
+		return false;
+	if (!yt_random_next(&session->door->game.random, &first, error))
+		return false;
+	if (!yt_random_next(&session->door->game.random, &override, error))
+		return false;
+	if (!yt_random_next(&session->door->game.random, &turn_draw, error))
 		return false;
 	destination = yt_emergency_warp_destination(first,
 	    session_sector_count(session));
@@ -237,13 +249,16 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 			return false;
 		session_set_foreground(session, 1);
 		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "meltdown leading blank", error)
-		    || !session_present_text(session, engines_disabled,
+		    SESSION_PRESENT_LINE, "meltdown leading blank", error))
+			return false;
+		if (!session_present_text(session, engines_disabled,
 		    sizeof(engines_disabled) - 1U, SESSION_PRESENT_BOLD_LINE,
-		    "meltdown engines-disabled row", error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "meltdown middle blank", error)
-		    || !session_present_text(session, repair, sizeof(repair) - 1U,
+		    "meltdown engines-disabled row", error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "meltdown middle blank", error))
+			return false;
+		if (!session_present_text(session, repair, sizeof(repair) - 1U,
 		    SESSION_PRESENT_BOLD_LINE, "meltdown repair row", error))
 			return false;
 		for (int ordinal = 0; ordinal < 5; ++ordinal) {
@@ -252,10 +267,12 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 				return false;
 		}
 		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "meltdown trailing blank", error)
-		    || !yt_emergency_warp_stranded_row(destination, row,
-		    sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "meltdown trailing blank", error))
+			return false;
+		if (!yt_emergency_warp_stranded_row(destination, row,
+		    sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "meltdown stranded row", error))
 			return false;
 	}
@@ -264,17 +281,20 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 		    "emergency warp completion sound", error))
 			return false;
 		if (!session_present_text(session, relief, sizeof(relief) - 1U,
-		    SESSION_PRESENT_LINE, "emergency warp relief row", error)
-		    || !yt_emergency_warp_result_row(destination, cost, row,
-		    sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "emergency warp relief row", error))
+			return false;
+		if (!yt_emergency_warp_result_row(destination, cost, row,
+		    sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "emergency warp result row", error))
 			return false;
 	}
 	yt_emergency_warp_player_overlay(&session->player, destination, cost);
 	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session_record(session), &session->player.record, error)
-	    || !yt_database_flush(&session->door->game.database, error))
+	    (size_t)session_record(session), &session->player.record, error))
+		return false;
+	if (!yt_database_flush(&session->door->game.database, error))
 		return false;
 	(void)yt_player_cache_set_sector(&session->player_cache,
 	    session_record(session), session->player.sector);
@@ -305,8 +325,10 @@ yt_session_direct_emergency_warp(struct yt_session *session,
 	if (!session_present_paged_fragment(session, warning_one, sizeof(warning_one) - 1U))
 		return false;
 	session->presentation.bold = true;
-	if (!session_present_paged_fragment(session, warning_two, sizeof(warning_two) - 1U)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	if (!session_present_paged_fragment(session, warning_two,
+	    sizeof(warning_two) - 1U))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "emergency warp confirmation blank", error))
 		return false;
 	session->presentation.bold = true;
