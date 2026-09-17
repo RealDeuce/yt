@@ -36,9 +36,9 @@ yt_session_build_route(struct yt_session *session, float start_value,
 {
 	const float *avoid = session->navigation.avoided_sectors;
 	uint8_t conversion_mode = session->presentation.sound.conversion_mode;
-	int16_t predecessor[YT_ROUTE_CAPACITY];
-	int16_t head = 1;
-	int16_t tail = 1;
+	int predecessor[YT_ROUTE_CAPACITY];
+	int head = 1;
+	int tail = 1;
 
 	if (plan == NULL)
 		return route_error(error, "route arguments");
@@ -49,14 +49,14 @@ yt_session_build_route(struct yt_session *session, float start_value,
 		return false;
 	if (start_value == destination_value) {
 		plan->destination = plan->start;
-		predecessor[0] = (int16_t)plan->start;
+		predecessor[0] = plan->start;
 		plan->next_hop[0] = 0;
 		plan->next_hop[plan->start] = 0;
 		plan->outcome = YT_ROUTE_SAME;
 		return true;
 	}
 
-	plan->next_hop[1] = (int16_t)plan->start;
+	plan->next_hop[1] = plan->start;
 	predecessor[plan->start] = -1;
 	if (use_avoid) {
 		size_t position;
@@ -79,18 +79,15 @@ yt_session_build_route(struct yt_session *session, float start_value,
 
 	while (predecessor[plan->destination] == 0 && tail >= head) {
 		struct yt_sector sector;
-		int16_t warps[6];
-		int16_t current;
+		int current;
 		size_t slot;
 
 		current = plan->next_hop[head];
 		if (!session_read_sector_at_fault(session, current, &sector,
 		    YT_BASIC_FAULT_ROUTE_SECTOR_GET, error))
 			return false;
-		for (slot = 0U; slot < YT_ARRAY_LEN(warps); ++slot)
-			warps[slot] = (int16_t)sector.warps[slot];
-		for (slot = 0U; slot < YT_ARRAY_LEN(warps); ++slot) {
-			int16_t neighbor = warps[slot];
+		for (slot = 0U; slot < YT_ARRAY_LEN(sector.warps); ++slot) {
+			int neighbor = sector.warps[slot];
 
 			if (predecessor[neighbor] != 0)
 				continue;
@@ -118,10 +115,10 @@ yt_session_build_route(struct yt_session *session, float start_value,
 		    "route failure row", error);
 	}
 
-	head = (int16_t)plan->destination;
+	head = plan->destination;
 	while (predecessor[head] != -1) {
-		int16_t child = head;
-		int16_t prior = predecessor[child];
+		int child = head;
+		int prior = predecessor[child];
 
 		plan->next_hop[prior] = child;
 		head = prior;

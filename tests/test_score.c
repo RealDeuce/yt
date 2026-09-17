@@ -4059,10 +4059,14 @@ check_maintenance_protected_mines(void)
 	    &error))
 		goto done;
 	for (sector = 1; sector <= 8; ++sector) {
-		memset(before[sector - 1].bytes, 0x40 + sector,
-		    sizeof(before[sector - 1].bytes));
-		yt_record_set_number(&before[sector - 1], YT_F129,
-		    (float)(sector * 11));
+		struct yt_sector value = {0};
+
+		yt_record_blank(&value.record);
+		value.warps[0] = sector == 8 ? 1 : sector + 1;
+		value.warps[1] = sector == 1 ? 8 : sector - 1;
+		value.mines = (float)(sector * 11);
+		yt_sector_encode(&value);
+		before[sector - 1] = value.record;
 		if (!yt_database_write(&game.database,
 		    (size_t)yt_sector_basic_record(&game.config, sector),
 		    &before[sector - 1], &error))
@@ -7585,15 +7589,19 @@ check_maintenance_xannor_group_persistence_pass(void)
 	    &error))
 		goto done;
 	for (sector = 1; sector <= 30; ++sector) {
-		memset(before[sector - 1].bytes, 0x20 + sector,
-		    YT_RECORD_SIZE);
-		yt_record_set_number(&before[sector - 1], YT_F81,
-		    sector == 21 ? 3.0f : sector == 23 ? 1.0f : 2.0f);
-		yt_record_set_number(&before[sector - 1], YT_F85,
-		    sector == 21 ? 7.0f : 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F93,
-		    sector == 21 ? 9.0f : sector == 23 ? 8.0f : 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F105, 99.0f);
+		struct yt_sector value = {0};
+
+		yt_record_blank(&value.record);
+		value.warps[0] = sector == 30 ? 1 : sector + 1;
+		value.warps[1] = sector == 1 ? 30 : sector - 1;
+		value.fighters = sector == 21 ? 3.0f
+		    : sector == 23 ? 1.0f : 2.0f;
+		value.fighter_owner = sector == 21 ? 7.0f : 0.0f;
+		value.planet = sector == 21 ? 9.0f
+		    : sector == 23 ? 8.0f : 0.0f;
+		value.metadata = 99.0f;
+		yt_sector_encode(&value);
+		before[sector - 1] = value.record;
 		if (!yt_database_write(&game.database,
 		    (size_t)yt_sector_basic_record(&game.config, sector),
 		    &before[sector - 1], &error))

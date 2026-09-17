@@ -34,7 +34,7 @@ struct session_route_plan {
 	int start;
 	int destination;
 	enum yt_route_outcome outcome;
-	int16_t next_hop[YT_ROUTE_CAPACITY];
+	int next_hop[YT_ROUTE_CAPACITY];
 };
 
 struct session_combat_state {

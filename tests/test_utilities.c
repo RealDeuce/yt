@@ -2948,18 +2948,18 @@ test_maintenance_route_builder(struct yt_error *error)
 	if (!yt_game_read_sector(&game, 1, &sector, error))
 		goto done;
 	memset(sector.warps, 0, sizeof(sector.warps));
-	sector.warps[0] = 2.0f;
-	sector.warps[1] = 3.0f;
+	sector.warps[0] = 2;
+	sector.warps[1] = 3;
 	if (!yt_game_write_sector(&game, 1, &sector, error)
 	    || !yt_game_read_sector(&game, 2, &sector, error))
 		goto done;
 	memset(sector.warps, 0, sizeof(sector.warps));
-	sector.warps[0] = 4.0f;
+	sector.warps[0] = 4;
 	if (!yt_game_write_sector(&game, 2, &sector, error)
 	    || !yt_game_read_sector(&game, 3, &sector, error))
 		goto done;
 	memset(sector.warps, 0, sizeof(sector.warps));
-	sector.warps[0] = 4.0f;
+	sector.warps[0] = 4;
 	if (!yt_game_write_sector(&game, 3, &sector, error)
 	    || !yt_game_read_sector(&game, 4, &sector, error))
 		goto done;
@@ -2986,7 +2986,7 @@ test_maintenance_route_builder(struct yt_error *error)
 	if (!yt_game_read_sector(&game, 1, &sector, error))
 		goto done;
 	memset(sector.warps, 0, sizeof(sector.warps));
-	sector.warps[0] = 3.0f;
+	sector.warps[0] = 3;
 	if (!yt_game_write_sector(&game, 1, &sector, error)
 	    || !yt_maintenance_route_next_hop(&game, &cache, 1, 4, &next,
 	    error) || next != 2

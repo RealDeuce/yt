@@ -65,7 +65,7 @@ test_activate_and_deactivate(void)
 	CHECK(session.navigation.avoided_sectors[0] == 7.0f);
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	yt_record_blank(&sector.record);
-	sector.warps[0] = 2.0f;
+	sector.warps[0] = 2;
 	yt_sector_encode(&sector);
 	CHECK(yt_database_write(&door.game.database, 4U, &sector.record,
 	    &error));

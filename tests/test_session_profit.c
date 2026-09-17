@@ -73,11 +73,11 @@ test_adjacent_and_global_reports(void)
 	yt_sector_encode(&earth);
 	yt_record_blank(&source.record);
 	source.port = 2.0f;
-	source.warps[0] = 3.0f;
+	source.warps[0] = 3;
 	yt_sector_encode(&source);
 	yt_record_blank(&target.record);
 	target.port = 3.0f;
-	target.warps[0] = 2.0f;
+	target.warps[0] = 2;
 	yt_sector_encode(&target);
 	prepare_port(&earth_port, 1.0f, source_factor);
 	prepare_port(&source_port, 1.0f, source_factor);

@@ -131,7 +131,7 @@ yt_maintenance_route_next_hop(struct yt_game *game,
 		int slot;
 
 		for (slot = 0; slot < 6; ++slot) {
-			int neighbor = (int)cache->warps[(size_t)current * 6U
+			int neighbor = cache->warps[(size_t)current * 6U
 			    + (size_t)slot];
 			enum enqueue_result enqueued;
 

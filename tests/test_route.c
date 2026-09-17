@@ -16,7 +16,7 @@ static unsigned failures;
 } while (0)
 
 static void
-write_sector(struct yt_game *game, int logical, const float warps[6],
+write_sector(struct yt_game *game, int logical, const int warps[6],
     struct yt_error *error)
 {
 	struct yt_sector sector;
@@ -34,12 +34,12 @@ static void
 test_routes_from_database(void)
 {
 	static const char path[] = "ROUTE-TEST.DAT";
-	static const float sector_one[6] = {3.0f, 2.0f, 1.0f, 1.0f, 1.0f, 1.0f};
-	static const float sector_two[6] = {4.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f};
-	static const float sector_three[6] = {4.0f, 3.0f, 3.0f, 3.0f, 3.0f, 3.0f};
-	static const float sector_four[6] = {4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f};
-	static const float isolated_one[6] = {2.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
-	static const float isolated_two[6] = {2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f};
+	static const int sector_one[6] = {3, 2, 1, 1, 1, 1};
+	static const int sector_two[6] = {4, 2, 2, 2, 2, 2};
+	static const int sector_three[6] = {4, 3, 3, 3, 3, 3};
+	static const int sector_four[6] = {4, 4, 4, 4, 4, 4};
+	static const int isolated_one[6] = {2, 1, 1, 1, 1, 1};
+	static const int isolated_two[6] = {2, 2, 2, 2, 2, 2};
 	struct yt_door door;
 	struct yt_session session;
 	struct session_route_plan route;

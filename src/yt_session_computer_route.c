@@ -129,7 +129,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		char token[80];
 		int column;
 		int ignored_row;
-		int16_t next;
+		int next;
 
 		next = route.next_hop[cursor];
 		if (next == 0)
@@ -214,7 +214,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 			return false;
 		for (index = 0; index < 6U; ++index)
 			session->navigation.current_warps[index] =
-			    (int)current_sector.warps[index];
+			    current_sector.warps[index];
 	}
 	return true;
 }

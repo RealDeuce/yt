@@ -42,7 +42,7 @@ bool yt_game_load_startup_configuration(struct yt_game *game,
 
 struct yt_sector {
 	struct yt_record record;
-	float warps[6];
+	int warps[6];
 	float port;
 	float fighters;
 	float fighter_owner;

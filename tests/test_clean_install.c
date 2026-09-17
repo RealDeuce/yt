@@ -385,9 +385,9 @@ main(void)
 		}
 	}
 	if (!yt_game_read_sector(&game, 1, &sector, &error)
-	    || sector.warps[0] != 1.0f || sector.warps[1] != 2.0f
-	    || sector.warps[2] != 3.0f || sector.warps[3] != 4.0f
-	    || sector.warps[4] != 5.0f || sector.warps[5] != 6.0f) {
+	    || sector.warps[0] != 1 || sector.warps[1] != 2
+	    || sector.warps[2] != 3 || sector.warps[3] != 4
+	    || sector.warps[4] != 5 || sector.warps[5] != 6) {
 		failure = "sector 1 does not have the documented fixed warps";
 		goto close;
 	}

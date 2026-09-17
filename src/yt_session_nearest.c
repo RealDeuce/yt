@@ -292,7 +292,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				goto done;
 			yt_sector_decode(&scan.sector, &raw);
 			for (slot = 0U; slot < 6U; ++slot) {
-				int target = (int)scan.sector.warps[slot];
+				int target = scan.sector.warps[slot];
 
 				if (target == 0)
 					continue;

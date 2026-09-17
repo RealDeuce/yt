@@ -147,7 +147,7 @@ bool yt_maintenance_xannor_player_scan_continue(int player_record,
     int player_count);
 
 struct yt_maintenance_route_cache {
-	float *warps;
+	int *warps;
 	int *successors;
 	int sector_count;
 };

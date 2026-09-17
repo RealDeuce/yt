@@ -354,13 +354,13 @@ display_sector_one(struct yt_session *session, int logical_sector,
 	    "sector warp heading", error))
 		return false;
 	for (slot = 0; slot < YT_ARRAY_LEN(sector.warps); ++slot) {
-		if (sector.warps[slot] != 0.0f) {
+		if (sector.warps[slot] != 0) {
 			char warp[64];
 			int warp_size;
 			size_t fragment_length = 0U;
 
 			warp_size = qb_str_single(warp, sizeof(warp),
-			    sector.warps[slot]);
+			    (float)sector.warps[slot]);
 			if (warp_size < 0)
 				return false;
 			if (!first_warp)

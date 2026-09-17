@@ -305,7 +305,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 			size_t slot;
 
 			for (slot = 0U; slot < YT_ARRAY_LEN(destinations); ++slot)
-				destinations[slot] = (int)sector.warps[slot];
+				destinations[slot] = sector.warps[slot];
 			for (;;) {
 				float draw;
 				int selected;

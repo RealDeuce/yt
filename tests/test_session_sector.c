@@ -38,7 +38,7 @@ test_current_sector_from_real_records(void)
 	player.sector = 1.0f;
 	yt_player_encode(&player);
 	yt_record_blank(&sector.record);
-	sector.warps[0] = 2.0f;
+	sector.warps[0] = 2;
 	yt_sector_encode(&sector);
 	yt_error_clear(&error);
 	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,

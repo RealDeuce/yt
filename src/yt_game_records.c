@@ -118,7 +118,7 @@ yt_sector_decode(struct yt_sector *sector, const struct yt_record *record)
 	memset(sector, 0, sizeof(*sector));
 	sector->record = *record;
 	for (index = 0; index < 6; ++index)
-		sector->warps[index] = yt_record_get_number(record,
+		sector->warps[index] = (int)yt_record_get_number(record,
 		    YT_F41 + index * 4U);
 	sector->port = yt_record_get_number(record, YT_F65);
 	sector->fighters = yt_record_get_number(record, YT_F81);
@@ -136,7 +136,7 @@ yt_sector_encode(struct yt_sector *sector)
 	for (index = 0; index < 6; ++index)
 		yt_record_set_number_if_changed(&sector->record,
 		    YT_F41 + index * 4U,
-		    sector->warps[index]);
+		    (float)sector->warps[index]);
 	yt_record_set_number_if_changed(&sector->record, YT_F65, sector->port);
 	yt_record_set_number_if_changed(&sector->record, YT_F81,
 	    sector->fighters);

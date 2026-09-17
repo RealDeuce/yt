@@ -98,7 +98,7 @@ profit_warp_targets(const struct yt_sector *sector, int targets[6])
 	size_t slot;
 
 	for (slot = 0U; slot < 6U; ++slot)
-		targets[slot] = (int)sector->warps[slot];
+		targets[slot] = sector->warps[slot];
 }
 
 static void
