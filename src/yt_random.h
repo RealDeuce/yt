@@ -9,8 +9,6 @@ typedef bool (*yt_random_fill_fn)(void *context, void *buffer, size_t length,
 struct yt_random {
 	yt_random_fill_fn fill;
 	void *context;
-	float last;
-	bool has_last;
 	uint64_t draws;
 };
 

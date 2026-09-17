@@ -9,7 +9,6 @@ yt_test_random_use_provider(struct yt_random *random, yt_random_fill_fn fill,
 {
 	random->fill = fill;
 	random->context = context;
-	random->has_last = false;
 	random->draws = 0;
 }
 

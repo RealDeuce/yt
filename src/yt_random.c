@@ -29,10 +29,8 @@ yt_random_next(struct yt_random *random, float *value, struct yt_error *error)
 		return false;
 	sample = (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8)
 	    | ((uint32_t)bytes[2] << 16);
-	random->last = (float)sample / 16777216.0f;
-	random->has_last = true;
 	++random->draws;
-	*value = random->last;
+	*value = (float)sample / 16777216.0f;
 	return true;
 }
 
