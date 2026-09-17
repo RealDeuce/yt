@@ -83,34 +83,6 @@ yt_projectile_plasma_next_firing(float counter)
 	return qb_single_add(counter, 1.0f);
 }
 
-enum yt_projectile_target_result
-yt_projectile_target_response(const char *response, float maximum,
-    float *target)
-{
-	struct qb_val_result parsed;
-	float candidate;
-
-	if (response == NULL || target == NULL || response[0] == '\0')
-		return YT_PROJECTILE_TARGET_CANCEL;
-	parsed = qb_val(response);
-	candidate = (float)(parsed.valid ? parsed.value : 0.0);
-	if (candidate < 1.0f || candidate > maximum)
-		return YT_PROJECTILE_TARGET_RETRY;
-	*target = candidate;
-	return YT_PROJECTILE_TARGET_ACCEPT;
-}
-
-float
-yt_projectile_quantity_response(const char *response)
-{
-	struct qb_val_result parsed;
-
-	if (response == NULL)
-		return 0.0f;
-	parsed = qb_val(response);
-	return (float)floor(parsed.valid ? parsed.value : 0.0);
-}
-
 void
 yt_projectile_debit_overlay(struct yt_player *player, bool plasma,
     float amount)
@@ -227,4 +199,3 @@ yt_counterlaunch_rows(const uint8_t *target_name,
 	*news_length = news_needed;
 	return true;
 }
-

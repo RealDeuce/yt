@@ -163,12 +163,6 @@ yt_sector_force_route(float fighters, float owner, int current_player_record,
 }
 
 bool
-yt_sector_is_black_hole(float current_sector, float first, float second)
-{
-	return current_sector == first || current_sector == second;
-}
-
-bool
 yt_sector_mines_admitted(float mines, float suppression)
 {
 	return mines > 0.0f && suppression == 0.0f;

@@ -233,12 +233,6 @@ enum yt_planet_rename_name_result {
 	YT_PLANET_RENAME_ACCEPTED,
 };
 
-enum yt_projectile_target_result {
-	YT_PROJECTILE_TARGET_CANCEL,
-	YT_PROJECTILE_TARGET_RETRY,
-	YT_PROJECTILE_TARGET_ACCEPT,
-};
-
 #define YT_PROJECTILE_ATTACKER_CAPACITY 64U
 void yt_projectile_plasma_opening_values(float bolts, double *energy,
     float *hop_loss);
@@ -248,7 +242,6 @@ bool yt_projectile_plasma_firing_row(float counter, uint8_t *row,
     size_t capacity, size_t *length);
 float yt_projectile_plasma_next_firing(float counter);
 
-bool yt_projectile_is_black_hole(float hop, float first, float second);
 bool yt_projectile_cruise_reroute_row(float hop, uint8_t *row,
     size_t capacity, size_t *length);
 float yt_projectile_cruise_reroute_destination(float draw,
@@ -361,8 +354,6 @@ bool yt_game_post_login_repairs(struct yt_game *game, int basic_record,
 bool yt_sector_force_route(float fighters, float owner,
     int current_player_record, enum yt_sector_force_route *route,
     int *owner_record, struct yt_error *error);
-bool yt_sector_is_black_hole(float current_sector, float first,
-    float second);
 bool yt_sector_mines_admitted(float mines, float suppression);
 bool yt_sector_force_same_team(float current_team, float owner_team);
 enum yt_port_owner_kind yt_port_owner_classify(float owner,
@@ -968,9 +959,6 @@ bool yt_player_killer_row(const struct yt_player *player, uint8_t *row,
     size_t capacity, size_t *length, bool *emit, struct yt_error *error);
 bool yt_projectile_target_prompt(bool plasma, float displayed,
     float maximum, uint8_t *prompt, size_t capacity, size_t *length);
-enum yt_projectile_target_result yt_projectile_target_response(
-    const char *response, float maximum, float *target);
-float yt_projectile_quantity_response(const char *response);
 void yt_projectile_debit_overlay(struct yt_player *player, bool plasma,
     float amount);
 float yt_counterlaunch_score_count(double cached_score, float retained);

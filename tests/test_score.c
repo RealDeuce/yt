@@ -1169,10 +1169,6 @@ check_projectile_cruise_reroute_transaction(void)
 	uint8_t row[160];
 	size_t length;
 
-	if (!yt_projectile_is_black_hole(3.0f, 3.0f, 4.0f)
-	    || !yt_projectile_is_black_hole(4.0f, 3.0f, 4.0f)
-	    || yt_projectile_is_black_hole(5.0f, 3.0f, 4.0f))
-		return false;
 	return yt_projectile_cruise_reroute_row(3.0f, row, sizeof(row),
 	    &length)
 	    && length == sizeof(expected_attention) - 1U
@@ -1305,7 +1301,6 @@ check_projectile_parent_model(void)
 	    "[ 1 to 2004 ] ?";
 	uint8_t prompt[192];
 	size_t length;
-	float target = -1.0f;
 	struct yt_player debit;
 	struct yt_player missile_debit;
 	struct yt_player plasma_debit;
@@ -1368,17 +1363,7 @@ check_projectile_parent_model(void)
 	    || length != sizeof(plasma) - 1U
 	    || memcmp(prompt, plasma, length) != 0
 	    || yt_projectile_target_prompt(false, 5.0f, 2004.0f,
-	    prompt, 8U, &length)
-	    || yt_projectile_target_response("", 2004.0f, &target)
-	    != YT_PROJECTILE_TARGET_CANCEL
-	    || target != -1.0f
-	    || yt_projectile_target_response("0", 2004.0f, &target)
-	    != YT_PROJECTILE_TARGET_RETRY
-	    || yt_projectile_target_response("2004.5", 2004.0f, &target)
-	    != YT_PROJECTILE_TARGET_RETRY
-	    || yt_projectile_target_response("1.5", 2004.0f, &target)
-	    != YT_PROJECTILE_TARGET_ACCEPT
-	    || target != 1.5f)
+	    prompt, 8U, &length))
 		return false;
 	if (yt_projectile_survivor_store_counterattack(-1, 3,
 	    &counterattack, counterattack_raw)
@@ -1521,10 +1506,6 @@ check_projectile_parent_model(void)
 	    && yt_record_get_number(&plasma_debit.record, YT_F97) == 23.0f
 	    && yt_record_get_number(&plasma_debit.record, YT_F113) == 6.0f
 	    && plasma_debit.record.bytes[YT_F93] == 0x5aU
-	    && yt_projectile_quantity_response("2.9") == 2.0f
-	    && yt_projectile_quantity_response("-.1") == -1.0f
-	    && yt_projectile_quantity_response("E") == 0.0f
-	    && yt_projectile_quantity_response(NULL) == 0.0f
 	    && yt_projectile_candidate_route(3, 2, 8.0f, 7.0f, 0.0f)
 	    == YT_PROJECTILE_CANDIDATE_SKIP
 	    && yt_projectile_candidate_route(3, 2, 7.0f, 7.0f, 0.0f)
@@ -13039,10 +13020,7 @@ check_sector_force_routes(void)
 	    || error.status != YT_RANGE
 	    || strcmp(error.operation, "fighter owner record") != 0)
 		return false;
-	if (!yt_sector_is_black_hole(7.0f, 7.0f, 9.0f)
-	    || !yt_sector_is_black_hole(9.0f, 7.0f, 9.0f)
-	    || yt_sector_is_black_hole(8.0f, 7.0f, 9.0f)
-	    || !yt_sector_mines_admitted(0.4f, 0.0f)
+	if (!yt_sector_mines_admitted(0.4f, 0.0f)
 	    || yt_sector_mines_admitted(0.0f, 0.0f)
 	    || yt_sector_mines_admitted(-0.4f, 0.0f)
 	    || yt_sector_mines_admitted(1.0f, -1.0f)

@@ -125,12 +125,6 @@ yt_projectile_damage_iteration(float counter, float saved_missiles)
 }
 
 bool
-yt_projectile_is_black_hole(float hop, float first, float second)
-{
-	return hop == first || hop == second;
-}
-
-bool
 yt_projectile_cruise_reroute_row(float hop, uint8_t *row,
     size_t capacity, size_t *length)
 {
