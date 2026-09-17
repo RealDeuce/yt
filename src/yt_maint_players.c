@@ -222,8 +222,8 @@ expire_player_impl(struct maint_state *state, int player_record,
 
 		if (!yt_game_read_sector(&state->game, logical, &sector, error))
 			return false;
-		if (sector.fighter_owner == (float)player_record) {
-			sector.fighter_owner = 0.0f;
+		if (sector.fighter_owner == player_record) {
+			sector.fighter_owner = 0;
 			sector.fighters = 0.0f;
 			if (!yt_game_write_sector(&state->game, logical, &sector,
 			    error))
@@ -423,8 +423,8 @@ immediate_death_cleanup_impl(struct maint_state *state, int victim_record,
 
 		if (!yt_game_read_sector(&state->game, logical, &sector, error))
 			return false;
-		if (sector.fighter_owner == (float)victim_record) {
-			sector.fighter_owner = -2.0f;
+		if (sector.fighter_owner == victim_record) {
+			sector.fighter_owner = -2;
 			if (!yt_game_write_sector(&state->game, logical, &sector,
 			    error))
 				return false;

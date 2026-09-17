@@ -253,7 +253,7 @@ yt_deployed_attack_sector_overlay(struct yt_sector *sector, float fighters)
 	sector->fighters = fighters;
 	(void)yt_record_set_number(&sector->record, YT_F81, fighters);
 	if (fighters < 1.0f) {
-		sector->fighter_owner = 0.0f;
+		sector->fighter_owner = 0;
 		(void)yt_record_set_number(&sector->record, YT_F85, 0.0f);
 	}
 }
@@ -274,11 +274,11 @@ yt_death_player_overlay(struct yt_player *player, float killer)
 }
 
 bool
-yt_death_sector_overlay(struct yt_sector *sector, float victim)
+yt_death_sector_overlay(struct yt_sector *sector, int victim)
 {
 	if (sector == NULL || sector->fighter_owner != victim)
 		return false;
-	sector->fighter_owner = -2.0f;
+	sector->fighter_owner = -2;
 	(void)yt_record_set_number(&sector->record, YT_F85, -2.0f);
 	return true;
 }
@@ -417,7 +417,7 @@ yt_bribe_sector_overlay(struct yt_sector *sector)
 {
 	if (sector == NULL)
 		return;
-	sector->fighter_owner = 0.0f;
+	sector->fighter_owner = 0;
 	(void)yt_record_set_number(&sector->record, YT_F85, 0.0f);
 	sector->fighters = 0.0f;
 	(void)yt_record_set_number(&sector->record, YT_F81, 0.0f);

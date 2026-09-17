@@ -125,7 +125,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 		finding = true;
 	}
 	if (sector.fighters > 0.0f) {
-		float owner = sector.fighter_owner;
+		int owner = sector.fighter_owner;
 		bool hostile;
 		int number_length = qb_str_double(number, sizeof(number),
 		    (double)sector.fighters);
@@ -139,12 +139,12 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 		    || !danger_append(row, sizeof(row), &row_length,
 		    fighter_middle, sizeof(fighter_middle) - 1U))
 			return movement_range_error(error, "danger fighters row");
-		if (owner == -1.0f) {
+		if (owner == -1) {
 			if (!danger_append(row, sizeof(row), &row_length, xannor,
 			    sizeof(xannor) - 1U))
 				return movement_range_error(error, "danger fighters row");
 		}
-		else if (owner == -2.0f) {
+		else if (owner == -2) {
 			if (!danger_append(row, sizeof(row), &row_length,
 			    mercenaries, sizeof(mercenaries) - 1U))
 				return movement_range_error(error, "danger fighters row");
@@ -153,7 +153,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 			struct yt_player owner_player;
 			size_t name_length;
 
-			if (!yt_game_read_player(&session->door->game, (int)owner,
+			if (!yt_game_read_player(&session->door->game, owner,
 			    &owner_player, error))
 				return false;
 			name_length = owner_player.name_length;
@@ -168,7 +168,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 
 				session->player_reference.friendly = false;
 				if (!yt_session_players_are_friendly(session,
-				    (int)owner, &friendly, error))
+				    owner, &friendly, error))
 					return false;
 				session->player_reference.friendly = friendly;
 				number_length = qb_str_single(number, sizeof(number),
@@ -199,10 +199,10 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 				}
 			}
 		}
-		hostile = owner < 0.0f;
-		if (!hostile && owner > 1.0f
-		    && owner <= (float)session_sector_offset(session)
-		    && owner != (float)session_record(session))
+		hostile = owner < 0;
+		if (!hostile && owner > 1
+		    && owner <= session_sector_offset(session)
+		    && owner != session_record(session))
 			hostile = !session->player_reference.friendly;
 		if (hostile) {
 			if (!danger_first_warning(session, target, finding, error))

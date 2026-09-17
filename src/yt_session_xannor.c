@@ -82,7 +82,7 @@ yt_session_launch_xannor_retaliation(struct yt_session *session,
 	    (int)session->door->game.config.headquarters, &headquarters, error))
 		goto done;
 	if (headquarters.fighters == 0.0f
-	    || headquarters.fighter_owner != -1.0f) {
+	    || headquarters.fighter_owner != -1) {
 		result = true;
 		goto done;
 	}

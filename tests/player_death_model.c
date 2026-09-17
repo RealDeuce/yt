@@ -58,8 +58,7 @@ test_player_death_run(struct test_player_death_state *state,
 
 		if (!ops->read_sector(context, logical, &sector, error))
 			return false;
-		if (yt_death_sector_overlay(&sector,
-		    (float)state->victim_record)
+		if (yt_death_sector_overlay(&sector, state->victim_record)
 		    && !ops->write_sector(context, logical, &sector, error))
 			return false;
 	}

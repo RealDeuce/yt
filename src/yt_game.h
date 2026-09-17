@@ -45,7 +45,7 @@ struct yt_sector {
 	int warps[6];
 	int port;
 	float fighters;
-	float fighter_owner;
+	int fighter_owner;
 	int planet;
 	float metadata;
 	float mines;
@@ -810,7 +810,7 @@ void yt_deployed_attack_player_overlay(struct yt_player *player,
 void yt_deployed_attack_sector_overlay(struct yt_sector *sector,
     float fighters);
 void yt_death_player_overlay(struct yt_player *player, float killer);
-bool yt_death_sector_overlay(struct yt_sector *sector, float victim);
+bool yt_death_sector_overlay(struct yt_sector *sector, int victim);
 enum yt_death_port_route yt_death_port_overlay(struct yt_port *port,
     float victim, float killer, int last_player);
 void yt_death_killer_credit_overlay(struct yt_player *player, float ports);

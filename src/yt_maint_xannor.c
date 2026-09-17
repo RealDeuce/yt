@@ -123,7 +123,7 @@ yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
 		    || !yt_game_read_sector(game, candidate, &sector, error))
 			return false;
 		if ((sector.fighters > 1.0f
-		    && sector.fighter_owner != -1.0f)
+		    && sector.fighter_owner != -1)
 		    || sector.planet > 1)
 			discovery_target = candidate;
 		if (discovery_target == 0) {
@@ -256,7 +256,7 @@ yt_maintenance_xannor_target(struct yt_random *random, int sector_count,
 
 bool
 yt_maintenance_xannor_defense(struct yt_random *random, float *group_size,
-    float *defense_fighters, float *defense_owner, struct yt_error *error)
+    float *defense_fighters, int *defense_owner, struct yt_error *error)
 {
 	float original_xannor;
 	float original_defenders;
@@ -269,7 +269,7 @@ yt_maintenance_xannor_defense(struct yt_random *random, float *group_size,
 		return false;
 	}
 	if (*group_size <= 0.0f || *defense_fighters < 1.0f
-	    || *defense_owner == -1.0f || *defense_owner == 0.0f)
+	    || *defense_owner == -1 || *defense_owner == 0)
 		return true;
 	original_xannor = *group_size;
 	original_defenders = *defense_fighters;
@@ -291,7 +291,7 @@ yt_maintenance_xannor_defense(struct yt_random *random, float *group_size,
 	*defense_fighters = qb_single_subtract(original_defenders, dloss);
 	if (*defense_fighters <= 0.0f) {
 		*defense_fighters = 0.0f;
-		*defense_owner = 0.0f;
+		*defense_owner = 0;
 	}
 	return true;
 }
@@ -409,7 +409,7 @@ yt_maintenance_xannor_groups_extract(struct yt_game *game,
 		}
 		if (!yt_game_read_sector(game, logical, &host, error))
 			return false;
-		if (host.fighter_owner == -1.0f) {
+		if (host.fighter_owner == -1) {
 			size[group] = host.fighters;
 			if (!yt_record_set_number(&host.record, YT_F81, 0.0f)
 			    || !yt_record_set_number(&host.record, YT_F85, 0.0f)
@@ -499,11 +499,11 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 	}
 	defenders = (double)host.fighters;
 	*original_hostile = host.fighters > 0.0f
-	    && host.fighter_owner != -1.0f;
+	    && host.fighter_owner != -1;
 	if (!*original_hostile || size[1] <= 0.0f)
 		return true;
-	if (host.fighter_owner > 0.0f) {
-		int record = (int)host.fighter_owner;
+	if (host.fighter_owner > 0) {
+		int record = host.fighter_owner;
 
 		if (!yt_game_read_player(game, record, &player, error)) {
 			if (error != NULL && error->status == YT_OK)
@@ -606,7 +606,7 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 		if (!yt_game_read_sector(game, candidate, &sector, error))
 			return false;
 		if (!((sector.fighters > 1.0f
-		    && sector.fighter_owner != -1.0f)
+		    && sector.fighter_owner != -1)
 		    || sector.planet > 1))
 			break;
 	}

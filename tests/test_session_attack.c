@@ -200,7 +200,7 @@ test_deployed_surrender(void)
 	memset(&sector, 0, sizeof(sector));
 	yt_record_blank(&sector.record);
 	sector.fighters = 10.0f;
-	sector.fighter_owner = -2.0f;
+	sector.fighter_owner = -2;
 	yt_sector_encode(&sector);
 	CHECK(yt_database_write_durable(&door.game.database, 4U,
 	    &sector.record, &error));
@@ -212,11 +212,11 @@ test_deployed_surrender(void)
 	CHECK(session.combat.deployed_fighters == 0.0);
 	CHECK(session.player.fighters == 11.0f);
 	CHECK(session.combat.mercenaries_hurt);
-	CHECK(sector.fighters == 0.0f && sector.fighter_owner == 0.0f);
+	CHECK(sector.fighters == 0.0f && sector.fighter_owner == 0);
 	CHECK(yt_game_read_player(&door.game, 2, &player, &error));
 	CHECK(player.fighters == 11.0f && player.shields == 7.0f);
 	CHECK(session_read_sector(&session, 1, &sector, &error));
-	CHECK(sector.fighters == 0.0f && sector.fighter_owner == 0.0f);
+	CHECK(sector.fighters == 0.0f && sector.fighter_owner == 0);
 	CHECK(yt_database_flush(&door.game.database, &error));
 	yt_database_close(&door.game.database);
 
@@ -225,7 +225,7 @@ test_deployed_surrender(void)
 	CHECK(yt_game_read_player(&door.game, 2, &player, &error));
 	CHECK(player.fighters == 11.0f && player.shields == 7.0f);
 	CHECK(session_read_sector(&session, 1, &sector, &error));
-	CHECK(sector.fighters == 0.0f && sector.fighter_owner == 0.0f);
+	CHECK(sector.fighters == 0.0f && sector.fighter_owner == 0);
 	yt_database_close(&door.game.database);
 
 	file = fopen(news_path, "rb");
@@ -282,7 +282,7 @@ test_accepted_bribe(void)
 	memset(&sector, 0, sizeof(sector));
 	yt_record_blank(&sector.record);
 	sector.fighters = 10.0f;
-	sector.fighter_owner = -2.0f;
+	sector.fighter_owner = -2;
 	yt_sector_encode(&sector);
 	CHECK(yt_database_write_durable(&door.game.database, 4U,
 	    &sector.record, &error));
@@ -298,7 +298,7 @@ test_accepted_bribe(void)
 	CHECK(player.fighters == 30.0f);
 	CHECK(player.credits == 60.0f);
 	CHECK(session_read_sector(&session, 1, &sector, &error));
-	CHECK(sector.fighters == 0.0f && sector.fighter_owner == 0.0f);
+	CHECK(sector.fighters == 0.0f && sector.fighter_owner == 0);
 	CHECK(yt_database_flush(&door.game.database, &error));
 	yt_database_close(&door.game.database);
 
@@ -307,7 +307,7 @@ test_accepted_bribe(void)
 	CHECK(yt_game_read_player(&door.game, 2, &player, &error));
 	CHECK(player.fighters == 30.0f && player.credits == 60.0f);
 	CHECK(session_read_sector(&session, 1, &sector, &error));
-	CHECK(sector.fighters == 0.0f && sector.fighter_owner == 0.0f);
+	CHECK(sector.fighters == 0.0f && sector.fighter_owner == 0);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);
 }

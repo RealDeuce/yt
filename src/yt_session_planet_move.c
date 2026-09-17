@@ -224,7 +224,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	if (target.fighters != 0.0f) {
 		bool friendly;
 
-		if (!planet_move_friendship(session, (int)target.fighter_owner,
+		if (!planet_move_friendship(session, target.fighter_owner,
 		    &friendly, error))
 			return false;
 		if (!friendly)

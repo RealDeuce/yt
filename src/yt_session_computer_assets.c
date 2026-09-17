@@ -140,7 +140,7 @@ yt_session_computer_owned_fighters(struct yt_session *session,
 	static const uint8_t rule[] = "--------*--------";
 	static const uint8_t none[] = " NONE found!";
 	int maximum_sector = session_sector_count(session);
-	float current_player = (float)session_record(session);
+	int current_player = session_record(session);
 	bool found = false;
 	int sector_number;
 

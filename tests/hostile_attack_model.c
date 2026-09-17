@@ -229,7 +229,7 @@ test_hostile_attack_combat_run(
 				state->deployed_remaining =
 				    state->surrender.deployed_remaining;
 				state->sector.fighter_owner =
-				    (float)state->surrender.fighter_owner;
+				    state->surrender.fighter_owner;
 				state->current.fighters =
 				    (float)state->ship_fighters;
 				ops->cache_player(context, &state->current);

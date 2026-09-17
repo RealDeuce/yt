@@ -65,7 +65,7 @@ yt_session_computer_check_port_visibility(struct yt_session *session,
 		return false;
 	session->navigation.route_marker = 0.0f;
 	if (!yt_session_computer_owner_is_friendly(session,
-	    (int)sector->fighter_owner,
+	    sector->fighter_owner,
 	    &friendly, error))
 		return false;
 	session->planet.current_record = session_planet_basic_record(session,
@@ -73,7 +73,7 @@ yt_session_computer_check_port_visibility(struct yt_session *session,
 	*unavailable = (sector->port == 0)
 	    | (sector->fighters > 0.0f && cached_team > 0.0f && !friendly)
 	    | (sector->fighters > 0.0f && cached_team == 0.0f
-	    && sector->fighter_owner != (float)session_record(session));
+	    && sector->fighter_owner != session_record(session));
 	return true;
 }
 
@@ -229,8 +229,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 
 			session->combat.deployed_fighters =
 			    (double)sector.fighters;
-			session->player_reference.record =
-			    (int)sector.fighter_owner;
+			session->player_reference.record = sector.fighter_owner;
 			fighter_owner = session->player_reference.record;
 			if (!yt_session_computer_owner_is_friendly(session,
 			    fighter_owner, &fighter_friendly, error))

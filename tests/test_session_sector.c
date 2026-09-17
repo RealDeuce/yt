@@ -54,7 +54,7 @@ test_current_sector_from_real_records(void)
 	CHECK(session.navigation.current_sector_physical_record == 4);
 	CHECK(session.player.sector == 1);
 	sector.fighters = 1.0f;
-	sector.fighter_owner = 2.0f;
+	sector.fighter_owner = 2;
 	CHECK(yt_session_sector_force_is_friendly(&session, &sector, &error));
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);

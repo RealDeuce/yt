@@ -70,14 +70,14 @@ test_distinct_player_death(void)
 	memset(&sector, 0, sizeof(sector));
 	yt_record_blank(&sector.record);
 	sector.fighters = 10.0f;
-	sector.fighter_owner = 3.0f;
+	sector.fighter_owner = 3;
 	yt_sector_encode(&sector);
 	CHECK(yt_database_write(&door.game.database, 5U, &sector.record,
 	    &error));
 	memset(&sector, 0, sizeof(sector));
 	yt_record_blank(&sector.record);
 	sector.fighters = 20.0f;
-	sector.fighter_owner = 4.0f;
+	sector.fighter_owner = 4;
 	yt_sector_encode(&sector);
 	CHECK(yt_database_write(&door.game.database, 6U, &sector.record,
 	    &error));
@@ -107,10 +107,10 @@ test_distinct_player_death(void)
 	CHECK(player.ports_owned == 1.0f);
 	CHECK(yt_database_read(&door.game.database, 5U, &record, &error));
 	yt_sector_decode(&sector, &record);
-	CHECK(sector.fighters == 10.0f && sector.fighter_owner == -2.0f);
+	CHECK(sector.fighters == 10.0f && sector.fighter_owner == -2);
 	CHECK(yt_database_read(&door.game.database, 6U, &record, &error));
 	yt_sector_decode(&sector, &record);
-	CHECK(sector.fighters == 20.0f && sector.fighter_owner == 4.0f);
+	CHECK(sector.fighters == 20.0f && sector.fighter_owner == 4);
 	CHECK(yt_database_read(&door.game.database, 7U, &record, &error));
 	yt_port_decode(&port, &record);
 	CHECK(port.owner == 2.0f && port.last_minute == 2.0f

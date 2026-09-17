@@ -122,7 +122,7 @@ yt_sector_decode(struct yt_sector *sector, const struct yt_record *record)
 		    YT_F41 + index * 4U);
 	sector->port = (int)yt_record_get_number(record, YT_F65);
 	sector->fighters = yt_record_get_number(record, YT_F81);
-	sector->fighter_owner = yt_record_get_number(record, YT_F85);
+	sector->fighter_owner = (int)yt_record_get_number(record, YT_F85);
 	sector->planet = (int)yt_record_get_number(record, YT_F93);
 	sector->metadata = yt_record_get_number(record, YT_F105);
 	sector->mines = yt_record_get_number(record, YT_F129);
@@ -142,7 +142,7 @@ yt_sector_encode(struct yt_sector *sector)
 	yt_record_set_number_if_changed(&sector->record, YT_F81,
 	    sector->fighters);
 	yt_record_set_number_if_changed(&sector->record, YT_F85,
-	    sector->fighter_owner);
+	    (float)sector->fighter_owner);
 	yt_record_set_number_if_changed(&sector->record, YT_F93,
 	    (float)sector->planet);
 	yt_record_set_number_if_changed(&sector->record, YT_F105,

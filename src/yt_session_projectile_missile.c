@@ -282,14 +282,14 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 		size_t row_length;
 		bool friendly = false;
 
-		if (sector.fighter_owner == -2.0f) {
+		if (sector.fighter_owner == -2) {
 			initial = mercenaries;
 			owner_length = sizeof(mercenaries) - 1U;
 		}
 		memcpy(owner_name, initial, owner_length);
-		if (sector.fighter_owner > 1.0f) {
+		if (sector.fighter_owner > 1) {
 			struct yt_player defender;
-			int owner_record = (int)sector.fighter_owner;
+			int owner_record = sector.fighter_owner;
 
 			if (!yt_game_read_player(&session->door->game,
 			    owner_record, &defender, error))
@@ -299,7 +299,7 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 			    &friendly, error))
 				return false;
 		}
-		if (sector.fighter_owner == (float)session_record(session)) {
+		if (sector.fighter_owner == session_record(session)) {
 			memcpy(owner_name, you, sizeof(you) - 1U);
 			owner_length = sizeof(you) - 1U;
 			friendly = true;
@@ -327,7 +327,7 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 		struct yt_sector persistence;
 		double original_fighters = (double)sector.fighters;
 		double remaining_fighters;
-		float owner = sector.fighter_owner;
+		int owner = sector.fighter_owner;
 		float saved_missiles = *remaining;
 		float destroyed = 0.0f;
 		float counter = 1.0f;
@@ -372,14 +372,14 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 			return false;
 		if (remaining_fighters == 0.0) {
 			persistence.fighters = 0.0f;
-			persistence.fighter_owner = 0.0f;
+			persistence.fighter_owner = 0;
 			if (!yt_record_set_raw_number(&persistence.record, YT_F81,
 			    dirty_zero)
 			    || !yt_record_set_raw_number(&persistence.record, YT_F85,
 			    dirty_zero))
 				return false;
 		}
-		else if (owner == -1.0f) {
+		else if (owner == -1) {
 			*xannor_provoker = session_record(session);
 		}
 		if (!yt_database_write(&session->door->game.database,
@@ -389,7 +389,7 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 		if (remaining_fighters == 0.0
 		    && (float)sector_number
 		    == session->door->game.config.headquarters
-		    && owner == -1.0f
+		    && owner == -1
 		    && !yt_session_xannor_victory(session, error))
 			return false;
 		if (*remaining < 1.0f)

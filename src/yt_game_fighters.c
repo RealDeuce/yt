@@ -10,7 +10,7 @@ yt_main_fighters_sector_overlay(struct yt_sector *sector,
 	    (float)player_record))
 		return false;
 	sector->fighters = desired;
-	sector->fighter_owner = (float)player_record;
+	sector->fighter_owner = player_record;
 	return true;
 }
 

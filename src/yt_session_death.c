@@ -139,7 +139,7 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 
 		if (!session_read_sector(session, logical, &sector, error))
 			return false;
-		if (yt_death_sector_overlay(&sector, (float)victim_record)
+		if (yt_death_sector_overlay(&sector, victim_record)
 		    && !session_write_sector(session, logical, &sector, error))
 			return false;
 	}

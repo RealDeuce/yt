@@ -177,7 +177,7 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 	char second[64];
 	float initial_group;
 	float initial_defenders;
-	float initial_owner;
+	int initial_owner;
 	float defense_group;
 	float remaining_defenders;
 	size_t length;
@@ -270,8 +270,8 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 	    && defense_group == *group_size)
 		return true;
 	remaining_defenders = sector->fighters;
-	if (initial_owner > 0.0f) {
-		int record = (int)initial_owner;
+	if (initial_owner > 0) {
+		int record = initial_owner;
 
 		if (!yt_game_read_player(game, record, &player, error)) {
 			if (error != NULL && error->status == YT_OK)
@@ -292,7 +292,7 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 		return false;
 	}
 	if (remaining_defenders < 1.0f) {
-		sector->fighter_owner = 0.0f;
+		sector->fighter_owner = 0;
 		if (!yt_record_set_number(&sector->record, YT_F85, 0.0f)) {
 			set_error(error, YT_RANGE, "encode Xannor sector owner",
 			    "YTDATA.DAT");
@@ -803,7 +803,7 @@ yt_maintenance_xannor_groups_persist(struct yt_game *game,
 			if (!yt_game_read_sector(game, logical, &host, error))
 				return false;
 			host.fighters = qb_single_add(host.fighters, size[group]);
-			host.fighter_owner = -1.0f;
+			host.fighter_owner = -1;
 			if (!yt_game_write_sector(game, logical, &host, error))
 				return false;
 		}

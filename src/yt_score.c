@@ -277,7 +277,7 @@ yt_scoreboard_score_sectors(struct yt_scoreboard *scoreboard,
 		    scoreboard->sector_record_offset, index, &sector, error))
 			return false;
 		contribution = (double)qb_single_multiply(sector.fighters, 100.0f);
-		owner = (int)sector.fighter_owner;
+		owner = sector.fighter_owner;
 		if (owner == -1)
 			scoreboard->xannor += contribution;
 		else if (owner == -2)

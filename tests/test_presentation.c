@@ -2636,7 +2636,7 @@ test_sector_scanner_rows(void)
 
 	memset(&sector, 0, sizeof(sector));
 	sector.fighters = 123.0f;
-	sector.fighter_owner = 3.0f;
+	sector.fighter_owner = 3;
 	player.team = -4.0f;
 	yt_record_blank(&record);
 	memcpy(record.bytes, raw_team_name, sizeof(raw_team_name));
@@ -2651,7 +2651,7 @@ test_sector_scanner_rows(void)
 	    && scratch_length == sizeof(scratch_expected)
 	    && memcmp(scratch, scratch_expected, scratch_length) == 0);
 
-	sector.fighter_owner = -1.0f;
+	sector.fighter_owner = -1;
 	CHECK(yt_sector_fighter_row(&sector, 2, NULL, NULL,
 	    row, sizeof(row), &length, scratch, sizeof(scratch),
 	    &scratch_length, &changed)
@@ -2659,7 +2659,7 @@ test_sector_scanner_rows(void)
 	    && memcmp(row, xannor_expected, length) == 0
 	    && scratch_length == strlen("The Xannor")
 	    && memcmp(scratch, "The Xannor", scratch_length) == 0);
-	sector.fighter_owner = -2.0f;
+	sector.fighter_owner = -2;
 	CHECK(yt_sector_fighter_row(&sector, 2, NULL, NULL,
 	    row, sizeof(row), &length, scratch, sizeof(scratch),
 	    &scratch_length, &changed)
@@ -2667,7 +2667,7 @@ test_sector_scanner_rows(void)
 	    && memcmp(row, mercenary_expected, length) == 0);
 	memcpy(scratch, "keep", 4U);
 	scratch_length = 4U;
-	sector.fighter_owner = 2.0f;
+	sector.fighter_owner = 2;
 	CHECK(yt_sector_fighter_row(&sector, 2, NULL, NULL,
 	    row, sizeof(row), &length, scratch, sizeof(scratch),
 	    &scratch_length, &changed)
@@ -26796,7 +26796,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    && join.written_player.shields == 5.0f
 		    && join.written_player.fighters == 999.0f
 		    && join.written_sector.fighters == 1250.0f
-		    && join.written_sector.fighter_owner == 2.0f);
+		    && join.written_sector.fighter_owner == 2);
 		CHECK(fixture.draw_position == 9U
 		    && cycle.fresh_hostile_attack_sector_reads == 1U
 		    && cycle.fresh_hostile_player_reads == 2U
@@ -27004,7 +27004,7 @@ test_direct_emergency_warp_hostile_attack_defenders_cleared(void)
 			    && memcmp(&join.written_sector.record,
 			    &expected_sector.record, sizeof(expected_sector.record)) == 0
 			    && join.written_sector.fighters == 0.0f
-			    && join.written_sector.fighter_owner == 0.0f);
+			    && join.written_sector.fighter_owner == 0);
 			CHECK(fixture.draw_position == 9U
 			    && cycle.fresh_hostile_attack_sector_reads == 1U
 			    && cycle.fresh_hostile_player_reads == 3U
@@ -27798,7 +27798,7 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 				(void)yt_record_set_number(&record, YT_F85, 2.0f);
 				yt_sector_decode(&fatal.sector, &record);
 				expected_sector = fatal.sector;
-				(void)yt_death_sector_overlay(&expected_sector, 2.0f);
+				(void)yt_death_sector_overlay(&expected_sector, 2);
 
 				memset(&joined, 0, sizeof(joined));
 				joined.fixture = &fixture;
@@ -27869,7 +27869,7 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 				    && memcmp(&fatal.written_sector.record,
 				    &expected_sector.record,
 				    sizeof(expected_sector.record)) == 0
-				    && fatal.written_sector.fighter_owner == -2.0f
+				    && fatal.written_sector.fighter_owner == -2
 				    && fatal.news_length == sizeof(expected_news) - 1U
 				    && memcmp(fatal.news, expected_news,
 				    sizeof(expected_news) - 1U) == 0);
@@ -28096,12 +28096,12 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 			    && fatal.player.sector
 			    == (cut > FATAL_CUT_DEATH_PLAYER_PUT ? 0 : 733)
 			    && fatal.sector.fighter_owner
-			    == (cut > FATAL_CUT_SECTOR_PUT ? -2.0f : 2.0f)
+			    == (cut > FATAL_CUT_SECTOR_PUT ? -2 : 2)
 			    && fatal.sector.fighters == 10.0f
 			    && (cut <= FATAL_CUT_DEATH_PLAYER_PUT
 			    || fatal.written_player.killed_by == 2.0f)
 			    && (cut <= FATAL_CUT_SECTOR_PUT
-			    || fatal.written_sector.fighter_owner == -2.0f)
+			    || fatal.written_sector.fighter_owner == -2)
 			    && fixture.draw_position == 2U);
 			CHECK(viewer.join.remote_length
 			    == expected[endpoint][terminal].length
@@ -28324,11 +28324,11 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 		CHECK(attack.written_player.fighters == 0.0f
 		    && attack.written_player.shields == 0.0f
 		    && attack.written_sector.fighters == 2.0f
-		    && attack.written_sector.fighter_owner == 2.0f
+		    && attack.written_sector.fighter_owner == 2
 		    && fatal.fatal.wait_complete && fatal.fatal.normal_exit
 		    && fatal.death.complete && fatal.player.killed_by == 2.0f
 		    && fatal.player.sector == 0
-		    && fatal.written_sector.fighter_owner == -2.0f
+		    && fatal.written_sector.fighter_owner == -2
 		    && fatal.news_length == sizeof(expected_news) - 1U
 		    && memcmp(fatal.news, expected_news,
 		    sizeof(expected_news) - 1U) == 0

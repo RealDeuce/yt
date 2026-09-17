@@ -134,7 +134,7 @@ test_port_visibility_through_report(void)
 	yt_record_blank(&sector.record);
 	sector.port = 0;
 	sector.fighters = 10.0f;
-	sector.fighter_owner = 3.0f;
+	sector.fighter_owner = 3;
 	yt_sector_encode(&sector);
 	yt_error_clear(&error);
 	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
@@ -165,7 +165,7 @@ test_port_visibility_through_report(void)
 	CHECK(yt_session_computer_port_report(&session, &enter_sector, &error));
 	CHECK(!session.player_reference.friendly);
 
-	sector.fighter_owner = 2.0f;
+	sector.fighter_owner = 2;
 	yt_sector_encode(&sector);
 	CHECK(yt_database_write_durable(&door.game.database, 58U,
 	    &sector.record, &error));

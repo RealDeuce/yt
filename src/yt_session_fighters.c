@@ -43,7 +43,7 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 	if (!session_read_sector(session, logical_sector, &first_sector, error))
 		return false;
 	if (first_sector.fighters > 0.0f
-	    && first_sector.fighter_owner != (float)session_record(session))
+	    && first_sector.fighter_owner != session_record(session))
 		return session_present_alert(session, foreign_refusal,
 		    sizeof(foreign_refusal) - 1U,
 		    "fighter foreign-force refusal", error);

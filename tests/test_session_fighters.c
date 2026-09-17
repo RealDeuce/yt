@@ -43,7 +43,7 @@ test_replace_sector_force(void)
 	yt_player_encode(&player);
 	yt_record_blank(&sector.record);
 	sector.fighters = 5.0f;
-	sector.fighter_owner = 2.0f;
+	sector.fighter_owner = 2;
 	yt_sector_encode(&sector);
 	yt_error_clear(&error);
 	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
@@ -57,7 +57,7 @@ test_replace_sector_force(void)
 	CHECK(yt_database_read(&door.game.database, 59U, &persisted, &error));
 	yt_sector_decode(&sector, &persisted);
 	CHECK(sector.fighters == 7.0f);
-	CHECK(sector.fighter_owner == 2.0f);
+	CHECK(sector.fighter_owner == 2);
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
 	yt_player_decode(&player, &persisted);
 	CHECK(player.fighters == 8.0f);

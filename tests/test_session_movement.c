@@ -81,7 +81,7 @@ test_destination_danger(void)
 	memset(&sector, 0, sizeof(sector));
 	yt_record_blank(&sector.record);
 	sector.fighters = 5.0f;
-	sector.fighter_owner = 3.0f;
+	sector.fighter_owner = 3;
 	write_sector(&door.game, &door.game.config, 13, &sector, &error);
 	session.disruption_sectors[0] = 0;
 	session.player_reference.friendly = false;

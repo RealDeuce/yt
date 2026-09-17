@@ -247,7 +247,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 			    error))
 				return false;
 			if (sector.fighters != 0.0f
-			    && sector.fighter_owner != (float)current_player_record) {
+			    && sector.fighter_owner != current_player_record) {
 				struct yt_sector refreshed;
 				struct yt_sector displayed;
 				struct yt_player owner_player;
@@ -259,7 +259,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				size_t length;
 				size_t scratch_length = 0U;
 				bool scratch_changed;
-				float owner = sector.fighter_owner;
+				int owner = sector.fighter_owner;
 
 				if (!session_read_sector(session, sector_number, &refreshed,
 				    error)
@@ -271,9 +271,9 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				yt_present_set_bold(&session->presentation, 1.0f);
 				displayed = refreshed;
 				displayed.fighter_owner = owner;
-				if (owner != -1.0f && owner != -2.0f) {
+				if (owner != -1 && owner != -2) {
 					if (!yt_game_read_player(&session->door->game,
-					    (int)owner, &owner_player, error))
+					    owner, &owner_player, error))
 						return false;
 					owner_pointer = &owner_player;
 					if (owner_player.team != 0.0f) {

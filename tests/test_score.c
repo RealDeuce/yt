@@ -2648,7 +2648,7 @@ check_player_death_transaction(void)
 	    || !state.complete || state.old_ports_owned != 99.0f
 	    || state.matched_ports != 2 || state.victim_name_length != 3U
 	    || memcmp(state.victim_name, "V\0X", 3U) != 0
-	    || tape.sectors[1].fighter_owner != -2.0f
+	    || tape.sectors[1].fighter_owner != -2
 	    || tape.sectors[1].fighters != 0.0f
 	    || tape.ports[1].owner != 2.0f || tape.ports[1].last_minute != 2.0f
 	    || tape.ports[1].treasury != 51.0f
@@ -2753,10 +2753,10 @@ check_player_death_model(void)
 	(void)yt_record_set_number(&record, YT_F81, 0.0f);
 	(void)yt_record_set_number(&record, YT_F85, 2.0f);
 	yt_sector_decode(&sector, &record);
-	if (!yt_death_sector_overlay(&sector, 2.0f)
-	    || sector.fighters != 0.0f || sector.fighter_owner != -2.0f
+	if (!yt_death_sector_overlay(&sector, 2)
+	    || sector.fighters != 0.0f || sector.fighter_owner != -2
 	    || yt_record_get_number(&sector.record, YT_F85) != -2.0f
-	    || yt_death_sector_overlay(&sector, 7.0f))
+	    || yt_death_sector_overlay(&sector, 7))
 		return false;
 
 	yt_record_blank(&team);
@@ -3398,9 +3398,9 @@ check_maintenance_mercenary_active_phase_pass(void)
 	    || memcmp(news.data, expected_news, sizeof(expected_news) - 1U)
 	    != 0
 	    || !yt_game_read_sector(&game, 1, &sector, &error)
-	    || sector.fighters != 110.0f || sector.fighter_owner != 2.0f
+	    || sector.fighters != 110.0f || sector.fighter_owner != 2
 	    || !yt_game_read_sector(&game, 2, &sector, &error)
-	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f
+	    || sector.fighters != 0.0f || sector.fighter_owner != 0
 	    || sector.planet != 1)
 		goto done;
 	radio_file = fopen("YTRMSG.DAT", "rb");
@@ -3511,7 +3511,7 @@ check_maintenance_mercenary_defection_phase_pass(void)
 	    || memcmp(news.data, expected_news, sizeof(expected_news) - 1U)
 	    != 0
 	    || !yt_game_read_sector(&game, 1, &sector, &error)
-	    || sector.fighters != 1.0f || sector.fighter_owner != -2.0f
+	    || sector.fighters != 1.0f || sector.fighter_owner != -2
 	    || sector.planet != 1)
 		goto done;
 	radio_file = fopen("YTRMSG.DAT", "rb");
@@ -4752,7 +4752,7 @@ check_maintenance_mercenary_funding_phase_pass(void)
 	for (logical = 1; logical <= 12; ++logical) {
 		float expected_fighters = logical >= 2 && logical <= 11
 		    ? 1.0f : 0.0f;
-		float expected_owner = expected_fighters > 0.0f ? -2.0f : 0.0f;
+		int expected_owner = expected_fighters > 0.0f ? -2 : 0;
 
 		if (!yt_game_read_sector(&game, logical, &sector, &error)
 		    || sector.fighters != expected_fighters
@@ -4867,10 +4867,10 @@ check_maintenance_mercenary_attack_phase_pass(void)
 	    || memcmp(news.data, expected_news, sizeof(expected_news) - 1U)
 	    != 0
 	    || !yt_game_read_sector(&game, 1, &sector, &error)
-	    || sector.fighters != 2.0f || sector.fighter_owner != -1.0f
+	    || sector.fighters != 2.0f || sector.fighter_owner != -1
 	    || sector.planet != 0
 	    || !yt_game_read_sector(&game, 2, &sector, &error)
-	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f
+	    || sector.fighters != 0.0f || sector.fighter_owner != 0
 	    || sector.planet != 1)
 		goto done;
 	radio_file = fopen("YTRMSG.DAT", "rb");
@@ -4985,10 +4985,10 @@ check_maintenance_mercenary_mine_planet_phase_pass(void)
 	    || memcmp(news.data, expected_news, sizeof(expected_news) - 1U)
 	    != 0
 	    || !yt_game_read_sector(&game, 1, &sector, &error)
-	    || sector.fighters != 12.0f || sector.fighter_owner != -2.0f
+	    || sector.fighters != 12.0f || sector.fighter_owner != -2
 	    || sector.planet != 1 || sector.mines != 0.0f
 	    || !yt_game_read_sector(&game, 2, &sector, &error)
-	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f
+	    || sector.fighters != 0.0f || sector.fighter_owner != 0
 	    || !yt_game_read_planet(&game, 1, &planet, &error)
 	    || planet.fighters != 0.0f || planet.owner != -2.0f)
 		goto done;
@@ -5092,10 +5092,10 @@ check_maintenance_mercenary_disconnected_phase_pass(void)
 	    || memcmp(news.data, expected_news, sizeof(expected_news) - 1U)
 	    != 0
 	    || !yt_game_read_sector(&game, 1, &sector, &error)
-	    || sector.fighters != 10.0f || sector.fighter_owner != -2.0f
+	    || sector.fighters != 10.0f || sector.fighter_owner != -2
 	    || sector.planet != 1
 	    || !yt_game_read_sector(&game, 2, &sector, &error)
-	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f)
+	    || sector.fighters != 0.0f || sector.fighter_owner != 0)
 		goto done;
 	radio_file = fopen("YTRMSG.DAT", "rb");
 	valid = radio_file == NULL;
@@ -5370,16 +5370,16 @@ check_maintenance_mercenary_defection_pass(void)
 	for (sector = 1; sector <= 5; ++sector) {
 		float fighters = sector == 1 ? 99.0f
 		    : sector == 2 ? 100.0f : 1.0f;
-		float fighter_owner = sector == 1 ? 2.0f
-		    : sector == 2 ? 3.0f : sector == 3 ? -2.0f
-		    : sector == 4 ? 1.0f : 2.0f;
+		int fighter_owner = sector == 1 ? 2
+		    : sector == 2 ? 3 : sector == 3 ? -2
+		    : sector == 4 ? 1 : 2;
 
 		yt_record_blank(&before[sector - 1]);
 		before[sector - 1].bytes[YT_RECORD_TAIL_OFFSET] =
 		    (uint8_t)(0x60 + sector);
 		if (!yt_record_set_number(&before[sector - 1], YT_F81, fighters)
 		    || !yt_record_set_number(&before[sector - 1], YT_F85,
-		    fighter_owner)
+		    (float)fighter_owner)
 		    || !yt_database_write(&game.database, (size_t)sector + 10U,
 		    &before[sector - 1], &error))
 			goto done;
@@ -5715,28 +5715,28 @@ check_maintenance_mercenary_destination_pass(void)
 	    || !yt_maintenance_mercenary_destination(&game, 1, 4.0f,
 	    score_line_collect, &screen, &arrival, &moving_after, &continues,
 	    &error)
-	    || arrival.fighters != 7.0f || arrival.fighter_owner != -2.0f
+	    || arrival.fighters != 7.0f || arrival.fighter_owner != -2
 	    || TEST_DRAWS(game.random) != 0U || screen.lines != 0U)
 		goto done;
 	if (!yt_game_read_sector(&game, 2, &arrival, &error)
 	    || !yt_maintenance_mercenary_destination(&game, 2, 6.0f,
 	    score_line_collect, &screen, &arrival, &moving_after, &continues,
 	    &error)
-	    || arrival.fighters != 8.0f || arrival.fighter_owner != 2.0f
+	    || arrival.fighters != 8.0f || arrival.fighter_owner != 2
 	    || TEST_DRAWS(game.random) != 1U)
 		goto done;
 	if (!yt_game_read_sector(&game, 3, &arrival, &error)
 	    || !yt_maintenance_mercenary_destination(&game, 3, 5.0f,
 	    score_line_collect, &screen, &arrival, &moving_after, &continues,
 	    &error)
-	    || arrival.fighters != 5.0f || arrival.fighter_owner != -2.0f
+	    || arrival.fighters != 5.0f || arrival.fighter_owner != -2
 	    || TEST_DRAWS(game.random) != 4U)
 		goto done;
 	if (!yt_game_read_sector(&game, 4, &arrival, &error)
 	    || !yt_maintenance_mercenary_destination(&game, 4, 1.0f,
 	    score_line_collect, &screen, &arrival, &moving_after, &continues,
 	    &error)
-	    || arrival.fighters != 2.0f || arrival.fighter_owner != -1.0f
+	    || arrival.fighters != 2.0f || arrival.fighter_owner != -1
 	    || TEST_DRAWS(game.random) != 6U
 	    || script.position != sizeof(random_bytes)
 	    || screen.lines != 5U
@@ -5751,7 +5751,7 @@ check_maintenance_mercenary_destination_pass(void)
 	    || !yt_maintenance_mercenary_destination(&game, 5, 201.0f,
 	    score_line_collect, &screen, &arrival, &moving_after, &continues,
 	    &error)
-	    || arrival.fighters != 201.0f || arrival.fighter_owner != -2.0f
+	    || arrival.fighters != 201.0f || arrival.fighter_owner != -2
 	    || TEST_DRAWS(game.random) != 53U
 	    || large_script.position != sizeof(large_random_bytes)
 	    || screen.lines != 7U
@@ -5861,7 +5861,7 @@ check_maintenance_mercenary_mine_pass(void)
 	    || moving != 9.0f
 	    || TEST_DRAWS(game.random) != 2U || script.position != 6U
 	    || arrival.mines != 2.0f || arrival.fighters != 23.0f
-	    || arrival.fighter_owner != 4.0f || arrival.planet != 9
+	    || arrival.fighter_owner != 4 || arrival.planet != 9
 	    || screen.lines != 2U
 	    || screen.length != sizeof(expected_first_screen) - 1U
 	    || memcmp(screen.data, expected_first_screen,
@@ -5993,7 +5993,7 @@ check_maintenance_mercenary_planet_pass(void)
 	    || !yt_maintenance_mercenary_planet_absorption(&game, 7, 20,
 	    10.0, score_line_collect, &screen, &sector, &absorbed, &error)
 	    || !absorbed || sector.fighters != 15.0f
-	    || sector.fighter_owner != -2.0f || sector.planet != 5
+	    || sector.fighter_owner != -2 || sector.planet != 5
 	    || screen.lines != 2U
 	    || screen.length != sizeof(expected_screen) - 1U
 	    || memcmp(screen.data, expected_screen,
@@ -7605,7 +7605,7 @@ check_maintenance_xannor_group_persistence_pass(void)
 		value.warps[1] = sector == 1 ? 30 : sector - 1;
 		value.fighters = sector == 21 ? 3.0f
 		    : sector == 23 ? 1.0f : 2.0f;
-		value.fighter_owner = sector == 21 ? 7.0f : 0.0f;
+		value.fighter_owner = sector == 21 ? 7 : 0;
 		value.planet = sector == 21 ? 9.0f
 		    : sector == 23 ? 8.0f : 0.0f;
 		value.metadata = 99.0f;
@@ -7811,7 +7811,7 @@ check_maintenance_xannor_roaming_groups_pass(void)
 			goto done;
 	}
 	if (!yt_game_read_sector(&game, 40, &sector, &error)
-	    || sector.fighters != 20.0f || sector.fighter_owner != -1.0f
+	    || sector.fighters != 20.0f || sector.fighter_owner != -1
 	    || sector.planet != 0)
 		goto done;
 	valid = true;
@@ -7955,7 +7955,7 @@ check_maintenance_xannor_phase_pass(void)
 			goto done;
 	}
 	if (!yt_game_read_sector(&game, 40, &sector, &error)
-	    || sector.fighters != 21.0f || sector.fighter_owner != -1.0f
+	    || sector.fighters != 21.0f || sector.fighter_owner != -1
 	    || sector.planet != 100
 	    || !yt_game_read_planet(&game, 100, &planet, &error)
 	    || planet.owner != -1.0f || planet.ground_forces != 0.0f
@@ -8022,10 +8022,10 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	yt_record_blank(&sector.record);
 	sector.mines = 1.0f;
 	sector.fighters = 1.0f;
-	sector.fighter_owner = 2.0f;
+	sector.fighter_owner = 2;
 	if (!yt_record_set_number(&sector.record, YT_F81, sector.fighters)
 	    || !yt_record_set_number(&sector.record, YT_F85,
-	    sector.fighter_owner)
+	    (float)sector.fighter_owner)
 	    || !yt_record_set_number(&sector.record, YT_F129, sector.mines)
 	    || !yt_game_write_sector(&game, 42, &sector, &error))
 		goto done;
@@ -8033,7 +8033,7 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	if (!yt_maintenance_xannor_sector_arrival(&game, 42, &group_size,
 	    &sector, score_line_collect, &screen, &error)
 	    || group_size != 9.0f || sector.mines != 0.0f
-	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f
+	    || sector.fighters != 0.0f || sector.fighter_owner != 0
 	    || TEST_DRAWS(game.random) != 2U
 	    || script.position != sizeof(zero_draws)
 	    || screen.lines != 3U
@@ -8054,10 +8054,10 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	yt_record_blank(&sector.record);
 	sector.mines = 0.0f;
 	sector.fighters = 1.0f;
-	sector.fighter_owner = -2.0f;
+	sector.fighter_owner = -2;
 	if (!yt_record_set_number(&sector.record, YT_F81, sector.fighters)
 	    || !yt_record_set_number(&sector.record, YT_F85,
-	    sector.fighter_owner)
+	    (float)sector.fighter_owner)
 	    || !yt_record_set_number(&sector.record, YT_F129, sector.mines)
 	    || !yt_game_write_sector(&game, 42, &sector, &error))
 		goto done;
@@ -8065,7 +8065,7 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	if (!yt_maintenance_xannor_sector_arrival(&game, 42, &group_size,
 	    &sector, score_line_collect, &screen, &error)
 	    || group_size != 0.0f || sector.fighters != 1.0f
-	    || sector.fighter_owner != -2.0f || TEST_DRAWS(game.random) != 1U
+	    || sector.fighter_owner != -2 || TEST_DRAWS(game.random) != 1U
 	    || script.position != sizeof(high_draw) || screen.lines != 1U
 	    || screen.length != sizeof(mercenary_screen) - 1U
 	    || memcmp(screen.data, mercenary_screen,
@@ -8083,10 +8083,10 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	yt_record_blank(&sector.record);
 	sector.mines = 0.0f;
 	sector.fighters = 7.0f;
-	sector.fighter_owner = 0.0f;
+	sector.fighter_owner = 0;
 	if (!yt_record_set_number(&sector.record, YT_F81, sector.fighters)
 	    || !yt_record_set_number(&sector.record, YT_F85,
-	    sector.fighter_owner)
+	    (float)sector.fighter_owner)
 	    || !yt_record_set_number(&sector.record, YT_F129, sector.mines)
 	    || !yt_game_write_sector(&game, 42, &sector, &error))
 		goto done;
@@ -8094,7 +8094,7 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	if (!yt_maintenance_xannor_sector_arrival(&game, 42, &group_size,
 	    &sector, score_line_collect, &screen, &error)
 	    || group_size != 4.0f || sector.mines != 0.0f
-	    || sector.fighters != 7.0f || sector.fighter_owner != 0.0f
+	    || sector.fighters != 7.0f || sector.fighter_owner != 0
 	    || TEST_DRAWS(game.random) != 0U || script.position != 0U
 	    || screen.lines != 0U || screen.length != 0U)
 		goto done;
@@ -8188,7 +8188,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 		yt_record_blank(&value.record);
 		value.warps[0] = sector == 1 ? 2 : sector == 2 ? 3 : 0;
 		value.fighters = sector == 2 ? 1.0f : 0.0f;
-		value.fighter_owner = sector == 2 ? 2.0f : 0.0f;
+		value.fighter_owner = sector == 2 ? 2 : 0;
 		value.planet = sector == 2 ? 1.0f : 0.0f;
 		value.mines = sector == 2 ? 1.0f : 0.0f;
 		yt_sector_encode(&value);
@@ -9688,7 +9688,7 @@ hostile_persistence_fixture(struct hostile_persistence_tape *tape,
 	memset(tape->sector.record.bytes, 0x5a,
 	    sizeof(tape->sector.record.bytes));
 	tape->sector.fighters = 12.0f;
-	tape->sector.fighter_owner = 9.0f;
+	tape->sector.fighter_owner = 9;
 	*state = (struct test_hostile_attack_persistence_state){
 		.current_player_record = 2,
 		.current_sector = 733,
@@ -10216,7 +10216,7 @@ hostile_combat_surrender(void *context,
 		    + state->deployed_fighters;
 		state->current.fighters = (float)state->ship_fighters;
 		state->deployed_remaining = 0.0;
-		state->fighter_owner = 0.0f;
+		state->fighter_owner = 0;
 	}
 	if (tape->surrender_fail_after)
 		return hostile_combat_fail_after(error);
@@ -10368,7 +10368,7 @@ hostile_combat_fixture(struct hostile_combat_tape *tape,
 	tape->player.sector = 733.0f;
 	memset(tape->opened_sector.record.bytes, 0x3c,
 	    sizeof(tape->opened_sector.record.bytes));
-	tape->opened_sector.fighter_owner = 3.0f;
+	tape->opened_sector.fighter_owner = 3;
 	(void)yt_record_set_number(&tape->opened_sector.record, YT_F85, 3.0f);
 	*state = (struct test_hostile_attack_combat_state){
 		.current_player_record = 2,
@@ -10378,7 +10378,7 @@ hostile_combat_fixture(struct hostile_combat_tape *tape,
 		.cached_defenders = 2.0,
 		.sector = {
 			.fighters = 2.0f,
-			.fighter_owner = 3.0f,
+			.fighter_owner = 3,
 		},
 		.cached_player_name = cached_name,
 		.cached_player_name_length = sizeof(cached_name),
@@ -10500,7 +10500,7 @@ check_hostile_attack_combat_transaction(void)
 
 	hostile_combat_fixture(&tape, &state);
 	tape.player.fighters = 11.0f;
-	tape.opened_sector.fighter_owner = 2.0f;
+	tape.opened_sector.fighter_owner = 2;
 	(void)yt_record_set_number(&tape.opened_sector.record, YT_F85, 2.0f);
 	tape.surrender_accept = true;
 	state.commitment = 120.0;
@@ -10518,14 +10518,14 @@ check_hostile_attack_combat_transaction(void)
 	    || tape.persistence_input.ship_fighters != 21.0
 	    || tape.persistence_input.deployed_fighters != 0.0
 	    || tape.persistence_input.old_owner != 2
-	    || state.sector.fighter_owner != 0.0f)
+	    || state.sector.fighter_owner != 0)
 		return false;
 
 	/* Join the real surrender, raw persistence and tail transactions. */
 	hostile_combat_fixture(&tape, &state);
 	tape.real_children = true;
 	tape.player.fighters = 11.0f;
-	tape.opened_sector.fighter_owner = 2.0f;
+	tape.opened_sector.fighter_owner = 2;
 	(void)yt_record_set_number(&tape.opened_sector.record, YT_F85, 2.0f);
 	tape.persistence_tape.players[0].fighters = 90.0f;
 	tape.persistence_tape.players[0].shields = 80.0f;
@@ -10543,7 +10543,7 @@ check_hostile_attack_combat_transaction(void)
 	    || state.route != YT_HOSTILE_ATTACK_COMBAT_NORMAL
 	    || state.iterations != 0U || tape.draw_index != 0U
 	    || state.ship_fighters != 21.0 || state.deployed_remaining != 0.0
-	    || state.sector.fighter_owner != 0.0f
+	    || state.sector.fighter_owner != 0
 	    || tape.surrender_tape.calls != 13U
 	    || tape.persistence_tape.calls != 5U
 	    || tape.tail_tape.calls != 2U
@@ -10577,7 +10577,7 @@ check_hostile_attack_combat_transaction(void)
 
 	hostile_combat_fixture(&tape, &state);
 	tape.player.fighters = 11.0f;
-	tape.opened_sector.fighter_owner = 2.0f;
+	tape.opened_sector.fighter_owner = 2;
 	(void)yt_record_set_number(&tape.opened_sector.record, YT_F85, 2.0f);
 	tape.surrender_accept = true;
 	tape.surrender_fail_after = true;
@@ -10767,7 +10767,7 @@ hostile_bribe_accept_fixture(struct hostile_bribe_accept_tape *tape,
 	memset(tape->sector.record.bytes, 0x5a,
 	    sizeof(tape->sector.record.bytes));
 	tape->sector.fighters = 99.0f;
-	tape->sector.fighter_owner = -2.0f;
+	tape->sector.fighter_owner = -2;
 	memset(tape->player.record.bytes, 0xa5,
 	    sizeof(tape->player.record.bytes));
 	tape->player.fighters = 7.25f;
@@ -13012,12 +13012,12 @@ check_hostile_menu_front(void)
 
 		memset(sector.record.bytes, 0xa5, sizeof(sector.record.bytes));
 		sector.fighters = 20.0f;
-		sector.fighter_owner = 7.0f;
+		sector.fighter_owner = 7;
 		sector.planet = 99;
 		expected_sector = sector;
 		(void)yt_record_set_number(&expected_sector.record, YT_F81, 3.0f);
 		yt_deployed_attack_sector_overlay(&sector, 3.0f);
-		if (sector.fighters != 3.0f || sector.fighter_owner != 7.0f
+		if (sector.fighters != 3.0f || sector.fighter_owner != 7
 		    || sector.planet != 99
 		    || memcmp(sector.record.bytes, expected_sector.record.bytes,
 		    YT_RECORD_SIZE) != 0)
@@ -13027,19 +13027,19 @@ check_hostile_menu_front(void)
 		(void)yt_record_set_number(&expected_sector.record, YT_F81, 0.5f);
 		(void)yt_record_set_number(&expected_sector.record, YT_F85, 0.0f);
 		yt_deployed_attack_sector_overlay(&sector, 0.5f);
-		if (sector.fighters != 0.5f || sector.fighter_owner != 0.0f
+		if (sector.fighters != 0.5f || sector.fighter_owner != 0
 		    || sector.planet != 99
 		    || memcmp(sector.record.bytes, expected_sector.record.bytes,
 		    YT_RECORD_SIZE) != 0)
 			return false;
 
 		sector.fighters = 5.0f;
-		sector.fighter_owner = -2.0f;
+		sector.fighter_owner = -2;
 		expected_sector = sector;
 		(void)yt_record_set_number(&expected_sector.record, YT_F85, 0.0f);
 		(void)yt_record_set_number(&expected_sector.record, YT_F81, 0.0f);
 		yt_bribe_sector_overlay(&sector);
-		if (sector.fighters != 0.0f || sector.fighter_owner != 0.0f
+		if (sector.fighters != 0.0f || sector.fighter_owner != 0
 		    || sector.planet != 99
 		    || memcmp(sector.record.bytes, expected_sector.record.bytes,
 		    YT_RECORD_SIZE) != 0)
@@ -13140,7 +13140,7 @@ check_hostile_menu_front(void)
 		memcpy(joined_record, joined.record.bytes,
 		    sizeof(joined_record));
 		sector.fighters = 99.0f;
-		sector.fighter_owner = 44.0f;
+		sector.fighter_owner = 44;
 		sector.planet = 8;
 		player.sector = 99;
 		player.fighters = 12.0f;
@@ -13156,7 +13156,7 @@ check_hostile_menu_front(void)
 		    sizeof(team_name) - 1U);
 		yt_team_password_overlay(&password_record, password);
 		yt_team_inactive_overlay(&inactive_record);
-		if (sector.fighters != 15.0f || sector.fighter_owner != 44.0f
+		if (sector.fighters != 15.0f || sector.fighter_owner != 44
 		    || sector.planet != 8 || player.fighters != 7.0f
 		    || player.sector != 99 || player.team != 7.0f
 		    || memcmp(sector.record.bytes, sector_record, YT_F81) != 0
@@ -14923,11 +14923,11 @@ main(void)
 	memset(&sector, 0, sizeof(sector));
 	yt_record_blank(&sector.record);
 	sector.fighters = 10.0f;
-	sector.fighter_owner = -1.0f;
+	sector.fighter_owner = -1;
 	if (!yt_game_write_sector(&game, 1, &sector, &error))
 		goto close;
 	sector.fighters = 0.0f;
-	sector.fighter_owner = 0.0f;
+	sector.fighter_owner = 0;
 	if (!yt_game_write_sector(&game, 2, &sector, &error)
 	    || !yt_maintenance_scoreboard(&game, score_line_collect,
 	    &score_screen, &error))
@@ -14974,7 +14974,7 @@ main(void)
 	    || player.score != -1.0f)
 		goto close;
 	sector.fighters = 0.0f;
-	sector.fighter_owner = 0.0f;
+	sector.fighter_owner = 0;
 	if (!yt_game_write_sector(&game, 1, &sector, &error))
 		goto close;
 	strcpy(game.config.scoreboard, "ZERO.ASC");
@@ -14995,7 +14995,7 @@ main(void)
 	    == NULL)
 		goto close;
 	sector.fighters = 10.0f;
-	sector.fighter_owner = -1.0f;
+	sector.fighter_owner = -1;
 	if (!yt_game_write_sector(&game, 1, &sector, &error))
 		goto close;
 	strcpy(game.config.scoreboard, "NUL");
@@ -15038,14 +15038,14 @@ main(void)
 	yt_record_blank(&sector.record);
 	yt_record_set_text(&sector.record, (const uint8_t *)"Team One", 8U);
 	sector.fighters = 1.0f;
-	sector.fighter_owner = 3.0f;
+	sector.fighter_owner = 3;
 	if (!yt_game_write_sector(&game, 1, &sector, &error))
 		goto close;
 	memset(&sector, 0, sizeof(sector));
 	yt_record_blank(&sector.record);
 	yt_record_set_text(&sector.record, (const uint8_t *)"Team Two", 8U);
 	sector.fighters = 1.0f;
-	sector.fighter_owner = -1.0f;
+	sector.fighter_owner = -1;
 	if (!yt_game_write_sector(&game, 2, &sector, &error))
 		goto close;
 	strcpy(game.config.scoreboard, "RICH.ASC");

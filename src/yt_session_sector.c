@@ -61,7 +61,7 @@ yt_session_sector_force_is_friendly(struct yt_session *session,
 	int owner;
 
 	route = yt_sector_force_route(sector->fighters,
-	    (int)sector->fighter_owner,
+	    sector->fighter_owner,
 	    session_record(session), &owner);
 	if (route == YT_SECTOR_FORCE_FRIENDLY)
 		return true;
@@ -127,7 +127,7 @@ scanner_cache_hostile_sector(struct yt_session *session,
     const struct yt_sector *sector)
 {
 	session->combat.deployed_fighters = (double)sector->fighters;
-	session->combat.hostile_owner = (int)sector->fighter_owner;
+	session->combat.hostile_owner = sector->fighter_owner;
 }
 
 static bool
@@ -294,11 +294,11 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		    sizeof(heading) - 1U, SESSION_PRESENT_BOLD_RAW,
 		    "sector fighter heading", error))
 			return false;
-		if (sector.fighter_owner != -1.0f
-		    && sector.fighter_owner != -2.0f
-		    && sector.fighter_owner != (float)session_record(session)) {
+		if (sector.fighter_owner != -1
+		    && sector.fighter_owner != -2
+		    && sector.fighter_owner != session_record(session)) {
 			if (!yt_game_read_player(&session->door->game,
-			    (int)sector.fighter_owner, &owner, error))
+			    sector.fighter_owner, &owner, error))
 				return false;
 			owner_pointer = &owner;
 			owner_team_nonzero = owner.team != 0.0f;

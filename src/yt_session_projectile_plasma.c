@@ -399,20 +399,20 @@ yt_session_plasma_sector(struct yt_session *session, int sector_number,
 		size_t owner_length = sizeof(xannor) - 1U;
 		size_t row_length;
 
-		if (sector.fighter_owner == -2.0f) {
+		if (sector.fighter_owner == -2) {
 			initial_owner = mercenaries;
 			owner_length = sizeof(mercenaries) - 1U;
 		}
 		memcpy(owner_name, initial_owner, owner_length);
-		if (sector.fighter_owner > 1.0f) {
+		if (sector.fighter_owner > 1) {
 			struct yt_player defender;
 
 			if (!yt_game_read_player(&session->door->game,
-			    (int)sector.fighter_owner, &defender, error))
+			    sector.fighter_owner, &defender, error))
 				return false;
 			owner_length = yt_player_stored_name(&defender, owner_name);
 		}
-		if (sector.fighter_owner == (float)session_record(session)) {
+		if (sector.fighter_owner == session_record(session)) {
 			memcpy(owner_name, you, sizeof(you) - 1U);
 			owner_length = sizeof(you) - 1U;
 		}
@@ -461,7 +461,7 @@ yt_session_plasma_sector(struct yt_session *session, int sector_number,
 				return false;
 			if (remaining_fighters == 0.0) {
 				sector.fighters = 0.0f;
-				sector.fighter_owner = 0.0f;
+				sector.fighter_owner = 0;
 				if (!yt_record_set_raw_number(&sector.record, YT_F81,
 				    dirty_zero)
 				    || !yt_record_set_raw_number(&sector.record, YT_F85,

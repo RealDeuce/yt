@@ -258,11 +258,11 @@ yt_maintenance_place_mercenary_fleets(struct yt_game *game,
 				return false;
 		} while (sector.fighters > 0.0f);
 		sector.fighters = strength;
-		sector.fighter_owner = -2.0f;
+		sector.fighter_owner = -2;
 		if (!yt_record_set_number(&sector.record, YT_F81,
 		    sector.fighters)
 		    || !yt_record_set_number(&sector.record, YT_F85,
-		    sector.fighter_owner)) {
+		    (float)sector.fighter_owner)) {
 			set_error(error, YT_RANGE, "encode Mercenary fleet",
 			    "YTDATA.DAT");
 			return false;
@@ -297,7 +297,7 @@ yt_maintenance_mercenary_defections(struct yt_game *game, int sector_count,
 
 			if (!yt_random_next(&game->random, &sample, error))
 				return false;
-			if (sector.fighter_owner > 1.0f
+			if (sector.fighter_owner > 1
 			    && qb_single_multiply(sample, 100.0f) > sector.fighters) {
 				char amount[64];
 				char sector_text[64];
@@ -314,10 +314,10 @@ yt_maintenance_mercenary_defections(struct yt_game *game, int sector_count,
 				static const uint8_t belonging[] = " belonging to ";
 				static const uint8_t suffix[] = " joined the mercs!";
 
-				owner_record = (int)sector.fighter_owner;
-				sector.fighter_owner = -2.0f;
+				owner_record = sector.fighter_owner;
+				sector.fighter_owner = -2;
 				if (!yt_record_set_number(&sector.record, YT_F85,
-				    sector.fighter_owner)) {
+				    (float)sector.fighter_owner)) {
 					set_error(error, YT_RANGE,
 					    "encode Mercenary defection", "YTDATA.DAT");
 					return false;
@@ -536,8 +536,8 @@ yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 	}
 	*absorbed = false;
 	planet_number = arrival_sector->planet;
-	if ((arrival_sector->fighter_owner != -2.0f
-	    && arrival_sector->fighter_owner != 0.0f)
+	if ((arrival_sector->fighter_owner != -2
+	    && arrival_sector->fighter_owner != 0)
 	    || planet_number == 0)
 		return true;
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
@@ -559,7 +559,7 @@ yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 	existing = (double)arrival_sector->fighters;
 	incoming = (double)planet_fighters + moving_fighters;
 	arrival_sector->fighters = (float)(incoming + existing);
-	arrival_sector->fighter_owner = -2.0f;
+	arrival_sector->fighter_owner = -2;
 	if (!yt_record_set_number(&arrival_sector->record, YT_F81,
 	    arrival_sector->fighters)
 	    || !yt_record_set_number(&arrival_sector->record, YT_F85, -2.0f)) {

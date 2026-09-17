@@ -127,13 +127,13 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 	}
 	*moving_after = moving_fighters;
 	*continues = false;
-	original_owner = (int)arrival_sector->fighter_owner;
+	original_owner = arrival_sector->fighter_owner;
 	moving = (double)moving_fighters;
 	if (original_owner == -2 || original_owner == 0) {
 		if (!yt_game_read_sector(game, sector_number, &fresh, error))
 			return false;
 		fresh.fighters = (float)((double)fresh.fighters + moving);
-		fresh.fighter_owner = -2.0f;
+		fresh.fighter_owner = -2;
 		if (!yt_game_write_sector(game, sector_number, &fresh, error))
 			return false;
 		*arrival_sector = fresh;
@@ -216,11 +216,11 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 	}
 	if (defenders > 0.0) {
 		fresh.fighters = (float)defenders;
-		fresh.fighter_owner = (float)original_owner;
+		fresh.fighter_owner = original_owner;
 	}
 	else {
 		fresh.fighters = 0.0f;
-		fresh.fighter_owner = 0.0f;
+		fresh.fighter_owner = 0;
 	}
 	if (!yt_game_write_sector(game, sector_number, &fresh, error))
 		return false;
@@ -228,7 +228,7 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 		if (!yt_game_read_sector(game, sector_number, &fresh, error))
 			return false;
 		fresh.fighters = (float)((double)fresh.fighters + moving);
-		fresh.fighter_owner = -2.0f;
+		fresh.fighter_owner = -2;
 		if (!yt_game_write_sector(game, sector_number, &fresh, error))
 			return false;
 	}
@@ -309,7 +309,7 @@ yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
 
 		if (!yt_game_read_sector(game, origin, &sector, error))
 			return false;
-		if (sector.fighter_owner != -2.0f || sector.fighters <= 0.0f)
+		if (sector.fighter_owner != -2 || sector.fighters <= 0.0f)
 			continue;
 		{
 			float hold;
@@ -321,7 +321,7 @@ yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
 		}
 		moving = sector.fighters;
 		sector.fighters = 0.0f;
-		sector.fighter_owner = 0.0f;
+		sector.fighter_owner = 0;
 		if (!yt_game_write_sector(game, origin, &sector, error))
 			return false;
 		do {
@@ -354,7 +354,7 @@ yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
 					    &destination, error))
 						return false;
 					destination.fighters = moving;
-					destination.fighter_owner = -2.0f;
+					destination.fighter_owner = -2;
 					if (!yt_game_write_sector(game, target,
 					    &destination, error))
 						return false;

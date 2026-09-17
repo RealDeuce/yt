@@ -223,18 +223,18 @@ yt_sector_fighter_row(const struct yt_sector *sector,
 	    || !yt_game_row_append(&builder, belonging,
 	    sizeof(belonging) - 1U))
 		return false;
-	if (sector->fighter_owner == (float)current_player_record) {
+	if (sector->fighter_owner == current_player_record) {
 		if (!yt_game_row_append(&builder, self, sizeof(self) - 1U))
 			return false;
 	}
 	else {
-		if (sector->fighter_owner == -1.0f) {
+		if (sector->fighter_owner == -1) {
 			if (!yt_game_row_append(&scratch_builder, xannor,
 			    sizeof(xannor) - 1U))
 				return false;
 			changed = true;
 		}
-		else if (sector->fighter_owner == -2.0f) {
+		else if (sector->fighter_owner == -2) {
 			if (!yt_game_row_append(&scratch_builder, mercenaries,
 			    sizeof(mercenaries) - 1U))
 				return false;

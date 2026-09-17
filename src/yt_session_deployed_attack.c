@@ -386,7 +386,7 @@ yt_session_attack_deployed(struct yt_session *session,
 	    sizeof(cached_player_name_text), "%s", session->player.name);
 	if (!session_read_sector(session, current_sector, &opened_sector, error))
 		return false;
-	old_owner = (int)opened_sector.fighter_owner;
+	old_owner = opened_sector.fighter_owner;
 	if (!session_read_combat_player(session, current_player_record,
 	    &current, error))
 		return false;
@@ -456,7 +456,7 @@ yt_session_attack_deployed(struct yt_session *session,
 			if (surrendered) {
 				ship_fighters = surrender.ship_fighters;
 				deployed_remaining = surrender.deployed_remaining;
-				sector->fighter_owner = (float)surrender.fighter_owner;
+				sector->fighter_owner = surrender.fighter_owner;
 				current.fighters = (float)ship_fighters;
 				session->player = current;
 				(void)snprintf(session->player.name,

@@ -399,7 +399,7 @@ session_team_search(struct yt_session *session, struct yt_error *error)
 			    logical_sector, &sector, error))
 				return false;
 			if (!(sector.fighters > 0.0f
-			    && sector.fighter_owner == (float)player_record))
+			    && sector.fighter_owner == player_record))
 				continue;
 			if (first && !session_present_text(session, defending,
 			    sizeof(defending) - 1U, SESSION_PRESENT_RAW,

@@ -781,43 +781,43 @@ test_maintenance_xannor_defense(void)
 	struct yt_error error;
 	float group;
 	float fighters;
-	float owner;
+	int owner;
 
 	yt_error_clear(&error);
 	yt_random_init(&random);
 	yt_test_random_use_provider(&random, utility_random_fill, &script);
 	group = 10.0f;
 	fighters = 2.0f;
-	owner = 0.0f;
+	owner = 0;
 	if (!yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) || group != 10.0f || fighters != 2.0f
-	    || owner != 0.0f || TEST_DRAWS(random) != 0U || script.position != 0U)
+	    || owner != 0 || TEST_DRAWS(random) != 0U || script.position != 0U)
 		return false;
-	owner = -1.0f;
+	owner = -1;
 	if (!yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) || group != 10.0f || fighters != 2.0f
-	    || owner != -1.0f || TEST_DRAWS(random) != 0U)
+	    || owner != -1 || TEST_DRAWS(random) != 0U)
 		return false;
-	owner = 7.0f;
+	owner = 7;
 	fighters = 0.0f;
 	if (!yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) || group != 10.0f || fighters != 0.0f
-	    || owner != 7.0f || TEST_DRAWS(random) != 0U)
+	    || owner != 7 || TEST_DRAWS(random) != 0U)
 		return false;
 	group = 0.0f;
 	fighters = 2.0f;
 	if (!yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) || group != 0.0f || fighters != 2.0f
-	    || owner != 7.0f || TEST_DRAWS(random) != 0U)
+	    || owner != 7 || TEST_DRAWS(random) != 0U)
 		return false;
 
 	group = 1.0f;
 	fighters = 1.0f;
-	owner = 7.0f;
+	owner = 7;
 	yt_error_clear(&error);
 	if (yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) || error.status != YT_RANDOM_ERROR
-	    || group != 1.0f || fighters != 1.0f || owner != 7.0f
+	    || group != 1.0f || fighters != 1.0f || owner != 7
 	    || TEST_DRAWS(random) != 0U)
 		return false;
 
@@ -827,7 +827,7 @@ test_maintenance_xannor_defense(void)
 	yt_error_clear(&error);
 	if (!yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) || group != 1.0f || fighters != 0.0f
-	    || owner != 0.0f || TEST_DRAWS(random) != 1U
+	    || owner != 0 || TEST_DRAWS(random) != 1U
 	    || script.position != sizeof(zero_draw))
 		return false;
 
@@ -836,10 +836,10 @@ test_maintenance_xannor_defense(void)
 	yt_test_random_use_provider(&random, utility_random_fill, &script);
 	group = 1.0f;
 	fighters = 1.0f;
-	owner = 7.0f;
+	owner = 7;
 	return yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) && group == 0.0f && fighters == 1.0f
-	    && owner == 7.0f && TEST_DRAWS(random) == 1U
+	    && owner == 7 && TEST_DRAWS(random) == 1U
 	    && script.position == sizeof(high_draw);
 }
 
@@ -2391,7 +2391,7 @@ test_expired_player_cleanup(struct yt_error *error)
 	yt_record_set_number(&team.record, YT_F121, 2.0f);
 	yt_record_set_number(&team.record, YT_F125, -1.0f);
 	defense.fighters = 12.0f;
-	defense.fighter_owner = 2.0f;
+	defense.fighter_owner = 2;
 	planet.owner = 2.0f;
 	planet.ground_forces = 8.0f;
 	planet.bank = 456.0f;
@@ -2454,7 +2454,7 @@ test_expired_player_cleanup(struct yt_error *error)
 	    && yt_record_get_number(&team.record, YT_F117) == 9.0f
 	    && yt_record_get_number(&team.record, YT_F121) == 0.0f
 	    && yt_record_get_number(&team.record, YT_F125) == -1.0f
-	    && defense.fighters == 0.0f && defense.fighter_owner == 0.0f
+	    && defense.fighters == 0.0f && defense.fighter_owner == 0
 	    && planet.owner == 0.0f && planet.ground_forces == 0.0f
 	    && planet.bank == 456.0f
 	    && port.owner == 2.0f && port.treasury == 99.0f
@@ -2520,7 +2520,7 @@ test_immediate_death_cleanup(struct yt_error *error)
 	yt_record_set_number(&team.record, YT_F121, 2.0f);
 	yt_record_set_number(&team.record, YT_F125, -1.0f);
 	defense.fighters = 12.0f;
-	defense.fighter_owner = 2.0f;
+	defense.fighter_owner = 2;
 	planet.owner = 2.0f;
 	planet.ground_forces = 8.0f;
 	owned_port.owner = 2.0f;
@@ -2559,7 +2559,7 @@ test_immediate_death_cleanup(struct yt_error *error)
 	    && yt_record_get_number(&team.record, YT_F117) == 9.0f
 	    && yt_record_get_number(&team.record, YT_F121) == 0.0f
 	    && yt_record_get_number(&team.record, YT_F125) == -1.0f
-	    && defense.fighters == 12.0f && defense.fighter_owner == -2.0f
+	    && defense.fighters == 12.0f && defense.fighter_owner == -2
 	    && planet.owner == 2.0f && planet.ground_forces == 8.0f
 	    && owned_port.owner == 0.0f && owned_port.treasury == 0.0f
 	    && other_port.owner == 3.0f && other_port.treasury == 88.0f;
@@ -3270,7 +3270,7 @@ test_ytconfig_headquarters(struct yt_error *error)
 	forced_candidate = original_candidate;
 	forced_candidate.planet = 0;
 	forced_candidate.fighters = 2.0f;
-	forced_candidate.fighter_owner = -1.0f;
+	forced_candidate.fighter_owner = -1;
 	if (!yt_game_write_sector(&game, candidate_number, &forced_candidate,
 	    error))
 		goto done;
