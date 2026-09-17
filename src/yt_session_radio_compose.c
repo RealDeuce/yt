@@ -59,7 +59,7 @@ radio_player_search(struct yt_session *session, const char *query,
 	if (query[0] == '\0')
 		return true;
 	for (basic = YT_PLAYER_FIRST_RECORD;
-	    basic <= (int)session_sector_offset(session); ++basic) {
+	    basic <= session_sector_offset(session); ++basic) {
 		struct yt_player player;
 		enum yt_yes_no_answer answer;
 		uint8_t prompt[YT_TEXT_FIELD_SIZE + sizeof(" [Y]? ") - 1U];

@@ -19,7 +19,7 @@ yt_session_players_are_friendly(struct yt_session *session,
 		return false;
 	*friendly = false;
 	current_record = session_record(session);
-	last_player_record = (int)session_sector_offset(session);
+	last_player_record = session_sector_offset(session);
 	if (candidate_record < YT_PLAYER_FIRST_RECORD
 	    || candidate_record > last_player_record
 	    || current_record < YT_PLAYER_FIRST_RECORD
@@ -227,7 +227,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 			return false;
 	}
 	for (basic = YT_PLAYER_FIRST_RECORD;
-	    basic <= (int)session_sector_offset(session); ++basic) {
+	    basic <= session_sector_offset(session); ++basic) {
 		float random_value;
 
 		if (!yt_sector_candidate_eligible(basic, session_record(session),

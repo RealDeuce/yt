@@ -32,10 +32,10 @@ yt_session_computer_owner_is_friendly(struct yt_session *session, float owner,
 	*friendly = false;
 	session->player_reference.friendly = false;
 	if (owner < 2.0f
-	    || owner > session_sector_offset(session)
+	    || owner > (float)session_sector_offset(session)
 	    || (float)session_record(session) < 2.0f
 	    || (float)session_record(session)
-	    > session_sector_offset(session))
+	    > (float)session_sector_offset(session))
 		return true;
 	if (owner == (float)session_record(session)) {
 		*friendly = true;
@@ -96,8 +96,8 @@ yt_session_computer_port_report(struct yt_session *session,
 
 	if (enter_sector != NULL)
 		*enter_sector = false;
-	if (!yt_computer_port_maximum(session_port_offset(session),
-	    session_sector_offset(session), &maximum, error))
+	if (!yt_computer_port_maximum((float)session_port_offset(session),
+	    (float)session_sector_offset(session), &maximum, error))
 		return false;
 	for (;;) {
 		enum yt_computer_port_selection_route route;
@@ -165,8 +165,8 @@ yt_session_computer_planet_report(struct yt_session *session,
 	static const uint8_t prompt[] =
 	    "What sector number is the planet in? ";
 	static const uint8_t unavailable[] = "No information available.";
-	float maximum = qb_single_subtract(session_port_offset(session),
-	    session_sector_offset(session));
+	float maximum = qb_single_subtract((float)session_port_offset(session),
+	    (float)session_sector_offset(session));
 
 	for (;;) {
 		struct qb_val_result parsed;
@@ -219,7 +219,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 		{
 			float maximum_planet = qb_single_subtract(
 			    session->door->game.config.total_records,
-			    session_planet_offset(session));
+			    (float)session_planet_offset(session));
 
 			valid_link = link > 0.0f && link <= maximum_planet;
 		}
@@ -322,6 +322,6 @@ yt_session_computer_planet_report(struct yt_session *session,
 		}
 		return yt_session_planet_inventory(session, valid_link
 		    ? (int)link : (int)session->planet.current_record
-		    - (int)session_planet_offset(session), error);
+		    - session_planet_offset(session), error);
 	}
 }

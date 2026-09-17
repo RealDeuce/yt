@@ -205,10 +205,10 @@ yt_session_planet_rename(struct yt_session *session, int logical_planet,
 		size_t confirmation_length = 0;
 
 		current_record = qb_single_add(
-		    session_planet_offset(session),
+		    (float)session_planet_offset(session),
 		    (float)logical_planet);
 		if (yt_planet_rename_protected(current_record,
-		    session_planet_offset(session),
+		    (float)session_planet_offset(session),
 		    session->door->game.config.total_records))
 			return session_present_alert(session, protected,
 			    sizeof(protected) - 1U,

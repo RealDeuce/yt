@@ -53,7 +53,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	if (planet.owner == (float)session_record(session))
 		friendly = true;
 	else if (planet.owner > 1.0f
-	    && planet.owner <= session_sector_offset(session)) {
+	    && planet.owner <= (float)session_sector_offset(session)) {
 		if (!yt_session_players_are_friendly(session, (int)planet.owner,
 		    &friendly, error))
 			return false;
@@ -264,7 +264,7 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 	    error))
 		return false;
 	if (!yt_projectile_sector_has_presence(&sector, sector_number,
-	    (int)session_sector_offset(session), &session->player_cache,
+	    session_sector_offset(session), &session->player_cache,
 	    *xannor_provoker)) {
 		*route = MISSILE_SECTOR_POST_IMPACT;
 		return true;
@@ -452,7 +452,7 @@ missile_mines:
 			return true;
 	}
 	for (basic = YT_PLAYER_FIRST_RECORD;
-	    basic <= (int)session_sector_offset(session); ++basic) {
+	    basic <= session_sector_offset(session); ++basic) {
 		struct yt_player target;
 		struct yt_player presentation_target;
 		struct yt_projectile_damage_result damage;

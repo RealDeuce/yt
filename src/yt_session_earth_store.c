@@ -311,7 +311,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 	static const uint8_t fade[] = "...the effect fades.";
 	struct yt_player field_player;
 	uint8_t row[YT_TEXT_FIELD_SIZE + sizeof(uncloaked) - 1U];
-	int player_terminal = (int)session_sector_offset(session);
+	int player_terminal = session_sector_offset(session);
 	int player_record;
 	bool field_loaded = false;
 	bool reported = false;

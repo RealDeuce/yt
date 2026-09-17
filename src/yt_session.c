@@ -22,22 +22,22 @@
 #include <stdlib.h>
 #include <string.h>
 
-float
+int
 session_sector_offset(const struct yt_session *session)
 {
-	return session->door->game.config.sector_offset;
+	return (int)session->door->game.config.sector_offset;
 }
 
-float
+int
 session_port_offset(const struct yt_session *session)
 {
-	return session->door->game.config.port_offset;
+	return (int)session->door->game.config.port_offset;
 }
 
-float
+int
 session_planet_offset(const struct yt_session *session)
 {
-	return session->door->game.config.planet_offset;
+	return (int)session->door->game.config.planet_offset;
 }
 
 void
@@ -221,8 +221,7 @@ session_write_planet(struct yt_session *session, int logical_planet,
 int
 session_sector_count(const struct yt_session *session)
 {
-	return (int)(session_port_offset(session)
-	    - session_sector_offset(session));
+	return session_port_offset(session) - session_sector_offset(session);
 }
 
 bool
@@ -333,7 +332,7 @@ session_reload_player(struct yt_session *session, struct yt_error *error)
 	if (!session_read_player_at_fault(session, session_record(session), &fresh,
 	    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET, error)
 	    || !yt_current_player_hydrate(&session->player, &fresh,
-	    session_record(session), (int)session_sector_offset(session),
+	    session_record(session), session_sector_offset(session),
 	    session->earth.anti_cloak_enabled, &session->navigation.current_sector_physical_record,
 	    &session->player_cache))
 		return false;

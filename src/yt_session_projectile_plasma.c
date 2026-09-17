@@ -533,7 +533,7 @@ plasma_reload_sector:
 			return true;
 	}
 	for (basic = YT_PLAYER_FIRST_RECORD;
-	    basic <= (int)session_sector_offset(session); ++basic) {
+	    basic <= session_sector_offset(session); ++basic) {
 		if (yt_player_cache_value(&session->player_cache, basic,
 		    YT_PLAYER_CACHE_SECTOR) != (float)sector_number
 		    || !(*energy > 0.0))

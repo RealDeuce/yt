@@ -358,7 +358,7 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 	int current_sector_record =
 	    session->navigation.current_sector_physical_record;
 	float display_source = (float)(current_sector_record
-	    - (int)session_sector_offset(session));
+	    - session_sector_offset(session));
 	int warps[6];
 	size_t slot;
 

@@ -15,7 +15,7 @@ planet_move_friendship(struct yt_session *session, float owner,
 	struct yt_player current;
 	struct yt_player other;
 	int owner_record;
-	int last_player = (int)session_sector_offset(session);
+	int last_player = session_sector_offset(session);
 
 	if (friendly == NULL)
 		return false;
@@ -71,7 +71,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	float draw;
 	float xannor_planet = qb_single_subtract(
 	    session->door->game.config.total_records,
-	    session_planet_offset(session));
+	    (float)session_planet_offset(session));
 	uint32_t moving_record;
 	int source_record;
 	int destination_record;
@@ -182,8 +182,9 @@ planet_move_hop(struct yt_session *session, int source_number,
 		return true;
 	}
 	if (moving_planet == 1) {
-		float maximum = qb_single_subtract(session_port_offset(session),
-		    session_sector_offset(session));
+		float maximum = qb_single_subtract(
+		    (float)session_port_offset(session),
+		    (float)session_sector_offset(session));
 
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "planet move Wanderer blank", error)
@@ -274,8 +275,9 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	struct session_route_plan route;
 	float start = session->player.sector;
 	float destination;
-	float maximum = yt_planet_move_maximum(session_port_offset(session),
-	    session_sector_offset(session));
+	float maximum = yt_planet_move_maximum(
+	    (float)session_port_offset(session),
+	    (float)session_sector_offset(session));
 	float cost = 0.0f;
 	int start_node;
 	int destination_node;

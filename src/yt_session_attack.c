@@ -311,7 +311,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		    sizeof(no_fighters) - 1U, "direct Attack no-fighters row",
 		    error);
 
-	while (candidate <= session_sector_offset(session)) {
+	while (candidate <= (float)session_sector_offset(session)) {
 		struct qb_val_result parsed;
 		enum yt_yes_no_answer answer;
 		float cached_sector;

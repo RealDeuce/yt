@@ -124,9 +124,9 @@ struct yt_session {
 int session_record(const struct yt_session *session);
 bool session_current_date_serial(struct yt_session *session, int *serial,
     int *adjusted_year, struct yt_error *error);
-float session_sector_offset(const struct yt_session *session);
-float session_port_offset(const struct yt_session *session);
-float session_planet_offset(const struct yt_session *session);
+int session_sector_offset(const struct yt_session *session);
+int session_port_offset(const struct yt_session *session);
+int session_planet_offset(const struct yt_session *session);
 uint32_t session_port_basic_record(const struct yt_session *session,
 	int logical_port);
 int session_sector_count(const struct yt_session *session);

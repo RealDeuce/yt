@@ -220,7 +220,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 		++scan;
 	}
 	selected_logical = (int)selected_physical
-	    - (int)session_planet_offset(session);
+	    - session_planet_offset(session);
 	logical = selected_logical;
 	if (!yt_session_planet_rename(session, logical, &renamed, error))
 		return false;

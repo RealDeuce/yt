@@ -360,7 +360,7 @@ session_team_search(struct yt_session *session, struct yt_error *error)
 	    "team resource locating row", error))
 		return false;
 	for (player_record = YT_PLAYER_FIRST_RECORD;
-	    player_record <= (int)session_sector_offset(session);
+	    player_record <= session_sector_offset(session);
 	    ++player_record) {
 		struct yt_player player;
 		uint8_t row[YT_TEXT_FIELD_SIZE + 64U];

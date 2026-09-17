@@ -231,8 +231,9 @@ plasma_route_run(struct yt_session *session,
 				if (!yt_random_next(&session->door->game.random, &draw,
 				    error))
 					return false;
-				span = qb_single_subtract(session_port_offset(session),
-				    session_sector_offset(session));
+				span = qb_single_subtract(
+				    (float)session_port_offset(session),
+				    (float)session_sector_offset(session));
 				*destination = floorf(qb_single_add(qb_single_multiply(draw, span),
 				    1.0f));
 				route->destination = *destination;
@@ -257,7 +258,7 @@ plasma_route_run(struct yt_session *session,
 			if (!session_read_sector(session, next_hop, &sector, error))
 				return false;
 			if (!yt_projectile_sector_has_presence(&sector, next_hop,
-			    (int)session_sector_offset(session), &session->player_cache,
+			    session_sector_offset(session), &session->player_cache,
 			    xannor_provoker != NULL ? *xannor_provoker : 0))
 				continue;
 			if (!yt_session_plasma_sector(session, next_hop, &sector, attacker,
@@ -342,7 +343,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 		}
 		if ((float)session_record(session) > 2.0f
 		    && (float)session_record(session)
-		    <= session_sector_offset(session)) {
+		    <= (float)session_sector_offset(session)) {
 			struct yt_player shooter;
 
 			if (!yt_game_read_player(&session->door->game,
@@ -378,8 +379,8 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 				if (!yt_random_next(&session->door->game.random, &draw, error))
 					return false;
 				*target = yt_projectile_cruise_reroute_destination(draw,
-				    session_sector_offset(session),
-				    session_port_offset(session));
+				    (float)session_sector_offset(session),
+				    (float)session_port_offset(session));
 				route->origin = *origin_alias;
 				route->destination = *target;
 				route->amount = *missiles;
@@ -498,7 +499,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	session->active_player_record = session_record(session);
 	saved_record = session_record(session);
 	if (*counterattacker < YT_PLAYER_FIRST_RECORD
-	    || *counterattacker > (int)session_sector_offset(session)
+	    || *counterattacker > session_sector_offset(session)
 	    || *counterattacker == saved_record)
 		return true;
 	if (!yt_game_read_player(&session->door->game, *counterattacker,

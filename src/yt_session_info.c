@@ -117,7 +117,7 @@ yt_session_info_team_lines(struct yt_session *session,
 	captain_record = team.captain;
 	session->player_reference.record = (float)captain_record;
 	if (captain_record >= 2
-	    && (float)captain_record <= session_sector_offset(session)) {
+	    && captain_record <= session_sector_offset(session)) {
 		if (!yt_game_read_player(&session->door->game, captain_record,
 		    &captain, error))
 			return false;

@@ -201,7 +201,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 		}
 		hostile = owner < 0.0f;
 		if (!hostile && owner > 1.0f
-		    && owner <= session_sector_offset(session)
+		    && owner <= (float)session_sector_offset(session)
 		    && owner != (float)session_record(session))
 			hostile = !session->player_reference.friendly;
 		if (hostile) {
@@ -305,8 +305,8 @@ yt_session_command_move(struct yt_session *session, bool *moved,
 	if (qb_mbf32_encode(target, target_raw) == QB_MBF_OVERFLOW)
 		return movement_range_error(error, "movement destination CSNG");
 	target = qb_mbf32_decode(target_raw);
-	maximum = qb_single_subtract(session_port_offset(session),
-	    session_sector_offset(session));
+	maximum = qb_single_subtract((float)session_port_offset(session),
+	    (float)session_sector_offset(session));
 	if (target < 1.0f || target > maximum)
 		return true;
 	if (target == session->player.sector)

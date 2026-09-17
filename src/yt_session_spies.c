@@ -191,7 +191,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 		session->disruption_sectors[0],
 		session->disruption_sectors[1]
 	};
-	int last_player_record = (int)session_sector_offset(session);
+	int last_player_record = session_sector_offset(session);
 	int current_player_record = session_record(session);
 	int active_spies = session->spies.count;
 	int spy_index;

@@ -621,7 +621,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 					return false;
 			}
 			else if (killer > 1.0f
-			    && killer <= session_sector_offset(session)) {
+			    && killer <= (float)session_sector_offset(session)) {
 				struct yt_player attacker;
 				uint8_t attacker_row[YT_TEXT_FIELD_SIZE
 				    + sizeof(" destroyed your ship!") - 1U];
