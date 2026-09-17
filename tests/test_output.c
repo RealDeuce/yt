@@ -430,7 +430,7 @@ test_sound_adapter(void)
 	memset(&current, 0, sizeof(current));
 	current.sound.ansi = 1.0f;
 	current.sound.user_sound = -1.0f;
-	current.sound.snoop = -1.0f;
+	current.sound.snoop = true;
 	current.sound.local_sound = -1.0f;
 	CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, &current, &result) == YT_PRESENT_OK);
 	reset_calls();
@@ -444,7 +444,7 @@ test_sound_adapter(void)
 
 	memset(&current, 0, sizeof(current));
 	current.sound.user_sound = -1.0f;
-	current.sound.snoop = -1.0f;
+	current.sound.snoop = true;
 	current.sound.local_sound = -1.0f;
 	CHECK(yt_present_sound(YT_SOUND_CUE_DANGER, &current, &result) == YT_PRESENT_OK);
 	reset_calls();
@@ -460,7 +460,7 @@ test_sound_adapter(void)
 	current.sound.ansi = 1.0f;
 	current.sound.mode = 1.0f;
 	current.sound.user_sound = -1.0f;
-	current.sound.snoop = -1.0f;
+	current.sound.snoop = true;
 	current.sound.local_sound = -1.0f;
 	CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, &current, &result) == YT_PRESENT_OK
 	    && result.remote_length == 0U && result.event_count == 1U

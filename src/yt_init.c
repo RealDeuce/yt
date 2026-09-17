@@ -33,9 +33,8 @@ yt_rmt_normalize_config(struct yt_config *config, bool local_mode)
 {
 	if (config->scoreboard[0] == '\0')
 		strcpy(config->scoreboard, "NUL");
-	if (config->local_screen < -1.0f || config->local_screen > 0.0f
-	    || local_mode)
-		config->local_screen = -1.0f;
+	if (local_mode)
+		config->local_screen = true;
 	if (config->lottery_plays < 1.0f)
 		config->lottery_plays = 1.0f;
 	if (config->genesis_ports < 20.0f || config->genesis_ports > 300.0f)
@@ -142,7 +141,7 @@ yt_initializer_prepare_yt(const struct yt_clock *clock,
 	preparation->config.initial_credits = 1005.0f;
 	preparation->config.initial_holds = 10.0f;
 	preparation->config.retention_days = 14.0f;
-	preparation->config.local_screen = -1.0f;
+	preparation->config.local_screen = true;
 	preparation->config.lottery_plays = 5.0f;
 	preparation->config.genesis_ports = 300.0f;
 	preparation->config.maximum_holds = 1000.0f;
@@ -177,7 +176,8 @@ make_config_record(struct yt_config *config, size_t stored_scoreboard_length)
 	yt_record_set_number(&config->record, YT_F77, config->retention_days);
 	yt_record_set_number(&config->record, YT_F81,
 	    config->last_maintenance);
-	yt_record_set_number(&config->record, YT_F85, config->local_screen);
+	yt_record_set_number(&config->record, YT_F85,
+	    config->local_screen ? -1.0f : 0.0f);
 	yt_record_set_number(&config->record, YT_F93, config->total_records);
 	yt_record_set_number(&config->record, YT_F101, config->lottery_plays);
 	yt_record_set_number(&config->record, YT_F105, config->genesis_ports);
@@ -714,7 +714,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			config.initial_credits = 1005.0f;
 			config.initial_holds = 10.0f;
 			config.retention_days = 14.0f;
-			config.local_screen = -1.0f;
+			config.local_screen = true;
 			config.total_records = config.planet_offset + YT_INIT_PLANETS;
 			config.lottery_plays = 5.0f;
 			config.genesis_ports = 300.0f;

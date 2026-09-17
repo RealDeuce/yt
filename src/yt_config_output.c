@@ -117,8 +117,6 @@ yt_config_prepare_menu_working(const struct yt_config *config,
 		memcpy(scoreboard_path, config->scoreboard, path_length);
 	working->scoreboard_path = scoreboard_path;
 	working->scoreboard_path_length = path_length;
-	if (working->local_screen < -1.0f || working->local_screen > 0.0f)
-		working->local_screen = -1.0f;
 	if (working->lottery_plays < 1.0f)
 		working->lottery_plays = 1.0f;
 	if (working->maximum_holds < 5.0f
@@ -171,7 +169,7 @@ yt_config_compose_menu_prompt(const struct yt_config *config,
 		working->scoreboard_path_length)
 	    || !append_literal(result,
 		"<J> Local Screen With Remote Callers: ")
-	    || !append_line(result, working->local_screen == 0.0f ? "Off" : "On")
+	    || !append_line(result, working->local_screen ? "On" : "Off")
 	    || !append_numeric_line(result,
 		"<K> Maximum Lottery Plays Per Day :", working->lottery_plays)
 	    || !append_genesis_line(result, config->genesis_ports)

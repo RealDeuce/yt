@@ -33,7 +33,7 @@ test_config_encode(struct yt_config *config)
 	yt_record_set_number_if_changed(&config->record, YT_F81,
 	    config->last_maintenance);
 	yt_record_set_number_if_changed(&config->record, YT_F85,
-	    config->local_screen);
+	    config->local_screen ? -1.0f : 0.0f);
 	yt_record_set_number_if_changed(&config->record, YT_F93,
 	    config->total_records);
 	yt_record_set_number_if_changed(&config->record, YT_F101,

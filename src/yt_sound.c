@@ -32,7 +32,6 @@ endpoint_gates(const struct yt_sound_state *state,
 {
 	bool overflow;
 	int32_t converted;
-	int32_t snoop;
 	int32_t local;
 
 	if (state->mode == 0.0f) {
@@ -54,15 +53,11 @@ endpoint_gates(const struct yt_sound_state *state,
 			}
 		}
 	}
-	snoop = qb_cint_mode(state->snoop, state->conversion_mode,
-	    &overflow);
-	if (overflow)
-		return YT_SOUND_SNOOP_OVERFLOW;
 	local = qb_cint_mode(state->local_sound,
 	    state->conversion_mode, &overflow);
 	if (overflow)
 		return YT_SOUND_LOCAL_OVERFLOW;
-	if ((snoop & local) != 0) {
+	if (state->snoop && local != 0) {
 		memcpy(result->play, cue, cue_length);
 		result->play_length = cue_length;
 	}

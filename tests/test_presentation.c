@@ -55,7 +55,7 @@ state(bool ansi)
 	memset(&value, 0, sizeof(value));
 	value.sound.ansi = ansi ? -1.0f : 0.0f;
 	value.sound.user_sound = -1.0f;
-	value.sound.snoop = -1.0f;
+	value.sound.snoop = true;
 	value.sound.local_sound = -1.0f;
 	value.foreground = 2.0f;
 	return value;
@@ -234,7 +234,7 @@ test_direct_output(void)
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 1);
 	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_SEMI);
-	current.sound.snoop = 0.0f;
+	current.sound.snoop = false;
 	CHECK(yt_present_line((const uint8_t *)"hidden", 6,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 0);
@@ -288,7 +288,7 @@ test_paged_output(void)
 	    == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 1);
 	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
-	current.sound.snoop = 0.0f;
+	current.sound.snoop = false;
 	CHECK(yt_present_paged_finish(false, &current, &result)
 	    == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0U && result.event_count == 1U
@@ -319,14 +319,14 @@ test_paged_output(void)
 
 	current = state(true);
 	current.sound.mode = 2.0f;
-	current.sound.snoop = 0.0f;
+	current.sound.snoop = false;
 	CHECK(yt_present_paged_text((const uint8_t *)"hidden", 6,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0U && result.event_count == 1U
 	    && result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
 
 	current = state(false);
-	current.sound.snoop = 0.0f;
+	current.sound.snoop = false;
 	CHECK(yt_present_paged_text((const uint8_t *)"remote", 6,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 6U
@@ -363,7 +363,7 @@ test_editor_echo(void)
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 1);
 	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LINE);
-	current.sound.snoop = 0.0f;
+	current.sound.snoop = false;
 	CHECK(yt_present_local_line((const uint8_t *)"hidden", 6,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 0);
@@ -1540,7 +1540,7 @@ startup_ascii_expected(uint8_t *output, size_t capacity, bool ansi,
 static void
 startup_ascii_initialize(struct physical_viewer_join *startup,
     struct viewer_file_fixture *stream, bool ansi, float mode,
-    float snoop, size_t ctrl_x_row)
+    bool snoop, size_t ctrl_x_row)
 {
 	viewer_pager_initialize(&startup->join, stream, 0.0f, "",
 	    ctrl_x_row);
@@ -1655,7 +1655,7 @@ test_startup_ascii_physical_join(void)
 	size_t expected_length;
 
 	memset(&startup, 0, sizeof(startup));
-	startup_ascii_initialize(&startup, &stream, true, 0.0f, -1.0f, 0U);
+	startup_ascii_initialize(&startup, &stream, true, 0.0f, true, 0U);
 	yt_error_clear(&error);
 	CHECK(physical_viewer_run(&startup, &stream, &error));
 	expected_length = startup_ascii_expected(expected, sizeof(expected),
@@ -1668,7 +1668,7 @@ test_startup_ascii_physical_join(void)
 	    YT_ARRAY_LEN(startup_ascii_lines));
 
 	memset(&startup, 0, sizeof(startup));
-	startup_ascii_initialize(&startup, &stream, false, 0.0f, -1.0f, 0U);
+	startup_ascii_initialize(&startup, &stream, false, 0.0f, true, 0U);
 	CHECK(physical_viewer_run(&startup, &stream, NULL));
 	expected_length = startup_ascii_expected(expected, sizeof(expected),
 	    false, YT_ARRAY_LEN(startup_ascii_lines));
@@ -1683,7 +1683,7 @@ test_startup_ascii_physical_join(void)
 	    YT_ARRAY_LEN(startup_ascii_lines));
 
 	memset(&startup, 0, sizeof(startup));
-	startup_ascii_initialize(&startup, &stream, true, 1.0f, -1.0f, 0U);
+	startup_ascii_initialize(&startup, &stream, true, 1.0f, true, 0U);
 	CHECK(physical_viewer_run(&startup, &stream, NULL));
 	CHECK(startup.join.capture.remote_length == 0U
 	    && startup.join.sample_calls == 18U
@@ -1692,7 +1692,7 @@ test_startup_ascii_physical_join(void)
 	    YT_ARRAY_LEN(startup_ascii_lines));
 
 	memset(&startup, 0, sizeof(startup));
-	startup_ascii_initialize(&startup, &stream, true, 2.0f, 0.0f, 0U);
+	startup_ascii_initialize(&startup, &stream, true, 2.0f, false, 0U);
 	CHECK(physical_viewer_run(&startup, &stream, NULL));
 	CHECK(startup.join.capture.remote_length == 6U
 	    && memcmp(startup.join.capture.remote,
@@ -1702,7 +1702,7 @@ test_startup_ascii_physical_join(void)
 	    && stream.read_count == 17U);
 
 	memset(&startup, 0, sizeof(startup));
-	startup_ascii_initialize(&startup, &stream, true, 0.0f, -1.0f, 2U);
+	startup_ascii_initialize(&startup, &stream, true, 0.0f, true, 2U);
 	(void)snprintf(startup.join.accumulator,
 	    sizeof(startup.join.accumulator), "%s", "typed");
 	(void)snprintf(startup.join.queue, sizeof(startup.join.queue), "%s",
@@ -3971,12 +3971,12 @@ test_shared_error_model(void)
 	    && error.route == YT_SHARED_ERROR_DORINFO_COM);
 
 	CHECK(yt_shared_error_compose(53, 2710, &error));
-	current.sound.snoop = 0.0f;
+	current.sound.snoop = false;
 	CHECK(yt_present_local_line(error.debug, error.debug_length, &current,
 	    &presentation) == YT_PRESENT_OK);
 	CHECK(presentation.remote_length == 0U
 	    && presentation.event_count == 0U);
-	current.sound.snoop = -1.0f;
+	current.sound.snoop = true;
 	CHECK(yt_present_local_line(error.events[0].data,
 	    error.events[0].length, &current, &presentation) == YT_PRESENT_OK);
 	CHECK(presentation.remote_length == 0U
@@ -4029,7 +4029,7 @@ test_time_helpers(void)
 	CHECK(current.bold == 1.0f && current.blink == 1.0f);
 
 	current = state(false);
-	current.sound.snoop = 0.0f;
+	current.sound.snoop = false;
 	remembered = 7.0f;
 	CHECK(yt_present_low_time((const uint8_t *)" 6:00  ", 7,
 	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
@@ -4051,7 +4051,7 @@ test_time_helpers(void)
 	    && result.remote_length != 0U);
 
 	current = state(false);
-	current.sound.snoop = 0.0f;
+	current.sound.snoop = false;
 	remembered = 6.0f;
 	memset(long_time, 'x', sizeof(long_time));
 	long_time[0] = '5';
@@ -35566,7 +35566,7 @@ test_radio_body_cleanup_presentation(void)
 	struct yt_present_state current = state(false);
 	struct yt_present_result result;
 
-	current.sound.snoop = 0.0f;
+	current.sound.snoop = false;
 	current.sound.mode = 0.0f;
 	CHECK(yt_present_radio_backspace(1, 0U, &current, &result)
 	    == YT_PRESENT_OK);

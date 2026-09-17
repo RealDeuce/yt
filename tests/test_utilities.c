@@ -526,7 +526,7 @@ test_rmt_config_normalization(void)
 	preserved.initial_holds = 17.0f;
 	preserved.retention_days = 9.0f;
 	preserved.last_maintenance = 999.0f;
-	preserved.local_screen = 0.0f;
+	preserved.local_screen = false;
 	preserved.total_records = 33.0f;
 	preserved.lottery_plays = 1.0f;
 	preserved.genesis_ports = 20.0f;
@@ -547,7 +547,7 @@ test_rmt_config_normalization(void)
 	    || preserved.initial_holds != 17.0f
 	    || preserved.retention_days != 9.0f
 	    || preserved.last_maintenance != 999.0f
-	    || preserved.local_screen != 0.0f
+	    || preserved.local_screen
 	    || preserved.total_records != 33.0f
 	    || preserved.lottery_plays != 1.0f
 	    || preserved.genesis_ports != 20.0f
@@ -557,24 +557,24 @@ test_rmt_config_normalization(void)
 	    || preserved.maximum_planets != 0.0f)
 		return false;
 	defaults.scoreboard[0] = '\0';
-	defaults.local_screen = 1.0f;
+	defaults.local_screen = true;
 	defaults.lottery_plays = 0.0f;
 	defaults.genesis_ports = 301.0f;
 	defaults.maximum_holds = 1001.0f;
 	yt_rmt_normalize_config(&defaults, false);
 	if (strcmp(defaults.scoreboard, "NUL") != 0
-	    || defaults.local_screen != -1.0f
+	    || !defaults.local_screen
 	    || defaults.lottery_plays != 1.0f
 	    || defaults.genesis_ports != 200.0f
 	    || defaults.maximum_holds != 50.0f
 	    || defaults.marker != 6324.0f
 	    || defaults.maximum_planets != 0.0f)
 		return false;
-	defaults.local_screen = 0.0f;
+	defaults.local_screen = false;
 	defaults.genesis_ports = 19.0f;
 	defaults.maximum_holds = 4.0f;
 	yt_rmt_normalize_config(&defaults, true);
-	return defaults.local_screen == -1.0f
+	return defaults.local_screen
 	    && defaults.genesis_ports == 200.0f
 	    && defaults.maximum_holds == 50.0f;
 }
@@ -932,7 +932,7 @@ rmt_small_config(struct yt_config *config)
 	config->initial_credits = 1005.0f;
 	config->initial_holds = 10.0f;
 	config->retention_days = 14.0f;
-	config->local_screen = -1.0f;
+	config->local_screen = true;
 	config->total_records = 30.0f;
 	config->lottery_plays = 5.0f;
 	config->genesis_ports = 200.0f;
@@ -1770,7 +1770,7 @@ test_rmt_dynamic_presentation(void)
 		bool ok;
 
 		rmt_small_config(&config);
-		config.local_screen = 0.0f;
+		config.local_screen = false;
 		yt_error_clear(&error);
 		yt_random_init(&random);
 		yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
@@ -3036,7 +3036,7 @@ test_ytconfig(struct yt_error *error)
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
 	    error) || !yt_config_load(&game.database, &game.config, error))
 		return false;
-	game.config.local_screen = -2.0f;
+	game.config.local_screen = true;
 	game.config.last_maintenance = -1.0f;
 	if (!test_config_store(&game.database, &game.config, error))
 		goto done;
@@ -3054,8 +3054,8 @@ test_ytconfig(struct yt_error *error)
 	    output.final_column, &folded, &output) || folded != (uint8_t)'J')
 		goto done;
 	APPEND_CONFIG_OUTPUT();
-	working.local_screen = 1.0f;
-	game.config.local_screen = 1.0f;
+	working.local_screen = false;
+	game.config.local_screen = false;
 	if (!yt_config_compose_menu_prompt(&game.config, &working, today, 0U,
 	    &output))
 		goto done;
@@ -3078,7 +3078,7 @@ test_ytconfig(struct yt_error *error)
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_READ,
 	    error) || !yt_config_load(&game.database, &game.config, error))
 		goto done;
-	valid = game.config.local_screen == 1.0f;
+	valid = !game.config.local_screen;
 
 done:
 	yt_game_close(&game);
@@ -3412,7 +3412,7 @@ test_ytconfig_scalar_options(struct yt_error *error)
 	snapshot = true;
 	snprintf(game.config.scoreboard, sizeof(game.config.scoreboard),
 	    "OLD.ASC");
-	game.config.local_screen = 0.0f;
+	game.config.local_screen = false;
 	game.config.lottery_plays = 3.0f;
 	game.config.maximum_holds = 200.0f;
 	game.config.turns_per_day = 500.0f;
@@ -4342,7 +4342,7 @@ test_rmt_init(struct yt_error *error)
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_READ,
 	    error) || !yt_config_load(&game.database, &game.config, error))
 		return false;
-	result = game.config.local_screen == -1.0f
+	result = game.config.local_screen
 	    && game.config.maximum_holds == 1000.0f
 	    && game.config.genesis_ports == 300.0f;
 	yt_game_close(&game);

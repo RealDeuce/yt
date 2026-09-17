@@ -111,7 +111,7 @@ check_startup_configuration_transaction(void)
 	struct yt_record persisted;
 	struct yt_error error;
 	int disruption_sectors[2] = {0, 0};
-	float local_screen = 99.0f;
+	bool local_screen = true;
 	struct startup_random random = {0U};
 	int record;
 	bool passed = false;
@@ -134,7 +134,7 @@ check_startup_configuration_transaction(void)
 	source.initial_holds = 10.0f;
 	source.retention_days = 14.0f;
 	source.last_maintenance = 100.0f;
-	source.local_screen = 0.0f;
+	source.local_screen = false;
 	source.total_records = 20.0f;
 	source.lottery_plays = 5.0f;
 	source.genesis_ports = 300.0f;
@@ -168,7 +168,7 @@ check_startup_configuration_transaction(void)
 	    || game.config.maximum_planets != 100.0f
 	    || game.config.maximum_holds != 1000.0f
 	    || game.config.turns_per_day != 500.0f
-	    || local_screen != 0.0f
+	    || local_screen
 	    || cache.sector[2] != 20 || cache.sector[3] != 30
 	    || cache.sector[4] != 40
 	    || cache.cloak[2] != 0.0f || cache.cloak[3] != 1.0f
@@ -3876,7 +3876,7 @@ check_maintenance_config_defaults(void)
 	config.initial_holds = 10.0f;
 	config.retention_days = 14.0f;
 	config.last_maintenance = 123.0f;
-	config.local_screen = -1.0001f;
+	config.local_screen = true;
 	config.total_records = 3155.0f;
 	config.lottery_plays = 0.9999f;
 	config.genesis_ports = 300.0f;
@@ -3890,7 +3890,7 @@ check_maintenance_config_defaults(void)
 	    || memcmp(config.scoreboard + 4U, before.scoreboard + 4U,
 	    sizeof(config.scoreboard) - 4U) != 0
 	    || config.scoreboard_length != before.scoreboard_length
-	    || config.local_screen != -1.0f
+	    || !config.local_screen
 	    || config.lottery_plays != 1.0f
 	    || config.maximum_holds != 250.0f
 	    || config.epoch_year != before.epoch_year
@@ -3901,28 +3901,26 @@ check_maintenance_config_defaults(void)
 		return false;
 
 	strcpy(config.scoreboard, "SCORE.TXT");
-	config.local_screen = -1.0f;
+	config.local_screen = true;
 	config.lottery_plays = 1.0f;
 	config.maximum_holds = 10.0f;
 	yt_config_normalize_maintenance(&config);
 	if (strcmp(config.scoreboard, "SCORE.TXT") != 0
-	    || config.local_screen != -1.0f
+	    || !config.local_screen
 	    || config.lottery_plays != 1.0f
 	    || config.maximum_holds != 10.0f)
 		return false;
-	config.local_screen = 0.0f;
+	config.local_screen = false;
 	config.lottery_plays = 1234.5f;
 	config.maximum_holds = 250.0f;
 	yt_config_normalize_maintenance(&config);
-	if (config.local_screen != 0.0f
+	if (config.local_screen
 	    || config.lottery_plays != 1234.5f
 	    || config.maximum_holds != 250.0f)
 		return false;
-	config.local_screen = 0.0001f;
 	config.maximum_holds = 250.0001f;
 	yt_config_normalize_maintenance(&config);
-	if (config.local_screen != -1.0f
-	    || config.maximum_holds != 250.0f)
+	if (config.maximum_holds != 250.0f)
 		return false;
 
 	headquarters = -0.0f;
@@ -4022,7 +4020,7 @@ check_maintenance_headquarters_write(void)
 	config.port_offset = 1.0f;
 	config.planet_offset = 1.0f;
 	config.total_records = 1.0f;
-	config.local_screen = 9.0f;
+	config.local_screen = true;
 	config.lottery_plays = -2.0f;
 	config.maximum_holds = 300.0f;
 	config.headquarters = 0.0f;
@@ -4040,7 +4038,7 @@ check_maintenance_headquarters_write(void)
 		goto done;
 	valid = config.headquarters == 85.0f
 	    && config.scoreboard[0] == '\0'
-	    && config.local_screen == 9.0f
+	    && config.local_screen
 	    && config.lottery_plays == -2.0f
 	    && config.maximum_holds == 300.0f;
 

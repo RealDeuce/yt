@@ -29,7 +29,7 @@ yt_config_decode(struct yt_config *config, const struct yt_record *record,
 	config->initial_holds = yt_record_get_number(record, YT_F73);
 	config->retention_days = yt_record_get_number(record, YT_F77);
 	config->last_maintenance = yt_record_get_number(record, YT_F81);
-	config->local_screen = yt_record_get_number(record, YT_F85);
+	config->local_screen = yt_record_get_number(record, YT_F85) != 0.0f;
 	config->total_records = yt_record_get_number(record, YT_F93);
 	config->lottery_plays = yt_record_get_number(record, YT_F101);
 	config->genesis_ports = yt_record_get_number(record, YT_F105);
@@ -170,24 +170,20 @@ yt_config_headquarters_relocate(struct yt_database *database,
 
 bool
 yt_config_toggle_local_screen(struct yt_database *database,
-    struct yt_record *result, float *toggled, struct yt_error *error)
+    struct yt_record *result, bool *toggled, struct yt_error *error)
 {
 	struct yt_record field;
-	bool overflow;
-	int32_t converted;
+	bool current;
 
 	if (database == NULL || result == NULL || toggled == NULL)
 		return config_hq_error(error, YT_INVALID,
 		    "YTCONFIG local-screen transaction");
 	if (!yt_database_read(database, 1U, &field, error))
 		return false;
-	converted = qb_cint((double)yt_record_get_number(&field, YT_F85),
-	    &overflow);
-	if (overflow)
-		return config_hq_error(error, YT_RANGE,
-		    "YTCONFIG local-screen CINT");
-	*toggled = (float)(~converted);
-	if (!yt_record_set_number(&field, YT_F85, *toggled))
+	current = yt_record_get_number(&field, YT_F85) != 0.0f;
+	*toggled = !current;
+	if (!yt_record_set_number(&field, YT_F85,
+	    *toggled ? -1.0f : 0.0f))
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG local-screen overlay");
 	if (!yt_database_write(database, 1U, &field, error)
@@ -309,8 +305,6 @@ yt_config_normalize_maintenance(struct yt_config *config)
 {
 	if (config->scoreboard[0] == '\0')
 		strcpy(config->scoreboard, "NUL");
-	if (config->local_screen < -1.0f || config->local_screen > 0.0f)
-		config->local_screen = -1.0f;
 	if (config->lottery_plays < 1.0f)
 		config->lottery_plays = 1.0f;
 	if (config->maximum_holds < 10.0f || config->maximum_holds > 250.0f)

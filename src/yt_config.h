@@ -18,7 +18,7 @@ struct yt_config {
 	float initial_holds;
 	float retention_days;
 	float last_maintenance;
-	float local_screen;
+	bool local_screen;
 	float total_records;
 	float lottery_plays;
 	float genesis_ports;
@@ -50,7 +50,7 @@ bool yt_config_headquarters_relocate(struct yt_database *database,
 	enum yt_config_hq_route *route, struct yt_record *result,
 	struct yt_error *error);
 bool yt_config_toggle_local_screen(struct yt_database *database,
-	struct yt_record *result, float *toggled, struct yt_error *error);
+	struct yt_record *result, bool *toggled, struct yt_error *error);
 bool yt_config_apply_overlays(struct yt_database *database,
 	const struct yt_config_overlay *overlays, size_t overlay_count,
 	struct yt_record *result, struct yt_error *error);

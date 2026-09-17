@@ -23,7 +23,6 @@ enum yt_sound_status {
 	YT_SOUND_OK,
 	YT_SOUND_INVALID_CUE,
 	YT_SOUND_USER_OVERFLOW,
-	YT_SOUND_SNOOP_OVERFLOW,
 	YT_SOUND_LOCAL_OVERFLOW
 };
 
@@ -32,7 +31,7 @@ struct yt_sound_state {
 	float ansi;
 	float mode;
 	float user_sound;
-	float snoop;
+	bool snoop;
 	float local_sound;
 };
 

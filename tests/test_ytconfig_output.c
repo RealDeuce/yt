@@ -35,26 +35,26 @@ test_startup_working_values(void)
 	uint8_t path[41];
 
 	memset(&config, 0, sizeof(config));
-	config.local_screen = 0.6f;
+	config.local_screen = true;
 	config.lottery_plays = 0.0f;
 	config.maximum_holds = 19.0f;
 	CHECK(yt_config_prepare_menu_working(&config, path, &working));
 	CHECK(working.scoreboard_path == path);
 	CHECK(working.scoreboard_path_length == 3U);
 	CHECK(memcmp(path, "NUL", 3U) == 0);
-	CHECK(working.local_screen == -1.0f);
+	CHECK(working.local_screen);
 	CHECK(working.lottery_plays == 1.0f);
 	CHECK(working.maximum_holds == 200.0f);
 
 	memcpy(config.scoreboard, configured_path, sizeof(configured_path) - 1U);
 	config.scoreboard_length = sizeof(configured_path) - 1U;
-	config.local_screen = -1.0f;
+	config.local_screen = true;
 	config.lottery_plays = 2.0f;
 	config.maximum_holds = 1001.0f;
 	CHECK(yt_config_prepare_menu_working(&config, path, &working));
 	CHECK(working.scoreboard_path_length == sizeof(configured_path) - 1U);
 	CHECK(memcmp(path, configured_path, sizeof(configured_path) - 1U) == 0);
-	CHECK(working.local_screen == -1.0f);
+	CHECK(working.local_screen);
 	CHECK(working.lottery_plays == 2.0f);
 	CHECK(working.maximum_holds == 1000.0f);
 	return true;
@@ -104,7 +104,7 @@ test_canonical_menu(void)
 	config.genesis_ports = 301.0f;
 	working.scoreboard_path = scoreboard;
 	working.scoreboard_path_length = sizeof(scoreboard) - 1U;
-	working.local_screen = 0.0f;
+	working.local_screen = false;
 	working.lottery_plays = 3.0f;
 	working.maximum_holds = 100.0f;
 	CHECK(yt_config_compose_menu_prompt(&config, &working, 42, 37,
@@ -134,7 +134,7 @@ test_alternate_rows_and_binary_path(void)
 	config.genesis_ports = 300.0f;
 	working.scoreboard_path = scoreboard;
 	working.scoreboard_path_length = sizeof(scoreboard);
-	working.local_screen = -2.0f;
+	working.local_screen = true;
 	working.lottery_plays = 1.0f;
 	working.maximum_holds = 200.0f;
 	CHECK(yt_config_compose_menu_prompt(&config, &working, 42, 0,

@@ -1001,7 +1001,7 @@ main(void)
 		}
 		else if (key == 'J') {
 			struct yt_record updated;
-			float toggled;
+			bool toggled;
 
 			if (!yt_config_toggle_local_screen(&game.database, &updated,
 			    &toggled, &error))

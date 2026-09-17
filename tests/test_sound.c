@@ -20,7 +20,7 @@ state(bool ansi)
 	memset(&value, 0, sizeof(value));
 	value.ansi = ansi ? 1.0f : 0.0f;
 	value.user_sound = -1.0f;
-	value.snoop = -1.0f;
+	value.snoop = true;
 	value.local_sound = -1.0f;
 	return value;
 }
@@ -78,7 +78,7 @@ test_branches_and_gates(void)
 	current.mode = 1.0f;
 	CHECK(yt_sound_dispatch(YT_SOUND_CUE_DANGER, &current, &result) == YT_SOUND_OK);
 	CHECK(result.remote_length == 0 && result.play_length == 11);
-	current.snoop = 2.0f;
+	current.snoop = false;
 	current.local_sound = 1.0f;
 	current.mode = 0.0f;
 	CHECK(yt_sound_dispatch(YT_SOUND_CUE_DANGER, &current, &result) == YT_SOUND_OK);
@@ -96,11 +96,6 @@ test_failures(void)
 	    == YT_SOUND_USER_OVERFLOW);
 	CHECK(result.remote_length == 0);
 	current = state(true);
-	current.snoop = 40000.0f;
-	CHECK(yt_sound_dispatch(YT_SOUND_CUE_REWARD, &current, &result)
-	    == YT_SOUND_SNOOP_OVERFLOW);
-	CHECK(result.remote_length > 0);
-	current = state(true);
 	current.local_sound = 40000.0f;
 	CHECK(yt_sound_dispatch(YT_SOUND_CUE_REWARD, &current, &result)
 	    == YT_SOUND_LOCAL_OVERFLOW);
@@ -110,22 +105,6 @@ test_failures(void)
 	current.user_sound = 40000.0f;
 	CHECK(yt_sound_dispatch(YT_SOUND_CUE_REWARD, &current, &result) == YT_SOUND_OK);
 	CHECK(result.remote_length == 0);
-}
-
-static void
-test_conversion_mode(void)
-{
-	struct yt_sound_state current = state(false);
-	struct yt_sound_result result;
-
-	current.user_sound = 0.0f;
-	current.snoop = -1.4999f;
-	current.local_sound = 1.0f;
-	CHECK(yt_sound_dispatch(YT_SOUND_CUE_REWARD, &current, &result) == YT_SOUND_OK);
-	CHECK(result.play_length == 11);
-	current.conversion_mode = 4;
-	CHECK(yt_sound_dispatch(YT_SOUND_CUE_REWARD, &current, &result) == YT_SOUND_OK);
-	CHECK(result.play_length == 0);
 }
 
 static void
@@ -203,7 +182,6 @@ main(void)
 	test_known_cues();
 	test_branches_and_gates();
 	test_failures();
-	test_conversion_mode();
 	test_toggle();
 	if (failures != 0) {
 		fprintf(stderr, "%u test(s) failed\n", failures);

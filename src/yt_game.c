@@ -10,7 +10,7 @@
 bool
 yt_game_load_startup_configuration(struct yt_game *game, const char *path,
     bool local_mode, struct yt_player_cache *player_cache,
-    int disruption_sectors[2], float *local_screen, struct yt_error *error)
+    int disruption_sectors[2], bool *local_screen, struct yt_error *error)
 {
 	struct yt_config *config;
 	int basic;
@@ -50,10 +50,9 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 		memcpy(config->scoreboard, default_path, sizeof(default_path));
 		config->scoreboard_length = sizeof(default_path) - 1U;
 	}
-	if (config->local_screen < -1.0f || config->local_screen > 0.0f
-	    || local_mode) {
-		config->local_screen = -1.0f;
-		*local_screen = -1.0f;
+	if (local_mode) {
+		config->local_screen = true;
+		*local_screen = true;
 	}
 	if (config->lottery_plays < 0.0f || config->lottery_plays > 9.0f) {
 		config->lottery_plays = 3.0f;

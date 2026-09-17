@@ -8,7 +8,7 @@
 struct yt_config_menu_working {
 	const uint8_t *scoreboard_path;
 	size_t scoreboard_path_length;
-	float local_screen;
+	bool local_screen;
 	float lottery_plays;
 	float maximum_holds;
 };

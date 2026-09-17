@@ -369,7 +369,7 @@ main(void)
 	    || game.config.initial_credits != 1005.0f
 	    || game.config.initial_holds != 10.0f
 	    || game.config.retention_days != 14.0f
-	    || game.config.local_screen != -1.0f
+	    || !game.config.local_screen
 	    || game.config.lottery_plays != 5.0f
 	    || game.config.genesis_ports != 300.0f
 	    || game.config.maximum_holds != 1000.0f
