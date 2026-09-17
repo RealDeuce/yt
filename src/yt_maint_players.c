@@ -66,10 +66,12 @@ yt_maintenance_remove_player_from_teams(struct maint_state *state,
 				changed = true;
 			}
 		}
-		if (changed && !yt_database_write(&state->game.database,
-		    (size_t)yt_sector_basic_record(&state->game.config, team),
-		    &sector.record, error))
-			return false;
+		if (changed) {
+			if (!yt_database_write(&state->game.database,
+			    (size_t)yt_sector_basic_record(&state->game.config, team),
+			    &sector.record, error))
+				return false;
+		}
 	}
 	return true;
 }
@@ -84,9 +86,15 @@ invalidate_radio(int player_record, struct yt_error *error)
 	uint32_t basic_record;
 
 	yt_radio_file_init(&file);
-	if (!yt_radio_file_open(&file, "YTRMSG.DAT", error)
-	    || !yt_radio_file_get(&file, 1U, &record, NULL, error)
-	    || !yt_radio_file_size(&file, &length, error)) {
+	if (!yt_radio_file_open(&file, "YTRMSG.DAT", error)) {
+		(void)yt_radio_file_close(&file, NULL);
+		return false;
+	}
+	if (!yt_radio_file_get(&file, 1U, &record, NULL, error)) {
+		(void)yt_radio_file_close(&file, NULL);
+		return false;
+	}
+	if (!yt_radio_file_size(&file, &length, error)) {
 		(void)yt_radio_file_close(&file, NULL);
 		return false;
 	}
@@ -138,8 +146,9 @@ yt_maintenance_remove_alias(const char *player_name, struct yt_error *error)
 	yt_names_split(player_name, first, sizeof(first), last, sizeof(last));
 	yt_text_input_init(&input);
 	yt_text_output_init(&output);
-	if (!yt_text_output_open(&output, "TEMPWORK", error)
-	    || !yt_text_input_open(&input, "YTNAME.DAT", error))
+	if (!yt_text_output_open(&output, "TEMPWORK", error))
+		goto done;
+	if (!yt_text_input_open(&input, "YTNAME.DAT", error))
 		goto done;
 	for (;;) {
 		if (!yt_text_input_eof(&input, &eof, error))
@@ -156,29 +165,38 @@ yt_maintenance_remove_alias(const char *player_name, struct yt_error *error)
 			continue;
 		}
 		if (!yt_text_output_write(&output,
-		    (const uint8_t *)row.real_first, strlen(row.real_first), error)
-		    || !yt_text_output_write(&output, comma, sizeof(comma) - 1U,
-		    error)
-		    || !yt_text_output_write(&output,
-		    (const uint8_t *)row.real_last, strlen(row.real_last), error)
-		    || !yt_text_output_write(&output, comma, sizeof(comma) - 1U,
-		    error)
-		    || !yt_text_output_write(&output,
-		    (const uint8_t *)row.alias_first, strlen(row.alias_first), error)
-		    || !yt_text_output_write(&output, comma, sizeof(comma) - 1U,
-		    error)
-		    || !yt_text_output_write(&output,
-		    (const uint8_t *)row.alias_last, strlen(row.alias_last), error)
-		    || !yt_text_output_write(&output, row_end, sizeof(row_end),
+		    (const uint8_t *)row.real_first, strlen(row.real_first), error))
+			goto done;
+		if (!yt_text_output_write(&output, comma, sizeof(comma) - 1U,
 		    error))
+			goto done;
+		if (!yt_text_output_write(&output,
+		    (const uint8_t *)row.real_last, strlen(row.real_last), error))
+			goto done;
+		if (!yt_text_output_write(&output, comma, sizeof(comma) - 1U,
+		    error))
+			goto done;
+		if (!yt_text_output_write(&output,
+		    (const uint8_t *)row.alias_first, strlen(row.alias_first), error))
+			goto done;
+		if (!yt_text_output_write(&output, comma, sizeof(comma) - 1U,
+		    error))
+			goto done;
+		if (!yt_text_output_write(&output,
+		    (const uint8_t *)row.alias_last, strlen(row.alias_last), error))
+			goto done;
+		if (!yt_text_output_write(&output, row_end, sizeof(row_end), error))
 			goto done;
 		yt_name_row_free(&row);
 		staged_count = 0U;
 	}
-	if (!yt_text_input_close(&input, error)
-	    || !yt_text_output_close(&output, error)
-	    || !yt_file_kill("YTNAME.DAT", error)
-	    || !yt_file_rename("TEMPWORK", "YTNAME.DAT", error))
+	if (!yt_text_input_close(&input, error))
+		goto done;
+	if (!yt_text_output_close(&output, error))
+		goto done;
+	if (!yt_file_kill("YTNAME.DAT", error))
+		goto done;
+	if (!yt_file_rename("TEMPWORK", "YTNAME.DAT", error))
 		goto done;
 	result = true;
 
@@ -322,14 +340,17 @@ yt_maintenance_players_run(struct maint_state *state,
 			struct yt_maintenance_text date_value;
 
 			if (!yt_maintenance_compose_player_aging(&name, &empty,
-			    &empty, true, false, &output)
-			    || !yt_news_append_bytes(output.screen.rows[0].data,
-			    output.screen.rows[0].length, error)
-			    || !line_output(line_context,
-			    output.screen.rows[0].data,
-			    output.screen.rows[0].length, error)
-			    || !yt_clock_read(&state->game.clock, &time_now, error)
-			    || !yt_clock_read(&state->game.clock, &date_now, error))
+			    &empty, true, false, &output))
+				return false;
+			if (!yt_news_append_bytes(output.screen.rows[0].data,
+			    output.screen.rows[0].length, error))
+				return false;
+			if (!line_output(line_context, output.screen.rows[0].data,
+			    output.screen.rows[0].length, error))
+				return false;
+			if (!yt_clock_read(&state->game.clock, &time_now, error))
+				return false;
+			if (!yt_clock_read(&state->game.clock, &date_now, error))
 				return false;
 			yt_format_time(&time_now, time_text);
 			yt_format_date(&date_now, date_text);
@@ -338,25 +359,28 @@ yt_maintenance_players_run(struct maint_state *state,
 			date_value.data = (const uint8_t *)date_text;
 			date_value.length = strlen(date_text);
 			if (!yt_maintenance_compose_player_aging(&name, &time_value,
-			    &date_value, true, false, &output)
-			    || !yt_radio_append_maintenance_bytes(output.radio_message,
+			    &date_value, true, false, &output))
+				return false;
+			if (!yt_radio_append_maintenance_bytes(output.radio_message,
 			    output.radio_length, -2.0f, (float)record, error))
 				return false;
 			continue;
 		}
 		if (action == YT_MAINTENANCE_PLAYER_DELETE) {
 			if (!yt_maintenance_compose_player_aging(&name, &empty,
-			    &empty, false, true, &output)
-			    || !yt_news_append_bytes(output.screen.rows[0].data,
-			    output.screen.rows[0].length, error)
-			    || !line_output(line_context,
-			    output.screen.rows[0].data,
-			    output.screen.rows[0].length, error)
-			    || !yt_maintenance_expire_player(&state->game,
+			    &empty, false, true, &output))
+				return false;
+			if (!yt_news_append_bytes(output.screen.rows[0].data,
+			    output.screen.rows[0].length, error))
+				return false;
+			if (!line_output(line_context, output.screen.rows[0].data,
+			    output.screen.rows[0].length, error))
+				return false;
+			if (!yt_maintenance_expire_player(&state->game,
 			    state->player_sector, state->player_cloak,
-			    (size_t)state->player_count + 2U, record, &player,
-			    error)
-			    || !yt_maintenance_remove_alias(player.name, error))
+			    (size_t)state->player_count + 2U, record, &player, error))
+				return false;
+			if (!yt_maintenance_remove_alias(player.name, error))
 				return false;
 		}
 	}
@@ -434,12 +458,24 @@ immediate_death_cleanup_impl(struct maint_state *state, int victim_record,
 		return false;
 	victim->team = 0;
 	if (!yt_record_set_number(&victim->record, YT_F45,
-	    (float)victim->killed_by)
-	    || !yt_record_set_number(&victim->record, YT_F57,
-	    (float)victim->sector)
-	    || !yt_record_set_number(&victim->record, YT_F89,
-	    (float)victim->team)
-	    || !yt_record_set_number(&victim->record, YT_F121,
+	    (float)victim->killed_by)) {
+		set_error(error, YT_RANGE, "encode immediate death player",
+		    "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_record_set_number(&victim->record, YT_F57,
+	    (float)victim->sector)) {
+		set_error(error, YT_RANGE, "encode immediate death player",
+		    "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_record_set_number(&victim->record, YT_F89,
+	    (float)victim->team)) {
+		set_error(error, YT_RANGE, "encode immediate death player",
+		    "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_record_set_number(&victim->record, YT_F121,
 	    victim->ground_forces)) {
 		set_error(error, YT_RANGE, "encode immediate death player",
 		    "YTDATA.DAT");
