@@ -11,6 +11,7 @@
 #include "yt_platform.h"
 #include "yt_portname.h"
 #include "yt_text.h"
+#include "text_test_support.h"
 
 #include <stdio.h>
 #include <stdlib.h>

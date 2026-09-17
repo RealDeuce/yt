@@ -4,6 +4,7 @@
 #include "yt_platform.h"
 #include "yt_random.h"
 #include "yt_text.h"
+#include "text_test_support.h"
 #include "file_viewer_test_model.h"
 
 #include <errno.h>

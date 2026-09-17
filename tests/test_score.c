@@ -17,6 +17,7 @@
 #include "config_test_support.h"
 #include "yt_score_format.h"
 #include "yt_text.h"
+#include "text_test_support.h"
 
 #include <math.h>
 #include <stdio.h>

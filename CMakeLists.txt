@@ -247,6 +247,7 @@ if(BUILD_TESTING)
 
     yt_add_test(test_qb tests/test_qb.c yt_core)
     yt_add_test(test_data tests/test_data.c yt_core)
+    target_sources(test_data PRIVATE tests/text_test_support.c)
     target_compile_definitions(test_data PRIVATE
         YT_DATA_DIR="${YT_GENERATED_DATA_DIR}/")
     add_dependencies(test_data yt-data)
@@ -285,6 +286,7 @@ if(BUILD_TESTING)
     yt_add_test(test_ytconfig_output tests/test_ytconfig_output.c yt_game)
     yt_add_test(test_score tests/test_score.c yt_game)
     target_sources(test_score PRIVATE
+        tests/text_test_support.c
         tests/config_test_support.c
         tests/direct_attack_model.c
 	    tests/hostile_attack_model.c
@@ -351,12 +353,14 @@ if(BUILD_TESTING)
     add_test(NAME test_assets COMMAND test_assets)
 
     yt_add_test(test_clean_install tests/test_clean_install.c yt_game)
+    target_sources(test_clean_install PRIVATE tests/text_test_support.c)
     target_compile_definitions(test_clean_install PRIVATE
         YT_INIT_EXE="$<TARGET_FILE:yt-init>")
     add_dependencies(test_clean_install yt-init ytmaint)
 
     yt_add_test(test_utilities tests/test_utilities.c yt_game)
-    target_sources(test_utilities PRIVATE tests/config_test_support.c)
+    target_sources(test_utilities PRIVATE tests/config_test_support.c
+        tests/text_test_support.c)
     if(NOT WIN32)
         target_compile_definitions(test_utilities PRIVATE _XOPEN_SOURCE=700)
     endif()

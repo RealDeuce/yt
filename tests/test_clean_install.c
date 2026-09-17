@@ -1,5 +1,6 @@
 #include "yt_game.h"
 #include "yt_text.h"
+#include "text_test_support.h"
 
 #include <stdio.h>
 #include <stdlib.h>
