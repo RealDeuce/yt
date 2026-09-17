@@ -129,12 +129,54 @@ test_emergency_warp_persistence(void)
 	CHECK(remove(path) == 0);
 }
 
+static void
+test_action_finalizer_persistence(void)
+{
+	static const char path[] = "SESSION-ACTION-FINALIZER.DAT";
+	static const uint32_t samples[] = {0U};
+	static const uint8_t cloak_dirty_zero[4] = {0x00, 0x00, 0xa3, 0x00};
+	struct entropy_sequence sequence = {samples, 1U, 0U};
+	struct yt_door door;
+	struct yt_session session;
+	struct yt_player player;
+	struct yt_record persisted;
+	struct yt_error error;
+
+	(void)remove(path);
+	memset(&door, 0, sizeof(door));
+	memset(&session, 0, sizeof(session));
+	memset(&player, 0, sizeof(player));
+	session.door = &door;
+	session.active_player_record = 2;
+	session.pager.nonstop = -1.0f;
+	door.game.config.sector_offset = 2.0f;
+	yt_test_random_use_provider(&door.game.random, sequence_fill, &sequence);
+	yt_record_blank(&player.record);
+	player.turns = 26.0f;
+	player.cloak = 0.005f;
+	yt_error_clear(&error);
+	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
+	    &error));
+	write_player(&door.game.database, &player, &error);
+	CHECK(yt_session_finalize_action(&session, &error));
+	CHECK(sequence.position == 1U);
+	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
+	yt_player_decode(&player, &persisted);
+	CHECK(player.turns == 25.0f);
+	CHECK(player.cloak == 0.0f);
+	CHECK(memcmp(persisted.bytes + YT_F125, cloak_dirty_zero,
+	    sizeof(cloak_dirty_zero)) == 0);
+	yt_database_close(&door.game.database);
+	CHECK(remove(path) == 0);
+}
+
 int
 main(void)
 {
 	session_test_runtime_start();
 	test_direct_warp_decline();
 	test_emergency_warp_persistence();
+	test_action_finalizer_persistence();
 	session_test_runtime_stop();
 	return failures == 0 ? 0 : 1;
 }

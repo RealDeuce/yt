@@ -31,42 +31,38 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 	static const float cloak_display_scale = 50.0f;
 	static const float turn_divisor = 25.0f;
 	static const float xannor_threshold = 0.99f;
+	static const uint8_t cloak_dirty_zero[4] = {0x00, 0x00, 0xa3, 0x00};
 	int xannor_provoker;
 	float quotient;
 	float draw;
 	char number[64];
 	char row[128];
-	uint8_t turn_raw[4];
 	bool anti_cloak_allows;
 
 	if (!yt_session_spy_sweep(session, error)
 	    || !session_reload_player(session, error))
 		return false;
-	memcpy(turn_raw, session->player.record.bytes + YT_F49,
-	    sizeof(turn_raw));
-	if (!yt_action_finalizer_turn_raw(turn_raw, turn_raw))
-		return false;
-	session->player.turns = qb_mbf32_decode(turn_raw);
-	if (!yt_record_set_raw_number(&session->player.record, YT_F49, turn_raw))
+	session->player.turns = qb_single_subtract(session->player.turns, 1.0f);
+	if (!yt_record_set_number(&session->player.record, YT_F49,
+	    session->player.turns))
 		return false;
 	quotient = qb_single_divide(session->player.turns, turn_divisor);
 	anti_cloak_allows = !session->earth.anti_cloak_enabled;
 	if (quotient == floorf(quotient) && anti_cloak_allows) {
 		float display;
 		float saved_foreground;
-		uint8_t cloak_arithmetic[4];
-		uint8_t cloak_result[4];
-		bool cloak_clamped;
 		int cache_record;
 
-		memcpy(cloak_result, session->player.record.bytes + YT_F125,
-		    sizeof(cloak_result));
-		if (!yt_action_finalizer_cloak_raw(cloak_result,
-		    cloak_arithmetic, cloak_result, &cloak_clamped))
-			return false;
-		session->player.cloak = qb_mbf32_decode(cloak_result);
-		if (!yt_record_set_raw_number(&session->player.record, YT_F125,
-		    cloak_result))
+		session->player.cloak = qb_single_subtract(session->player.cloak,
+		    0.009999999776482582f);
+		if (session->player.cloak < 0.0f) {
+			session->player.cloak = 0.0f;
+			if (!yt_record_set_raw_number(&session->player.record,
+			    YT_F125, cloak_dirty_zero))
+				return false;
+		}
+		else if (!yt_record_set_number(&session->player.record, YT_F125,
+		    session->player.cloak))
 			return false;
 		cache_record = session_record(session);
 		(void)yt_player_cache_set_raw(&session->player_cache, cache_record,

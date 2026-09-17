@@ -391,9 +391,6 @@ enum yt_bribe_forced_admission yt_bribe_forced_admit(
 enum yt_sector_mine_admission yt_sector_mine_admit(
     float carried, float amount);
 bool yt_no_turn_gate_denied(float turns);
-bool yt_action_finalizer_turn_raw(const uint8_t before[4], uint8_t after[4]);
-bool yt_action_finalizer_cloak_raw(const uint8_t before[4],
-    uint8_t arithmetic[4], uint8_t result[4], bool *clamped);
 bool yt_port_link_missing(float link);
 float yt_port_selected_expression(float port_offset, float logical_link);
 enum yt_computer_port_selection_route {
