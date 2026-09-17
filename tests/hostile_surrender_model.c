@@ -35,7 +35,7 @@ surrender_double_sub(double left, double right)
 
 bool
 test_hostile_attack_surrender_run(
-    struct yt_hostile_surrender_state *state,
+    struct test_hostile_surrender_state *state,
     const struct test_hostile_surrender_ops *ops, void *context,
     struct yt_error *error)
 {

@@ -1,7 +1,45 @@
 #ifndef TEST_HOSTILE_ATTACK_MODEL_H
 #define TEST_HOSTILE_ATTACK_MODEL_H
 
+#include "hostile_surrender_model.h"
 #include "yt_game.h"
+
+enum test_hostile_attack_persistence_route {
+	YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL,
+	YT_HOSTILE_ATTACK_PERSISTENCE_FATAL,
+};
+
+struct test_hostile_attack_persistence_state {
+	int current_player_record;
+	int current_sector;
+	double ship_fighters;
+	float shields;
+	double deployed_fighters;
+	double defender_loss;
+	float old_owner;
+	const uint8_t *cached_player_name;
+	size_t cached_player_name_length;
+	const uint8_t *owner_label;
+	size_t owner_label_length;
+	struct yt_player current;
+	struct yt_sector sector;
+	enum test_hostile_attack_persistence_route route;
+	bool sector_written;
+	bool mercenaries_hurt;
+};
+
+struct test_hostile_attack_tail_state {
+	int current_player_record;
+	float old_owner;
+	double defender_loss;
+	double deployed_fighters;
+	double ship_fighters;
+	float turns_per_day;
+	float headquarters;
+	const uint8_t *cached_player_name;
+	size_t cached_player_name_length;
+	struct yt_player current;
+};
 
 struct test_hostile_attack_persistence_ops {
 	bool (*read_player)(void *context, int player_record,
@@ -19,7 +57,7 @@ struct test_hostile_attack_persistence_ops {
 };
 
 bool test_hostile_attack_persistence_run(
-    struct yt_hostile_attack_persistence_state *state,
+    struct test_hostile_attack_persistence_state *state,
     const struct test_hostile_attack_persistence_ops *ops, void *context,
     struct yt_error *error);
 
@@ -43,7 +81,8 @@ struct test_hostile_attack_tail_ops {
 	bool (*victory)(void *context, struct yt_error *error);
 };
 
-bool test_hostile_attack_tail_run(struct yt_hostile_attack_tail_state *state,
+bool test_hostile_attack_tail_run(
+    struct test_hostile_attack_tail_state *state,
     const struct test_hostile_attack_tail_ops *ops, void *context,
     struct yt_error *error);
 
@@ -90,9 +129,9 @@ struct test_hostile_attack_combat_state {
 	bool surrender_checked;
 	bool surrendered;
 	bool spill_called;
-	struct yt_hostile_surrender_state surrender;
-	struct yt_hostile_attack_persistence_state persistence;
-	struct yt_hostile_attack_tail_state tail;
+	struct test_hostile_surrender_state surrender;
+	struct test_hostile_attack_persistence_state persistence;
+	struct test_hostile_attack_tail_state tail;
 	enum test_hostile_attack_combat_route route;
 	bool complete;
 };
@@ -106,7 +145,8 @@ struct test_hostile_attack_combat_ops {
 	bool (*random)(void *context, float *value, struct yt_error *error);
 	void (*store_ship)(void *context, double ship_fighters);
 	bool (*surrender)(void *context,
-	    struct yt_hostile_surrender_state *state, struct yt_error *error);
+	    struct test_hostile_surrender_state *state,
+	    struct yt_error *error);
 	bool (*present)(void *context, const uint8_t *text, size_t length,
 	    enum test_hostile_attack_combat_output_kind kind,
 	    struct yt_error *error);
@@ -116,9 +156,10 @@ struct test_hostile_attack_combat_ops {
 	bool (*spill)(void *context, double *fighters, float *shields,
 	    struct yt_error *error);
 	bool (*persistence)(void *context,
-	    struct yt_hostile_attack_persistence_state *state,
+	    struct test_hostile_attack_persistence_state *state,
 	    struct yt_error *error);
-	bool (*tail)(void *context, struct yt_hostile_attack_tail_state *state,
+	bool (*tail)(void *context,
+	    struct test_hostile_attack_tail_state *state,
 	    struct yt_error *error);
 };
 

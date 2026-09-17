@@ -4,9 +4,64 @@
 
 #include <stdio.h>
 #include <string.h>
+
+struct hostile_surrender {
+	int current_player_record;
+	float old_owner;
+	double attacker_loss;
+	double defender_loss;
+	double deployed_fighters;
+	const uint8_t *cached_player_name;
+	size_t cached_player_name_length;
+	const uint8_t *real_first_name;
+	size_t real_first_name_length;
+	struct yt_player current;
+	double ship_fighters;
+	double deployed_remaining;
+	float fighter_owner;
+	bool accepted;
+};
+
+enum hostile_persistence_route {
+	HOSTILE_PERSISTENCE_NORMAL,
+	HOSTILE_PERSISTENCE_FATAL,
+};
+
+struct hostile_persistence {
+	int current_player_record;
+	int current_sector;
+	double ship_fighters;
+	float shields;
+	double deployed_fighters;
+	double defender_loss;
+	float old_owner;
+	const uint8_t *cached_player_name;
+	size_t cached_player_name_length;
+	const uint8_t *owner_label;
+	size_t owner_label_length;
+	struct yt_player current;
+	struct yt_sector sector;
+	enum hostile_persistence_route route;
+	bool sector_written;
+	bool mercenaries_hurt;
+};
+
+struct hostile_tail {
+	int current_player_record;
+	float old_owner;
+	double defender_loss;
+	double deployed_fighters;
+	double ship_fighters;
+	float turns_per_day;
+	float headquarters;
+	const uint8_t *cached_player_name;
+	size_t cached_player_name_length;
+	struct yt_player current;
+};
+
 static bool
 hostile_surrender_run(struct yt_session *session,
-    struct yt_hostile_surrender_state *state, struct yt_error *error)
+    struct hostile_surrender *state, struct yt_error *error)
 {
 	static const uint8_t radio[] = "RADIO MESSAGE COMING IN!";
 	static const uint8_t captain_prefix[] =
@@ -149,7 +204,7 @@ hostile_surrender_run(struct yt_session *session,
 
 static bool
 hostile_attack_persistence_run(struct yt_session *session,
-    struct yt_hostile_attack_persistence_state *state,
+    struct hostile_persistence *state,
     struct yt_error *error)
 {
 	static const uint8_t destroyed[] = " destroyed";
@@ -159,7 +214,7 @@ hostile_attack_persistence_run(struct yt_session *session,
 	size_t position = 0U;
 	int loss_length;
 
-	state->route = YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL;
+	state->route = HOSTILE_PERSISTENCE_NORMAL;
 	state->sector_written = false;
 	state->mercenaries_hurt = false;
 	if (!session_read_combat_player(session, state->current_player_record,
@@ -181,7 +236,7 @@ hostile_attack_persistence_run(struct yt_session *session,
 		return false;
 	state->sector_written = true;
 	if (state->ship_fighters < 1.0 && state->shields < 1.0f) {
-		state->route = YT_HOSTILE_ATTACK_PERSISTENCE_FATAL;
+		state->route = HOSTILE_PERSISTENCE_FATAL;
 		if (!yt_session_common_fatal_self(session, error))
 			return false;
 		return true;
@@ -216,7 +271,7 @@ hostile_attack_persistence_run(struct yt_session *session,
 
 static bool
 hostile_attack_tail_run(struct yt_session *session,
-    struct yt_hostile_attack_tail_state *state,
+    struct hostile_tail *state,
     const char *cached_player_name, struct yt_error *error)
 {
 	uint8_t display[240];
@@ -303,9 +358,9 @@ yt_session_attack_deployed(struct yt_session *session,
 	char defender_number[64];
 	struct yt_sector opened_sector;
 	struct yt_player current;
-	struct yt_hostile_surrender_state surrender;
-	struct yt_hostile_attack_persistence_state persistence;
-	struct yt_hostile_attack_tail_state tail;
+	struct hostile_surrender surrender;
+	struct hostile_persistence persistence;
+	struct hostile_tail tail;
 	size_t cached_player_name_length;
 	size_t lost_length = 0U;
 	size_t destroyed_length = 0U;
@@ -368,7 +423,7 @@ yt_session_attack_deployed(struct yt_session *session,
 		}
 		ratio = remaining_attacker / remaining_defender;
 		if (!surrender_checked && allow_surrender && ratio > 10.0) {
-			surrender = (struct yt_hostile_surrender_state){
+			surrender = (struct hostile_surrender){
 				.current_player_record = current_player_record,
 				.old_owner = old_owner,
 				.attacker_loss = attacker_loss,
@@ -482,7 +537,7 @@ yt_session_attack_deployed(struct yt_session *session,
 	}
 	sector->fighters = (float)deployed_remaining;
 	session->combat.deployed_fighters = deployed_remaining;
-	persistence = (struct yt_hostile_attack_persistence_state){
+	persistence = (struct hostile_persistence){
 		.current_player_record = current_player_record,
 		.current_sector = current_sector,
 		.ship_fighters = ship_fighters,
@@ -501,7 +556,7 @@ yt_session_attack_deployed(struct yt_session *session,
 	    error);
 	current = persistence.current;
 	ship_fighters = persistence.ship_fighters;
-	if (persistence.route != YT_HOSTILE_ATTACK_PERSISTENCE_FATAL) {
+	if (persistence.route != HOSTILE_PERSISTENCE_FATAL) {
 		session->player = persistence.current;
 		(void)snprintf(session->player.name,
 		    sizeof(session->player.name), "%s",
@@ -515,9 +570,9 @@ yt_session_attack_deployed(struct yt_session *session,
 		session->combat.mercenaries_hurt = true;
 	if (!child_result)
 		return false;
-	if (persistence.route == YT_HOSTILE_ATTACK_PERSISTENCE_FATAL)
+	if (persistence.route == HOSTILE_PERSISTENCE_FATAL)
 		return true;
-	tail = (struct yt_hostile_attack_tail_state){
+	tail = (struct hostile_tail){
 		.current_player_record = current_player_record,
 		.old_owner = old_owner,
 		.defender_loss = defender_loss,

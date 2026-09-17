@@ -22124,7 +22124,7 @@ direct_warp_attack_surrender_ops;
 
 static bool
 direct_warp_attack_combat_surrender(void *context,
-    struct yt_hostile_surrender_state *state, struct yt_error *error)
+    struct test_hostile_surrender_state *state, struct yt_error *error)
 {
 	return test_hostile_attack_surrender_run(state,
 	    &direct_warp_attack_surrender_ops, context, error);
@@ -22511,7 +22511,7 @@ direct_warp_attack_persistence_ops = {
 
 static bool
 direct_warp_attack_combat_persistence(void *context,
-    struct yt_hostile_attack_persistence_state *state,
+    struct test_hostile_attack_persistence_state *state,
     struct yt_error *error)
 {
 	return test_hostile_attack_persistence_run(state,
@@ -22708,7 +22708,7 @@ static const struct test_hostile_attack_tail_ops direct_warp_attack_tail_ops = {
 
 static bool
 direct_warp_attack_combat_tail(void *context,
-    struct yt_hostile_attack_tail_state *state, struct yt_error *error)
+    struct test_hostile_attack_tail_state *state, struct yt_error *error)
 {
 	return test_hostile_attack_tail_run(state, &direct_warp_attack_tail_ops,
 	    context, error);
@@ -28917,7 +28917,7 @@ test_xannor_attack_tail_clearance_join(void)
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
-	struct yt_hostile_attack_tail_state tail;
+	struct test_hostile_attack_tail_state tail;
 	struct yt_record record;
 	struct yt_error error;
 	uint8_t remote[1024];
@@ -28953,7 +28953,7 @@ test_xannor_attack_tail_clearance_join(void)
 		(void)yt_record_set_number(&record, YT_F125, 0.0f);
 		yt_player_decode(&join.attack_player, &record);
 		fixture.emergency_player = join.attack_player;
-		tail = (struct yt_hostile_attack_tail_state){
+		tail = (struct test_hostile_attack_tail_state){
 			.current_player_record = 2,
 			.old_owner = -1.0f,
 			.defender_loss = 512000.0,

@@ -814,61 +814,6 @@ bool yt_radio_tuning_row(const struct yt_player *player, uint8_t *row,
 bool yt_direct_attack_radio_text(const uint8_t *name, size_t name_length,
     double defender_loss, uint8_t *text, size_t capacity, size_t *length);
 
-struct yt_hostile_surrender_state {
-	int current_player_record;
-	float old_owner;
-	double attacker_loss;
-	double defender_loss;
-	double deployed_fighters;
-	const uint8_t *cached_player_name;
-	size_t cached_player_name_length;
-	const uint8_t *real_first_name;
-	size_t real_first_name_length;
-	struct yt_player current;
-	double ship_fighters;
-	double deployed_remaining;
-	float fighter_owner;
-	bool accepted;
-};
-
-enum yt_hostile_attack_persistence_route {
-	YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL,
-	YT_HOSTILE_ATTACK_PERSISTENCE_FATAL,
-};
-
-struct yt_hostile_attack_persistence_state {
-	int current_player_record;
-	int current_sector;
-	double ship_fighters;
-	float shields;
-	double deployed_fighters;
-	double defender_loss;
-	float old_owner;
-	const uint8_t *cached_player_name;
-	size_t cached_player_name_length;
-	const uint8_t *owner_label;
-	size_t owner_label_length;
-	struct yt_player current;
-	struct yt_sector sector;
-	enum yt_hostile_attack_persistence_route route;
-	bool sector_written;
-	bool mercenaries_hurt;
-};
-
-struct yt_hostile_attack_tail_state {
-	int current_player_record;
-	float old_owner;
-	double defender_loss;
-	double deployed_fighters;
-	double ship_fighters;
-	float turns_per_day;
-	float headquarters;
-	const uint8_t *cached_player_name;
-	size_t cached_player_name_length;
-	struct yt_player current;
-};
-
-
 bool yt_direct_attack_team_row(const uint8_t *name, size_t name_length,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_direct_attack_candidate_prompt(const uint8_t *name,

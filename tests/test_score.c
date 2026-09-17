@@ -9346,7 +9346,7 @@ static const struct test_hostile_surrender_ops hostile_surrender_ops = {
 
 static void
 hostile_surrender_fixture(struct hostile_surrender_tape *tape,
-    struct yt_hostile_surrender_state *state, float owner,
+    struct test_hostile_surrender_state *state, float owner,
     enum yt_hostile_surrender_answer answer)
 {
 	static const uint8_t cached_name[] = {'A', 0, 'B'};
@@ -9358,7 +9358,7 @@ hostile_surrender_fixture(struct hostile_surrender_tape *tape,
 	    sizeof(tape->player.record.bytes));
 	tape->player.fighters = 11.0f;
 	tape->player.sector = 733.0f;
-	*state = (struct yt_hostile_surrender_state){
+	*state = (struct test_hostile_surrender_state){
 		.current_player_record = 2,
 		.old_owner = owner,
 		.attacker_loss = 0.0,
@@ -9409,7 +9409,7 @@ check_hostile_surrender_transaction(void)
 	static const uint8_t selector_five[4] = {0, 0, 0x20U, 0x83U};
 	static const uint8_t selector_one[4] = {0, 0, 0, 0x81U};
 	struct hostile_surrender_tape tape;
-	struct yt_hostile_surrender_state state;
+	struct test_hostile_surrender_state state;
 	struct yt_error error;
 	size_t failure;
 
@@ -9666,7 +9666,7 @@ hostile_persistence_ops = {
 
 static void
 hostile_persistence_fixture(struct hostile_persistence_tape *tape,
-    struct yt_hostile_attack_persistence_state *state)
+    struct test_hostile_attack_persistence_state *state)
 {
 	static const uint8_t cached_name[] = {'A', 0, 'B'};
 	static const uint8_t owner_label[] = {'X', 0, 'Y'};
@@ -9684,7 +9684,7 @@ hostile_persistence_fixture(struct hostile_persistence_tape *tape,
 	    sizeof(tape->sector.record.bytes));
 	tape->sector.fighters = 12.0f;
 	tape->sector.fighter_owner = 9.0f;
-	*state = (struct yt_hostile_attack_persistence_state){
+	*state = (struct test_hostile_attack_persistence_state){
 		.current_player_record = 2,
 		.current_sector = 733,
 		.ship_fighters = 7.5,
@@ -9725,7 +9725,7 @@ check_hostile_attack_persistence_transaction(void)
 		'X', 0, 'Y',
 	};
 	struct hostile_persistence_tape tape;
-	struct yt_hostile_attack_persistence_state state;
+	struct test_hostile_attack_persistence_state state;
 	struct yt_record expected_player;
 	struct yt_record expected_sector;
 	struct yt_error error;
@@ -9929,7 +9929,7 @@ static const struct test_hostile_attack_tail_ops hostile_tail_ops = {
 
 static void
 hostile_tail_fixture(struct hostile_tail_tape *tape,
-    struct yt_hostile_attack_tail_state *state)
+    struct test_hostile_attack_tail_state *state)
 {
 	static const uint8_t cached_name[] = {'A', 0, 'B'};
 
@@ -9941,7 +9941,7 @@ hostile_tail_fixture(struct hostile_tail_tape *tape,
 	tape->player.fighters = 21.0f;
 	tape->player.turns = 98.0f;
 	tape->player.sector = 7.0f;
-	*state = (struct yt_hostile_attack_tail_state){
+	*state = (struct test_hostile_attack_tail_state){
 		.current_player_record = 2,
 		.old_owner = -1.0f,
 		.defender_loss = 512000.0,
@@ -9980,7 +9980,7 @@ check_hostile_attack_tail_transaction(void)
 	static const uint8_t expected_defeated[] =
 	    "You defeated all the fighters and have 21 left.";
 	struct hostile_tail_tape tape;
-	struct yt_hostile_attack_tail_state state;
+	struct test_hostile_attack_tail_state state;
 	struct yt_record expected_player;
 	struct yt_error error;
 	size_t failure;
@@ -10088,8 +10088,8 @@ struct hostile_combat_tape {
 	double cached_deployed_fighters;
 	size_t player_cache_calls;
 	size_t sector_cache_calls;
-	struct yt_hostile_attack_persistence_state persistence_input;
-	struct yt_hostile_attack_tail_state tail_input;
+	struct test_hostile_attack_persistence_state persistence_input;
+	struct test_hostile_attack_tail_state tail_input;
 	uint8_t rows[5][192];
 	size_t row_lengths[5];
 	uint8_t sound_selector_raw[4];
@@ -10192,7 +10192,7 @@ hostile_combat_store_ship(void *context, double ship_fighters)
 
 static bool
 hostile_combat_surrender(void *context,
-    struct yt_hostile_surrender_state *state, struct yt_error *error)
+    struct test_hostile_surrender_state *state, struct yt_error *error)
 {
 	struct hostile_combat_tape *tape = context;
 
@@ -10279,7 +10279,7 @@ hostile_combat_spill(void *context, double *fighters, float *shields,
 
 static bool
 hostile_combat_persistence(void *context,
-    struct yt_hostile_attack_persistence_state *state,
+    struct test_hostile_attack_persistence_state *state,
     struct yt_error *error)
 {
 	struct hostile_combat_tape *tape = context;
@@ -10304,7 +10304,7 @@ hostile_combat_persistence(void *context,
 
 static bool
 hostile_combat_tail(void *context,
-    struct yt_hostile_attack_tail_state *state, struct yt_error *error)
+    struct test_hostile_attack_tail_state *state, struct yt_error *error)
 {
 	struct hostile_combat_tape *tape = context;
 
@@ -10340,9 +10340,9 @@ hostile_combat_fixture(struct hostile_combat_tape *tape,
 {
 	static const uint8_t cached_name[] = {'A', 0, 'B'};
 	static const uint8_t owner_label[] = {'X', 0, 'Y'};
-	struct yt_hostile_surrender_state surrender;
-	struct yt_hostile_attack_persistence_state persistence;
-	struct yt_hostile_attack_tail_state tail;
+	struct test_hostile_surrender_state surrender;
+	struct test_hostile_attack_persistence_state persistence;
+	struct test_hostile_attack_tail_state tail;
 
 	memset(tape, 0, sizeof(*tape));
 	hostile_surrender_fixture(&tape->surrender_tape, &surrender, 2.0f,

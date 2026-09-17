@@ -44,7 +44,7 @@ attack_append(uint8_t *output, size_t capacity, size_t *position,
 
 bool
 test_hostile_attack_persistence_run(
-    struct yt_hostile_attack_persistence_state *state,
+    struct test_hostile_attack_persistence_state *state,
     const struct test_hostile_attack_persistence_ops *ops, void *context,
     struct yt_error *error)
 {
@@ -201,7 +201,7 @@ test_hostile_attack_combat_run(
 		ratio = remaining_attacker / remaining_defender;
 		if (!state->surrender_checked && state->allow_surrender
 		    && ratio > 10.0) {
-			state->surrender = (struct yt_hostile_surrender_state){
+			state->surrender = (struct test_hostile_surrender_state){
 				.current_player_record = state->current_player_record,
 				.old_owner = state->old_owner,
 				.attacker_loss = state->attacker_loss,
@@ -310,7 +310,7 @@ test_hostile_attack_combat_run(
 	state->sector.fighters = (float)state->deployed_remaining;
 	ops->cache_sector(context, &state->sector, state->deployed_remaining);
 	state->persistence =
-	    (struct yt_hostile_attack_persistence_state){
+	    (struct test_hostile_attack_persistence_state){
 		.current_player_record = state->current_player_record,
 		.current_sector = state->current_sector,
 		.ship_fighters = state->ship_fighters,
@@ -341,7 +341,7 @@ test_hostile_attack_combat_run(
 		state->complete = true;
 		return true;
 	}
-	state->tail = (struct yt_hostile_attack_tail_state){
+	state->tail = (struct test_hostile_attack_tail_state){
 		.current_player_record = state->current_player_record,
 		.old_owner = state->old_owner,
 		.defender_loss = state->defender_loss,
@@ -365,7 +365,7 @@ test_hostile_attack_combat_run(
 
 
 bool
-test_hostile_attack_tail_run(struct yt_hostile_attack_tail_state *state,
+test_hostile_attack_tail_run(struct test_hostile_attack_tail_state *state,
     const struct test_hostile_attack_tail_ops *ops, void *context,
     struct yt_error *error)
 {

@@ -21,6 +21,23 @@ enum test_hostile_surrender_sound_kind {
 	YT_HOSTILE_SURRENDER_JOINED_SOUND,
 };
 
+struct test_hostile_surrender_state {
+	int current_player_record;
+	float old_owner;
+	double attacker_loss;
+	double defender_loss;
+	double deployed_fighters;
+	const uint8_t *cached_player_name;
+	size_t cached_player_name_length;
+	const uint8_t *real_first_name;
+	size_t real_first_name_length;
+	struct yt_player current;
+	double ship_fighters;
+	double deployed_remaining;
+	float fighter_owner;
+	bool accepted;
+};
+
 struct test_hostile_surrender_ops {
 	bool (*read_player)(void *context, int player_record,
 	    struct yt_player *player, struct yt_error *error);
@@ -41,7 +58,7 @@ struct test_hostile_surrender_ops {
 };
 
 bool test_hostile_attack_surrender_run(
-    struct yt_hostile_surrender_state *state,
+    struct test_hostile_surrender_state *state,
     const struct test_hostile_surrender_ops *ops, void *context,
     struct yt_error *error);
 
