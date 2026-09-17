@@ -11,14 +11,11 @@ void
 attach_database_get_fault(struct yt_session *session, struct yt_error *error,
     enum yt_basic_fault_site site)
 {
-	const struct yt_database_get_result *result =
-	    &session->door->game.database.last_get;
-	bool raised = result->outcome == YT_DATABASE_GET_RECORD_ERROR
-	    || result->outcome == YT_DATABASE_GET_SEEK_ERROR
-	    || result->outcome == YT_DATABASE_GET_READ_ERROR;
+	uint16_t basic_error =
+	    session->door->game.database.last_get_basic_error;
 
-	if (!raised || !yt_error_attach_basic_fault_number(error, site,
-	    result->basic_error))
+	if (basic_error == 0U
+	    || !yt_error_attach_basic_fault_number(error, site, basic_error))
 		(void)yt_error_attach_basic_fault(error, site);
 }
 
@@ -26,15 +23,11 @@ void
 attach_database_put_fault(struct yt_session *session, struct yt_error *error,
     enum yt_basic_fault_site site)
 {
-	const struct yt_database_put_result *result =
-	    &session->door->game.database.last_put;
-	bool raised = result->outcome == YT_DATABASE_PUT_RECORD_ERROR
-	    || result->outcome == YT_DATABASE_PUT_SEEK_ERROR
-	    || result->outcome == YT_DATABASE_PUT_WRITE_ERROR
-	    || result->outcome == YT_DATABASE_PUT_REJECTED_SHORT;
+	uint16_t basic_error =
+	    session->door->game.database.last_put_basic_error;
 
-	if (raised && !yt_error_attach_basic_fault_number(error, site,
-	    result->basic_error))
+	if (basic_error != 0U
+	    && !yt_error_attach_basic_fault_number(error, site, basic_error))
 		(void)yt_error_attach_basic_fault(error, site);
 }
 bool

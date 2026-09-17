@@ -885,11 +885,7 @@ test_files(void)
 	CHECK(yt_database_flush(&database, &error));
 	CHECK(yt_database_read(&database, 1, &after, &error));
 	CHECK(memcmp(before.bytes, after.bytes, sizeof(before.bytes)) == 0);
-	CHECK(database.last_get.outcome == YT_DATABASE_GET_RETURNED
-	    && database.last_get.accepted == YT_RECORD_SIZE
-	    && database.last_get.full_record
-	    && database.last_get.terminal_position == YT_RECORD_SIZE
-	    && database.last_get.registered && database.last_get.handle_open);
+	CHECK(database.last_get_basic_error == 0U);
 	for (index = 0U; index < sizeof(replacement.bytes); ++index)
 		replacement.bytes[index] = (uint8_t)(index ^ 0xa5U);
 	after = replacement;
@@ -898,48 +894,27 @@ test_files(void)
 	CHECK(!yt_database_random_get(&database, 0U, &after, &accepted, &error)
 	    && error.status == YT_RANGE && accepted == 0U
 	    && memcmp(after.bytes, replacement.bytes, YT_RECORD_SIZE) == 0);
-	CHECK(database.last_get.outcome == YT_DATABASE_GET_RECORD_ERROR
-	    && database.last_get.basic_error == 63U
-	    && database.last_get.current_record == 0U
-	    && database.last_get.record_index == 0U
-	    && database.last_get.desired_offset == 0
-	    && database.last_get.registered && database.last_get.handle_open);
+	CHECK(database.last_get_basic_error == 63U);
 	after = replacement;
 	accepted = 99U;
 	yt_error_clear(&error);
 	CHECK(!yt_database_random_get(&database, 0x1000000U, &after, &accepted,
 	    &error) && error.status == YT_RANGE && accepted == 0U
 	    && memcmp(after.bytes, replacement.bytes, YT_RECORD_SIZE) == 0
-	    && database.last_get.outcome == YT_DATABASE_GET_RECORD_ERROR
-	    && database.last_get.basic_error == 63U);
+	    && database.last_get_basic_error == 63U);
 	CHECK(yt_database_random_get(&database, 0xFFFFFFU, &after, &accepted,
-	    &error) && accepted == 0U
-	    && database.last_get.outcome == YT_DATABASE_GET_RETURNED
-	    && database.last_get.current_record == 0xFFFFFFU
-	    && database.last_get.record_index == 0xFFFFFEU
-	    && database.last_get.desired_offset
-	    == (int64_t)(0xFFFFFFU - 1U) * YT_RECORD_SIZE
-	    && database.last_get.terminal_position
-	    == (int64_t)(0xFFFFFFU - 1U) * YT_RECORD_SIZE);
+	    &error) && accepted == 0U && database.last_get_basic_error == 0U);
 	accepted = 99U;
 	CHECK(!yt_database_random_put(&database, 0U, &replacement, false,
 	    &accepted, &error) && error.status == YT_RANGE && accepted == 0U
-	    && database.last_put.outcome == YT_DATABASE_PUT_RECORD_ERROR
-	    && database.last_put.basic_error == 63U
-	    && database.last_put.current_record == 0U
-	    && database.last_put.record_index == 0U
-	    && database.last_put.desired_offset == 0
-	    && database.last_put.registered && database.last_put.handle_open);
+	    && database.last_put_basic_error == 63U);
 	accepted = 99U;
 	CHECK(!yt_database_random_put(&database, 0x1000000U, &replacement,
 	    false, &accepted, &error) && error.status == YT_RANGE
-	    && accepted == 0U
-	    && database.last_put.outcome == YT_DATABASE_PUT_RECORD_ERROR
-	    && database.last_put.basic_error == 63U);
+	    && accepted == 0U && database.last_put_basic_error == 63U);
 	yt_error_clear(&error);
 	CHECK(yt_database_write_durable(&database, 1U, &replacement, &error)
-	    && database.last_put.outcome == YT_DATABASE_PUT_RETURNED
-	    && database.last_put.accepted == YT_RECORD_SIZE);
+	    && database.last_put_basic_error == 0U);
 	yt_database_close(&database);
 
 	CHECK(yt_text_append_line(text_path, (const uint8_t *)"One", 3, &error));
@@ -1035,23 +1010,14 @@ test_radio_file(void)
 	accepted = 99U;
 	CHECK(!yt_radio_file_get(&radio, 0U, &record, &accepted, &error)
 	    && accepted == 0U && error.status == YT_RANGE
-	    && radio.random.last_get.outcome == YT_DATABASE_GET_RECORD_ERROR
-	    && radio.random.last_get.basic_error == 63U
-	    && radio.random.last_get.registered
-	    && radio.random.last_get.handle_open);
+	    && radio.random.last_get_basic_error == 63U);
 	CHECK(!yt_radio_file_get(&radio, 0x1000000U, &record, &accepted,
-	    &error)
-	    && radio.random.last_get.outcome == YT_DATABASE_GET_RECORD_ERROR
-	    && radio.random.last_get.basic_error == 63U);
+	    &error) && radio.random.last_get_basic_error == 63U);
 	CHECK(!yt_radio_file_put(&radio, 0U, &record, &error)
 	    && error.status == YT_RANGE
-	    && radio.random.last_put.outcome == YT_DATABASE_PUT_RECORD_ERROR
-	    && radio.random.last_put.basic_error == 63U
-	    && radio.random.last_put.registered
-	    && radio.random.last_put.handle_open);
+	    && radio.random.last_put_basic_error == 63U);
 	CHECK(!yt_radio_file_put(&radio, 0x1000000U, &record, &error)
-	    && radio.random.last_put.outcome == YT_DATABASE_PUT_RECORD_ERROR
-	    && radio.random.last_put.basic_error == 63U);
+	    && radio.random.last_put_basic_error == 63U);
 	for (index = 0U; index < sizeof(record.bytes); ++index)
 		CHECK(record.bytes[index] == 0xffU);
 	CHECK(yt_radio_file_size(&radio, &size, &error) && size == 3U);
@@ -1066,22 +1032,12 @@ test_radio_file(void)
 	CHECK(yt_radio_file_get(&radio, 1U, &record, &accepted, &error)
 	    && accepted == sizeof(partial)
 	    && memcmp(record.bytes, partial, sizeof(partial)) == 0
-	    && radio.random.last_get.outcome == YT_DATABASE_GET_RETURNED
-	    && radio.random.last_get.current_record == 1U
-	    && radio.random.last_get.record_index == 0U
-	    && radio.random.last_get.desired_offset == 0
-	    && radio.random.last_get.terminal_position == 3
-	    && !radio.random.last_get.full_record);
+	    && radio.random.last_get_basic_error == 0U);
 	for (index = sizeof(partial); index < sizeof(record.bytes); ++index)
 		CHECK(record.bytes[index] == 0U);
 	memset(&record, 0xff, sizeof(record));
 	CHECK(yt_radio_file_get(&radio, 2U, &record, &accepted, &error)
-	    && accepted == 0U
-	    && radio.random.last_get.current_record == 2U
-	    && radio.random.last_get.record_index == 1U
-	    && radio.random.last_get.desired_offset == YT_RADIO_RECORD_SIZE
-	    && radio.random.last_get.terminal_position == YT_RADIO_RECORD_SIZE
-	    && !radio.random.last_get.full_record);
+	    && accepted == 0U && radio.random.last_get_basic_error == 0U);
 	for (index = 0U; index < sizeof(record.bytes); ++index)
 		CHECK(record.bytes[index] == 0U);
 	yt_error_clear(&error);
@@ -1104,14 +1060,7 @@ test_radio_file(void)
 	    && accepted == 0U);
 	record = written;
 	CHECK(yt_radio_file_put(&radio, next, &record, &error)
-	    && radio.random.last_put.outcome == YT_DATABASE_PUT_RETURNED
-	    && radio.random.last_put.accepted == YT_RADIO_RECORD_SIZE
-	    && radio.random.last_put.current_record == 1U
-	    && radio.random.last_put.record_index == 0U
-	    && radio.random.last_put.desired_offset == 0
-	    && radio.random.last_put.terminal_position == YT_RADIO_RECORD_SIZE
-	    && radio.random.last_put.registered
-	    && radio.random.last_put.handle_open);
+	    && radio.random.last_put_basic_error == 0U);
 	CHECK(yt_radio_file_size(&radio, &size, &error)
 	    && size == YT_RADIO_RECORD_SIZE);
 	CHECK(yt_radio_file_next_record(&radio, &next, &error) && next == 2U);

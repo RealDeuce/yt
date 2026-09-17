@@ -455,8 +455,7 @@ yt_database_close(struct yt_database *database)
 		(void)fclose(file);
 }
 
-static bool database_seek(FILE *file, int64_t absolute_offset,
-    uint16_t *dos_error, int64_t *terminal_position);
+static bool database_seek(FILE *file, int64_t absolute_offset);
 
 bool
 yt_database_read(struct yt_database *database, size_t basic_record,
@@ -486,10 +485,8 @@ database_random_get_bytes(struct yt_database *database, size_t basic_record,
 {
 	int64_t offset;
 	size_t read_count;
-	int64_t read_position;
 	int saved_errno;
-	uint16_t seek_error;
-	int64_t seek_position;
+	uint16_t dos_error;
 
 	if (accepted != NULL)
 		*accepted = 0U;
@@ -499,25 +496,15 @@ database_random_get_bytes(struct yt_database *database, size_t basic_record,
 		    database != NULL ? database->path : NULL);
 		return false;
 	}
-	memset(&database->last_get, 0, sizeof(database->last_get));
-	database->last_get.registered = true;
-	database->last_get.handle_open = true;
+	database->last_get_basic_error = 0U;
 	if (basic_record == 0U || basic_record > 0xFFFFFFU) {
-		database->last_get.outcome = YT_DATABASE_GET_RECORD_ERROR;
-		database->last_get.basic_error = 63U;
+		database->last_get_basic_error = 63U;
 		set_error(error, YT_RANGE, "random GET", database->path);
 		return false;
 	}
 	offset = (int64_t)((uint64_t)(basic_record - 1U) * record_size);
-	database->last_get.current_record = (uint32_t)basic_record;
-	database->last_get.record_index = (uint32_t)basic_record - 1U;
-	database->last_get.desired_offset = (int64_t)offset;
-	if (!database_seek(database->file, offset, &seek_error,
-	    &seek_position)) {
-		database->last_get.outcome = YT_DATABASE_GET_SEEK_ERROR;
-		database->last_get.basic_error = 52U;
-		database->last_get.dos_error = seek_error;
-		database->last_get.terminal_position = seek_position;
+	if (!database_seek(database->file, offset)) {
+		database->last_get_basic_error = 52U;
 		set_error(error, YT_IO_ERROR, "random GET seek", database->path);
 		return false;
 	}
@@ -525,17 +512,10 @@ database_random_get_bytes(struct yt_database *database, size_t basic_record,
 	database_prepare_io(database->file);
 	read_count = fread(data, 1U, record_size, database->file);
 	saved_errno = errno;
-	read_position = yt_ftello(database->file);
-	if (read_position < 0)
-		read_position = 0;
 	if (ferror(database->file) != 0) {
-		database->last_get.outcome = YT_DATABASE_GET_READ_ERROR;
-		database->last_get.accepted = read_count;
-		database->last_get.dos_error = (saved_errno == EACCES
+		dos_error = (saved_errno == EACCES
 		    || saved_errno == EPERM) ? 5U : 1U;
-		database->last_get.basic_error =
-		    database->last_get.dos_error == 5U ? 70U : 57U;
-		database->last_get.terminal_position = read_position;
+		database->last_get_basic_error = dos_error == 5U ? 70U : 57U;
 		if (accepted != NULL)
 			*accepted = read_count;
 		errno = saved_errno;
@@ -545,11 +525,6 @@ database_random_get_bytes(struct yt_database *database, size_t basic_record,
 	errno = saved_errno;
 	if (accepted != NULL)
 		*accepted = read_count;
-	database->last_get.accepted = read_count;
-	database->last_get.outcome = YT_DATABASE_GET_RETURNED;
-	database->last_get.full_record = read_count == record_size;
-	database->last_get.terminal_position = (int64_t)offset
-	    + (int64_t)read_count;
 	return true;
 }
 
@@ -584,23 +559,14 @@ yt_database_write_durable(struct yt_database *database, size_t basic_record,
 }
 
 static bool
-database_seek(FILE *file, int64_t absolute_offset, uint16_t *dos_error,
-    int64_t *terminal_position)
+database_seek(FILE *file, int64_t absolute_offset)
 {
-	int64_t position;
 	int saved_errno;
 
-	*dos_error = 0U;
 	database_prepare_io(file);
-	if (yt_fseeko(file, absolute_offset, SEEK_SET) == 0) {
-		*terminal_position = absolute_offset;
+	if (yt_fseeko(file, absolute_offset, SEEK_SET) == 0)
 		return true;
-	}
 	saved_errno = errno;
-	position = yt_ftello(file);
-	*dos_error = (saved_errno == EACCES || saved_errno == EPERM)
-	    ? 5U : 1U;
-	*terminal_position = position >= 0 ? (int64_t)position : 0;
 	errno = saved_errno;
 	return false;
 }
@@ -741,18 +707,10 @@ database_reject_short(struct yt_database *database, struct yt_error *error)
 
 	database->file = NULL;
 	database->records = 0U;
-	database->short_close_attempted = true;
 	errno = 0;
-	database->short_close_succeeded = fclose(file) == 0;
+	(void)fclose(file);
 	saved_errno = errno;
-	database->last_put.outcome = YT_DATABASE_PUT_REJECTED_SHORT;
-	database->last_put.basic_error = 61U;
-	database->last_put.registered = false;
-	database->last_put.close_attempted = true;
-	database->last_put.close_succeeded = database->short_close_succeeded;
-	database->last_put.close_dos_error = database->short_close_succeeded
-	    ? 0U : database_dos_error(NULL, saved_errno);
-	database->last_put.handle_open = false;
+	database->last_put_basic_error = 61U;
 	errno = saved_errno;
 	set_error(error, YT_IO_ERROR, "random PUT rejected short", database->path);
 }
@@ -764,10 +722,8 @@ database_random_put_bytes(struct yt_database *database, size_t basic_record,
 {
 	int64_t offset;
 	size_t write_count;
-	int64_t write_position;
 	int saved_errno;
-	uint16_t seek_error;
-	int64_t seek_position;
+	uint16_t dos_error;
 	bool tolerated_short;
 
 	if (accepted != NULL)
@@ -778,61 +734,39 @@ database_random_put_bytes(struct yt_database *database, size_t basic_record,
 		    database != NULL ? database->path : NULL);
 		return false;
 	}
-	memset(&database->last_put, 0, sizeof(database->last_put));
-	database->last_put.registered = true;
-	database->last_put.handle_open = true;
+	database->last_put_basic_error = 0U;
 
 	if (basic_record == 0U || basic_record > 0xFFFFFFU) {
-		database->last_put.outcome = YT_DATABASE_PUT_RECORD_ERROR;
-		database->last_put.basic_error = 63U;
+		database->last_put_basic_error = 63U;
 		set_error(error, YT_RANGE, "random PUT", database->path);
 		return false;
 	}
 	offset = (int64_t)((uint64_t)(basic_record - 1U) * record_size);
-	database->last_put.current_record = (uint32_t)basic_record;
-	database->last_put.record_index = (uint32_t)basic_record - 1U;
-	database->last_put.desired_offset = (int64_t)offset;
-	database->short_close_attempted = false;
-	database->short_close_succeeded = false;
-	if (!database_seek(database->file, offset, &seek_error,
-	    &seek_position)) {
-		database->last_put.outcome = YT_DATABASE_PUT_SEEK_ERROR;
-		database->last_put.basic_error = 52U;
-		database->last_put.dos_error = seek_error;
-		database->last_put.terminal_position = seek_position;
+	if (!database_seek(database->file, offset)) {
+		database->last_put_basic_error = 52U;
 		set_error(error, YT_IO_ERROR, "random PUT seek", database->path);
 		return false;
 	}
 	database_prepare_io(database->file);
 	write_count = fwrite(data, 1U, record_size, database->file);
 	saved_errno = errno;
-	write_position = yt_ftello(database->file);
-	if (write_position < 0)
-		write_position = 0;
 	if (accepted != NULL)
 		*accepted = write_count;
-	database->last_put.accepted = write_count;
 	if (ferror(database->file) != 0) {
-		database->last_put.outcome = YT_DATABASE_PUT_WRITE_ERROR;
-		database->last_put.dos_error = (saved_errno == EACCES
+		dos_error = (saved_errno == EACCES
 		    || saved_errno == EPERM) ? 5U : 1U;
-		database->last_put.basic_error =
-		    database->last_put.dos_error == 5U ? 70U : 57U;
-		database->last_put.terminal_position = write_position;
+		database->last_put_basic_error = dos_error == 5U ? 70U : 57U;
 		errno = saved_errno;
 		set_error(error, YT_IO_ERROR, "random PUT", database->path);
 		return false;
 	}
 	errno = saved_errno;
-	database->last_put.terminal_position = (int64_t)offset
-	    + (int64_t)write_count;
 	tolerated_short = one_byte_short_ok
 	    && write_count == record_size - 1U;
 	if (write_count != record_size && !tolerated_short) {
 		database_reject_short(database, error);
 		return false;
 	}
-	database->last_put.outcome = YT_DATABASE_PUT_RETURNED;
 	if (basic_record > database->records)
 		database->records = basic_record;
 	return true;

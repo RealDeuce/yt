@@ -82,65 +82,16 @@ struct yt_database_lof_result {
 	bool handle_open;
 };
 
-enum yt_database_get_outcome {
-	YT_DATABASE_GET_NONE,
-	YT_DATABASE_GET_RETURNED,
-	YT_DATABASE_GET_RECORD_ERROR,
-	YT_DATABASE_GET_SEEK_ERROR,
-	YT_DATABASE_GET_READ_ERROR,
-};
-
-struct yt_database_get_result {
-	enum yt_database_get_outcome outcome;
-	size_t accepted;
-	uint32_t current_record;
-	uint32_t record_index;
-	uint16_t dos_error;
-	uint16_t basic_error;
-	int64_t desired_offset;
-	int64_t terminal_position;
-	bool full_record;
-	bool registered;
-	bool handle_open;
-};
-
-enum yt_database_put_outcome {
-	YT_DATABASE_PUT_NONE,
-	YT_DATABASE_PUT_RETURNED,
-	YT_DATABASE_PUT_RECORD_ERROR,
-	YT_DATABASE_PUT_SEEK_ERROR,
-	YT_DATABASE_PUT_WRITE_ERROR,
-	YT_DATABASE_PUT_REJECTED_SHORT,
-};
-
-struct yt_database_put_result {
-	enum yt_database_put_outcome outcome;
-	size_t accepted;
-	uint32_t current_record;
-	uint32_t record_index;
-	uint16_t dos_error;
-	uint16_t basic_error;
-	uint16_t close_dos_error;
-	int64_t desired_offset;
-	int64_t terminal_position;
-	bool registered;
-	bool close_attempted;
-	bool close_succeeded;
-	bool handle_open;
-};
-
 struct yt_database {
 	FILE *file;
 	char path[512];
 	size_t records;
 	uint32_t device_position;
-	bool short_close_attempted;
-	bool short_close_succeeded;
+	uint16_t last_get_basic_error;
+	uint16_t last_put_basic_error;
 	struct yt_database_open_result last_open;
 	struct yt_database_close_result last_close;
 	struct yt_database_lof_result last_lof;
-	struct yt_database_get_result last_get;
-	struct yt_database_put_result last_put;
 };
 
 #define YT_RADIO_FIELD_COUNT 4U

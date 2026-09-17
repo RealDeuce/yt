@@ -20087,14 +20087,15 @@ direct_warp_attack_read_player(void *context, int player_record,
 		yt_player_decode(player, &field);
 		return true;
 	}
-	if (state->database.last_get.outcome == YT_DATABASE_GET_READ_ERROR) {
+	if (state->database.last_get_basic_error == 57U
+	    || state->database.last_get_basic_error == 70U) {
 		state->field = field;
 		state->field_record = player_record;
 		state->field_player = true;
 	}
 	(void)yt_error_attach_basic_fault_number(error,
 	    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET,
-	    state->database.last_get.basic_error);
+	    state->database.last_get_basic_error);
 	return false;
 }
 
@@ -22533,8 +22534,6 @@ direct_emergency_warp_fresh_hostile_attack_admission(
 
 struct direct_warp_attack_opening_state {
 	struct direct_warp_attack_database_state io;
-	struct yt_database_get_result sector_get;
-	struct yt_database_get_result player_get;
 	struct yt_record sector_source;
 	struct yt_record sector_field;
 	struct yt_record player_source;
@@ -22587,7 +22586,6 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 		yt_database_close(&io->database);
 		return false;
 	}
-	entry->sector_get = io->database.last_get;
 	entry->sector_field = field;
 	io->field = field;
 	io->field_record = 1054;
@@ -22637,7 +22635,6 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 		yt_database_close(&io->database);
 		return false;
 	}
-	entry->player_get = io->database.last_get;
 	entry->player_field = io->field;
 	yt_player_decode(&fresh, &entry->player_field);
 	entry->expected_player = before;
@@ -27571,21 +27568,6 @@ test_direct_emergency_warp_hostile_attack_opening_success(void)
 		    && cycle.final_field_player
 		    && cycle.fresh_hostile_player_reads == 2U
 		    && cycle.fresh_hostile_attack_sector_reads == 1U);
-		CHECK(entry.sector_get.outcome == YT_DATABASE_GET_RETURNED
-		    && entry.sector_get.accepted == YT_RECORD_SIZE
-		    && entry.sector_get.full_record
-		    && entry.sector_get.terminal_position
-		    == entry.sector_get.desired_offset + YT_RECORD_SIZE);
-		CHECK(entry.player_get.outcome == YT_DATABASE_GET_RETURNED
-		    && entry.player_get.current_record == 2U
-		    && entry.player_get.record_index == 1U
-		    && entry.player_get.desired_offset == YT_RECORD_SIZE
-		    && entry.player_get.accepted == YT_RECORD_SIZE
-		    && entry.player_get.full_record
-		    && entry.player_get.terminal_position
-		    == 2U * YT_RECORD_SIZE
-		    && entry.player_get.registered
-		    && entry.player_get.handle_open);
 		CHECK(memcmp(&entry.player_field, &entry.player_source,
 		    sizeof(entry.player_field)) == 0);
 		CHECK(memcmp(&fixture.emergency_player,

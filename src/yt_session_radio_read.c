@@ -149,7 +149,7 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 		    error)) {
 			(void)radio_read_attach_fault(error,
 			    YT_BASIC_FAULT_RADIO_RECORD_GET,
-			    file.random.last_get.basic_error);
+			    file.random.last_get_basic_error);
 			goto abort;
 		}
 		counter = yt_radio_get_number(&record, 0U);
@@ -175,7 +175,7 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 				if (recipient > 0.0f)
 					(void)radio_read_attach_fault(error,
 					    YT_BASIC_FAULT_RADIO_RECIPIENT_GET,
-					    session->door->game.database.last_get.basic_error);
+					    session->door->game.database.last_get_basic_error);
 				goto abort;
 			}
 			if (!radio_name_bytes(session, sender, from, sizeof(from),
@@ -183,7 +183,7 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 				if (sender > 0.0f)
 					(void)radio_read_attach_fault(error,
 					    YT_BASIC_FAULT_RADIO_SENDER_GET,
-					    session->door->game.database.last_get.basic_error);
+					    session->door->game.database.last_get_basic_error);
 				goto abort;
 			}
 			if (sender != previous_sender
