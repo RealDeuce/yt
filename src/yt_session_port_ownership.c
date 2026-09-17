@@ -78,14 +78,16 @@ treasury_update_player(struct yt_player *player, int owned,
 
 	yt_port_mbf64_promote_single(player->record.bytes + YT_F81,
 	    fresh_credits);
-	if (qb_mbf64_add_raw(fresh_credits, total, summed_credits) != QB_MBF_OK
-	    || qb_mbf32_from_mbf64_raw(summed_credits, stored_credits)
-	    == QB_MBF_OVERFLOW
-	    || qb_mbf32_encode((float)owned, stored_owned) == QB_MBF_OVERFLOW
-	    || !yt_record_set_raw_number(&player->record, YT_F117,
-	    stored_owned)
-	    || !yt_record_set_raw_number(&player->record, YT_F81,
-	    stored_credits))
+	if (qb_mbf64_add_raw(fresh_credits, total, summed_credits) != QB_MBF_OK)
+		return treasury_error(error, "treasury player overlay");
+	if (qb_mbf32_from_mbf64_raw(summed_credits, stored_credits)
+	    == QB_MBF_OVERFLOW)
+		return treasury_error(error, "treasury player overlay");
+	if (qb_mbf32_encode((float)owned, stored_owned) == QB_MBF_OVERFLOW)
+		return treasury_error(error, "treasury player overlay");
+	if (!yt_record_set_raw_number(&player->record, YT_F117, stored_owned))
+		return treasury_error(error, "treasury player overlay");
+	if (!yt_record_set_raw_number(&player->record, YT_F81, stored_credits))
 		return treasury_error(error, "treasury player overlay");
 	player->ports_owned = owned;
 	player->credits = qb_mbf32_decode(stored_credits);
@@ -135,11 +137,13 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 	    collecting ? collect_prefix : report_prefix,
 	    collecting ? sizeof(collect_prefix) - 1U
 	    : sizeof(report_prefix) - 1U,
-	    SESSION_PRESENT_RAW, "treasury heading prefix", error)
-	    || !session_present_text(session, heading_suffix,
+	    SESSION_PRESENT_RAW, "treasury heading prefix", error))
+		return false;
+	if (!session_present_text(session, heading_suffix,
 	    sizeof(heading_suffix) - 1U, SESSION_PRESENT_LINE,
-	    "treasury heading suffix", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "treasury heading suffix", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "treasury scan blank", error))
 		return false;
 	loop_bound = (int)(session_planet_offset(session)
@@ -157,10 +161,12 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 		if (port.owner == 0)
 			continue;
 		++credited;
-		if (!treasury_add(total, port.record.bytes + YT_F89, error)
-		    || !treasury_format_single("Sector:", (float)port.sector, text,
-		    sizeof(text), error, "treasury sector field")
-		    || !session_fixed_width_bytes(session, (const uint8_t *)text,
+		if (!treasury_add(total, port.record.bytes + YT_F89, error))
+			return false;
+		if (!treasury_format_single("Sector:", (float)port.sector, text,
+		    sizeof(text), error, "treasury sector field"))
+			return false;
+		if (!session_fixed_width_bytes(session, (const uint8_t *)text,
 		    strlen(text), 14.0f, "treasury sector field", error))
 			return false;
 		{
@@ -173,48 +179,58 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 				return false;
 		}
 		if (!treasury_format_single(" Credits:", port.treasury, text,
-		    sizeof(text), error, "treasury credit field")
-		    || !session_fixed_width_bytes(session, (const uint8_t *)text,
-		    strlen(text), 20.0f, "treasury credit field", error)
-		    || !treasury_format_double(" Total:", total, NULL, text,
-		    sizeof(text), error, "treasury row total")
-		    || !session_present_text(session, (const uint8_t *)text,
-		    strlen(text), SESSION_PRESENT_LINE, "treasury row total",
-		    error))
+		    sizeof(text), error, "treasury credit field"))
+			return false;
+		if (!session_fixed_width_bytes(session, (const uint8_t *)text,
+		    strlen(text), 20.0f, "treasury credit field", error))
+			return false;
+		if (!treasury_format_double(" Total:", total, NULL, text,
+		    sizeof(text), error, "treasury row total"))
+			return false;
+		if (!session_present_text(session, (const uint8_t *)text,
+		    strlen(text), SESSION_PRESENT_LINE, "treasury row total", error))
 			return false;
 		if (collecting) {
 			port.treasury = 0.0f;
 			if (!yt_record_set_raw_number(&port.record, YT_F89,
-			    dirty_zero)
-			    || !yt_database_write(&session->door->game.database,
+			    dirty_zero))
+				return false;
+			if (!yt_database_write(&session->door->game.database,
 			    (size_t)physical_record, &port.record, error))
 				return false;
 		}
 	}
-	if (total[7] != 0U
-	    && !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "treasury nonzero-total blank", error))
-		return false;
+	if (total[7] != 0U) {
+		if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+		    "treasury nonzero-total blank", error))
+			return false;
+	}
 	if (!treasury_format_single("Total ports...:", (float)owned, text,
-	    sizeof(text), error, "treasury total ports")
-	    || !session_present_text(session, (const uint8_t *)text,
-	    strlen(text), SESSION_PRESENT_LINE, "treasury total ports", error)
-	    || !treasury_format_single("With credits..:", (float)credited, text,
-	    sizeof(text), error, "treasury credited ports")
-	    || !session_present_text(session, (const uint8_t *)text,
-	    strlen(text), SESSION_PRESENT_LINE, "treasury credited ports",
-	    error))
+	    sizeof(text), error, "treasury total ports"))
+		return false;
+	if (!session_present_text(session, (const uint8_t *)text,
+	    strlen(text), SESSION_PRESENT_LINE, "treasury total ports", error))
+		return false;
+	if (!treasury_format_single("With credits..:", (float)credited, text,
+	    sizeof(text), error, "treasury credited ports"))
+		return false;
+	if (!session_present_text(session, (const uint8_t *)text,
+	    strlen(text), SESSION_PRESENT_LINE, "treasury credited ports", error))
 		return false;
 	barren = owned - credited;
 	if (!treasury_format_single("Barren ports..:", (float)barren, text,
-	    sizeof(text), error, "treasury barren ports")
-	    || !session_present_text(session, (const uint8_t *)text,
-	    strlen(text), SESSION_PRESENT_LINE, "treasury barren ports", error)
-	    || !treasury_format_double("Total credits.:", total, NULL, text,
-	    sizeof(text), error, "treasury total credits")
-	    || !session_present_text(session, (const uint8_t *)text,
-	    strlen(text), SESSION_PRESENT_LINE, "treasury total credits", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    sizeof(text), error, "treasury barren ports"))
+		return false;
+	if (!session_present_text(session, (const uint8_t *)text,
+	    strlen(text), SESSION_PRESENT_LINE, "treasury barren ports", error))
+		return false;
+	if (!treasury_format_double("Total credits.:", total, NULL, text,
+	    sizeof(text), error, "treasury total credits"))
+		return false;
+	if (!session_present_text(session, (const uint8_t *)text,
+	    strlen(text), SESSION_PRESENT_LINE, "treasury total credits", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "treasury summary blank", error))
 		return false;
 	if (!collecting) {
@@ -228,18 +244,22 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 	}
 	if (!treasury_format_double("You collected a total of", total,
 	    " credits.", text, sizeof(text), error,
-	    "treasury collection result")
-	    || !session_present_text(session, (const uint8_t *)text,
+	    "treasury collection result"))
+		return false;
+	if (!session_present_text(session, (const uint8_t *)text,
 	    strlen(text), SESSION_PRESENT_LINE,
-	    "treasury collection result", error)
-	    || !yt_database_read(&session->door->game.database,
+	    "treasury collection result", error))
+		return false;
+	if (!yt_database_read(&session->door->game.database,
 	    (size_t)player_record, &record, error))
 		return false;
 	yt_player_decode(&player, &record);
-	if (!treasury_update_player(&player, owned, total, error)
-	    || !yt_database_write(&session->door->game.database,
-	    (size_t)player_record, &player.record, error)
-	    || !yt_database_flush(&session->door->game.database, error))
+	if (!treasury_update_player(&player, owned, total, error))
+		return false;
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)player_record, &player.record, error))
+		return false;
+	if (!yt_database_flush(&session->door->game.database, error))
 		return false;
 	session->player = player;
 	return true;
@@ -269,18 +289,21 @@ yt_session_edit_port_name(struct yt_session *session, int logical_port,
 		enum yt_yes_no_answer answer;
 
 		if (!yt_port_name_display_row(cached, cached_length, row,
-		    sizeof(row), &row_length)
-		    || !session_present_paged_line(session, row, row_length,
-		    "port name current row", error)
-		    || !session_present_paged_line(session, keep,
-		    sizeof(keep) - 1U, "port name keep row", error)
-		    || !session_present_paged_line(session, instruction,
-		    sizeof(instruction) - 1U,
-		    "port name instruction row", error)
-		    || !session_present_timed_paged_row(session, name_prompt,
-		    sizeof(name_prompt) - 1U, "port name prompt", error)
-		    || !session_read_command(session, (char *)entered,
-		    sizeof(entered)))
+		    sizeof(row), &row_length))
+			return false;
+		if (!session_present_paged_line(session, row, row_length,
+		    "port name current row", error))
+			return false;
+		if (!session_present_paged_line(session, keep,
+		    sizeof(keep) - 1U, "port name keep row", error))
+			return false;
+		if (!session_present_paged_line(session, instruction,
+		    sizeof(instruction) - 1U, "port name instruction row", error))
+			return false;
+		if (!session_present_timed_paged_row(session, name_prompt,
+		    sizeof(name_prompt) - 1U, "port name prompt", error))
+			return false;
+		if (!session_read_command(session, (char *)entered, sizeof(entered)))
 			return false;
 		entered_length = strlen((const char *)entered);
 		if (!yt_port_name_prepare_candidate(entered, entered_length,
@@ -291,10 +314,12 @@ yt_session_edit_port_name(struct yt_session *session, int logical_port,
 			continue;
 		if (!session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE,
-		    "port name confirmation leading blank", error)
-		    || !yt_port_name_confirmation_prompt(candidate,
-		    candidate_length, row, sizeof(row), &row_length)
-		    || !session_confirm(session, row, row_length, &answer, error))
+		    "port name confirmation leading blank", error))
+			return false;
+		if (!yt_port_name_confirmation_prompt(candidate,
+		    candidate_length, row, sizeof(row), &row_length))
+			return false;
+		if (!session_confirm(session, row, row_length, &answer, error))
 			return false;
 		if (answer != YT_YES_NO_YES)
 			continue;
@@ -319,8 +344,11 @@ yt_session_command_rename_port(struct yt_session *session,
 	size_t cached_name_length;
 	int logical_port;
 
-	if (session == NULL || !session_reload_player(session, error)
-	    || !session_read_sector(session, session->player.sector,
+	if (session == NULL)
+		return false;
+	if (!session_reload_player(session, error))
+		return false;
+	if (!session_read_sector(session, session->player.sector,
 	    &sector, error))
 		return false;
 	if (sector.port == 0)
@@ -419,64 +447,84 @@ purchase_accept(struct yt_session *session, int logical_port, int old_owner,
 	char price_text[64];
 	size_t length;
 
-	if (!purchase_present_sold(session, error)
-	    || !session_read_port_physical(session, physical_port, &port, error))
+	if (!purchase_present_sold(session, error))
+		return false;
+	if (!session_read_port_physical(session, physical_port, &port, error))
 		return false;
 	if (old_owner != 0) {
 		length = 0U;
 		if (!session_buffer_append(row, sizeof(row), &length, transfer_prefix,
-		    sizeof(transfer_prefix) - 1U)
-		    || !session_buffer_append(row, sizeof(row), &length, owner_name,
-		    owner_name_length)
-		    || !session_buffer_append(row, sizeof(row), &length, transfer_suffix,
-		    sizeof(transfer_suffix) - 1U)
-		    || !session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE,
-		    "buy seller transfer leading blank", error)
-		    || !session_present_paged_fragment(session, row, length))
+		    sizeof(transfer_prefix) - 1U))
+			return false;
+		if (!session_buffer_append(row, sizeof(row), &length, owner_name,
+		    owner_name_length))
+			return false;
+		if (!session_buffer_append(row, sizeof(row), &length,
+		    transfer_suffix, sizeof(transfer_suffix) - 1U))
+			return false;
+		if (!session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "buy seller transfer leading blank", error))
+			return false;
+		if (!session_present_paged_fragment(session, row, length))
 			return false;
 		if (!yt_game_read_player(&session->door->game, old_owner,
-		    &player, error)
-		    || !yt_port_purchase_seller_overlay(&player, port.treasury,
-		    price)
-		    || !yt_database_write(&session->door->game.database,
+		    &player, error))
+			return false;
+		if (!yt_port_purchase_seller_overlay(&player, port.treasury, price))
+			return false;
+		if (!yt_database_write(&session->door->game.database,
 		    (size_t)old_owner, &player.record, error))
 			return false;
 		if (qb_str_single(sector_text, sizeof(sector_text),
-		    (float)cached_buyer_sector) < 0
-		    || qb_str_double(price_text, sizeof(price_text), price) < 0)
+		    (float)cached_buyer_sector) < 0)
+			return treasury_error(error,
+			    "buy seller radio formatting");
+		if (qb_str_double(price_text, sizeof(price_text), price) < 0)
 			return treasury_error(error, "buy seller radio formatting");
 		length = 0U;
 		if (!session_buffer_append(message, sizeof(message), &length,
-		    cached_trader, cached_trader_length)
-		    || !session_buffer_append(message, sizeof(message), &length, radio_one,
-		    sizeof(radio_one) - 1U)
-		    || !session_buffer_append(message, sizeof(message), &length, old_name,
-		    old_name_length)
-		    || !session_buffer_append(message, sizeof(message), &length, radio_two,
-		    sizeof(radio_two) - 1U)
-		    || !session_buffer_append(message, sizeof(message), &length,
-		    sector_text, strlen(sector_text))
-		    || !session_buffer_append(message, sizeof(message), &length, radio_three,
-		    sizeof(radio_three) - 1U)
-		    || !session_buffer_append(message, sizeof(message), &length,
-		    price_text, strlen(price_text))
-		    || !session_buffer_append(message, sizeof(message), &length, radio_four,
-		    sizeof(radio_four) - 1U)
-		    || !session_append_radio_bytes(message, length, -2.0f,
-		    (float)old_owner, error)
-		    || !session_read_port_physical(session, physical_port, &port, error))
+		    cached_trader, cached_trader_length))
+			return false;
+		if (!session_buffer_append(message, sizeof(message), &length,
+		    radio_one, sizeof(radio_one) - 1U))
+			return false;
+		if (!session_buffer_append(message, sizeof(message), &length,
+		    old_name, old_name_length))
+			return false;
+		if (!session_buffer_append(message, sizeof(message), &length,
+		    radio_two, sizeof(radio_two) - 1U))
+			return false;
+		if (!session_buffer_append(message, sizeof(message), &length,
+		    sector_text, strlen(sector_text)))
+			return false;
+		if (!session_buffer_append(message, sizeof(message), &length,
+		    radio_three, sizeof(radio_three) - 1U))
+			return false;
+		if (!session_buffer_append(message, sizeof(message), &length,
+		    price_text, strlen(price_text)))
+			return false;
+		if (!session_buffer_append(message, sizeof(message), &length,
+		    radio_four, sizeof(radio_four) - 1U))
+			return false;
+		if (!session_append_radio_bytes(message, length, -2.0f,
+		    (float)old_owner, error))
+			return false;
+		if (!session_read_port_physical(session, physical_port, &port, error))
 			return false;
 	}
-	if (logical_port > 1
-	    && !yt_session_edit_port_name(session, logical_port, old_name,
-	    old_name_length, &port, error))
+	if (logical_port > 1) {
+		if (!yt_session_edit_port_name(session, logical_port, old_name,
+		    old_name_length, &port, error))
+			return false;
+	}
+	if (!session_read_port_physical(session, physical_port, &port, error))
 		return false;
-	if (!session_read_port_physical(session, physical_port, &port, error)
-	    || !yt_port_purchase_title_overlay(&port, session_record(session))
-	    || !yt_database_write(&session->door->game.database,
-	    (size_t)physical_port, &port.record, error)
-	    || !session_reload_player(session, error))
+	if (!yt_port_purchase_title_overlay(&port, session_record(session)))
+		return false;
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)physical_port, &port.record, error))
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	player = session->player;
 	if (!yt_port_purchase_buyer_overlay(&player, price))
@@ -487,12 +535,15 @@ purchase_accept(struct yt_session *session, int logical_port, int old_owner,
 		return false;
 	length = 0U;
 	if (!session_buffer_append(row, sizeof(row), &length, success_prefix,
-	    sizeof(success_prefix) - 1U)
-	    || !session_buffer_append(row, sizeof(row), &length, first_name,
-	    first_name_length)
-	    || !session_buffer_append(row, sizeof(row), &length, success_suffix,
-	    sizeof(success_suffix) - 1U)
-	    || !session_present_paged_line(session, row, length,
+	    sizeof(success_prefix) - 1U))
+		return false;
+	if (!session_buffer_append(row, sizeof(row), &length, first_name,
+	    first_name_length))
+		return false;
+	if (!session_buffer_append(row, sizeof(row), &length, success_suffix,
+	    sizeof(success_suffix) - 1U))
+		return false;
+	if (!session_present_paged_line(session, row, length,
 	    "buy congratulations row", error))
 		return false;
 	return session_present_paged_fragment(session, success_tail,
@@ -538,7 +589,9 @@ yt_session_command_buy_port(struct yt_session *session,
 	bool earth;
 	enum yt_yes_no_answer answer;
 
-	if (session == NULL || !session_reload_player(session, error))
+	if (session == NULL)
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	first_name = (const uint8_t *)session->door->identity.real_first;
 	first_name_length = strlen((const char *)first_name);
@@ -573,17 +626,22 @@ yt_session_command_buy_port(struct yt_session *session,
 	if (old_owner == session_record(session)) {
 		length = 0U;
 		if (!session_buffer_append(row, sizeof(row), &length, already_prefix,
-		    sizeof(already_prefix) - 1U)
-		    || !session_buffer_append(row, sizeof(row), &length, first_name,
-		    first_name_length)
-		    || !session_buffer_append(row, sizeof(row), &length, "!", 1U))
+		    sizeof(already_prefix) - 1U))
+			return treasury_error(error,
+			    "buy already-owner row composition");
+		if (!session_buffer_append(row, sizeof(row), &length, first_name,
+		    first_name_length))
+			return treasury_error(error,
+			    "buy already-owner row composition");
+		if (!session_buffer_append(row, sizeof(row), &length, "!", 1U))
 			return treasury_error(error,
 			    "buy already-owner row composition");
 		return session_present_alert(session, row, length,
 		    "buy already-owner row", error);
 	}
-	if (qb_str_double(price_text, sizeof(price_text), price) < 0
-	    || qb_str_double(credits_text, sizeof(credits_text),
+	if (qb_str_double(price_text, sizeof(price_text), price) < 0)
+		return treasury_error(error, "buy price formatting");
+	if (qb_str_double(credits_text, sizeof(credits_text),
 	    (double)cached_buyer_credits) < 0)
 		return treasury_error(error, "buy price formatting");
 	{
@@ -605,19 +663,24 @@ yt_session_command_buy_port(struct yt_session *session,
 		display_port = terminal_port;
 		display_port.owner = old_owner;
 		if (!session_port_owner_row_capture(session, &display_port,
-		    owner_name, sizeof(owner_name), &owner_name_length, error)
-		    || !session_present_text(session, NULL, 0U,
+		    owner_name, sizeof(owner_name), &owner_name_length, error))
+			return false;
+		if (!session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "buy owner offer leading blank", error))
 			return false;
 		length = 0U;
 		if (!session_buffer_append(row, sizeof(row), &length, offer_prefix,
-		    sizeof(offer_prefix) - 1U)
-		    || !session_buffer_append(row, sizeof(row), &length, owner_name,
-		    owner_name_length)
-		    || !session_buffer_append(row, sizeof(row), &length, offer_suffix,
-		    sizeof(offer_suffix) - 1U)
-		    || !session_present_paged_fragment(session, row, length)
-		    || !session_present_text(session, NULL, 0U,
+		    sizeof(offer_prefix) - 1U))
+			return false;
+		if (!session_buffer_append(row, sizeof(row), &length, owner_name,
+		    owner_name_length))
+			return false;
+		if (!session_buffer_append(row, sizeof(row), &length, offer_suffix,
+		    sizeof(offer_suffix) - 1U))
+			return false;
+		if (!session_present_paged_fragment(session, row, length))
+			return false;
+		if (!session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "buy owner offer trailing blank", error))
 			return false;
 	}
