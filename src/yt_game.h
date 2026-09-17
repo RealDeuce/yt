@@ -43,7 +43,7 @@ bool yt_game_load_startup_configuration(struct yt_game *game,
 struct yt_sector {
 	struct yt_record record;
 	int warps[6];
-	float port;
+	int port;
 	float fighters;
 	float fighter_owner;
 	float planet;
@@ -377,7 +377,6 @@ enum yt_bribe_forced_admission yt_bribe_forced_admit(
 enum yt_sector_mine_admission yt_sector_mine_admit(
     float carried, float amount);
 bool yt_no_turn_gate_denied(float turns);
-bool yt_port_link_missing(float link);
 enum yt_computer_port_selection_route {
 	YT_COMPUTER_PORT_SELECTION_EMPTY,
 	YT_COMPUTER_PORT_SELECTION_INVALID,

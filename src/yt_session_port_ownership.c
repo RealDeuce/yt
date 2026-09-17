@@ -323,10 +323,10 @@ yt_session_command_rename_port(struct yt_session *session,
 	    || !session_read_sector(session, session->player.sector,
 	    &sector, error))
 		return false;
-	if (sector.port == 0.0f)
+	if (sector.port == 0)
 		return session_present_alert(session, no_port,
 		    sizeof(no_port) - 1U, "rename no-port row", error);
-	logical_port = (int)sector.port;
+	logical_port = sector.port;
 	if (!session_read_port_physical(session,
 	    session_port_basic_record(session, logical_port),
 	    &port, error))
@@ -363,7 +363,7 @@ purchase_report(struct yt_session *session, int logical_port, bool earth,
 		struct yt_port_market_state market;
 		struct yt_sector updater_sector = {0};
 
-		updater_sector.port = (float)logical_port;
+		updater_sector.port = logical_port;
 		if (!yt_session_update_port(session, 0, &updater_sector,
 		    &market, error))
 			return false;
@@ -549,10 +549,10 @@ yt_session_command_buy_port(struct yt_session *session,
 	if (!session_read_sector(session, cached_buyer_sector,
 	    &sector, error))
 		return false;
-	if (sector.port == 0.0f)
+	if (sector.port == 0)
 		return session_present_alert(session, no_port,
 		    sizeof(no_port) - 1U, "buy no-port row", error);
-	logical_port = (int)sector.port;
+	logical_port = sector.port;
 	earth = logical_port == 1;
 	if (!purchase_report(session, logical_port, earth, &early_port,
 	    &terminal_port, production, error))

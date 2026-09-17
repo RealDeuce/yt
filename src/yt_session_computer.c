@@ -70,7 +70,7 @@ yt_session_computer_check_port_visibility(struct yt_session *session,
 		return false;
 	session->planet.current_record = session_planet_basic_record(session,
 	    session->planet.fallback_index);
-	*unavailable = (sector->port == 0.0f)
+	*unavailable = (sector->port == 0)
 	    | (sector->fighters > 0.0f && cached_team > 0.0f && !friendly)
 	    | (sector->fighters > 0.0f && cached_team == 0.0f
 	    && sector->fighter_owner != (float)session_record(session));
@@ -134,7 +134,7 @@ yt_session_computer_port_report(struct yt_session *session,
 		return session_present_paged_line(session, unavailable,
 		    sizeof(unavailable) - 1U,
 		    "computer port unavailable", error);
-	if (sector.port == 1.0f) {
+	if (sector.port == 1) {
 		struct yt_port earth;
 		float price[4];
 

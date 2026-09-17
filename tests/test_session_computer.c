@@ -132,7 +132,7 @@ test_port_visibility_through_report(void)
 	owner.team = 7.0f;
 	yt_player_encode(&owner);
 	yt_record_blank(&sector.record);
-	sector.port = 0.0f;
+	sector.port = 0;
 	sector.fighters = 10.0f;
 	sector.fighter_owner = 3.0f;
 	yt_sector_encode(&sector);

@@ -69,14 +69,14 @@ test_adjacent_and_global_reports(void)
 	yt_record_blank(&door.game.config.record);
 
 	yt_record_blank(&earth.record);
-	earth.port = 1.0f;
+	earth.port = 1;
 	yt_sector_encode(&earth);
 	yt_record_blank(&source.record);
-	source.port = 2.0f;
+	source.port = 2;
 	source.warps[0] = 3;
 	yt_sector_encode(&source);
 	yt_record_blank(&target.record);
-	target.port = 3.0f;
+	target.port = 3;
 	target.warps[0] = 2;
 	yt_sector_encode(&target);
 	prepare_port(&earth_port, 1.0f, source_factor);

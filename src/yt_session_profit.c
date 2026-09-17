@@ -333,13 +333,13 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 	    (size_t)current_sector_record, &raw, error))
 		return false;
 	yt_sector_decode(&sector, &raw);
-	if (sector.port == 0.0f || sector.port == 1.0f)
+	if (sector.port == 0 || sector.port == 1)
 		return session_present_text(session, no_port, sizeof(no_port) - 1U,
 		    SESSION_PRESENT_BOLD_LINE, "adjacent profit no-port row",
 		    error);
 	profit_warp_targets(&sector, warps);
 	if (!yt_database_read(&session->door->game.database,
-	    (size_t)session_port_basic_record(session, (int)sector.port),
+	    (size_t)session_port_basic_record(session, sector.port),
 	    &raw, error))
 		return false;
 	yt_port_decode(&source_port, &raw);
@@ -362,10 +362,10 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 		    (size_t)target_record, &raw, error))
 			return false;
 		yt_sector_decode(&target_sector, &raw);
-		if (target_sector.port == 0.0f)
+		if (target_sector.port == 0)
 			continue;
 		target_record = (int)session_port_basic_record(session,
-		    (int)target_sector.port);
+		    target_sector.port);
 		if (!yt_database_read(&session->door->game.database,
 		    (size_t)target_record, &raw, error))
 			return false;
@@ -413,10 +413,10 @@ profit_global(struct yt_session *session, struct profit_report *report,
 			return false;
 		yt_sector_decode(&sector, &raw);
 		profit_warp_targets(&sector, warps);
-		if (sector.port <= 0.0f)
+		if (sector.port <= 0)
 			continue;
 		physical_record = (int)session_port_basic_record(session,
-		    (int)sector.port);
+		    sector.port);
 		if (!yt_database_read(&session->door->game.database,
 		    (size_t)physical_record, &raw, error))
 			return false;
@@ -440,10 +440,10 @@ profit_global(struct yt_session *session, struct profit_report *report,
 			    (size_t)physical_record, &raw, error))
 				return false;
 			yt_sector_decode(&target_sector, &raw);
-			if (target_sector.port == 0.0f || target <= source)
+			if (target_sector.port == 0 || target <= source)
 				continue;
 			physical_record = (int)session_port_basic_record(session,
-			    (int)target_sector.port);
+			    target_sector.port);
 			if (!yt_database_read(&session->door->game.database,
 			    (size_t)physical_record, &raw, error))
 				return false;

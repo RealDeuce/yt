@@ -7,12 +7,6 @@
 #include <string.h>
 
 bool
-yt_port_link_missing(float link)
-{
-	return link == 0.0f;
-}
-
-bool
 yt_computer_port_select(const char *response, float maximum,
     float *selected, enum yt_computer_port_selection_route *route,
     struct yt_error *error)

@@ -301,7 +301,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				visited[target] = true;
 				next_layer[next_count++] = target;
 			}
-			logical_port = (int)scan.sector.port;
+			logical_port = scan.sector.port;
 			if (logical_port == 0)
 				continue;
 			{

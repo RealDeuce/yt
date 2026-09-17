@@ -452,7 +452,7 @@ yt_session_command_trade(struct yt_session *session, bool *enter_sector,
 	    (size_t)sector_physical_record, &record, error))
 		return false;
 	yt_sector_decode(&sector, &record);
-	if (yt_port_link_missing(sector.port)) {
+	if (sector.port == 0) {
 		if (!session_present_alert(session, no_port, sizeof(no_port) - 1U,
 		    "port docking no port", error))
 			return false;
@@ -470,8 +470,7 @@ yt_session_command_trade(struct yt_session *session, bool *enter_sector,
 			return true;
 		return false;
 	}
-	port_physical_record = session_port_basic_record(session,
-	    (int)sector.port);
+	port_physical_record = session_port_basic_record(session, sector.port);
 	if (!yt_database_read(&session->door->game.database,
 	    (size_t)port_physical_record, &record, error))
 		return false;

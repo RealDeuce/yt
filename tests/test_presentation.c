@@ -18037,10 +18037,10 @@ main_buy_cycle_purchase(void *context, struct yt_error *error)
 	trader_length = yt_player_stored_name(&buyer, trader);
 	if (!main_buy_read_sector(fixture, (int)buyer.sector, &sector,
 	    error)
-	    || !main_buy_report(fixture, (int)sector.port, false, &early_port,
+	    || !main_buy_report(fixture, sector.port, false, &early_port,
 	    &terminal_port, production, error))
 		return false;
-	logical_port = (int)sector.port;
+	logical_port = sector.port;
 	converted_length = qb_cint_mode((double)qb_mbf32_decode(
 	    terminal_port.record.bytes + YT_F85), 4U, &overflow);
 	if (overflow || converted_length < 0)
@@ -18163,7 +18163,7 @@ main_buy_cycle_fixture_initialize(struct main_buy_cycle_fixture *fixture,
 	fixture->seller.ports_owned = 3.0f;
 	(void)yt_record_set_number(&fixture->seller.record, YT_F81, 10.0f);
 	(void)yt_record_set_number(&fixture->seller.record, YT_F117, 3.0f);
-	fixture->sector.port = 3.0f;
+	fixture->sector.port = 3;
 	(void)yt_record_set_number(&fixture->sector.record, YT_F65, 3.0f);
 	memcpy(fixture->port.record.bytes, "Old Port", 8U);
 	fixture->port.name_length = 8U;
@@ -18372,7 +18372,7 @@ main_rename_cycle_rename(void *context, struct yt_error *error)
 		return main_rename_present(fixture, no_port,
 		    sizeof(no_port) - 1U);
 	}
-	fixture->logical_port = (int)fixture->sector.port;
+	fixture->logical_port = fixture->sector.port;
 	if (fixture->port.owner != 2.0f) {
 		fixture->route = MAIN_RENAME_NOT_OWNER;
 		fixture->complete = true;
@@ -18418,7 +18418,7 @@ main_rename_cycle_fixture_initialize(struct main_rename_cycle_fixture *fixture,
 	fixture->presentation.confirmation_length =
 	    sizeof(confirmation) - 1U;
 	fixture->player.sector = 9.0f;
-	fixture->sector.port = 3.0f;
+	fixture->sector.port = 3;
 	(void)yt_record_set_number(&fixture->sector.record, YT_F65, 3.0f);
 	memcpy(fixture->port.record.bytes, "Old Port", 8U);
 	fixture->port.owner = 2.0f;
@@ -18612,13 +18612,13 @@ test_main_rename_refusal_cycles_presentation(void)
 			memcpy(viewer.join.queue, "TAIL\r", 6U);
 			viewer.join.queue_length = 5U;
 			if (outcome == 0U) {
-				fixture.sector.port = 0.0f;
+				fixture.sector.port = 0;
 				memset(fixture.sector.record.bytes + YT_F65, 0, 4U);
 			}
 			else if (outcome == 1U)
 				fixture.port.owner = 7.0f;
 			else {
-				fixture.sector.port = 1.0f;
+				fixture.sector.port = 1;
 				(void)yt_record_set_number(&fixture.sector.record,
 				    YT_F65, 1.0f);
 			}

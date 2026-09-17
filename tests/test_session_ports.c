@@ -52,7 +52,7 @@ test_port_update(void)
 	    &adjusted_year, &error));
 
 	yt_record_blank(&sector.record);
-	sector.port = 2.0f;
+	sector.port = 2;
 	yt_sector_encode(&sector);
 	yt_record_blank(&port.record);
 	port.last_day = (float)today;
@@ -226,7 +226,7 @@ test_owned_port_purchase(void)
 	seller.ports_owned = 3.0f;
 	yt_player_encode(&seller);
 	yt_record_blank(&sector.record);
-	sector.port = 3.0f;
+	sector.port = 3;
 	yt_sector_encode(&sector);
 	CHECK(yt_current_date_serial(&door.game.clock,
 	    door.game.config.epoch_year, &today,

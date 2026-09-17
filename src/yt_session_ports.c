@@ -44,7 +44,7 @@ yt_session_update_port(struct yt_session *session, int sector_number,
 			return false;
 		yt_sector_decode(&sector, &record);
 	}
-	market->logical_port = (int)sector.port;
+	market->logical_port = sector.port;
 	market->port_physical_record = session_port_basic_record(session,
 	    market->logical_port);
 	if (!yt_current_date_serial(&session->door->game.clock,

@@ -1208,7 +1208,6 @@ check_projectile_sector_presence(void)
 	float *objects[] = {
 		&sector.mines,
 		&sector.fighters,
-		&sector.port,
 		&sector.planet,
 	};
 	size_t index;
@@ -1220,6 +1219,11 @@ check_projectile_sector_presence(void)
 		    &player_cache, 0))
 			return false;
 	}
+	memset(&sector, 0, sizeof(sector));
+	sector.port = 1;
+	if (!yt_projectile_sector_has_presence(&sector, 17, 3,
+	    &player_cache, 0))
+		return false;
 	memset(&sector, 0, sizeof(sector));
 	if (yt_projectile_sector_has_presence(&sector, 17, 3,
 	    &player_cache, 0))
@@ -8174,23 +8178,16 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	    &planet_before, &error))
 		goto done;
 	for (sector = 1; sector <= 4; ++sector) {
-		memset(before[sector - 1].bytes, 0x30 + sector,
-		    YT_RECORD_SIZE);
-		yt_record_set_number(&before[sector - 1], YT_F41,
-		    sector == 1 ? 2.0f : sector == 2 ? 3.0f : 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F45, 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F49, 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F53, 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F57, 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F61, 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F81,
-		    sector == 2 ? 1.0f : 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F85,
-		    sector == 2 ? 2.0f : 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F93,
-		    sector == 2 ? 1.0f : 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F129,
-		    sector == 2 ? 1.0f : 0.0f);
+		struct yt_sector value = {0};
+
+		yt_record_blank(&value.record);
+		value.warps[0] = sector == 1 ? 2 : sector == 2 ? 3 : 0;
+		value.fighters = sector == 2 ? 1.0f : 0.0f;
+		value.fighter_owner = sector == 2 ? 2.0f : 0.0f;
+		value.planet = sector == 2 ? 1.0f : 0.0f;
+		value.mines = sector == 2 ? 1.0f : 0.0f;
+		yt_sector_encode(&value);
+		before[sector - 1] = value.record;
 		if (!yt_database_write(&game.database,
 		    (size_t)yt_sector_basic_record(&game.config, sector),
 		    &before[sector - 1], &error))
@@ -13188,10 +13185,7 @@ check_hostile_menu_front(void)
 			return false;
 	}
 	{
-		if (!yt_port_link_missing(0.0f)
-		    || yt_port_link_missing(-1.0f)
-		    || yt_port_link_missing(0.5f)
-		    || yt_computer_selector_position("+") != 1
+		if (yt_computer_selector_position("+") != 1
 		    || yt_computer_selector_position("+!") != 1
 		    || yt_computer_selector_position("!L") != 2
 		    || yt_computer_selector_position("LM") != 3

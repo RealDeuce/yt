@@ -167,7 +167,7 @@ yt_projectile_sector_has_presence(const struct yt_sector *sector,
 	if (sector == NULL || player_cache == NULL)
 		return false;
 	present = sector->mines > 0.0f || sector->fighters > 0.0f
-	    || sector->port > 0.0f || sector->planet > 0.0f;
+	    || sector->port > 0 || sector->planet > 0.0f;
 	for (player = YT_PLAYER_FIRST_RECORD; player <= last_player; ++player) {
 		if (yt_player_cache_sector(player_cache, player) == sector_number
 		    && (yt_player_cache_cloak(player_cache, player) == 0.0f

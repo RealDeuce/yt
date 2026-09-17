@@ -54,7 +54,7 @@ test_one_sector_all_ports(void)
 	player.sector = 1.0f;
 	yt_player_encode(&player);
 	yt_record_blank(&sector.record);
-	sector.port = 1.0f;
+	sector.port = 1;
 	yt_sector_encode(&sector);
 	yt_record_blank(&port.record);
 	(void)snprintf(port.name, sizeof(port.name), "%s", "Earth");

@@ -186,11 +186,11 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		}
 		yt_sector_pager_add(private_pager, 1.0f);
 	}
-	if (sector.port > 0.0f) {
+	if (sector.port > 0) {
 		struct yt_port port;
 		uint32_t physical_port;
 
-		if (!scanner_read_port(session, (int)sector.port, &port,
+		if (!scanner_read_port(session, sector.port, &port,
 		    &physical_port, error)
 		    || !yt_sector_port_row(&port, row, sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
