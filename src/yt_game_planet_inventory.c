@@ -346,14 +346,6 @@ yt_planet_bank_credit_argument(float cached_bank, double target)
 	return (float)qb_double_subtract((double)cached_bank, target);
 }
 
-void
-yt_planet_bank_credit_overlay(struct yt_player *player, float argument)
-{
-	if (player != NULL)
-		player->credits = floorf(qb_single_add(player->credits,
-		    argument));
-}
-
 double
 yt_planet_productivity_units(double spend)
 {

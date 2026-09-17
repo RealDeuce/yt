@@ -532,8 +532,6 @@ void yt_planet_creation_overlay(struct yt_planet *planet,
     int current_player_record);
 void yt_planet_creation_timestamp_overlay(struct yt_planet *planet,
     float day, float minute);
-void yt_planet_creation_credit_overlay(struct yt_player *player,
-    float price_argument);
 bool yt_planet_creation_news(const uint8_t *trader_name,
     size_t trader_name_length, const uint8_t *planet_name,
     size_t planet_name_length, uint8_t *row, size_t capacity,
@@ -545,8 +543,6 @@ float yt_planet_move_destination(const char *response);
 float yt_planet_move_maximum(float port_record_offset,
     float sector_record_offset);
 float yt_planet_move_add_cost(float cost);
-float yt_planet_move_fighter_loss(float fighters, float first_draw,
-    float second_draw);
 void yt_planet_move_sector_overlay(struct yt_sector *sector,
     float planet_link);
 void yt_planet_move_explosion_overlay(struct yt_planet *planet);
@@ -691,8 +687,6 @@ double yt_planet_bank_remaining(float cached_credits, float cached_bank,
     double target);
 void yt_planet_bank_planet_overlay(struct yt_planet *planet, double target);
 float yt_planet_bank_credit_argument(float cached_bank, double target);
-void yt_planet_bank_credit_overlay(struct yt_player *player, float argument);
-
 double yt_planet_productivity_units(double spend);
 void yt_planet_productivity_cache(float rate[10], double units,
     float delta[4]);

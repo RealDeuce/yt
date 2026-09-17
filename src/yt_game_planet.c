@@ -667,21 +667,6 @@ yt_planet_creation_timestamp_overlay(struct yt_planet *planet,
 	(void)yt_record_set_number(&planet->record, YT_F89, minute);
 }
 
-void
-yt_planet_creation_credit_overlay(struct yt_player *player,
-    float price_argument)
-{
-	volatile float sum;
-	volatile float integral;
-
-	if (player == NULL)
-		return;
-	sum = player->credits + price_argument;
-	integral = floorf(sum);
-	player->credits = integral;
-	(void)yt_record_set_number(&player->record, YT_F81, integral);
-}
-
 bool
 yt_planet_creation_news(const uint8_t *trader_name,
     size_t trader_name_length, const uint8_t *planet_name,
@@ -770,18 +755,6 @@ yt_planet_move_add_cost(float cost)
 	volatile float result = cost + 10.0f;
 
 	return result;
-}
-
-float
-yt_planet_move_fighter_loss(float fighters, float first_draw,
-    float second_draw)
-{
-	volatile float first_product = first_draw * fighters;
-	volatile float first = floorf(first_product) + 1.0f;
-	volatile float second_product = second_draw * first;
-	volatile float loss = floorf(second_product) + 1.0f;
-
-	return loss;
 }
 
 void

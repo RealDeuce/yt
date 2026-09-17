@@ -2022,7 +2022,6 @@ check_planet_creation_model(void)
 	    "Planet \"New Terra\" created with Genesis Device!";
 	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x20, 0x00};
 	struct yt_planet planet;
-	struct yt_player player;
 	struct yt_record before;
 	uint8_t row[256];
 	size_t length;
@@ -2069,20 +2068,6 @@ check_planet_creation_model(void)
 		    && planet.record.bytes[index] != before.bytes[index])
 			return false;
 	}
-	memset(&player, 0, sizeof(player));
-	for (index = 0U; index < YT_RECORD_SIZE; ++index)
-		player.record.bytes[index] = (uint8_t)(index ^ 0xc3U);
-	player.credits = 80000.75f;
-	before = player.record;
-	yt_planet_creation_credit_overlay(&player, -25000.0f);
-	if (player.credits != 55000.0f
-	    || yt_record_get_number(&player.record, YT_F81) != 55000.0f)
-		return false;
-	for (index = 0U; index < YT_RECORD_SIZE; ++index) {
-		if ((index < YT_F81 || index >= YT_F81 + 4U)
-		    && player.record.bytes[index] != before.bytes[index])
-			return false;
-	}
 	return true;
 }
 
@@ -2114,7 +2099,6 @@ check_planet_move_model(void)
 	    || yt_planet_move_destination("") != 0.0f
 	    || yt_planet_move_maximum(53.0f, 51.0f) != 2.0f
 	    || yt_planet_move_add_cost(10.0f) != 20.0f
-	    || yt_planet_move_fighter_loss(10.0f, 0.5f, 0.5f) != 4.0f
 	    || !yt_planet_move_path_heading(1.0f, 3.0f, row,
 	    sizeof(row), &length) || length != sizeof(heading) - 1U
 	    || memcmp(row, heading, length) != 0
@@ -12579,7 +12563,6 @@ check_planet_take_all_overlays(void)
 static bool
 check_planet_bank_overlays(void)
 {
-	struct yt_player player;
 	struct yt_planet planet;
 	float argument;
 
@@ -12594,12 +12577,7 @@ check_planet_bank_overlays(void)
 	if (planet.bank != 1000.0f || planet.mines != 91.0f)
 		return false;
 	argument = yt_planet_bank_credit_argument(2000.0f, 1000.0);
-	memset(&player, 0, sizeof(player));
-	player.credits = 7000.0f;
-	player.mines = 44.0f;
-	yt_planet_bank_credit_overlay(&player, argument);
-	if (argument != 1000.0f || player.credits != 8000.0f
-	    || player.mines != 44.0f)
+	if (argument != 1000.0f)
 		return false;
 	if (yt_planet_bank_available(16777216.0f, 1.0f) != 16777217.0
 	    || yt_planet_bank_remaining(16777216.0f, 1.0f, 16777217.0)
@@ -12609,9 +12587,7 @@ check_planet_bank_overlays(void)
 	argument = yt_planet_bank_credit_argument(1.0f, 16777217.0);
 	if (planet.bank != 16777216.0f || argument != -16777216.0f)
 		return false;
-	player.credits = 16777216.0f;
-	yt_planet_bank_credit_overlay(&player, 1.0f);
-	return player.credits == 16777216.0f;
+	return true;
 }
 
 static bool
@@ -12665,7 +12641,6 @@ check_planet_menu_selector(void)
 static bool
 check_planet_productivity_overlays(void)
 {
-	struct yt_player player;
 	struct yt_planet planet;
 	float rate[10] = {0};
 	float contribution[10] = {0};
@@ -12706,10 +12681,7 @@ check_planet_productivity_overlays(void)
 		return false;
 	units = yt_planet_productivity_units(16777217.0);
 	argument = yt_planet_productivity_credit_argument(units);
-	memset(&player, 0, sizeof(player));
-	player.credits = 16777218.0f;
-	yt_planet_bank_credit_overlay(&player, argument);
-	return argument == -16777216.0f && player.credits == 2.0f;
+	return argument == -16777216.0f;
 }
 
 static bool
