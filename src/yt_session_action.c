@@ -277,7 +277,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	    || !yt_database_flush(&session->door->game.database, error))
 		return false;
 	(void)yt_player_cache_set_sector(&session->player_cache,
-	    session_record(session), (int)session->player.sector);
+	    session_record(session), session->player.sector);
 	return true;
 }
 

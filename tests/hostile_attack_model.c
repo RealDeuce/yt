@@ -425,7 +425,7 @@ test_hostile_attack_tail_run(struct test_hostile_attack_tail_state *state,
 		    YT_HOSTILE_ATTACK_TAIL_DEFEATED_ROW, error))
 			return false;
 		if (state->old_owner == -1
-		    && state->current.sector == state->headquarters) {
+		    && (float)state->current.sector == state->headquarters) {
 			if (!ops->victory(context, error))
 				return false;
 		}

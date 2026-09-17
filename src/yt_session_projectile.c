@@ -265,8 +265,8 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 	int *xannor_provoker = pending_xannor != NULL
 	    ? pending_xannor : &local_xannor_provoker;
 	float last_mine_news_sector;
-	int start = (int)(origin_alias != NULL
-	    ? *origin_alias : session->player.sector);
+	int start = origin_alias != NULL
+	    ? (int)*origin_alias : session->player.sector;
 
 	route->origin = *origin_alias;
 	route->destination = *target;
@@ -479,7 +479,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	}
 
 	saved_player = session->player;
-	target = saved_player.sector;
+	target = (float)saved_player.sector;
 	saved_name_length = strlen(saved_player.name);
 	if (saved_name_length > sizeof(saved_name))
 		saved_name_length = sizeof(saved_name);
@@ -530,7 +530,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	    SESSION_PRESENT_BOLD_LINE, "player counterlaunch row", error)
 	    || !yt_news_append_bytes(news_row, news_length, error))
 		return false;
-	origin = attacker.sector;
+	origin = (float)attacker.sector;
 	if (!session_counterlaunch_projectile(session, &origin, &target,
 	    &session->projectile.retained_counterlaunch_missiles, false, counterattacker,
 	    xannor_provoker, error))
@@ -661,7 +661,7 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 		return false;
 	if (!yt_session_finalize_action(session, error))
 		return error == NULL || error->status == YT_OK;
-	origin = session->player.sector;
+	origin = (float)session->player.sector;
 	yt_projectile_debit_overlay(&session->player, plasma, amount);
 	if (!yt_game_write_player(&session->door->game, session_record(session),
 	    &session->player, error)

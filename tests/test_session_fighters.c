@@ -61,7 +61,7 @@ test_replace_sector_force(void)
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
 	yt_player_decode(&player, &persisted);
 	CHECK(player.fighters == 8.0f);
-	CHECK(player.sector == 8.0f);
+	CHECK(player.sector == 8);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);
 }

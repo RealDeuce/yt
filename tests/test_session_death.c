@@ -16,7 +16,7 @@ static int failures;
 
 static void
 write_player(struct yt_game *game, int record, const char *name,
-    float sector, float ports, struct yt_error *error)
+	int sector, float ports, struct yt_error *error)
 {
 	struct yt_player player;
 
@@ -101,7 +101,7 @@ test_distinct_player_death(void)
 	CHECK(session.player.ports_owned == 0.0f);
 	CHECK(yt_player_cache_sector(&session.player_cache, 3) == 0);
 	CHECK(yt_game_read_player(&door.game, 3, &player, &error));
-	CHECK(player.killed_by == 2.0f && player.sector == 0.0f
+	CHECK(player.killed_by == 2.0f && player.sector == 0
 	    && player.ports_owned == 0.0f);
 	CHECK(yt_game_read_player(&door.game, 2, &player, &error));
 	CHECK(player.ports_owned == 1.0f);

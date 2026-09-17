@@ -184,7 +184,7 @@ test_direct_attack_combat_run(
 	if (!ops->read_player(context, state->target_record, &state->target,
 	    error))
 		return false;
-	state->current_sector = state->current.sector;
+	state->current_sector = (float)state->current.sector;
 	state->target_shields = state->target.shields;
 	yt_direct_attack_fighter_overlay(&state->target,
 	    (float)state->defenders);

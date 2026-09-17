@@ -113,7 +113,7 @@ yt_session_launch_xannor_retaliation(struct yt_session *session,
 		goto done;
 	target = (float)target_candidate;
 	if (session->projectile.pending_xannor_provoker != 0)
-		target = saved_player.sector;
+		target = (float)saved_player.sector;
 	if (qb_str_single(amount_text, sizeof(amount_text), (float)amount) < 0
 	    || qb_str_single(target_text, sizeof(target_text), target) < 0
 	    || snprintf(row, sizeof(row),

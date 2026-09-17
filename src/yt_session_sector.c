@@ -414,7 +414,7 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 		if (!yt_game_read_player(&session->door->game,
 		    session_record(session), &session->player, error))
 			return false;
-		current = (int)session->player.sector;
+		current = session->player.sector;
 		if (!display_sector_one(session, current, &private_pager, error)
 		    || !yt_game_read_player(&session->door->game,
 		    session_record(session), &session->player, error))
@@ -464,7 +464,7 @@ yt_session_display_current_sector_cached(struct yt_session *session,
 {
 	struct yt_sector_pager_state private_pager;
 	float saved_foreground = session->presentation.foreground;
-	int current = (int)session->player.sector;
+	int current = session->player.sector;
 	bool ok;
 
 	yt_sector_pager_begin(&private_pager);

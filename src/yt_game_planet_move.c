@@ -65,7 +65,7 @@ yt_planet_move_fighter_overlay(struct yt_player *player, float loss)
 
 void
 yt_planet_move_success_overlay(struct yt_player *player,
-    float requested_destination)
+    int destination)
 {
 	volatile float remaining;
 
@@ -73,10 +73,10 @@ yt_planet_move_success_overlay(struct yt_player *player,
 		return;
 	remaining = player->turns + -10.0f;
 	player->turns = remaining;
-	player->sector = requested_destination;
+	player->sector = destination;
 	(void)yt_record_set_number(&player->record, YT_F49, remaining);
 	(void)yt_record_set_number(&player->record, YT_F57,
-	    requested_destination);
+	    (float)destination);
 }
 
 bool

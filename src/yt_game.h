@@ -15,7 +15,7 @@ struct yt_player {
 	float killed_by;
 	float turns;
 	float shields;
-	float sector;
+	int sector;
 	float fighters;
 	float holds;
 	float ore;
@@ -502,7 +502,7 @@ void yt_planet_move_sector_overlay(struct yt_sector *sector,
 void yt_planet_move_explosion_overlay(struct yt_planet *planet);
 void yt_planet_move_fighter_overlay(struct yt_player *player, float loss);
 void yt_planet_move_success_overlay(struct yt_player *player,
-    float requested_destination);
+    int destination);
 bool yt_planet_move_path_heading(float start, float destination,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_planet_move_summary(float cost, uint8_t *row, size_t capacity,
@@ -558,7 +558,7 @@ bool yt_movement_warp_row(const int warps[6], uint8_t *row,
     size_t capacity, size_t *length);
 bool yt_movement_confirmation_prompt(float target, uint8_t *row,
     size_t capacity, size_t *length);
-void yt_movement_player_overlay(struct yt_player *player, float target);
+void yt_movement_player_overlay(struct yt_player *player, int target);
 struct yt_port_market_state {
 	struct yt_port port;
 	int logical_port;

@@ -59,7 +59,7 @@ test_earth_store_exit(void)
 	CHECK(enter_sector);
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(session.player.credits == 123456.0f);
-	CHECK(session.player.sector == 1.0f);
+	CHECK(session.player.sector == 1);
 	CHECK(session.earth.report_seen == false);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);

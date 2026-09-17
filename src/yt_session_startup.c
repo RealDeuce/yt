@@ -652,7 +652,7 @@ post_login(struct yt_session *session, struct yt_error *error)
 
 		if (!session_reload_player(session, error))
 			return false;
-		if (session->player.sector < 1.0f) {
+		if (session->player.sector < 1) {
 			repaired = session->player.record;
 			(void)yt_record_set_number(&repaired, YT_F57, 1.0f);
 			yt_player_decode(&session->player, &repaired);

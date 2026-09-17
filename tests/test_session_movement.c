@@ -138,13 +138,13 @@ test_move_storage(void)
 	    &player.record, &error));
 	CHECK(yt_session_store_move(&session, 42.0f, &error));
 	CHECK(!session.navigation.self_mines_suppressed);
-	CHECK(session.player.sector == 42.0f);
+	CHECK(session.player.sector == 42);
 	CHECK(session.player.turns == 99.0f);
 	CHECK(session.player.credits == 1234.0f);
 	CHECK(yt_player_cache_sector(&session.player_cache, 2) == 42);
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
 	yt_player_decode(&player, &persisted);
-	CHECK(player.sector == 42.0f);
+	CHECK(player.sector == 42);
 	CHECK(player.turns == 99.0f);
 	CHECK(player.credits == 1234.0f);
 	yt_database_close(&door.game.database);

@@ -269,7 +269,7 @@ yt_emergency_warp_player_overlay(struct yt_player *player,
 	if (player == NULL)
 		return;
 	remaining = player->turns - cost;
-	player->sector = (float)destination;
+	player->sector = destination;
 	player->turns = remaining;
 	(void)yt_record_set_number(&player->record, YT_F57,
 	    (float)destination);
@@ -367,10 +367,10 @@ yt_movement_confirmation_prompt(float target, uint8_t *row,
 }
 
 void
-yt_movement_player_overlay(struct yt_player *player, float target)
+yt_movement_player_overlay(struct yt_player *player, int target)
 {
 	if (player == NULL)
 		return;
 	player->sector = target;
-	(void)yt_record_set_number(&player->record, YT_F57, target);
+	(void)yt_record_set_number(&player->record, YT_F57, (float)target);
 }

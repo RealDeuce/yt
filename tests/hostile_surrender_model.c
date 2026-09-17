@@ -92,7 +92,7 @@ test_hostile_attack_surrender_run(
 	    error))
 		return false;
 	if (qb_str_single(sector_number, sizeof(sector_number),
-	    state->current.sector) < 0)
+	    (float)state->current.sector) < 0)
 		return false;
 	sector_length = strlen(sector_number);
 	position = 0U;

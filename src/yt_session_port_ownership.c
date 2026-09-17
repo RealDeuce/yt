@@ -320,7 +320,7 @@ yt_session_command_rename_port(struct yt_session *session,
 	int logical_port;
 
 	if (session == NULL || !session_reload_player(session, error)
-	    || !session_read_sector(session, (int)session->player.sector,
+	    || !session_read_sector(session, session->player.sector,
 	    &sector, error))
 		return false;
 	if (sector.port == 0.0f)
@@ -390,7 +390,7 @@ purchase_present_sold(struct yt_session *session, struct yt_error *error)
 
 static bool
 purchase_accept(struct yt_session *session, int logical_port, int old_owner,
-    double price, float cached_buyer_sector, const uint8_t *cached_trader,
+	double price, int cached_buyer_sector, const uint8_t *cached_trader,
     size_t cached_trader_length, const uint8_t *old_name,
     size_t old_name_length, const uint8_t *owner_name,
     size_t owner_name_length, struct yt_error *error)
@@ -443,7 +443,7 @@ purchase_accept(struct yt_session *session, int logical_port, int old_owner,
 		    (size_t)old_owner, &player.record, error))
 			return false;
 		if (qb_str_single(sector_text, sizeof(sector_text),
-		    cached_buyer_sector) < 0
+		    (float)cached_buyer_sector) < 0
 		    || qb_str_double(price_text, sizeof(price_text), price) < 0)
 			return treasury_error(error, "buy seller radio formatting");
 		length = 0U;
@@ -527,7 +527,7 @@ yt_session_command_buy_port(struct yt_session *session,
 	size_t owner_name_length = 0U;
 	float production[3];
 	float cached_buyer_credits;
-	float cached_buyer_sector;
+	int cached_buyer_sector;
 	int old_owner;
 	double price;
 	uint8_t row[512];
@@ -546,7 +546,7 @@ yt_session_command_buy_port(struct yt_session *session,
 	cached_buyer_credits = buyer.credits;
 	cached_buyer_sector = buyer.sector;
 	cached_trader_length = yt_player_stored_name(&buyer, cached_trader);
-	if (!session_read_sector(session, (int)cached_buyer_sector,
+	if (!session_read_sector(session, cached_buyer_sector,
 	    &sector, error))
 		return false;
 	if (sector.port == 0.0f)

@@ -83,7 +83,7 @@ test_one_sector_all_ports(void)
 
 	CHECK(yt_session_computer_nearest_ports(&session, &error));
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
-	CHECK(session.player.sector == 1.0f);
+	CHECK(session.player.sector == 1);
 	CHECK(door.game.today != 0);
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted_player,
 	    &error));

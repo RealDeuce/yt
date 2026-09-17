@@ -195,7 +195,7 @@ expire_player_impl(struct maint_state *state, int player_record,
 {
 	int logical;
 
-	state->player_sector[player_record] = 0.0f;
+	state->player_sector[player_record] = 0;
 	state->player_cloak[player_record] = 0.0f;
 	player->lottery_plays = 0.0f;
 	if (!yt_maintenance_remove_player_from_teams(state, player_record, error))
@@ -248,7 +248,7 @@ expire_player_impl(struct maint_state *state, int player_record,
 }
 
 bool
-yt_maintenance_expire_player(struct yt_game *game, float *player_sector,
+yt_maintenance_expire_player(struct yt_game *game, int *player_sector,
     float *player_cloak, size_t cache_count, int player_record,
     struct yt_player *player, struct yt_error *error)
 {
@@ -400,10 +400,10 @@ immediate_death_cleanup_impl(struct maint_state *state, int victim_record,
 {
 	int logical;
 
-	state->player_sector[victim_record] = 0.0f;
+	state->player_sector[victim_record] = 0;
 	state->player_cloak[victim_record] = 0.0f;
 	victim->killed_by = killer;
-	victim->sector = 0.0f;
+	victim->sector = 0;
 	victim->ground_forces = 0.0f;
 	for (logical = 1; logical <= state->port_count; ++logical) {
 		struct yt_port port;
@@ -435,7 +435,8 @@ immediate_death_cleanup_impl(struct maint_state *state, int victim_record,
 	victim->team = 0.0f;
 	if (!yt_record_set_number(&victim->record, YT_F45,
 	    victim->killed_by)
-	    || !yt_record_set_number(&victim->record, YT_F57, victim->sector)
+	    || !yt_record_set_number(&victim->record, YT_F57,
+	    (float)victim->sector)
 	    || !yt_record_set_number(&victim->record, YT_F89, victim->team)
 	    || !yt_record_set_number(&victim->record, YT_F121,
 	    victim->ground_forces)) {
@@ -448,7 +449,7 @@ immediate_death_cleanup_impl(struct maint_state *state, int victim_record,
 }
 
 bool
-yt_maintenance_immediate_death(struct yt_game *game, float *player_sector,
+yt_maintenance_immediate_death(struct yt_game *game, int *player_sector,
     float *player_cloak, size_t cache_count, int victim_record, float killer,
     struct yt_player *victim, struct yt_error *error)
 {

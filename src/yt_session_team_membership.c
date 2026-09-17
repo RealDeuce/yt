@@ -375,7 +375,8 @@ session_team_search(struct yt_session *session, struct yt_error *error)
 		if (player.team != cached_team
 		    || player_record == session_record(session))
 			continue;
-		if (qb_str_single(number, sizeof(number), player.sector) < 0)
+		if (qb_str_single(number, sizeof(number),
+		    (float)player.sector) < 0)
 			return false;
 		number_length = strlen(number);
 		memcpy(row, player.record.bytes, YT_TEXT_FIELD_SIZE);

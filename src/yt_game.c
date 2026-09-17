@@ -78,7 +78,7 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 		if (!yt_game_read_player(game, basic, &player, error))
 			return false;
 		(void)yt_player_cache_set_sector(player_cache, basic,
-		    (int)player.sector);
+		    player.sector);
 		(void)yt_player_cache_set_cloak(player_cache, basic,
 		    player.cloak);
 		if (player.cloak < 0.0f || player.cloak > 1.0f) {

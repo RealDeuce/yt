@@ -142,7 +142,7 @@ bool yt_session_destination_is_dangerous(struct yt_session *session,
 bool yt_session_build_route(struct yt_session *session, float start,
     float destination, bool use_avoid, struct session_route_plan *plan,
     struct yt_error *error);
-bool yt_session_store_move(struct yt_session *session, float target,
+bool yt_session_store_move(struct yt_session *session, int target,
     struct yt_error *error);
 bool yt_session_command_move(struct yt_session *session, bool *moved,
     struct yt_error *error);

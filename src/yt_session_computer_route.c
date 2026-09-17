@@ -52,7 +52,8 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		session->navigation.route_start_sector = start_value;
 	}
 	else if (!stale_marker)
-		session->navigation.route_start_sector = session->player.sector;
+		session->navigation.route_start_sector =
+		    (float)session->player.sector;
 	start_value = session->navigation.route_start_sector;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "path destination blank", error)
@@ -208,7 +209,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		size_t index;
 
 		if (!session_read_sector_at_fault(session,
-		    (int)session->player.sector, &current_sector,
+		    session->player.sector, &current_sector,
 		    YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET, error))
 			return false;
 		for (index = 0; index < 6U; ++index)

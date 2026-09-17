@@ -219,7 +219,7 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 		return false;
 	player = session->player;
 	carried = player.mines;
-	current_sector = (int)player.sector;
+	current_sector = player.sector;
 	if (carried < 0.0f) {
 		player.mines = 0.0f;
 		if (!yt_record_set_number(&player.record, YT_F129, 0.0f)
@@ -231,7 +231,7 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 	if (carried < 1.0f)
 		return session_present_alert(session, no_mines,
 		    sizeof(no_mines) - 1U, "no sector mines", error);
-	if (player.sector < 8.0f)
+	if (player.sector < 8)
 		return session_present_alert(session, union_refusal,
 		    sizeof(union_refusal) - 1U, "Union sector mine refusal",
 		    error);
@@ -286,7 +286,8 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 	    || !yt_database_flush(&session->door->game.database, error))
 		return false;
 
-	number_length = qb_str_single(number, sizeof(number), player.sector);
+	number_length = qb_str_single(number, sizeof(number),
+	    (float)player.sector);
 	if (number_length < 0
 	    || sizeof("Sector") - 1U + (size_t)number_length
 	    + sizeof(success_suffix) - 1U > sizeof(row))
@@ -317,14 +318,12 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 	struct yt_sector sector;
 	uint8_t row[300];
 	size_t row_length;
-	float current_sector;
-	int current;
+	int current_sector;
 
 	if (terminal == NULL)
 		return false;
 	*terminal = false;
 	current_sector = session->player.sector;
-	current = (int)current_sector;
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "sector mine output", error))
 		return false;
@@ -336,7 +335,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 		return false;
 	player = session->player;
 	if (!yt_sector_mine_entry_news(player.record.bytes,
-	    player.name_length, current_sector, row, sizeof(row),
+	    player.name_length, (float)current_sector, row, sizeof(row),
 	    &row_length)
 	    || !yt_news_append_bytes(row, row_length, error))
 		return false;
@@ -350,7 +349,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 		float draw;
 		unsigned touched = 0U;
 
-		if (!session_read_sector(session, current, &sector, error))
+		if (!session_read_sector(session, current_sector, &sector, error))
 			return false;
 		mines_before = sector.mines;
 		batch = yt_sector_mine_batch(mines_before);
@@ -358,7 +357,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 		    qb_single_subtract(mines_before, batch));
 		if (!yt_database_write(&session->door->game.database,
 		    (size_t)yt_sector_basic_record(&session->door->game.config,
-		    current), &sector.record, error))
+		    current_sector), &sector.record, error))
 			return false;
 
 		saved_foreground = session->presentation.foreground;
@@ -413,7 +412,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 	if (!yt_sector_mine_final_news(player.shields, row, sizeof(row),
 	    &row_length)
 	    || !yt_news_append_bytes(row, row_length, error)
-	    || !session_read_sector(session, current, &sector, error))
+	    || !session_read_sector(session, current_sector, &sector, error))
 		return false;
 	return true;
 }

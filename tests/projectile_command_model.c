@@ -201,7 +201,7 @@ test_projectile_command_run(struct test_projectile_command_state *state,
 		}
 		return false;
 	}
-	state->origin = state->post_finalizer.sector;
+	state->origin = (float)state->post_finalizer.sector;
 	memcpy(state->origin_raw,
 	    state->post_finalizer.record.bytes + YT_F57,
 	    sizeof(state->origin_raw));

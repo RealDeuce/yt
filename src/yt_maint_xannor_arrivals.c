@@ -521,7 +521,7 @@ encode_error:
 
 bool
 yt_maintenance_xannor_player_arrival(struct yt_game *game,
-    float *player_sector, float *player_cloak, size_t cache_count,
+    int *player_sector, float *player_cloak, size_t cache_count,
     int player_record, float *xannor_fighters,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error)
@@ -845,7 +845,7 @@ yt_maintenance_xannor_group_twenty_finish(struct yt_game *game,
 
 bool
 yt_maintenance_xannor_target_finish(struct yt_game *game,
-    float *player_sector, float *player_cloak, size_t cache_count,
+    int *player_sector, float *player_cloak, size_t cache_count,
     bool reached_target, int group_number, int hunt_player,
     float *group_location, float *group_size,
     yt_maintenance_score_line_fn line_output, void *line_context,

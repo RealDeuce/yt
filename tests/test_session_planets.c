@@ -156,7 +156,7 @@ test_land_and_leave_owned_planet(void)
 	CHECK(yt_session_command_land(&session, &enter_sector, &error));
 	CHECK(enter_sector);
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
-	CHECK(session.player.sector == 1.0f);
+	CHECK(session.player.sector == 1);
 	memcpy(session.io.typeahead, same_sector, sizeof(same_sector) - 1U);
 	session.io.typeahead_length = sizeof(same_sector) - 1U;
 	session.io.typeahead_position = 0U;

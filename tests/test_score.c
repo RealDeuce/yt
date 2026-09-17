@@ -150,7 +150,7 @@ check_startup_configuration_transaction(void)
 	for (record = 2; record <= 4; ++record) {
 		memset(&player, 0, sizeof(player));
 		yt_record_blank(&player.record);
-		player.sector = (float)(record * 10);
+		player.sector = record * 10;
 		player.cloak = record == 2 ? 0.0f : 1.0f;
 		yt_player_encode(&player);
 		if (!yt_database_write(&game.database, (size_t)record,
@@ -247,7 +247,7 @@ check_current_player_cache_model(void)
 	    || player.name_length != 11U || player.last_active != 71.0f
 	    || player.killed_by != 72.0f || player.lottery_plays != 73.0f
 	    || player.turns != 4.0f || player.shields != 5.0f
-	    || player.sector != 6.0f || player.fighters != 7.0f
+	    || player.sector != 6 || player.fighters != 7.0f
 	    || player.holds != 8.0f || player.ore != 9.0f
 	    || player.organics != 10.0f || player.equipment != 11.0f
 	    || player.credits != 12.0f || player.team != 13.0f
@@ -2102,7 +2102,7 @@ check_planet_move_model(void)
 	player.turns = 100.0f;
 	before = player.record;
 	yt_planet_move_success_overlay(&player, 3.0f);
-	if (player.turns != 90.0f || player.sector != 3.0f
+	if (player.turns != 90.0f || player.sector != 3
 	    || yt_record_get_number(&player.record, YT_F49) != 90.0f
 	    || yt_record_get_number(&player.record, YT_F57) != 3.0f)
 		return false;
@@ -2726,7 +2726,7 @@ check_player_death_model(void)
 	yt_player_decode(&player, &record);
 	before = player.record;
 	yt_death_player_overlay(&player, 3.0f);
-	if (player.killed_by != 3.0f || player.sector != 0.0f
+	if (player.killed_by != 3.0f || player.sector != 0
 	    || player.ports_owned != 0.0f
 	    || yt_record_get_number(&player.record, YT_F45) != 3.0f
 	    || memcmp(player.record.bytes + YT_F57, dirty_zero, 4U) != 0
@@ -2850,7 +2850,7 @@ check_emergency_warp_model(void)
 	player.sector = 42.0f;
 	before = player.record;
 	yt_emergency_warp_player_overlay(&player, 1003, 3.0f);
-	if (player.turns != 74.0f || player.sector != 1003.0f
+	if (player.turns != 74.0f || player.sector != 1003
 	    || yt_record_get_number(&player.record, YT_F49) != 74.0f
 	    || yt_record_get_number(&player.record, YT_F57) != 1003.0f)
 		return false;
@@ -2892,11 +2892,11 @@ check_movement_model(void)
 	memset(&player, 0, sizeof(player));
 	for (index = 0U; index < YT_RECORD_SIZE; ++index)
 		player.record.bytes[index] = (uint8_t)(index ^ 0x3cU);
-	player.sector = 12.0f;
+	player.sector = 12;
 	before = player.record;
-	yt_movement_player_overlay(&player, 12.5f);
-	if (player.sector != 12.5f
-	    || yt_record_get_number(&player.record, YT_F57) != 12.5f)
+	yt_movement_player_overlay(&player, 13);
+	if (player.sector != 13
+	    || yt_record_get_number(&player.record, YT_F57) != 13.0f)
 		return false;
 	for (index = 0U; index < YT_RECORD_SIZE; ++index)
 		if ((index < YT_F57 || index >= YT_F57 + 4U)
@@ -4207,7 +4207,7 @@ check_maintenance_player_pass(void)
 	struct yt_radio_record radio;
 	struct yt_text_file news = {0};
 	struct yt_error error;
-	float sector_cache[6];
+	int sector_cache[6];
 	float cloak_cache[6];
 	FILE *file = NULL;
 	int record;
@@ -4229,7 +4229,7 @@ check_maintenance_player_pass(void)
 	for (record = 2; record <= 5; ++record) {
 		yt_record_blank(&seed);
 		yt_player_decode(&player, &seed);
-		player.sector = (float)(record * 11);
+		player.sector = record * 11;
 		player.last_active = record == 4 ? 0.0f : 204.0f;
 		player.killed_by = record >= 4 ? -1.0f : 0.0f;
 		player.cloak = record == 2 ? 9.0f : record == 3 ? 0.0f
@@ -4249,7 +4249,7 @@ check_maintenance_player_pass(void)
 			goto done;
 	}
 	for (record = 0; record < 6; ++record) {
-		sector_cache[record] = -99.0f;
+		sector_cache[record] = -99;
 		cloak_cache[record] = -99.0f;
 	}
 	game.clock = (struct yt_clock){score_clock_read, &script};
@@ -4266,10 +4266,10 @@ check_maintenance_player_pass(void)
 	    || screen.length != sizeof(expected_line) - 1U
 	    || memcmp(screen.data, expected_line,
 	    sizeof(expected_line) - 1U) != 0
-	    || sector_cache[2] != -99.0f || cloak_cache[2] != -99.0f
-	    || sector_cache[3] != 33.0f || cloak_cache[3] != 0.0f
-	    || sector_cache[4] != 44.0f || cloak_cache[4] != 0.02f
-	    || sector_cache[5] != 55.0f || cloak_cache[5] != 1.0f)
+	    || sector_cache[2] != -99 || cloak_cache[2] != -99.0f
+	    || sector_cache[3] != 33 || cloak_cache[3] != 0.0f
+	    || sector_cache[4] != 44 || cloak_cache[4] != 0.02f
+	    || sector_cache[5] != 55 || cloak_cache[5] != 1.0f)
 		goto done;
 	for (record = 2; record <= 5; ++record) {
 		if (!yt_database_read(&game.database, (size_t)record, &after,
@@ -7356,7 +7356,7 @@ check_maintenance_xannor_hunt_pass(void)
 	struct yt_record after;
 	struct yt_game game;
 	struct yt_error error;
-	float sector_cache[5] = {0};
+	int sector_cache[5] = {0};
 	float cloak_cache[5] = {0};
 	float top_score;
 	int hunt_player;
@@ -7713,7 +7713,7 @@ check_maintenance_xannor_roaming_groups_pass(void)
 	struct yt_sector sector;
 	struct yt_game game;
 	struct yt_error error;
-	float player_sector[3] = {0};
+	int player_sector[3] = {0};
 	float player_cloak[3] = {0};
 	float location[21] = {0};
 	float size[21] = {0};
@@ -7838,7 +7838,7 @@ check_maintenance_xannor_phase_pass(void)
 	struct yt_planet planet;
 	struct yt_game game;
 	struct yt_error error;
-	float player_sector[3] = {0};
+	int player_sector[3] = {0};
 	float player_cloak[3] = {0};
 	size_t expected_length = sizeof(prefix) - 1U;
 	int group;
@@ -8121,7 +8121,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 		seven_zero_draws, sizeof(seven_zero_draws), 0U
 	};
 	FILE *radio_file = NULL;
-	float player_sector[4] = {0};
+	int player_sector[4] = {0};
 	float player_cloak[4] = {0};
 	float location[21] = {0};
 	float size[21] = {0};
@@ -8190,7 +8190,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	}
 	location[2] = 1.0f;
 	size[2] = 10.0f;
-	player_sector[2] = 2.0f;
+	player_sector[2] = 2;
 	state.game = game;
 	state.player_sector = player_sector;
 	state.player_cloak = player_cloak;
@@ -8211,9 +8211,9 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	    != 0)
 		goto done;
 	if (!yt_game_read_player(&game, 2, &route_player, &error)
-	    || route_player.killed_by != -1.0f || route_player.sector != 0.0f
+	    || route_player.killed_by != -1.0f || route_player.sector != 0
 	    || route_player.fighters != 0.0f || route_player.shields != 0.0f
-	    || player_sector[2] != 0.0f || player_cloak[2] != 0.0f
+	    || player_sector[2] != 0 || player_cloak[2] != 0.0f
 	    || memcmp(route_player.record.bytes, "R\0ute", 5U) != 0)
 		goto done;
 	radio_file = fopen("YTRMSG.DAT", "rb");
@@ -8571,7 +8571,7 @@ check_maintenance_xannor_revenge_slot_pass(void)
 	struct yt_record player;
 	struct yt_game game;
 	struct yt_error error;
-	float player_sector[8] = {0};
+	int player_sector[8] = {0};
 	int live_sector;
 	int cached_target;
 	size_t offset;
@@ -8596,7 +8596,7 @@ check_maintenance_xannor_revenge_slot_pass(void)
 	    (size_t)yt_sector_basic_record(&game.config, 21),
 	    &metadata_before, &error))
 		goto done;
-	player_sector[4] = 902.0f;
+	player_sector[4] = 902;
 	if (!yt_maintenance_xannor_revenge_slot(&game, player_sector,
 	    YT_ARRAY_LEN(player_sector), NULL, 0U,
 	    score_line_collect, &screen, &live_sector, &cached_target, &error)
@@ -8750,15 +8750,15 @@ check_maintenance_xannor_roaming_split(void)
 	    || !yt_maintenance_xannor_post_planet_exhausted(0.0f, 1.0f)
 	    || yt_maintenance_xannor_post_planet_exhausted(-1.0f, 1.0f)
 	    || yt_maintenance_xannor_post_planet_exhausted(9.0f, 1.0f)
-	    || yt_maintenance_xannor_player_scan_admit(20, 9.0f, 9.0f,
+	    || yt_maintenance_xannor_player_scan_admit(20, 9.0f, 9,
 	    0.83f, 1.0f)
-	    || yt_maintenance_xannor_player_scan_admit(2, 9.0f, 8.0f,
+	    || yt_maintenance_xannor_player_scan_admit(2, 9.0f, 8,
 	    0.83f, 1.0f)
-	    || yt_maintenance_xannor_player_scan_admit(2, 9.0f, 9.0f,
+	    || yt_maintenance_xannor_player_scan_admit(2, 9.0f, 9,
 	    0.83f, 0.499f)
-	    || !yt_maintenance_xannor_player_scan_admit(2, 9.0f, 9.0f,
+	    || !yt_maintenance_xannor_player_scan_admit(2, 9.0f, 9,
 	    0.83f, 0.5f)
-	    || !yt_maintenance_xannor_player_scan_admit(2, 9.0f, 9.0f,
+	    || !yt_maintenance_xannor_player_scan_admit(2, 9.0f, 9,
 	    0.33f, 0.0f)
 	    || !yt_maintenance_xannor_player_scan_continue(2, 1)
 	    || yt_maintenance_xannor_player_scan_continue(3, 1))
@@ -8845,7 +8845,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	struct yt_record after;
 	struct yt_game game;
 	struct yt_error error;
-	float player_sector[52] = {0};
+	int player_sector[52] = {0};
 	float player_cloak[52] = {0};
 	int target;
 	int sector;
@@ -8871,8 +8871,8 @@ check_maintenance_xannor_candidate_discovery(void)
 		    &before[sector - 1], &error))
 			goto done;
 	}
-	player_sector[5] = 8.0f;
-	player_sector[6] = 8.0f;
+	player_sector[5] = 8;
+	player_sector[6] = 8;
 	player_cloak[5] = 0.25f;
 	player_cloak[6] = 0.25f;
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
@@ -8978,7 +8978,7 @@ check_maintenance_xannor_candidate_discovery(void)
 		goto done;
 
 	/* A discovered protected sector stops discovery but does not replace. */
-	player_sector[2] = 1.0f;
+	player_sector[2] = 1;
 	player_cloak[2] = 999.0f;
 	script = (struct score_random_script){
 		low_discovery_draws, sizeof(low_discovery_draws), 0U
@@ -13132,7 +13132,7 @@ check_hostile_menu_front(void)
 		sector.fighters = 99.0f;
 		sector.fighter_owner = 44.0f;
 		sector.planet = 8.0f;
-		player.sector = 99.0f;
+		player.sector = 99;
 		player.fighters = 12.0f;
 		player.team = 7.0f;
 		banished.team = 7.0f;
@@ -13148,7 +13148,7 @@ check_hostile_menu_front(void)
 		yt_team_inactive_overlay(&inactive_record);
 		if (sector.fighters != 15.0f || sector.fighter_owner != 44.0f
 		    || sector.planet != 8.0f || player.fighters != 7.0f
-		    || player.sector != 99.0f || player.team != 7.0f
+		    || player.sector != 99 || player.team != 7.0f
 		    || memcmp(sector.record.bytes, sector_record, YT_F81) != 0
 		    || memcmp(sector.record.bytes + YT_F85,
 		    sector_record + YT_F85, YT_RECORD_SIZE - YT_F85) != 0

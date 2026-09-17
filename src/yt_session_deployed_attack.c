@@ -105,7 +105,7 @@ hostile_surrender_run(struct yt_session *session,
 	    || !session_sound(session, YT_SOUND_CUE_ACTION, "hostile surrender sound", error))
 		return false;
 	if (qb_str_single(sector_number, sizeof(sector_number),
-	    state->current.sector) < 0)
+	    (float)state->current.sector) < 0)
 		return false;
 	sector_length = strlen(sector_number);
 	position = 0U;
@@ -330,7 +330,7 @@ hostile_attack_tail_run(struct yt_session *session,
 		    defeated_length))
 			return false;
 		if (state->old_owner == -1
-		    && state->current.sector == state->headquarters) {
+		    && (float)state->current.sector == state->headquarters) {
 			if (!yt_session_xannor_victory(session, error))
 				return false;
 		}
@@ -373,7 +373,7 @@ yt_session_attack_deployed(struct yt_session *session,
 	float quantum;
 	float last_draw;
 	int current_player_record = session_record(session);
-	int current_sector = (int)session->player.sector;
+	int current_sector = session->player.sector;
 	int attacker_length;
 	int defender_length;
 	bool surrender_checked = false;

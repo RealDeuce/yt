@@ -475,9 +475,9 @@ yt_session_command_trade(struct yt_session *session, bool *enter_sector,
 	if (!yt_database_read(&session->door->game.database,
 	    (size_t)port_physical_record, &record, error))
 		return false;
-	if (session->player.sector == 1.0f)
+	if (session->player.sector == 1)
 		return yt_session_earth_store(session, enter_sector, error);
-	if (!yt_session_ordinary_commerce(session, (int)session->player.sector,
+	if (!yt_session_ordinary_commerce(session, session->player.sector,
 	    error))
 		return false;
 	if (enter_sector != NULL)

@@ -20,7 +20,7 @@ session_team_transfer(struct yt_session *session, struct yt_error *error)
 
 	if (!session_reload_player(session, error))
 		return false;
-	logical_sector = (int)session->player.sector;
+	logical_sector = session->player.sector;
 	initial_fighters = (double)session->player.fighters;
 	if (!session_read_sector(session, logical_sector,
 	    &initial_sector, error))

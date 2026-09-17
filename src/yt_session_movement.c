@@ -232,7 +232,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 }
 
 bool
-yt_session_store_move(struct yt_session *session, float target,
+yt_session_store_move(struct yt_session *session, int target,
     struct yt_error *error)
 {
 	int player_record;
@@ -249,7 +249,7 @@ yt_session_store_move(struct yt_session *session, float target,
 	    || !yt_database_flush(&session->door->game.database, error))
 		return false;
 	return yt_player_cache_set_sector(&session->player_cache, player_record,
-	    (int)target);
+	    target);
 }
 
 bool
@@ -309,7 +309,7 @@ yt_session_command_move(struct yt_session *session, bool *moved,
 	    (float)session_sector_offset(session));
 	if (target < 1.0f || target > maximum)
 		return true;
-	if (target == session->player.sector)
+	if (target == (float)session->player.sector)
 		return session_present_alert(session, same_sector,
 		    sizeof(same_sector) - 1U, "movement same-sector row", error);
 	for (slot = 0U; slot < YT_ARRAY_LEN(session->navigation.current_warps); ++slot) {
@@ -353,7 +353,7 @@ yt_session_command_move(struct yt_session *session, bool *moved,
 			return false;
 		return true;
 	}
-	if (!yt_session_store_move(session, target, error))
+	if (!yt_session_store_move(session, (int)target, error))
 		return false;
 	*moved = true;
 	return true;

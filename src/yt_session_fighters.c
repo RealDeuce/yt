@@ -36,10 +36,10 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 	if (!session_present_paged_fragment(session, title, sizeof(title) - 1U)
 	    || !session_reload_player(session, error))
 		return false;
-	if (session->player.sector < 8.0f)
+	if (session->player.sector < 8)
 		return session_present_alert(session, union_refusal,
 		    sizeof(union_refusal) - 1U, "fighter Union refusal", error);
-	logical_sector = (int)session->player.sector;
+	logical_sector = session->player.sector;
 	if (!session_read_sector(session, logical_sector, &first_sector, error))
 		return false;
 	if (first_sector.fighters > 0.0f

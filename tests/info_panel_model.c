@@ -179,7 +179,8 @@ yt_info_panel_run(struct yt_info_panel_state *state,
 	length = qb_str_double(left, sizeof(left), (double)state->player.credits);
 	if (length < 0)
 		return false;
-	length = qb_str_single(right, sizeof(right), state->player.sector);
+	length = qb_str_single(right, sizeof(right),
+	    (float)state->player.sector);
 	if (length < 0 || !ordinary(state, ops, context,
 	    " Credits.. :", left, " Sector....... :", right, error))
 		return false;

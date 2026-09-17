@@ -240,7 +240,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	    (size_t)destination_record, &target.record, error)
 	    || !session_reload_player(session, error))
 		return false;
-	yt_planet_move_success_overlay(&session->player, (float)destination);
+	yt_planet_move_success_overlay(&session->player, destination);
 	return yt_database_write(&session->door->game.database,
 	    (size_t)session_record(session), &session->player.record, error);
 }
@@ -268,7 +268,7 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	uint8_t row[512];
 	size_t row_length;
 	struct session_route_plan route;
-	float start = session->player.sector;
+	float start = (float)session->player.sector;
 	float destination;
 	float maximum = (float)session_sector_count(session);
 	float cost = 0.0f;

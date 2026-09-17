@@ -309,7 +309,8 @@ yt_session_show_ship(struct yt_session *session, struct yt_error *error)
 	    (double)session->player.credits);
 	if (length < 0)
 		return false;
-	length = qb_str_single(right, sizeof(right), session->player.sector);
+	length = qb_str_single(right, sizeof(right),
+	    (float)session->player.sector);
 	if (length < 0 || !info_panel_ordinary(session,
 	    " Credits.. :", left, " Sector....... :", right, error))
 		return false;

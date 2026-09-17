@@ -82,7 +82,7 @@ yt_maintenance_xannor_roaming_split(struct yt_random *random,
 
 bool
 yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
-    const float *player_sector, const float *player_cloak,
+    const int *player_sector, const float *player_cloak,
     size_t cache_count, int current_sector, int revenge_live_sector,
     int revenge_cached_target, int *target_sector,
     struct yt_error *error)
@@ -132,11 +132,10 @@ yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
 
 				if (!yt_random_next(&game->random, &cloak_draw, error))
 					return false;
-				if (player_sector[player] == (float)candidate
+				if (player_sector[player] == candidate
 				    && (cloak_draw > player_cloak[player]
 				    || revenge_live_sector != 0)) {
-					discovery_target =
-					    (int)player_sector[player];
+					discovery_target = player_sector[player];
 					break;
 				}
 			}
@@ -216,12 +215,12 @@ yt_maintenance_xannor_post_planet_exhausted(float group_location,
 
 bool
 yt_maintenance_xannor_player_scan_admit(int group_number,
-    float group_location, float player_location, float cached_cloak,
+    float group_location, int player_location, float cached_cloak,
     float cloak_draw)
 {
 	float threshold = qb_single_subtract(cached_cloak, 0.33000001311302185f);
 
-	return player_location == group_location && group_number != 20
+	return (float)player_location == group_location && group_number != 20
 	    && threshold <= cloak_draw;
 }
 
@@ -668,7 +667,7 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 }
 bool
 yt_maintenance_xannor_revenge_slot(struct yt_game *game,
-    const float *player_sector, size_t cache_count,
+    const int *player_sector, size_t cache_count,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     int *live_sector, int *cached_target,
@@ -702,9 +701,9 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 		}
 		if (!yt_game_read_player(game, record, &player, error))
 			return false;
-		if (player.sector > 7.0f) {
-			*live_sector = (int)player.sector;
-			*cached_target = (int)player_sector[record];
+		if (player.sector > 7) {
+			*live_sector = player.sector;
+			*cached_target = player_sector[record];
 			if (!yt_maintenance_compose_xannor_revenge(blank,
 			    blank_length, &output)
 			    || !line_output(line_context, output.rows[0].data,
@@ -895,7 +894,7 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 
 bool
 yt_maintenance_xannor_hunt(struct yt_game *game,
-    const float *player_sector, const float *player_cloak, size_t cache_count,
+    const int *player_sector, const float *player_cloak, size_t cache_count,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     int *hunt_player, float *top_score, int *target_sector,
@@ -965,10 +964,10 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 			return false;
 	}
 	*hunt_player = top_record;
-	*target_sector = (int)player.sector;
+	*target_sector = player.sector;
 	if (!yt_random_next(&game->random, &selection, error))
 		return false;
 	if (selection > 0.25f)
-		*target_sector = (int)player_sector[top_record];
+		*target_sector = player_sector[top_record];
 	return true;
 }

@@ -80,7 +80,7 @@ test_direct_warp_decline(void)
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
 	yt_player_decode(&player, &persisted);
 	CHECK(player.turns == 20.0f);
-	CHECK(player.sector == 7.0f);
+	CHECK(player.sector == 7);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);
 }
@@ -123,7 +123,7 @@ test_emergency_warp_persistence(void)
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
 	yt_player_decode(&player, &persisted);
 	CHECK(player.turns == 20.0f);
-	CHECK(player.sector == 1.0f);
+	CHECK(player.sector == 1);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);
 }

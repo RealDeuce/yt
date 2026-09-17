@@ -266,7 +266,7 @@ yt_death_player_overlay(struct yt_player *player, float killer)
 	if (player == NULL)
 		return;
 	player->killed_by = killer;
-	player->sector = 0.0f;
+	player->sector = 0;
 	player->ports_owned = 0.0f;
 	(void)yt_record_set_number(&player->record, YT_F45, killer);
 	(void)yt_record_set_raw_number(&player->record, YT_F57, dirty_zero);

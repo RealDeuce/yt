@@ -18079,7 +18079,7 @@ main_buy_cycle_purchase(void *context, struct yt_error *error)
 	    &accepted, error)
 	    || !accepted
 	    || !main_buy_accept_direct(fixture, logical_port,
-	    (int)early_port.owner, fixture->purchase_price, buyer.sector, trader,
+	    (int)early_port.owner, fixture->purchase_price, (float)buyer.sector, trader,
 	    trader_length, old_name, old_name_length, owner_name,
 	    owner_name_length, error))
 		return false;
@@ -19496,7 +19496,7 @@ test_direct_emergency_warp_accepted_modes(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && strcmp(viewer.join.accumulator, "y") == 0
 		    && viewer.join.queue_length == 0U
@@ -20832,7 +20832,7 @@ test_direct_emergency_warp_accepted_presentation(void)
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
 		    && !fixture.emergency_error_requested
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && strcmp(viewer.join.accumulator, "y") == 0
 		    && viewer.join.queue_length == 0U
@@ -20987,14 +20987,14 @@ test_direct_emergency_warp_child_failures(void)
 			CHECK(fixture.emergency_destination == 0
 			    && fixture.emergency_cost == 0.0f
 			    && fixture.emergency_player.turns == 17.0f
-			    && fixture.emergency_player.sector == 42.0f
+			    && fixture.emergency_player.sector == 42
 			    && memcmp(&fixture.emergency_player.record, &before,
 			    sizeof(before)) == 0);
 		} else {
 			CHECK(fixture.emergency_destination == 1003
 			    && fixture.emergency_cost == 3.0f
 			    && fixture.emergency_player.turns == 14.0f
-			    && fixture.emergency_player.sector == 1003.0f);
+			    && fixture.emergency_player.sector == 1003);
 			for (index = 0U; index < YT_RECORD_SIZE; ++index) {
 				if ((index >= YT_F49 && index < YT_F49 + 4U)
 				    || (index >= YT_F57
@@ -23725,7 +23725,7 @@ test_direct_emergency_warp_main_cycle(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
@@ -23890,7 +23890,7 @@ test_direct_emergency_warp_main_scanner_get_failure(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
@@ -24051,7 +24051,7 @@ test_direct_emergency_warp_main_hostile_handoff(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
@@ -24309,7 +24309,7 @@ test_direct_emergency_warp_hostile_cycles(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && fixture.emergency_player.fighters == 1000.0f
 		    && cycle.entry_player_reads == 1U
@@ -24750,7 +24750,7 @@ test_direct_emergency_warp_hostile_child_failures(void)
 			CHECK(fixture.emergency_destination == 0
 			    && fixture.emergency_cost == 0.0f
 			    && fixture.emergency_player.turns == 17.0f
-			    && fixture.emergency_player.sector == 733.0f
+			    && fixture.emergency_player.sector == 733
 			    && memcmp(&fixture.emergency_player.record, &before,
 			    sizeof(before)) == 0);
 		}
@@ -24758,7 +24758,7 @@ test_direct_emergency_warp_hostile_child_failures(void)
 			CHECK(fixture.emergency_destination == 1003
 			    && fixture.emergency_cost == 3.0f
 			    && fixture.emergency_player.turns == 14.0f
-			    && fixture.emergency_player.sector == 1003.0f);
+			    && fixture.emergency_player.sector == 1003);
 			for (index = 0U; index < YT_RECORD_SIZE; ++index) {
 				if ((index >= YT_F49 && index < YT_F49 + 4U)
 				    || (index >= YT_F57
@@ -24882,7 +24882,7 @@ test_direct_emergency_warp_hostile_terminal_handoffs(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
@@ -25042,7 +25042,7 @@ test_direct_emergency_warp_hostile_black_hole_handoff(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
@@ -25183,7 +25183,7 @@ test_direct_emergency_warp_hostile_scanner_get_failure(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
@@ -25401,7 +25401,7 @@ test_direct_emergency_warp_reentry_failures(void)
 			    && fixture.emergency_destination == 1003
 			    && fixture.emergency_cost == 3.0f
 			    && fixture.emergency_sector_cache == 1003.0f
-			    && fixture.emergency_player.sector == 1003.0f
+			    && fixture.emergency_player.sector == 1003
 			    && fixture.emergency_player.turns == 14.0f
 			    && cycle.entry_player_reads == 1U
 			    && cycle.gate_player_reads == 1U
@@ -25580,7 +25580,7 @@ test_direct_emergency_warp_owner_get_failures(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
@@ -25742,7 +25742,7 @@ test_direct_emergency_warp_reentry_warning_carrier(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
@@ -25906,7 +25906,7 @@ test_direct_emergency_warp_reentry_warning_second_carrier(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
@@ -26086,7 +26086,7 @@ test_direct_emergency_warp_hostile_menu_join(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
@@ -26320,7 +26320,7 @@ test_direct_emergency_warp_hostile_menu_carrier_failures(void)
 			    && fixture.emergency_waits == 1U
 			    && fixture.emergency_ticks == 1U
 			    && fixture.emergency_sector_cache == 1003.0f
-			    && fixture.emergency_player.sector == 1003.0f
+			    && fixture.emergency_player.sector == 1003
 			    && fixture.emergency_player.turns == 14.0f
 			    && cycle.fresh_hostile_player_reads == 1U
 			    && cycle.fresh_hostile_player_get_completed
@@ -26454,7 +26454,7 @@ test_direct_emergency_warp_hostile_attack_admission(void)
 		    && fixture.emergency_waits == 1U
 		    && fixture.emergency_ticks == 1U
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && cycle.fresh_hostile_player_reads == 1U
 		    && cycle.fresh_hostile_player_get_completed
@@ -27864,7 +27864,7 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 				    &expected_player.record,
 				    sizeof(expected_player.record)) == 0
 				    && fatal.written_player.killed_by == 2.0f
-				    && fatal.written_player.sector == 0.0f
+				    && fatal.written_player.sector == 0
 				    && fatal.written_player.ports_owned == 0.0f
 				    && memcmp(&fatal.written_sector.record,
 				    &expected_sector.record,
@@ -28094,7 +28094,7 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 			    && fatal.player.killed_by
 			    == (cut > FATAL_CUT_DEATH_PLAYER_PUT ? 2.0f : 0.0f)
 			    && fatal.player.sector
-			    == (cut > FATAL_CUT_DEATH_PLAYER_PUT ? 0.0f : 733.0f)
+			    == (cut > FATAL_CUT_DEATH_PLAYER_PUT ? 0 : 733)
 			    && fatal.sector.fighter_owner
 			    == (cut > FATAL_CUT_SECTOR_PUT ? -2.0f : 2.0f)
 			    && fatal.sector.fighters == 10.0f
@@ -28327,7 +28327,7 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 		    && attack.written_sector.fighter_owner == 2.0f
 		    && fatal.fatal.wait_complete && fatal.fatal.normal_exit
 		    && fatal.death.complete && fatal.player.killed_by == 2.0f
-		    && fatal.player.sector == 0.0f
+		    && fatal.player.sector == 0
 		    && fatal.written_sector.fighter_owner == -2.0f
 		    && fatal.news_length == sizeof(expected_news) - 1U
 		    && memcmp(fatal.news, expected_news,
@@ -29083,7 +29083,7 @@ test_direct_emergency_warp_queue_cycles(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
@@ -29290,7 +29290,7 @@ test_direct_emergency_warp_main_mine_cycle(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && fixture.hazard.complete && !fixture.hazard.terminal
 		    && fixture.hazard.batches == 1U
@@ -29507,7 +29507,7 @@ test_direct_emergency_warp_hostile_mine_cycle(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 14.0f
 		    && fixture.hazard.complete && !fixture.hazard.terminal
 		    && fixture.hazard.batches == 1U
@@ -29868,7 +29868,7 @@ test_direct_emergency_warp_mine_warp_cycles(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 11.0f
 		    && fixture.emergency_player.shields == 10.0f
 		    && fixture.emergency_player.holds == 9.0f
@@ -30146,10 +30146,10 @@ test_direct_emergency_warp_mine_warp_failures(void)
 			if (failure_modes[failure_index]
 			    == EMERGENCY_WARP_PHYSICAL_GET) {
 				CHECK(fixture.emergency_player.turns == 14.0f
-				    && fixture.emergency_player.sector == 1003.0f);
+				    && fixture.emergency_player.sector == 1003);
 			} else {
 				CHECK(fixture.emergency_player.turns == 11.0f
-				    && fixture.emergency_player.sector == 1003.0f);
+				    && fixture.emergency_player.sector == 1003);
 			}
 		}
 	}
@@ -30577,7 +30577,7 @@ test_direct_emergency_warp_main_black_hole_cycle(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 11.0f
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
@@ -30774,7 +30774,7 @@ test_direct_emergency_warp_hostile_black_hole_cycles(void)
 		    && fixture.emergency_destination == 1003
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.sector == 1003
 		    && fixture.emergency_player.turns == 11.0f
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U

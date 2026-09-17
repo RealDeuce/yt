@@ -7,7 +7,7 @@
 
 struct maint_state {
 	struct yt_game game;
-	float *player_sector;
+	int *player_sector;
 	float *player_cloak;
 	int player_count;
 	int sector_count;

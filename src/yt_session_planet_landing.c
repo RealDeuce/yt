@@ -233,7 +233,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	    false, error))
 		return false;
 	sector_physical = session_sector_basic_record(session,
-	    (int)session->player.sector);
+	    session->player.sector);
 	if (!yt_database_read(&session->door->game.database,
 	    (size_t)sector_physical, &raw, error))
 		return false;
@@ -298,7 +298,7 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 		return false;
 	cached_carried = session->player.ground_forces;
 	if (!session_read_sector(session,
-	    (int)session->player.sector, &sector, error))
+	    session->player.sector, &sector, error))
 		return false;
 	session->planet.fallback_index = (int)sector.planet;
 	if (sector.planet == 0.0f) {

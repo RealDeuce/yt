@@ -141,7 +141,7 @@ bool yt_maintenance_xannor_advance_group(int group_number,
 bool yt_maintenance_xannor_post_planet_exhausted(float group_location,
     float group_size);
 bool yt_maintenance_xannor_player_scan_admit(int group_number,
-    float group_location, float player_location, float cached_cloak,
+    float group_location, int player_location, float cached_cloak,
     float cloak_draw);
 bool yt_maintenance_xannor_player_scan_continue(int player_record,
     int player_count);
@@ -266,7 +266,7 @@ bool yt_maintenance_compose_xannor_group(int group_number, float group_size,
 bool yt_maintenance_compose_xannor_path_error(float source, float target,
     struct yt_maintenance_output_result *result);
 bool yt_maintenance_xannor_hunt(struct yt_game *game,
-    const float *player_sector, const float *player_cloak, size_t cache_count,
+    const int *player_sector, const float *player_cloak, size_t cache_count,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     int *hunt_player, float *top_score, int *target_sector,
@@ -293,7 +293,7 @@ bool yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
     size_t blank_length, yt_maintenance_score_line_fn line_output,
     void *line_context, struct yt_error *error);
 bool yt_maintenance_xannor_revenge_slot(struct yt_game *game,
-    const float *player_sector, size_t cache_count,
+    const int *player_sector, size_t cache_count,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     int *live_sector, int *cached_target,
@@ -304,7 +304,7 @@ bool yt_maintenance_xannor_roaming_split(struct yt_random *random,
     bool *skip_group,
     struct yt_error *error);
 bool yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
-    const float *player_sector, const float *player_cloak,
+    const int *player_sector, const float *player_cloak,
     size_t cache_count, int current_sector, int revenge_live_sector,
     int revenge_cached_target, int *target_sector,
     struct yt_error *error);
@@ -329,12 +329,12 @@ bool yt_maintenance_xannor_player_line_bytes(const uint8_t *player_name,
     float xannor_fighters, float player_shields, bool player_killed,
     uint8_t *line, size_t line_size, size_t *line_length);
 bool yt_maintenance_xannor_player_arrival(struct yt_game *game,
-    float *player_sector, float *player_cloak, size_t cache_count,
+    int *player_sector, float *player_cloak, size_t cache_count,
     int player_record, float *xannor_fighters,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error);
 bool yt_maintenance_xannor_target_finish(struct yt_game *game,
-    float *player_sector, float *player_cloak, size_t cache_count,
+    int *player_sector, float *player_cloak, size_t cache_count,
     bool reached_target, int group_number, int hunt_player,
     float *group_location, float *group_size,
     yt_maintenance_score_line_fn line_output, void *line_context,
@@ -354,10 +354,10 @@ bool yt_maintenance_scoreboard(struct yt_game *game,
 bool yt_maintenance_remove_alias(const char *player_name,
     struct yt_error *error);
 bool yt_maintenance_expire_player(struct yt_game *game,
-    float *player_sector, float *player_cloak, size_t cache_count,
+    int *player_sector, float *player_cloak, size_t cache_count,
     int player_record, struct yt_player *player, struct yt_error *error);
 bool yt_maintenance_immediate_death(struct yt_game *game,
-    float *player_sector, float *player_cloak, size_t cache_count,
+    int *player_sector, float *player_cloak, size_t cache_count,
     int victim_record, float killer, struct yt_player *victim,
     struct yt_error *error);
 bool yt_radio_append_maintenance_bytes(const uint8_t *text, size_t length,

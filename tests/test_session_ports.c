@@ -164,7 +164,7 @@ test_no_port_purchase(void)
 	CHECK(yt_database_write_durable(&door.game.database, 109U,
 	    &sector.record, &error));
 	CHECK(yt_session_command_buy_port(&session, &error));
-	CHECK(session.player.sector == 9.0f);
+	CHECK(session.player.sector == 9);
 	CHECK(session.player.credits == 1000.0f);
 	CHECK(yt_database_read(&door.game.database, 2U, &persisted, &error));
 	CHECK(memcmp(persisted.bytes, player.record.bytes,

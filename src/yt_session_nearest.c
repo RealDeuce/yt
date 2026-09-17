@@ -267,7 +267,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 	yt_player_decode(&scan.player, &raw);
 	session->player = scan.player;
 	scan.current_team = scan.player.team;
-	scan.current_sector = (int)scan.player.sector;
+	scan.current_sector = scan.player.sector;
 	if (scan.current_sector != 0) {
 		visited[scan.current_sector] = true;
 		current_layer[current_count++] = scan.current_sector;

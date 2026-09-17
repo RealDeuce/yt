@@ -63,7 +63,7 @@ yt_session_fighter_shield_spill(struct yt_session *session,
 
 static bool
 direct_attack_finish_kill(struct yt_session *session, int target_record,
-    int current_player_record, float current_sector, float target_shields,
+	int current_player_record, int current_sector, float target_shields,
     struct yt_error *error)
 {
 	struct yt_player target;
@@ -93,13 +93,13 @@ direct_attack_finish_kill(struct yt_session *session, int target_record,
 		return false;
 	if (!(saved_mines > 0.0f))
 		return true;
-	if (!session_read_sector(session, (int)current_sector, &sector, error))
+	if (!session_read_sector(session, current_sector, &sector, error))
 		return false;
 	deployed = sector.mines + saved_mines;
 	yt_sector_mine_sector_overlay(&sector, deployed);
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)yt_sector_basic_record(&session->door->game.config,
-	    (int)current_sector),
+	    current_sector),
 	    &sector.record, error)
 	    || !yt_direct_fighter_mine_warning(saved_name, saved_name_length,
 	    warning, sizeof(warning), &warning_length)
@@ -170,7 +170,7 @@ yt_session_attack_player(struct yt_session *session, int target_record,
 	double attacker_loss;
 	double defender_loss;
 	float target_shields;
-	float current_sector;
+	int current_sector;
 	float remaining_shields;
 	int current_player_record = session_record(session);
 

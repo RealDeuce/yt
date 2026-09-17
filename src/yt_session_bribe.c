@@ -28,7 +28,7 @@ bribe_accept(struct yt_session *session, double cached_defenders,
 	struct yt_player current;
 	volatile double fighters;
 	volatile double credits;
-	int current_sector = (int)session->player.sector;
+	int current_sector = session->player.sector;
 	int player_record = session_record(session);
 
 	if (!session_present_alert(session, deal, sizeof(deal) - 1U,

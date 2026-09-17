@@ -120,7 +120,7 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 		    || !session_reload_player(session, error))
 			return false;
 		if (session_is_disruption_sector(session,
-		    (int)session->player.sector)) {
+		    session->player.sector)) {
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE, "black hole leading blank", error)
 			    || !session_attention_bytes(session, black_hole,
@@ -132,7 +132,7 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 			continue;
 		}
 		if (!session_read_sector(session,
-		    (int)session->player.sector, &sector, error))
+		    session->player.sector, &sector, error))
 			return false;
 		if (yt_sector_mines_admitted(sector.mines,
 		    session->navigation.self_mines_suppressed ? 1.0f : 0.0f)) {

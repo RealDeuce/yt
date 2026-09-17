@@ -2359,7 +2359,7 @@ test_expired_player_cleanup(struct yt_error *error)
 	struct yt_radio_record radio[3];
 	struct yt_radio_record before[3];
 	struct yt_text_file result_names = {0};
-	float sector_cache[52];
+	int sector_cache[52];
 	float cloak_cache[52];
 	uint8_t *radio_bytes = NULL;
 	size_t radio_length = 0;
@@ -2444,8 +2444,8 @@ test_expired_player_cleanup(struct yt_error *error)
 		(void)fclose(temporary);
 		goto done;
 	}
-	valid = sector_cache[2] == 0.0f && cloak_cache[2] == 0.0f
-	    && sector_cache[3] == 30.0f && cloak_cache[3] == 0.25f
+	valid = sector_cache[2] == 0 && cloak_cache[2] == 0.0f
+	    && sector_cache[3] == 30 && cloak_cache[3] == 0.25f
 	    && victim.name_length == 0U && victim.team == 0.0f
 	    && victim.lottery_plays == 0.0f && victim.credits == 123.0f
 	    && victim.fighters == 45.0f
@@ -2492,7 +2492,7 @@ test_immediate_death_cleanup(struct yt_error *error)
 	struct yt_planet planet;
 	struct yt_port owned_port;
 	struct yt_port other_port;
-	float sector_cache[52] = {0};
+	int sector_cache[52] = {0};
 	float cloak_cache[52] = {0};
 	bool valid = false;
 
@@ -2547,9 +2547,9 @@ test_immediate_death_cleanup(struct yt_error *error)
 	    || !yt_game_read_port(&game, 1, &owned_port, error)
 	    || !yt_game_read_port(&game, 2, &other_port, error))
 		goto done;
-	valid = sector_cache[2] == 0.0f && cloak_cache[2] == 0.0f
-	    && sector_cache[3] == 30.0f && cloak_cache[3] == 0.25f
-	    && victim.killed_by == -1.0f && victim.sector == 0.0f
+	valid = sector_cache[2] == 0 && cloak_cache[2] == 0.0f
+	    && sector_cache[3] == 30 && cloak_cache[3] == 0.25f
+	    && victim.killed_by == -1.0f && victim.sector == 0
 	    && victim.ground_forces == 0.0f && victim.team == 0.0f
 	    && victim.name_length == 13U && victim.fighters == 45.0f
 	    && victim.credits == 123.0f && victim.cloak == 0.5f
@@ -2631,7 +2631,7 @@ test_xannor_player_arrival(struct yt_error *error)
 	struct yt_sector large_sector_before;
 	struct yt_sector large_sector_after;
 	struct yt_text_file news = {0};
-	float sector_cache[52] = {0};
+	int sector_cache[52] = {0};
 	float cloak_cache[52] = {0};
 	float xannor = 1.0f;
 	float location = 42.0f;
@@ -2746,11 +2746,11 @@ test_xannor_player_arrival(struct yt_error *error)
 	    && strcmp(tape.line[1], expected_survivor_line) == 0
 	    && strcmp(tape.line[2], expected_large_line) == 0
 	    && player.killed_by == -1.0f && player.fighters == 0.0f
-	    && player.shields == 0.0f && player.sector == 0.0f
-	    && sector_cache[2] == 0.0f && cloak_cache[2] == 0.0f
+	    && player.shields == 0.0f && player.sector == 0
+	    && sector_cache[2] == 0 && cloak_cache[2] == 0.0f
 	    && survivor.killed_by == 0.0f && survivor.fighters == 1.0f
-	    && survivor.shields == 10.0f && survivor.sector == 43.0f
-	    && sector_cache[3] == 43.0f && cloak_cache[3] == 0.75f
+	    && survivor.shields == 10.0f && survivor.sector == 43
+	    && sector_cache[3] == 43 && cloak_cache[3] == 0.75f
 	    && memcmp(survivor.record.bytes, survivor_before.bytes,
 	    YT_RECORD_SIZE) == 0
 	    && memcmp(survivor_sector_after.record.bytes,
@@ -2758,8 +2758,8 @@ test_xannor_player_arrival(struct yt_error *error)
 	    && large_player.killed_by == 0.0f
 	    && large_player.fighters == 5001.0f
 	    && large_player.shields == 6000.0f
-	    && large_player.sector == 44.0f
-	    && sector_cache[4] == 44.0f && cloak_cache[4] == 0.5f
+	    && large_player.sector == 44
+	    && sector_cache[4] == 44 && cloak_cache[4] == 0.5f
 	    && memcmp(large_player.record.bytes, large_player_before.bytes,
 	    YT_RECORD_SIZE) == 0
 	    && memcmp(large_sector_after.record.bytes,

@@ -14,7 +14,7 @@ yt_current_player_hydrate(struct yt_player *player,
 	player->record = fresh->record;
 	player->sector = fresh->sector;
 	player->fighters = fresh->fighters;
-	*current_sector_record = sector_record_offset + (int)fresh->sector;
+	*current_sector_record = sector_record_offset + fresh->sector;
 	player->turns = fresh->turns;
 	player->credits = fresh->credits;
 	player->danger_scanner = fresh->danger_scanner;
@@ -49,7 +49,7 @@ yt_player_decode(struct yt_player *player, const struct yt_record *record)
 	player->killed_by = yt_record_get_number(record, YT_F45);
 	player->turns = yt_record_get_number(record, YT_F49);
 	player->shields = yt_record_get_number(record, YT_F53);
-	player->sector = yt_record_get_number(record, YT_F57);
+	player->sector = (int)yt_record_get_number(record, YT_F57);
 	player->fighters = yt_record_get_number(record, YT_F61);
 	player->holds = yt_record_get_number(record, YT_F65);
 	player->ore = yt_record_get_number(record, YT_F69);
@@ -81,7 +81,8 @@ yt_player_encode(struct yt_player *player)
 	    player->killed_by);
 	yt_record_set_number_if_changed(&player->record, YT_F49, player->turns);
 	yt_record_set_number_if_changed(&player->record, YT_F53, player->shields);
-	yt_record_set_number_if_changed(&player->record, YT_F57, player->sector);
+	yt_record_set_number_if_changed(&player->record, YT_F57,
+	    (float)player->sector);
 	yt_record_set_number_if_changed(&player->record, YT_F61, player->fighters);
 	yt_record_set_number_if_changed(&player->record, YT_F65, player->holds);
 	yt_record_set_number_if_changed(&player->record, YT_F69, player->ore);
