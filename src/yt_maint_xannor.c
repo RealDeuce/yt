@@ -65,8 +65,13 @@ yt_maintenance_xannor_roaming_split(struct yt_random *random,
 	}
 	else {
 		range = qb_cint(*group_one, &overflow);
-		if (overflow || range < 1
-		    || !yt_random_nested_integer(random, 4, range, &split,
+		if (overflow || range < 1) {
+			if (error != NULL && error->status == YT_OK)
+				set_error(error, YT_RANGE,
+				    "Xannor roaming split range", "");
+			return false;
+		}
+		if (!yt_random_nested_integer(random, 4, range, &split,
 		    error)) {
 			if (error != NULL && error->status == YT_OK)
 				set_error(error, YT_RANGE,
@@ -119,8 +124,9 @@ yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
 		size_t player;
 
 		if (!yt_random_integer(&game->random, sector_count,
-		    &candidate, error)
-		    || !yt_game_read_sector(game, candidate, &sector, error))
+		    &candidate, error))
+			return false;
+		if (!yt_game_read_sector(game, candidate, &sector, error))
 			return false;
 		if ((sector.fighters > 1.0f
 		    && sector.fighter_owner != -1)
@@ -327,30 +333,39 @@ yt_maintenance_xannor_player_line_bytes(const uint8_t *player_name,
 	    (double)xannor_fighter_losses);
 	shields_length = qb_str_double(shields, sizeof(shields),
 	    (double)player_shields);
-	if (player_length < 0 || xannor_length < 0 || shields_length < 0
-	    || !maintenance_copy_part(line, line_size, &length,
-	    prefix, sizeof(prefix) - 1U)
-	    || !maintenance_copy_part(line, line_size, &length,
-	    player_name, player_name_length)
-	    || !maintenance_copy_part(line, line_size, &length,
-	    lost, sizeof(lost) - 1U)
-	    || !maintenance_copy_part(line, line_size, &length,
-	    (const uint8_t *)player_losses, (size_t)player_length)
-	    || !maintenance_copy_part(line, line_size, &length,
-	    destroyed, sizeof(destroyed) - 1U)
-	    || !maintenance_copy_part(line, line_size, &length,
+	if (player_length < 0 || xannor_length < 0 || shields_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, line_size, &length,
+	    prefix, sizeof(prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, line_size, &length,
+	    player_name, player_name_length))
+		return false;
+	if (!maintenance_copy_part(line, line_size, &length,
+	    lost, sizeof(lost) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, line_size, &length,
+	    (const uint8_t *)player_losses, (size_t)player_length))
+		return false;
+	if (!maintenance_copy_part(line, line_size, &length,
+	    destroyed, sizeof(destroyed) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, line_size, &length,
 	    (const uint8_t *)xannor_losses, (size_t)xannor_length))
 		return false;
 	if (xannor_fighters < 1.0f) {
 		if (!maintenance_copy_part(line, line_size, &length,
-		    xannor_lost, sizeof(xannor_lost) - 1U)
-		    || !maintenance_copy_part(line, line_size, &length,
+		    xannor_lost, sizeof(xannor_lost) - 1U))
+			return false;
+		if (!maintenance_copy_part(line, line_size, &length,
 		    (const uint8_t *)shields, (size_t)shields_length))
 			return false;
 	}
-	else if (player_killed && !maintenance_copy_part(line, line_size,
-	    &length, player_lost, sizeof(player_lost) - 1U))
-		return false;
+	else if (player_killed) {
+		if (!maintenance_copy_part(line, line_size, &length,
+		    player_lost, sizeof(player_lost) - 1U))
+			return false;
+	}
 	*line_length = length;
 	return true;
 }
@@ -383,8 +398,13 @@ yt_maintenance_xannor_groups_extract(struct yt_game *game,
 		if (!yt_game_read_sector(game, group, &metadata, error))
 			return false;
 		location[group] = yt_record_get_number(&metadata.record, YT_F105);
-		if (!yt_record_set_number(&metadata.record, YT_F105, 0.0f)
-		    || !yt_database_write(&game->database,
+		if (!yt_record_set_number(&metadata.record, YT_F105, 0.0f)) {
+			if (error != NULL && error->status == YT_OK)
+				set_error(error, YT_RANGE,
+				    "encode Xannor group metadata", "YTDATA.DAT");
+			return false;
+		}
+		if (!yt_database_write(&game->database,
 		    (size_t)yt_sector_basic_record(&game->config, group),
 		    &metadata.record, error)) {
 			if (error != NULL && error->status == YT_OK)
@@ -411,9 +431,19 @@ yt_maintenance_xannor_groups_extract(struct yt_game *game,
 			return false;
 		if (host.fighter_owner == -1) {
 			size[group] = host.fighters;
-			if (!yt_record_set_number(&host.record, YT_F81, 0.0f)
-			    || !yt_record_set_number(&host.record, YT_F85, 0.0f)
-			    || !yt_database_write(&game->database,
+			if (!yt_record_set_number(&host.record, YT_F81, 0.0f)) {
+				if (error != NULL && error->status == YT_OK)
+					set_error(error, YT_RANGE,
+					    "encode Xannor group host", "YTDATA.DAT");
+				return false;
+			}
+			if (!yt_record_set_number(&host.record, YT_F85, 0.0f)) {
+				if (error != NULL && error->status == YT_OK)
+					set_error(error, YT_RANGE,
+					    "encode Xannor group host", "YTDATA.DAT");
+				return false;
+			}
+			if (!yt_database_write(&game->database,
 			    (size_t)yt_sector_basic_record(&game->config, logical),
 			    &host.record, error)) {
 				if (error != NULL && error->status == YT_OK)
@@ -490,8 +520,13 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		return false;
 	}
 	hq = (int)game->config.headquarters;
-	if (hq < 1
-	    || !yt_game_read_sector(game, hq, &host, error)) {
+	if (hq < 1) {
+		if (error != NULL && error->status == YT_OK)
+			set_error(error, YT_RANGE, "Xannor headquarters",
+			    "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_game_read_sector(game, hq, &host, error)) {
 		if (error != NULL && error->status == YT_OK)
 			set_error(error, YT_RANGE, "Xannor headquarters",
 			    "YTDATA.DAT");
@@ -515,10 +550,12 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		opponent.length = player.name_length < YT_TEXT_FIELD_SIZE
 		    ? player.name_length : YT_TEXT_FIELD_SIZE;
 	}
-	if (!yt_maintenance_compose_xannor_reclaim_attempt(&opponent, &output)
-	    || !yt_news_append_bytes(output.rows[0].data,
-	    output.rows[0].length, error)
-	    || !line_output(line_context, output.rows[0].data,
+	if (!yt_maintenance_compose_xannor_reclaim_attempt(&opponent, &output))
+		return false;
+	if (!yt_news_append_bytes(output.rows[0].data,
+	    output.rows[0].length, error))
+		return false;
+	if (!line_output(line_context, output.rows[0].data,
 	    output.rows[0].length, error))
 		return false;
 	while (defenders > 0.0 && size[1] > 0.0f) {
@@ -537,8 +574,9 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 	if (!yt_game_read_sector(game, hq, &host, error))
 		return false;
 	if (successful) {
-		if (!yt_record_set_number(&host.record, YT_F81, 0.0f)
-		    || !yt_record_set_number(&host.record, YT_F85, 0.0f))
+		if (!yt_record_set_number(&host.record, YT_F81, 0.0f))
+			goto encode_error;
+		if (!yt_record_set_number(&host.record, YT_F85, 0.0f))
 			goto encode_error;
 	}
 	else {
@@ -549,12 +587,15 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 	}
 	if (!yt_database_write(&game->database,
 	    (size_t)yt_sector_basic_record(&game->config, hq),
-	    &host.record, error)
-	    || !yt_maintenance_compose_xannor_reclaim_result(
-	    successful, &output)
-	    || !line_output(line_context, output.rows[0].data,
-	    output.rows[0].length, error)
-	    || !yt_news_append_bytes(output.rows[0].data,
+	    &host.record, error))
+		return false;
+	if (!yt_maintenance_compose_xannor_reclaim_result(
+	    successful, &output))
+		return false;
+	if (!line_output(line_context, output.rows[0].data,
+	    output.rows[0].length, error))
+		return false;
+	if (!yt_news_append_bytes(output.rows[0].data,
 	    output.rows[0].length, error))
 		return false;
 	return true;
@@ -613,18 +654,33 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 	old_logical = (int)game->config.headquarters;
 	game->config.headquarters = (float)candidate;
 	location[1] = (float)candidate;
-	if (!yt_database_read(&game->database, 1U, &config_record, error)
-	    || !yt_record_set_number(&config_record, YT_F117,
-	    (float)candidate)
-	    || !yt_database_write(&game->database, 1U, &config_record, error)) {
+	if (!yt_database_read(&game->database, 1U, &config_record, error)) {
+		if (error != NULL && error->status == YT_OK)
+			set_error(error, YT_RANGE,
+			    "encode Xannor headquarters config", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_record_set_number(&config_record, YT_F117,
+	    (float)candidate)) {
+		if (error != NULL && error->status == YT_OK)
+			set_error(error, YT_RANGE,
+			    "encode Xannor headquarters config", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_database_write(&game->database, 1U, &config_record, error)) {
 		if (error != NULL && error->status == YT_OK)
 			set_error(error, YT_RANGE,
 			    "encode Xannor headquarters config", "YTDATA.DAT");
 		return false;
 	}
 	game->config.record = config_record;
-	if (old_logical < 1
-	    || !yt_game_read_sector(game, old_logical, &sector, error)) {
+	if (old_logical < 1) {
+		if (error != NULL && error->status == YT_OK)
+			set_error(error, YT_RANGE, "old Xannor headquarters",
+			    "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_game_read_sector(game, old_logical, &sector, error)) {
 		if (error != NULL && error->status == YT_OK)
 			set_error(error, YT_RANGE, "old Xannor headquarters",
 			    "YTDATA.DAT");
@@ -633,8 +689,13 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 	planet_number = (int)qb_single_subtract(game->config.total_records,
 	    game->config.planet_offset);
 	if (sector.planet == planet_number) {
-		if (!yt_record_set_number(&sector.record, YT_F93, 0.0f)
-		    || !yt_database_write(&game->database,
+		if (!yt_record_set_number(&sector.record, YT_F93, 0.0f)) {
+			if (error != NULL && error->status == YT_OK)
+				set_error(error, YT_RANGE,
+				    "encode old Xannor headquarters", "YTDATA.DAT");
+			return false;
+		}
+		if (!yt_database_write(&game->database,
 		    (size_t)yt_sector_basic_record(&game->config, old_logical),
 		    &sector.record, error)) {
 			if (error != NULL && error->status == YT_OK)
@@ -643,10 +704,20 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 			return false;
 		}
 	}
-	if (!yt_game_read_sector(game, candidate, &sector, error)
-	    || !yt_record_set_number(&sector.record, YT_F93,
-	    (float)planet_number)
-	    || !yt_database_write(&game->database,
+	if (!yt_game_read_sector(game, candidate, &sector, error)) {
+		if (error != NULL && error->status == YT_OK)
+			set_error(error, YT_RANGE,
+			    "encode new Xannor headquarters", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_record_set_number(&sector.record, YT_F93,
+	    (float)planet_number)) {
+		if (error != NULL && error->status == YT_OK)
+			set_error(error, YT_RANGE,
+			    "encode new Xannor headquarters", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_database_write(&game->database,
 	    (size_t)yt_sector_basic_record(&game->config, candidate),
 	    &sector.record, error)) {
 		if (error != NULL && error->status == YT_OK)
@@ -655,12 +726,15 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 		return false;
 	}
 	if (!yt_maintenance_compose_xannor_relocation(blank,
-	    blank_length, &output)
-	    || !yt_news_append_bytes(output.rows[0].data,
-	    output.rows[0].length, error)
-	    || !line_output(line_context, output.rows[0].data,
-	    output.rows[0].length, error)
-	    || !line_output(line_context, output.rows[1].data,
+	    blank_length, &output))
+		return false;
+	if (!yt_news_append_bytes(output.rows[0].data,
+	    output.rows[0].length, error))
+		return false;
+	if (!line_output(line_context, output.rows[0].data,
+	    output.rows[0].length, error))
+		return false;
+	if (!line_output(line_context, output.rows[1].data,
 	    output.rows[1].length, error))
 		return false;
 	return true;
@@ -705,21 +779,35 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 			*live_sector = player.sector;
 			*cached_target = player_sector[record];
 			if (!yt_maintenance_compose_xannor_revenge(blank,
-			    blank_length, &output)
-			    || !line_output(line_context, output.rows[0].data,
-			    output.rows[0].length, error)
-			    || !yt_news_append_bytes(output.rows[1].data,
-			    output.rows[1].length, error)
-			    || !line_output(line_context, output.rows[1].data,
-			    output.rows[1].length, error)
-			    || !line_output(line_context, output.rows[2].data,
+			    blank_length, &output))
+				return false;
+			if (!line_output(line_context, output.rows[0].data,
+			    output.rows[0].length, error))
+				return false;
+			if (!yt_news_append_bytes(output.rows[1].data,
+			    output.rows[1].length, error))
+				return false;
+			if (!line_output(line_context, output.rows[1].data,
+			    output.rows[1].length, error))
+				return false;
+			if (!line_output(line_context, output.rows[2].data,
 			    output.rows[2].length, error))
 				return false;
 		}
 	}
-	if (!yt_game_read_sector(game, 21, &metadata, error)
-	    || !yt_record_set_raw_number(&metadata.record, YT_F105, dirty_zero)
-	    || !yt_database_write(&game->database,
+	if (!yt_game_read_sector(game, 21, &metadata, error)) {
+		if (error != NULL && error->status == YT_OK)
+			set_error(error, YT_RANGE, "clear Xannor revenge slot",
+			    "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_record_set_raw_number(&metadata.record, YT_F105, dirty_zero)) {
+		if (error != NULL && error->status == YT_OK)
+			set_error(error, YT_RANGE, "clear Xannor revenge slot",
+			    "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_database_write(&game->database,
 	    (size_t)yt_sector_basic_record(&game->config, 21),
 	    &metadata.record, error)) {
 		if (error != NULL && error->status == YT_OK)
@@ -744,19 +832,26 @@ maintenance_write_xannor_rebuild(struct yt_game *game, int logical,
 		goto range;
 	for (index = 0; index < 3; ++index) {
 		if (!yt_record_set_number(&planet->record,
-		    production_offsets[index], 100000.0f)
-		    || !yt_record_set_number(&planet->record,
+		    production_offsets[index], 100000.0f))
+			goto range;
+		if (!yt_record_set_number(&planet->record,
 		    stock_offsets[index], 0.0f))
 			goto range;
 	}
-	if (!yt_record_set_number(&planet->record, YT_F69, 0.0f)
-	    || !yt_record_set_number(&planet->record, YT_F73, -1.0f)
-	    || !yt_record_set_number(&planet->record, YT_F77,
-	    planet->ground_forces)
-	    || !yt_record_set_number(&planet->record, YT_F85, 8.0f)
-	    || !yt_record_set_number(&planet->record, YT_F89, minute)
-	    || !yt_record_set_number(&planet->record, YT_F117, planet->bank)
-	    || !yt_record_set_number(&planet->record, YT_F125, 0.0f))
+	if (!yt_record_set_number(&planet->record, YT_F69, 0.0f))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F73, -1.0f))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F77,
+	    planet->ground_forces))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F85, 8.0f))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F89, minute))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F117, planet->bank))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F125, 0.0f))
 		goto range;
 	return yt_database_write(&game->database,
 	    (size_t)yt_planet_basic_record(&game->config, logical),
@@ -772,10 +867,16 @@ maintenance_write_xannor_daily(struct yt_game *game, int logical,
     struct yt_planet *planet, struct yt_error *error)
 {
 	if (!yt_record_set_number(&planet->record, YT_F73,
-	    (float)planet->owner)
-	    || !yt_record_set_number(&planet->record, YT_F77,
-	    planet->ground_forces)
-	    || !yt_record_set_number(&planet->record, YT_F117, planet->bank)) {
+	    (float)planet->owner)) {
+		set_error(error, YT_RANGE, "encode Xannoron daily", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_record_set_number(&planet->record, YT_F77,
+	    planet->ground_forces)) {
+		set_error(error, YT_RANGE, "encode Xannoron daily", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_record_set_number(&planet->record, YT_F117, planet->bank)) {
 		set_error(error, YT_RANGE, "encode Xannoron daily", "YTDATA.DAT");
 		return false;
 	}
@@ -827,8 +928,11 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	    - game->config.planet_offset);
 	headquarters = (int)game->config.headquarters;
 	if (headquarters < 1 || headquarters > sector_count
-	    || planet_count < 1 || planet_count > 100
-	    || !yt_maintenance_compose_xannor_home(blank,
+	    || planet_count < 1 || planet_count > 100) {
+		set_error(error, YT_RANGE, "maintain Xannoron", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_maintenance_compose_xannor_home(blank,
 	    blank_length, false, &output)) {
 		set_error(error, YT_RANGE, "maintain Xannoron", "YTDATA.DAT");
 		return false;
@@ -843,9 +947,9 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	rebuilt = sector.planet == 0;
 	if (rebuilt) {
 		if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
-		    &today, NULL,
-		    error)
-		    || !yt_maintenance_compose_xannor_home(blank,
+		    &today, NULL, error))
+			return false;
+		if (!yt_maintenance_compose_xannor_home(blank,
 		    blank_length, true, &output))
 			return false;
 		for (row = 2U; row < 4U; ++row) {
@@ -854,8 +958,9 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 				return false;
 		}
 		if (!yt_news_append_bytes(output.rows[3].data,
-		    output.rows[3].length, error)
-		    || !yt_game_read_planet(game, planet_count, &planet, error))
+		    output.rows[3].length, error))
+			return false;
+		if (!yt_game_read_planet(game, planet_count, &planet, error))
 			return false;
 		minute = yt_maintenance_sint(qb_single_divide(
 		    (float)yt_clock_timer(&game->clock), 60.0f));
@@ -867,12 +972,15 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 			return false;
 		planet.bank = qb_single_add(100000.0f, qb_single_multiply(sample, 10000000.0f));
 		if (!maintenance_write_xannor_rebuild(game, planet_count,
-		    &planet, today, minute, error)
-		    || !line_output(line_context, output.rows[4].data,
-		    output.rows[4].length, error)
-		    || !yt_news_append_bytes(output.rows[4].data,
-		    output.rows[4].length, error)
-		    || !yt_game_read_sector(game, headquarters, &sector, error))
+		    &planet, today, minute, error))
+			return false;
+		if (!line_output(line_context, output.rows[4].data,
+		    output.rows[4].length, error))
+			return false;
+		if (!yt_news_append_bytes(output.rows[4].data,
+		    output.rows[4].length, error))
+			return false;
+		if (!yt_game_read_sector(game, headquarters, &sector, error))
 			return false;
 		sector.planet = planet_count;
 		if (!maintenance_write_xannor_sector(game, headquarters,
@@ -920,8 +1028,11 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 		return false;
 	}
 	player_count = (int)game->config.sector_offset - 1;
-	if (player_count < 1 || cache_count < (size_t)player_count + 2U
-	    || !yt_maintenance_compose_xannor_hunt(blank,
+	if (player_count < 1 || cache_count < (size_t)player_count + 2U) {
+		set_error(error, YT_RANGE, "Xannor hunt", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_maintenance_compose_xannor_hunt(blank,
 	    blank_length, NULL, &output)) {
 		set_error(error, YT_RANGE, "Xannor hunt", "YTDATA.DAT");
 		return false;
@@ -947,8 +1058,9 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 		return false;
 	if (top_record == 0)
 		return true;
-	if (!yt_game_read_player(game, top_record, &player, error)
-	    || !yt_random_next(&game->random, &gate, error))
+	if (!yt_game_read_player(game, top_record, &player, error))
+		return false;
+	if (!yt_random_next(&game->random, &gate, error))
 		return false;
 	if (*top_score < 2500000.0f
 	    || qb_single_subtract(player_cloak[top_record],
