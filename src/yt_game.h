@@ -850,12 +850,6 @@ int yt_nearest_filter_selector(const uint8_t *response, size_t length);
 bool yt_nearest_direction_prompt(int selector, uint8_t *prompt,
     size_t capacity, size_t *length);
 
-struct yt_nearest_style {
-	float foreground;
-	float bold;
-	float blink;
-};
-
 struct yt_nearest_market {
 	float minute;
 	float elapsed;
