@@ -57,10 +57,16 @@ yt_port_market_update(struct yt_port_market_state *state,
 	memset(state->price_raw, 0, sizeof(state->price_raw));
 	memset(state->price, 0, sizeof(state->price));
 
-	if (qb_mbf64_from_u64(10U, ten) != QB_MBF_OK
-	    || qb_mbf64_from_u64(1000U, thousand) != QB_MBF_OK
-	    || qb_mbf64_from_u64(1U, one) != QB_MBF_OK
-	    || qb_mbf64_encode(0.5, half) != QB_MBF_OK)
+	if (qb_mbf64_from_u64(10U, ten) != QB_MBF_OK)
+		return yt_game_error(error, YT_RANGE,
+		    "ordinary port constants");
+	if (qb_mbf64_from_u64(1000U, thousand) != QB_MBF_OK)
+		return yt_game_error(error, YT_RANGE,
+		    "ordinary port constants");
+	if (qb_mbf64_from_u64(1U, one) != QB_MBF_OK)
+		return yt_game_error(error, YT_RANGE,
+		    "ordinary port constants");
+	if (qb_mbf64_encode(0.5, half) != QB_MBF_OK)
 		return yt_game_error(error, YT_RANGE,
 		    "ordinary port constants");
 	minute = qb_single_divide(state->timer_seconds, 60.0f);
@@ -71,8 +77,9 @@ yt_port_market_update(struct yt_port_market_state *state,
 	if (elapsed > 10.0f || elapsed < 0.0f)
 		elapsed = 10.0f;
 	if (!market_encode_single(state->current_day, current_day_raw, error,
-	    "ordinary port current day")
-	    || !market_encode_single(minute, current_minute_raw, error,
+	    "ordinary port current day"))
+		return false;
+	if (!market_encode_single(minute, current_minute_raw, error,
 	    "ordinary port current minute"))
 		return false;
 
@@ -105,8 +112,9 @@ yt_port_market_update(struct yt_port_market_state *state,
 		yt_port_mbf64_promote_single(growth_raw, growth);
 		if (!market_binary(qb_mbf64_add_raw, mutable_capacity[index],
 		    growth, mutable_capacity[index], error,
-		    "ordinary port capacity")
-		    || !market_binary(qb_mbf64_div_raw, mutable_capacity[index],
+		    "ordinary port capacity"))
+			return false;
+		if (!market_binary(qb_mbf64_div_raw, mutable_capacity[index],
 		    ten, quotient, error, "ordinary port production comparison"))
 			return false;
 		yt_port_mbf64_promote_single(mutable_production[index],
@@ -114,8 +122,9 @@ yt_port_market_update(struct yt_port_market_state *state,
 		if (yt_port_mbf64_compare(quotient, promoted_production) > 0) {
 			if (!market_binary(qb_mbf64_div_raw,
 			    mutable_capacity[index], ten, quotient, error,
-			    "ordinary port production replacement")
-			    || qb_mbf32_from_mbf64_raw(quotient,
+			    "ordinary port production replacement"))
+				return false;
+			if (qb_mbf32_from_mbf64_raw(quotient,
 			    mutable_production[index]) == QB_MBF_OVERFLOW)
 				return yt_game_error(error, YT_RANGE,
 				    "ordinary port production CSNG");
@@ -130,20 +139,24 @@ yt_port_market_update(struct yt_port_market_state *state,
 		    + YT_F73 + index * 4U, factor);
 		if (!market_binary(qb_mbf64_mul_raw, factor,
 		    mutable_capacity[index], numerator, error,
-		    "ordinary port price numerator")
-		    || !market_binary(qb_mbf64_mul_raw, promoted_production,
+		    "ordinary port price numerator"))
+			return false;
+		if (!market_binary(qb_mbf64_mul_raw, promoted_production,
 		    thousand, denominator, error,
-		    "ordinary port price denominator")
-		    || !market_binary(qb_mbf64_div_raw, numerator, denominator,
+		    "ordinary port price denominator"))
+			return false;
+		if (!market_binary(qb_mbf64_div_raw, numerator, denominator,
 		    ratio, error, "ordinary port price division"))
 			return false;
 		memcpy(scale, ratio, 8U);
 		yt_port_mbf64_negate(scale);
 		if (!market_binary(qb_mbf64_add_raw, one, scale, scale, error,
-		    "ordinary port price scale")
-		    || !market_binary(qb_mbf64_mul_raw, base, scale, raw_price,
-		    error, "ordinary port raw price")
-		    || !market_binary(qb_mbf64_add_raw, raw_price, half,
+		    "ordinary port price scale"))
+			return false;
+		if (!market_binary(qb_mbf64_mul_raw, base, scale, raw_price,
+		    error, "ordinary port raw price"))
+			return false;
+		if (!market_binary(qb_mbf64_add_raw, raw_price, half,
 		    rounded_source, error, "ordinary port price rounding"))
 			return false;
 		if (yt_port_mbf64_compare(rounded_source, zero) <= 0)
@@ -160,26 +173,32 @@ yt_port_market_update(struct yt_port_market_state *state,
 		    == QB_MBF_OVERFLOW)
 			return yt_game_error(error, YT_RANGE,
 			    "ordinary port price CSNG");
-		if (qb_mbf32_decode(mutable_price[index]) < 1.0f
-		    && !market_encode_single(1.0f, mutable_price[index], error,
-		    "ordinary port price floor"))
-			return false;
+		if (qb_mbf32_decode(mutable_price[index]) < 1.0f) {
+			if (!market_encode_single(1.0f, mutable_price[index], error,
+			    "ordinary port price floor"))
+				return false;
+		}
 	}
 
 	updated = state->port.record;
 	if (!yt_record_set_raw_number(&updated, YT_F45,
-	    current_day_raw)
-	    || !yt_record_set_raw_number(&updated, YT_F101,
+	    current_day_raw))
+		return false;
+	if (!yt_record_set_raw_number(&updated, YT_F101,
 	    current_minute_raw))
 		return false;
 	for (index = 0U; index < 3U; ++index) {
 		uint8_t stored_capacity[4];
 
 		if (qb_mbf32_from_mbf64_raw(mutable_capacity[index],
-		    stored_capacity) == QB_MBF_OVERFLOW
-		    || !yt_record_set_raw_number(&updated,
-		    YT_F49 + index * 4U, stored_capacity)
-		    || !yt_record_set_raw_number(&updated,
+		    stored_capacity) == QB_MBF_OVERFLOW)
+			return yt_game_error(error, YT_RANGE,
+			    "ordinary port FIELD overlay");
+		if (!yt_record_set_raw_number(&updated,
+		    YT_F49 + index * 4U, stored_capacity))
+			return yt_game_error(error, YT_RANGE,
+			    "ordinary port FIELD overlay");
+		if (!yt_record_set_raw_number(&updated,
 		    YT_F61 + index * 4U, mutable_production[index]))
 			return yt_game_error(error, YT_RANGE,
 			    "ordinary port FIELD overlay");
@@ -251,17 +270,27 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 	if (name_length > YT_TEXT_FIELD_SIZE)
 		name_length = YT_TEXT_FIELD_SIZE;
 	if (!port_report_append(report->title, sizeof(report->title),
-	    &report->title_length, title_prefix, sizeof(title_prefix) - 1U)
-	    || !port_report_append(report->title, sizeof(report->title),
-	    &report->title_length, report_port->record.bytes, name_length)
-	    || !port_report_append(report->title, sizeof(report->title),
+	    &report->title_length, title_prefix, sizeof(title_prefix) - 1U))
+		return yt_game_error(error, YT_RANGE,
+		    "port report title composition");
+	if (!port_report_append(report->title, sizeof(report->title),
+	    &report->title_length, report_port->record.bytes, name_length))
+		return yt_game_error(error, YT_RANGE,
+		    "port report title composition");
+	if (!port_report_append(report->title, sizeof(report->title),
 	    &report->title_length, title_separator,
-	    sizeof(title_separator) - 1U)
-	    || !port_report_append(report->title, sizeof(report->title),
-	    &report->title_length, date, 10U)
-	    || !port_report_append(report->title, sizeof(report->title),
-	    &report->title_length, " ", 1U)
-	    || !port_report_append(report->title, sizeof(report->title),
+	    sizeof(title_separator) - 1U))
+		return yt_game_error(error, YT_RANGE,
+		    "port report title composition");
+	if (!port_report_append(report->title, sizeof(report->title),
+	    &report->title_length, date, 10U))
+		return yt_game_error(error, YT_RANGE,
+		    "port report title composition");
+	if (!port_report_append(report->title, sizeof(report->title),
+	    &report->title_length, " ", 1U))
+		return yt_game_error(error, YT_RANGE,
+		    "port report title composition");
+	if (!port_report_append(report->title, sizeof(report->title),
 	    &report->title_length, time_text, 8U))
 		return yt_game_error(error, YT_RANGE,
 		    "port report title composition");
@@ -281,8 +310,10 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 		}
 		if (!port_report_append(item->name_status,
 		    sizeof(item->name_status), &position, commodity[index],
-		    sizeof(commodity[index]) - 1U)
-		    || !port_report_append(item->name_status,
+		    sizeof(commodity[index]) - 1U))
+			return yt_game_error(error, YT_RANGE,
+			    "port report item composition");
+		if (!port_report_append(item->name_status,
 		    sizeof(item->name_status), &position, status,
 		    sizeof(buying) - 1U))
 			return yt_game_error(error, YT_RANGE,
@@ -293,8 +324,10 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 			    "port report stock INT");
 		formatted_length = qb_str_mbf64(number, sizeof(number),
 		    floored_capacity);
-		if (formatted_length < 0
-		    || !port_report_right_raw((const uint8_t *)number,
+		if (formatted_length < 0)
+			return yt_game_error(error, YT_RANGE,
+			    "port report stock formatting");
+		if (!port_report_right_raw((const uint8_t *)number,
 		    (size_t)formatted_length, sizeof(item->capacity),
 		    item->capacity))
 			return yt_game_error(error, YT_RANGE,
@@ -303,8 +336,10 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 		    + hold_offset[index], promoted_hold);
 		formatted_length = qb_str_mbf64(number, sizeof(number),
 		    promoted_hold);
-		if (formatted_length < 0
-		    || !port_report_right_raw((const uint8_t *)number,
+		if (formatted_length < 0)
+			return yt_game_error(error, YT_RANGE,
+			    "port report hold formatting");
+		if (!port_report_right_raw((const uint8_t *)number,
 		    (size_t)formatted_length, sizeof(item->hold), item->hold))
 			return yt_game_error(error, YT_RANGE,
 			    "port report hold formatting");
@@ -316,8 +351,10 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 		number_length = (size_t)formatted_length;
 		position = 0U;
 		if (!port_report_append(item->price, sizeof(item->price),
-		    &position, number, number_length)
-		    || !port_report_append(item->price, sizeof(item->price),
+		    &position, number, number_length))
+			return yt_game_error(error, YT_RANGE,
+			    "port report price composition");
+		if (!port_report_append(item->price, sizeof(item->price),
 		    &position, padding, sizeof(padding) - 1U))
 			return yt_game_error(error, YT_RANGE,
 			    "port report price composition");
