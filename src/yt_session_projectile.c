@@ -30,13 +30,16 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 		*hop_loss = 0.0f;
 		*attacker_length = 0U;
 		if (!session_sound(session, YT_SOUND_CUE_ACTION,
-		    "cruise missile launch sound", error)
-		    || !session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "cruise missile opening line", error)
-		    || !session_present_text(session, loading,
+		    "cruise missile launch sound", error))
+			return false;
+		if (!session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "cruise missile opening line", error))
+			return false;
+		if (!session_present_text(session, loading,
 		    sizeof(loading) - 1U, SESSION_PRESENT_RAW,
-		    "cruise missile loading text", error)
-		    || !session_present_text(session, NULL, 0U,
+		    "cruise missile loading text", error))
+			return false;
+		if (!session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "cruise missile opening line", error))
 			return false;
 		*last_mine_news_sector = 0.0f;
@@ -60,37 +63,50 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 	*attacker_length = player_name_length;
 	yt_projectile_plasma_opening_values(amount, energy, hop_loss);
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "plasma opening line", error)
-	    || !session_present_text(session, loading, sizeof(loading) - 1U,
-	    SESSION_PRESENT_RAW, "plasma loading text", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "plasma opening line", error)
-	    || !session_sound(session, YT_SOUND_CUE_ACTION, "plasma launch sound", error)
-	    || !session_wait(session, 1.0, "plasma launch wait", error)
-	    || !yt_projectile_plasma_energy_row(*energy, row, sizeof(row),
-	    &row_length)
-	    || !session_present_text(session, row, row_length,
-	    SESSION_PRESENT_LINE, "plasma opening line", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "plasma opening line", error)
-	    || !session_wait(session, 1.0, "plasma opening wait", error))
+	    "plasma opening line", error))
+		return false;
+	if (!session_present_text(session, loading, sizeof(loading) - 1U,
+	    SESSION_PRESENT_RAW, "plasma loading text", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "plasma opening line", error))
+		return false;
+	if (!session_sound(session, YT_SOUND_CUE_ACTION,
+	    "plasma launch sound", error))
+		return false;
+	if (!session_wait(session, 1.0, "plasma launch wait", error))
+		return false;
+	if (!yt_projectile_plasma_energy_row(*energy, row, sizeof(row),
+	    &row_length))
+		return false;
+	if (!session_present_text(session, row, row_length,
+	    SESSION_PRESENT_LINE, "plasma opening line", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "plasma opening line", error))
+		return false;
+	if (!session_wait(session, 1.0, "plasma opening wait", error))
 		return false;
 	firing_counter = 1.0f;
 	while (firing_counter <= amount) {
 		if (!yt_projectile_plasma_firing_row(firing_counter, row,
-		    sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
-		    SESSION_PRESENT_LINE, "plasma opening line", error)
-		    || !session_sound(session, YT_SOUND_CUE_LAUNCH,
+		    sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "plasma opening line", error))
+			return false;
+		if (!session_sound(session, YT_SOUND_CUE_LAUNCH,
 		    "plasma bolt firing sound", error))
 			return false;
 		firing_counter = yt_projectile_plasma_next_firing(firing_counter);
 	}
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "plasma opening line", error))
+		return false;
+	if (!session_present_text(session, tracking, sizeof(tracking) - 1U,
+	    SESSION_PRESENT_LINE, "plasma opening line", error))
+		return false;
 	return session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "plasma opening line", error)
-	    && session_present_text(session, tracking, sizeof(tracking) - 1U,
-	    SESSION_PRESENT_LINE, "plasma opening line", error)
-	    && session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "plasma opening line", error);
 }
 
@@ -113,11 +129,13 @@ plasma_footer(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t row[] = "Plasma bolts dissipated.";
 
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "plasma footer leading blank", error))
+		return false;
+	if (!session_present_text(session, row, sizeof(row) - 1U,
+	    SESSION_PRESENT_LINE, "plasma footer row", error))
+		return false;
 	return session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "plasma footer leading blank", error)
-	    && session_present_text(session, row, sizeof(row) - 1U,
-	    SESSION_PRESENT_LINE, "plasma footer row", error)
-	    && session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "plasma footer trailing blank", error);
 }
 
@@ -183,16 +201,19 @@ plasma_route_run(struct yt_session *session,
 			current_hop = (float)next_hop;
 			if (next_hop == 0 || *energy < 1.0)
 				return plasma_footer(session, error);
-			if (qb_str_single(first, sizeof(first), (float)next_hop) < 0
-			    || qb_str_double(second, sizeof(second), floor(*energy)) < 0)
+			if (qb_str_single(first, sizeof(first), (float)next_hop) < 0)
+				return false;
+			if (qb_str_double(second, sizeof(second), floor(*energy)) < 0)
 				return false;
 			written = snprintf((char *)row, sizeof(row),
 			    "Bolt entering sector%s.%s Megawatts remaining.",
 			    first, second);
-			if (written < 0 || (size_t)written >= sizeof(row)
-			    || !session_present_text(session, row, (size_t)written,
-			    SESSION_PRESENT_LINE, "plasma route line", error)
-			    || !session_wait(session, 0.5, "plasma hop wait", error))
+			if (written < 0 || (size_t)written >= sizeof(row))
+				return false;
+			if (!session_present_text(session, row, (size_t)written,
+			    SESSION_PRESENT_LINE, "plasma route line", error))
+				return false;
+			if (!session_wait(session, 0.5, "plasma hop wait", error))
 				return false;
 			if (next_hop == session->disruption_sectors[0]
 			    || next_hop == session->disruption_sectors[1]) {
@@ -211,19 +232,23 @@ plasma_route_run(struct yt_session *session,
 				    1.0f));
 				route->destination = *destination;
 				if (!session_present_text(session, NULL, 0U,
-				    SESSION_PRESENT_LINE, "plasma route line", error)
-				    || qb_str_single(first, sizeof(first),
-				    (float)next_hop) < 0
-				    || qb_str_single(second, sizeof(second),
+				    SESSION_PRESENT_LINE, "plasma route line", error))
+					return false;
+				if (qb_str_single(first, sizeof(first),
+				    (float)next_hop) < 0)
+					return false;
+				if (qb_str_single(second, sizeof(second),
 				    *destination) < 0)
 					return false;
 				written = snprintf((char *)row, sizeof(row),
 				    "The plasma bolt is deflected by a black hole in "
 				    "sector%s to sector%s!", first, second);
-				if (written < 0 || (size_t)written >= sizeof(row)
-				    || !session_attention_bytes(session, row,
-				    (size_t)written, "plasma black-hole attention", error)
-				    || !session_present_text(session, NULL, 0U,
+				if (written < 0 || (size_t)written >= sizeof(row))
+					return false;
+				if (!session_attention_bytes(session, row,
+				    (size_t)written, "plasma black-hole attention", error))
+					return false;
+				if (!session_present_text(session, NULL, 0U,
 				    SESSION_PRESENT_LINE, "plasma route line", error))
 					return false;
 				break;
@@ -328,10 +353,20 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 				float draw;
 
 				if (!session_present_text(session, NULL, 0U,
-				    SESSION_PRESENT_LINE, "cruise black-hole blank", error)
-				    || !yt_projectile_cruise_reroute_row((float)next, row,
-				    sizeof(row), &row_length)
-				    || !session_attention_bytes(session, row, row_length,
+				    SESSION_PRESENT_LINE, "cruise black-hole blank", error)) {
+					route->origin = *origin_alias;
+					route->destination = *target;
+					route->amount = *missiles;
+					return false;
+				}
+				if (!yt_projectile_cruise_reroute_row((float)next, row,
+				    sizeof(row), &row_length)) {
+					route->origin = *origin_alias;
+					route->destination = *target;
+					route->amount = *missiles;
+					return false;
+				}
+				if (!session_attention_bytes(session, row, row_length,
 				    "cruise black-hole attention", error)) {
 					route->origin = *origin_alias;
 					route->destination = *target;
@@ -519,16 +554,20 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	yt_counterlaunch_debit_overlay(&debit_player, available,
 	    session->projectile.retained_counterlaunch_missiles);
 	if (!yt_game_write_player(&session->door->game, *counterattacker,
-	    &debit_player, error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "player counterlaunch blank", error)
-	    || !yt_counterlaunch_rows(stored_name, stored_name_length,
+	    &debit_player, error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "player counterlaunch blank", error))
+		return false;
+	if (!yt_counterlaunch_rows(stored_name, stored_name_length,
 	    session->projectile.retained_counterlaunch_missiles, saved_name, saved_name_length,
 	    terminal_row, sizeof(terminal_row), &terminal_length, news_row,
-	    sizeof(news_row), &news_length)
-	    || !session_present_text(session, terminal_row, terminal_length,
-	    SESSION_PRESENT_BOLD_LINE, "player counterlaunch row", error)
-	    || !yt_news_append_bytes(news_row, news_length, error))
+	    sizeof(news_row), &news_length))
+		return false;
+	if (!session_present_text(session, terminal_row, terminal_length,
+	    SESSION_PRESENT_BOLD_LINE, "player counterlaunch row", error))
+		return false;
+	if (!yt_news_append_bytes(news_row, news_length, error))
 		return false;
 	origin = (float)attacker.sector;
 	if (!session_counterlaunch_projectile(session, &origin, &target,
@@ -595,9 +634,11 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 
 	for (;;) {
 		if (!session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "projectile target opening blank", error)
-		    || !session_reload_player(session, error)
-		    || !session_reload_player(session, error))
+		    SESSION_PRESENT_LINE, "projectile target opening blank", error))
+			return false;
+		if (!session_reload_player(session, error))
+			return false;
+		if (!session_reload_player(session, error))
 			return false;
 		if (session->player.turns <= 0.0f) {
 			return session_present_alert(session, no_turns,
@@ -610,10 +651,12 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 			    sizeof(no_ammunition) - 1U,
 			    "projectile ammunition refusal", error);
 		if (!yt_projectile_target_prompt(plasma, displayed,
-		    maximum_sector, prompt, sizeof(prompt), &prompt_length)
-		    || !session_present_timed_paged_row(session, prompt,
-		    prompt_length, "projectile target prompt", error)
-		    || !session_read_number_command(session, response,
+		    maximum_sector, prompt, sizeof(prompt), &prompt_length))
+			return false;
+		if (!session_present_timed_paged_row(session, prompt,
+		    prompt_length, "projectile target prompt", error))
+			return false;
+		if (!session_read_number_command(session, response,
 		    sizeof(response)))
 			return false;
 		if (response[0] == '\0')
@@ -637,8 +680,9 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 	}
 
 	if (!session_present_timed_paged_row(session, quantity_prompt,
-	    sizeof(quantity_prompt) - 1U, "projectile quantity prompt", error)
-	    || !session_read_number_command(session, response, sizeof(response)))
+	    sizeof(quantity_prompt) - 1U, "projectile quantity prompt", error))
+		return false;
+	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
 	parsed = qb_val(response);
 	if (parsed.overflow)
@@ -664,8 +708,9 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 	origin = (float)session->player.sector;
 	yt_projectile_debit_overlay(&session->player, plasma, amount);
 	if (!yt_game_write_player(&session->door->game, session_record(session),
-	    &session->player, error)
-	    || !yt_database_flush(&session->door->game.database, error))
+	    &session->player, error))
+		return false;
+	if (!yt_database_flush(&session->door->game.database, error))
 		return false;
 	session->destroyed = false;
 	counterattack = session->projectile.pending_counterattack_player;
@@ -675,14 +720,16 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 		return false;
 	counterattack = session->projectile.pending_counterattack_player;
 	xannor_provoker = session->projectile.pending_xannor_provoker;
-	if (session->projectile.pending_counterattack_player != 0
-	    && !launch_player_counterattack(session, &counterattack,
-	    &xannor_provoker, error))
-		return false;
-	if (session->projectile.pending_xannor_provoker != 0
-	    && !yt_session_launch_xannor_retaliation(session,
-	    &xannor_provoker, error))
-		return false;
+	if (session->projectile.pending_counterattack_player != 0) {
+		if (!launch_player_counterattack(session, &counterattack,
+		    &xannor_provoker, error))
+			return false;
+	}
+	if (session->projectile.pending_xannor_provoker != 0) {
+		if (!yt_session_launch_xannor_retaliation(session,
+		    &xannor_provoker, error))
+			return false;
+	}
 	if (session->destroyed)
 		return yt_session_common_fatal_self(session, error);
 	return true;
