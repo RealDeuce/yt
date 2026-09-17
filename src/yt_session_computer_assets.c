@@ -75,9 +75,7 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED)
 		return true;
-	if (!yt_computer_avoid_maximum((float)session_port_offset(session),
-	    (float)session_sector_offset(session), &maximum, error))
-		return false;
+	maximum = (float)session_sector_count(session);
 	{
 		char maximum_text[64];
 		char prompt[160];

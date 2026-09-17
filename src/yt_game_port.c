@@ -13,25 +13,6 @@ yt_port_link_missing(float link)
 }
 
 bool
-yt_computer_port_maximum(float port_offset, float sector_offset,
-    float *maximum, struct yt_error *error)
-{
-	uint8_t raw[4];
-	volatile float difference = port_offset - sector_offset;
-	enum qb_mbf_status status;
-
-	if (maximum == NULL)
-		return yt_game_error(error, YT_INVALID,
-		    "computer port maximum arguments");
-	status = qb_mbf32_encode(difference, raw);
-	if (status == QB_MBF_OVERFLOW)
-		return yt_game_error(error, YT_RANGE,
-		    "computer port maximum subtraction");
-	*maximum = status == QB_MBF_UNDERFLOW ? 0.0f : qb_mbf32_decode(raw);
-	return true;
-}
-
-bool
 yt_computer_port_select(const char *response, float maximum,
     float *selected, enum yt_computer_port_selection_route *route,
     struct yt_error *error)
@@ -66,26 +47,6 @@ yt_computer_port_select(const char *response, float maximum,
 	below = *selected < 1.0f;
 	*route = (above | below) ? YT_COMPUTER_PORT_SELECTION_INVALID
 	    : YT_COMPUTER_PORT_SELECTION_ACCEPTED;
-	return true;
-}
-
-bool
-yt_computer_path_maximum(float port_offset, float sector_offset,
-    float *maximum, struct yt_error *error)
-{
-	uint8_t raw[4];
-	volatile float difference = port_offset - sector_offset;
-	enum qb_mbf_status status;
-
-	if (maximum == NULL)
-		return yt_game_error(error, YT_INVALID,
-		    "computer path maximum arguments");
-	status = qb_mbf32_encode(difference, raw);
-	if (status == QB_MBF_OVERFLOW)
-		return yt_game_error(error, YT_RANGE,
-		    "computer path maximum subtraction");
-	*maximum = status == QB_MBF_UNDERFLOW ? 0.0f
-	    : qb_mbf32_decode(raw);
 	return true;
 }
 
@@ -172,26 +133,6 @@ computer_avoid_csng(const struct qb_val_result *parsed, float *selected,
 	if (status == QB_MBF_OVERFLOW || status == QB_MBF_DOMAIN)
 		return yt_game_error(error, YT_RANGE, operation);
 	*selected = status == QB_MBF_UNDERFLOW ? 0.0f
-	    : qb_mbf32_decode(raw);
-	return true;
-}
-
-bool
-yt_computer_avoid_maximum(float port_offset, float sector_offset,
-    float *maximum, struct yt_error *error)
-{
-	uint8_t raw[4];
-	volatile float difference = port_offset - sector_offset;
-	enum qb_mbf_status status;
-
-	if (maximum == NULL)
-		return yt_game_error(error, YT_INVALID,
-		    "avoid maximum arguments");
-	status = qb_mbf32_encode(difference, raw);
-	if (status == QB_MBF_OVERFLOW)
-		return yt_game_error(error, YT_RANGE,
-		    "avoid maximum subtraction");
-	*maximum = status == QB_MBF_UNDERFLOW ? 0.0f
 	    : qb_mbf32_decode(raw);
 	return true;
 }

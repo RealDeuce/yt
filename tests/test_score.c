@@ -13782,15 +13782,10 @@ check_computer_port_selection(void)
 	};
 	struct yt_error error;
 	enum yt_computer_port_selection_route route;
-	float maximum;
+	float maximum = 2004.0f;
 	float selected;
-	float largest = qb_mbf32_decode(
-	    (const uint8_t[]){0xff, 0xff, 0x7f, 0xff});
 	size_t index;
 
-	if (!yt_computer_port_maximum(2055.0f, 51.0f, &maximum, NULL)
-	    || maximum != 2004.0f)
-		return false;
 	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
 		if (!yt_computer_port_select(cases[index].response, maximum,
 		    &selected, &route, NULL)
@@ -13808,14 +13803,7 @@ check_computer_port_selection(void)
 	    &error) || error.status != YT_RANGE
 	    || strcmp(error.operation, "computer port sector VAL") != 0)
 		return false;
-	yt_error_clear(&error);
-	if (yt_computer_port_maximum(largest, -largest, &maximum, &error)
-	    || error.status != YT_RANGE
-	    || strcmp(error.operation,
-	    "computer port maximum subtraction") != 0)
-		return false;
-	return !yt_computer_port_maximum(1.0f, 1.0f, NULL, &error)
-	    && error.status == YT_INVALID;
+	return true;
 }
 
 static bool
@@ -13833,18 +13821,12 @@ check_computer_path_numeric_boundary(void)
 		{"16777217", 16777216.0f},
 	};
 	struct yt_error error;
-	float largest = qb_mbf32_decode(
-	    (const uint8_t[]){0xff, 0xff, 0x7f, 0xff});
-	float maximum;
 	float selected;
 	size_t index;
 	char scratch[32] = "1";
 	size_t scratch_length = 1U;
 	float hops = 0.0f;
 
-	if (!yt_computer_path_maximum(2055.0f, 51.0f, &maximum, NULL)
-	    || maximum != 2004.0f)
-		return false;
 	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
 		if (!yt_computer_path_parse(cases[index].response, &selected,
 		    NULL)
@@ -13871,17 +13853,9 @@ check_computer_path_numeric_boundary(void)
 	    &error) || error.status != YT_RANGE
 	    || strcmp(error.operation, "computer path sector VAL") != 0)
 		return false;
-	yt_error_clear(&error);
-	if (yt_computer_path_maximum(largest, -largest, &maximum, &error)
-	    || error.status != YT_RANGE
-	    || strcmp(error.operation,
-	    "computer path maximum subtraction") != 0)
-		return false;
-	yt_error_clear(&error);
 	return !yt_computer_path_parse(NULL, &selected, &error)
 	    && error.status == YT_INVALID
-	    && !yt_computer_path_parse("1", NULL, &error)
-	    && !yt_computer_path_maximum(1.0f, 1.0f, NULL, &error);
+	    && !yt_computer_path_parse("1", NULL, &error);
 }
 
 static bool
@@ -13904,16 +13878,14 @@ check_computer_avoid_selection(void)
 	struct yt_error error;
 	enum yt_computer_avoid_selection_route route;
 	char formatted[64];
-	float maximum;
+	float maximum = 2004.0f;
 	float selected;
 	bool available;
 	bool locked;
 	int index;
 	size_t transition;
 
-	if (!yt_computer_avoid_maximum(2055.0f, 51.0f, &maximum, NULL)
-	    || maximum != 2004.0f
-	    || !yt_computer_avoid_select_slot("2.5", 0U, &selected, &index,
+	if (!yt_computer_avoid_select_slot("2.5", 0U, &selected, &index,
 	    &route, NULL)
 	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED
 	    || selected != 2.5f || index != 3
@@ -13965,19 +13937,11 @@ check_computer_avoid_selection(void)
 	    &route, &error) || error.status != YT_RANGE
 	    || strcmp(error.operation, "avoid sector VAL") != 0)
 		return false;
-	maximum = qb_mbf32_decode(
-	    (const uint8_t[]){0xff, 0xff, 0x7f, 0xff});
-	yt_error_clear(&error);
-	if (yt_computer_avoid_maximum(maximum, -maximum, &selected, &error)
-	    || error.status != YT_RANGE
-	    || strcmp(error.operation, "avoid maximum subtraction") != 0)
-		return false;
 	yt_error_clear(&error);
 	return !yt_computer_avoid_select_slot(NULL, 0U, &selected, &index,
 	    &route, &error) && error.status == YT_INVALID
 	    && !yt_computer_avoid_select_sector(NULL, 1.0f, &selected, &route,
-	    &error)
-	    && !yt_computer_avoid_maximum(1.0f, 1.0f, NULL, &error);
+	    &error);
 }
 
 static bool

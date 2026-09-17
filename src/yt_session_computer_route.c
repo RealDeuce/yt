@@ -88,9 +88,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		return true;
 	if (!yt_computer_path_parse(response, &destination_value, error))
 		return false;
-	if (!yt_computer_path_maximum((float)session_port_offset(session),
-	    (float)session_sector_offset(session), &maximum, error))
-		return false;
+	maximum = (float)session_sector_count(session);
 	if (destination_value < 1.0f || destination_value > maximum
 	    || start_value < 1.0f || start_value > maximum) {
 		char number[64];

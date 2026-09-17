@@ -383,13 +383,9 @@ enum yt_computer_port_selection_route {
 	YT_COMPUTER_PORT_SELECTION_INVALID,
 	YT_COMPUTER_PORT_SELECTION_ACCEPTED,
 };
-bool yt_computer_port_maximum(float port_offset, float sector_offset,
-	float *maximum, struct yt_error *error);
 bool yt_computer_port_select(const char *response, float maximum,
 	float *selected, enum yt_computer_port_selection_route *route,
 	struct yt_error *error);
-bool yt_computer_path_maximum(float port_offset, float sector_offset,
-	float *maximum, struct yt_error *error);
 bool yt_computer_path_parse(const char *response, float *selected,
 	struct yt_error *error);
 bool yt_computer_path_append_hop(char *scratch, size_t capacity,
@@ -400,8 +396,6 @@ enum yt_computer_avoid_selection_route {
 	YT_COMPUTER_AVOID_SELECTION_INVALID,
 	YT_COMPUTER_AVOID_SELECTION_ACCEPTED,
 };
-bool yt_computer_avoid_maximum(float port_offset, float sector_offset,
-	float *maximum, struct yt_error *error);
 bool yt_computer_avoid_select_slot(const char *response,
 	uint8_t conversion_mode, float *selected, int *index,
 	enum yt_computer_avoid_selection_route *route,

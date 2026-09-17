@@ -86,7 +86,7 @@ yt_session_computer_port_report(struct yt_session *session,
 	static const uint8_t prompt[] =
 	    "Enter sector number port is in -=> ";
 	static const uint8_t unavailable[] = "No information available.";
-	float maximum;
+	float maximum = (float)session_sector_count(session);
 	float cached_team = session->player.team;
 	char response[80];
 	float selected;
@@ -96,9 +96,6 @@ yt_session_computer_port_report(struct yt_session *session,
 
 	if (enter_sector != NULL)
 		*enter_sector = false;
-	if (!yt_computer_port_maximum((float)session_port_offset(session),
-	    (float)session_sector_offset(session), &maximum, error))
-		return false;
 	for (;;) {
 		enum yt_computer_port_selection_route route;
 
