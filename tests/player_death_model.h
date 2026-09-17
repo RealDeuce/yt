@@ -9,7 +9,7 @@ struct test_player_death_state {
 	float killer;
 	int sector_count;
 	int port_count;
-	float last_player_record;
+	int last_player_record;
 	const uint8_t *current_name;
 	size_t current_name_length;
 	struct yt_player victim;

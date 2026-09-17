@@ -402,14 +402,12 @@ yt_planet_productivity_planet_overlay(struct yt_planet *planet,
 }
 
 bool
-yt_planet_rename_protected(float current_record, float planet_offset,
-    float total_record_marker)
+yt_planet_rename_protected(int current_record, int planet_offset,
+    int total_record_marker)
 {
-	volatile float relative = current_record - planet_offset;
-	volatile float marker_minus_one = total_record_marker + -1.0f;
-
-	return relative == 1.0f || current_record == total_record_marker
-	    || current_record == marker_minus_one;
+	return current_record - planet_offset == 1
+	    || current_record == total_record_marker
+	    || current_record == total_record_marker - 1;
 }
 
 enum yt_planet_rename_name_result

@@ -16255,7 +16255,7 @@ planet_rename_protected_cycle_run(struct physical_viewer_join *viewer,
 	struct yt_present_result result;
 
 	if (prompt_end == NULL || editor_end == NULL || body_end == NULL
-	    || !yt_planet_rename_protected(101.5f, 100.5f, 400.25f))
+	    || !yt_planet_rename_protected(102, 101, 400))
 		return false;
 	join->presentation = state(ansi);
 	join->presentation.foreground = 6.0f;
@@ -23182,7 +23182,7 @@ hostile_bribe_fatal_death(void *context, int victim_record, float killer,
 		.killer = 2.0f,
 		.sector_count = 2004,
 		.port_count = 0,
-		.last_player_record = 51.0f,
+		.last_player_record = 51,
 		.current_name = current_name,
 		.current_name_length = current_name_length,
 	};

@@ -379,8 +379,8 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 				if (!yt_random_next(&session->door->game.random, &draw, error))
 					return false;
 				*target = yt_projectile_cruise_reroute_destination(draw,
-				    (float)session_sector_offset(session),
-				    (float)session_port_offset(session));
+				    session_sector_offset(session),
+				    session_port_offset(session));
 				route->origin = *origin_alias;
 				route->destination = *target;
 				route->amount = *missiles;

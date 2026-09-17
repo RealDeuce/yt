@@ -285,14 +285,14 @@ yt_death_sector_overlay(struct yt_sector *sector, float victim)
 
 enum yt_death_port_route
 yt_death_port_overlay(struct yt_port *port, float victim, float killer,
-    float last_player)
+    int last_player)
 {
 	bool valid;
 
 	if (port == NULL || port->owner != victim)
 		return YT_DEATH_PORT_UNMATCHED;
 	valid = (killer != victim) & (killer > 1.0f)
-	    & (killer <= last_player);
+	    & (killer <= (float)last_player);
 	if (valid) {
 		port->owner = killer;
 		port->last_minute = killer;

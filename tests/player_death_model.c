@@ -84,7 +84,7 @@ test_player_death_run(struct test_player_death_state *state,
 	}
 	valid_killer = (state->killer != (float)state->victim_record)
 	    & (state->killer > 1.0f)
-	    & (state->killer <= state->last_player_record);
+	    & (state->killer <= (float)state->last_player_record);
 	matched = (float)state->matched_ports;
 	if (valid_killer && state->matched_ports != 0) {
 		if (!yt_death_title_row(state->victim_name,

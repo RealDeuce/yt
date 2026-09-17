@@ -232,7 +232,7 @@ float yt_projectile_plasma_next_firing(float counter);
 bool yt_projectile_cruise_reroute_row(float hop, uint8_t *row,
     size_t capacity, size_t *length);
 float yt_projectile_cruise_reroute_destination(float draw,
-    float sector_record_offset, float port_record_offset);
+    int sector_record_offset, int port_record_offset);
 
 bool yt_projectile_union_police_admitted(float hop, float destination,
     int counterattack, int xannor_provoker);
@@ -496,8 +496,6 @@ bool yt_planet_creation_success_row(const uint8_t *planet_name,
     size_t planet_name_length, uint8_t *row, size_t capacity,
     size_t *length);
 float yt_planet_move_destination(const char *response);
-float yt_planet_move_maximum(float port_record_offset,
-    float sector_record_offset);
 float yt_planet_move_add_cost(float cost);
 void yt_planet_move_sector_overlay(struct yt_sector *sector,
     float planet_link);
@@ -642,8 +640,8 @@ float yt_planet_productivity_credit_argument(double units);
 void yt_planet_productivity_planet_overlay(struct yt_planet *planet,
     const float rate[10], const double quantity[10],
     const float contribution[10]);
-bool yt_planet_rename_protected(float current_record, float planet_offset,
-    float total_record_marker);
+bool yt_planet_rename_protected(int current_record, int planet_offset,
+    int total_record_marker);
 enum yt_planet_rename_name_result yt_planet_rename_prepare_name(char *name,
     size_t *length);
 void yt_planet_rename_overlay(struct yt_planet *planet, const char *name,
@@ -820,7 +818,7 @@ void yt_deployed_attack_sector_overlay(struct yt_sector *sector,
 void yt_death_player_overlay(struct yt_player *player, float killer);
 bool yt_death_sector_overlay(struct yt_sector *sector, float victim);
 enum yt_death_port_route yt_death_port_overlay(struct yt_port *port,
-    float victim, float killer, float last_player);
+    float victim, float killer, int last_player);
 void yt_death_killer_credit_overlay(struct yt_player *player, float ports);
 bool yt_death_title_row(const uint8_t *victim, size_t victim_length,
     float ports, uint8_t *row, size_t capacity, size_t *length);

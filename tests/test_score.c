@@ -1169,8 +1169,8 @@ check_projectile_cruise_reroute_transaction(void)
 	    &length)
 	    && length == sizeof(expected_attention) - 1U
 	    && memcmp(row, expected_attention, length) == 0
-	    && yt_projectile_cruise_reroute_destination(0.5f, 51.0f,
-	    2055.0f) == 1003.0f;
+	    && yt_projectile_cruise_reroute_destination(0.5f, 51,
+	    2055) == 1003.0f;
 }
 
 static bool
@@ -2057,7 +2057,6 @@ check_planet_move_model(void)
 
 	if (yt_planet_move_destination("3.9") != 3.0f
 	    || yt_planet_move_destination("") != 0.0f
-	    || yt_planet_move_maximum(53.0f, 51.0f) != 2.0f
 	    || yt_planet_move_add_cost(10.0f) != 20.0f
 	    || !yt_planet_move_path_heading(1.0f, 3.0f, row,
 	    sizeof(row), &length) || length != sizeof(heading) - 1U
@@ -2641,7 +2640,7 @@ check_player_death_transaction(void)
 		.killer = 2.0f,
 		.sector_count = 2,
 		.port_count = 2,
-		.last_player_record = 51.0f,
+		.last_player_record = 51,
 		.current_name = (const uint8_t *)"CURRENT",
 		.current_name_length = 7U,
 	};
@@ -2680,7 +2679,7 @@ check_player_death_transaction(void)
 			.killer = 2.0f,
 			.sector_count = 2,
 			.port_count = 2,
-			.last_player_record = 51.0f,
+			.last_player_record = 51,
 			.current_name = (const uint8_t *)"CURRENT",
 			.current_name_length = 7U,
 		};
@@ -2699,7 +2698,7 @@ check_player_death_transaction(void)
 		.killer = 3.0f,
 		.sector_count = 2,
 		.port_count = 2,
-		.last_player_record = 51.0f,
+			.last_player_record = 51,
 		.current_name = (const uint8_t *)"CURRENT",
 		.current_name_length = 7U,
 	};
@@ -2789,12 +2788,12 @@ check_player_death_model(void)
 	(void)yt_record_set_number(&record, YT_F97, 2.0f);
 	(void)yt_record_set_number(&record, YT_F101, 55.0f);
 	yt_port_decode(&port, &record);
-	if (yt_death_port_overlay(&port, 2.0f, 3.0f, 51.0f)
+	if (yt_death_port_overlay(&port, 2.0f, 3.0f, 51)
 	    != YT_DEATH_PORT_TRANSFERRED
 	    || port.owner != 3.0f || port.last_minute != 3.0f
 	    || port.treasury != 77.0f)
 		return false;
-	if (yt_death_port_overlay(&port, 2.0f, 3.0f, 51.0f)
+	if (yt_death_port_overlay(&port, 2.0f, 3.0f, 51)
 	    != YT_DEATH_PORT_UNMATCHED)
 		return false;
 	yt_record_blank(&record);
@@ -2802,7 +2801,7 @@ check_player_death_model(void)
 	(void)yt_record_set_number(&record, YT_F97, 2.0f);
 	(void)yt_record_set_number(&record, YT_F101, 55.0f);
 	yt_port_decode(&port, &record);
-	if (yt_death_port_overlay(&port, 2.0f, -1.0f, 51.0f)
+	if (yt_death_port_overlay(&port, 2.0f, -1.0f, 51)
 	    != YT_DEATH_PORT_CLEARED
 	    || port.owner != 0.0f || port.treasury != 0.0f
 	    || port.last_minute != 55.0f)
@@ -11860,7 +11859,7 @@ direct_attack_fixture(struct direct_attack_tape *tape,
 	(void)snprintf(tape->amount, sizeof(tape->amount), "%s", "3");
 	*state = (struct test_direct_attack_state){
 		.current_player_record = 2,
-		.last_player_record = 5.0f,
+		.last_player_record = 5,
 		.conversion_mode = 0,
 		.player_cache = &tape->player_cache,
 	};
@@ -11992,7 +11991,7 @@ check_direct_attack_transaction(void)
 		return false;
 
 	direct_attack_fixture(&tape, &state);
-	state.last_player_record = 3.0f;
+	state.last_player_record = 3;
 	if (!test_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || state.route != YT_DIRECT_ATTACK_EXHAUSTED || !state.complete
 	    || !state.enter_sector || !state.encountered
@@ -12124,10 +12123,10 @@ check_planet_rename_model(void)
 	size_t length;
 	size_t index;
 
-	if (!yt_planet_rename_protected(101.5f, 100.5f, 400.25f)
-	    || !yt_planet_rename_protected(400.25f, 100.5f, 400.25f)
-	    || !yt_planet_rename_protected(399.25f, 100.5f, 400.25f)
-	    || yt_planet_rename_protected(398.0f, 100.5f, 400.25f))
+	if (!yt_planet_rename_protected(102, 101, 400)
+	    || !yt_planet_rename_protected(400, 101, 400)
+	    || !yt_planet_rename_protected(399, 101, 400)
+	    || yt_planet_rename_protected(398, 101, 400))
 		return false;
 
 	memset(name, 'A', 256U);

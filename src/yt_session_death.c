@@ -155,7 +155,7 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 				return false;
 			route = yt_death_port_overlay(&port,
 			    (float)victim_record, killer,
-			    (float)session_sector_offset(session));
+			    session_sector_offset(session));
 			if (route == YT_DEATH_PORT_UNMATCHED)
 				continue;
 			++matched_ports;

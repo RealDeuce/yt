@@ -192,7 +192,7 @@ yt_session_planet_rename(struct yt_session *session, int logical_planet,
 	struct yt_planet planet;
 	char name[YT_COMMAND_SIZE];
 	uint8_t confirmation[2U + 41U + sizeof(confirmation_suffix) - 1U];
-	float current_record;
+	int current_record;
 	bool written;
 
 	if (renamed != NULL)
@@ -204,12 +204,11 @@ yt_session_planet_rename(struct yt_session *session, int logical_planet,
 		size_t name_length;
 		size_t confirmation_length = 0;
 
-		current_record = qb_single_add(
-		    (float)session_planet_offset(session),
-		    (float)logical_planet);
+		current_record = (int)session_planet_basic_record(session,
+		    logical_planet);
 		if (yt_planet_rename_protected(current_record,
-		    (float)session_planet_offset(session),
-		    session->door->game.config.total_records))
+		    session_planet_offset(session),
+		    (int)session->door->game.config.total_records))
 			return session_present_alert(session, protected,
 			    sizeof(protected) - 1U,
 			    "planet Rename protected", error);

@@ -20,15 +20,6 @@ yt_planet_move_destination(const char *response)
 }
 
 float
-yt_planet_move_maximum(float port_record_offset,
-    float sector_record_offset)
-{
-	volatile float result = port_record_offset - sector_record_offset;
-
-	return result;
-}
-
-float
 yt_planet_move_add_cost(float cost)
 {
 	volatile float result = cost + 10.0f;

@@ -275,9 +275,7 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	struct session_route_plan route;
 	float start = session->player.sector;
 	float destination;
-	float maximum = yt_planet_move_maximum(
-	    (float)session_port_offset(session),
-	    (float)session_sector_offset(session));
+	float maximum = (float)session_sector_count(session);
 	float cost = 0.0f;
 	int start_node;
 	int destination_node;

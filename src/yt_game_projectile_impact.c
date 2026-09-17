@@ -140,10 +140,9 @@ yt_projectile_cruise_reroute_row(float hop, uint8_t *row,
 
 float
 yt_projectile_cruise_reroute_destination(float draw,
-    float sector_record_offset, float port_record_offset)
+    int sector_record_offset, int port_record_offset)
 {
-	float span = qb_single_subtract(port_record_offset,
-	    sector_record_offset);
+	float span = (float)(port_record_offset - sector_record_offset);
 	float selected = floorf(qb_single_multiply(draw, span));
 
 	return qb_single_add(selected, 1.0f);
