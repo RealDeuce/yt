@@ -78,7 +78,7 @@ test_no_fighters(void)
 	memset(&source, 0, sizeof(source));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	door.game.config.sector_offset = 3.0f;
 	yt_record_blank(&door.game.config.record);
 	yt_record_blank(&source.record);
@@ -120,7 +120,7 @@ test_combat_attrition(void)
 	memset(&session, 0, sizeof(session));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	door.game.config.sector_offset = 3.0f;
 	yt_record_blank(&door.game.config.record);
 	yt_test_random_use_provider(&door.game.random, fill_zero, &random);
@@ -178,7 +178,7 @@ test_deployed_surrender(void)
 	memset(&session, 0, sizeof(session));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	session.combat.deployed_fighters = 10.0;
 	session.combat.ship_fighters = 11.0;
 	session.combat.ship_shields = 7.0f;
@@ -261,7 +261,7 @@ test_accepted_bribe(void)
 	memset(&session, 0, sizeof(session));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	session.combat.hostile_owner = -2;
 	session.combat.deployed_fighters = 10.0;
 	session.combat.ship_fighters = 20.0;

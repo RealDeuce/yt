@@ -33,7 +33,7 @@ test_earth_store_exit(void)
 	memset(&earth, 0, sizeof(earth));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	session.earth.report_seen = true;
 	memcpy(session.io.typeahead, leave, sizeof(leave) - 1U);
 	session.io.typeahead_length = sizeof(leave) - 1U;

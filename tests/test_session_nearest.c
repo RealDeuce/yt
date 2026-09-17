@@ -37,7 +37,7 @@ test_one_sector_all_ports(void)
 	memset(&port, 0, sizeof(port));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	memcpy(session.io.typeahead, answer, sizeof(answer) - 1U);
 	session.io.typeahead_length = sizeof(answer) - 1U;
 	session.market_bases[0] = 100.0f;

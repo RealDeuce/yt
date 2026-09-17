@@ -33,7 +33,7 @@ test_replace_sector_force(void)
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	memcpy(session.io.typeahead, desired, sizeof(desired) - 1U);
 	session.io.typeahead_length = sizeof(desired) - 1U;
 	door.game.config.sector_offset = 51.0f;

@@ -61,7 +61,7 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 		}
 	}
 	/* Row 25 belongs to the deferred OpenDoors local personality. */
-	session->pager.nonstop = 1.0f;
+	session->pager.nonstop = true;
 	return session_display_game_file(session, "YTOPEN.ASC", error);
 }
 
@@ -730,7 +730,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	session.executable_path = executable_path;
 	session.running = true;
 	/* YT:040A is the ordinary instruction after the handed-off checkpoint. */
-	session.pager.nonstop = 1.0f;
+	session.pager.nonstop = true;
 	session.presentation.sound.ansi = door->identity.ansi ? 1.0f : 0.0f;
 	session.presentation.sound.mode = door->identity.local ? 1.0f : 0.0f;
 	session.presentation.sound.user_sound = -1.0f;

@@ -50,7 +50,7 @@ test_same_sector_plasma_route(void)
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	memcpy(session.io.typeahead, answers, sizeof(answers) - 1U);
 	session.io.typeahead_length = sizeof(answers) - 1U;
 	door.game.config.sector_offset = 3.0f;

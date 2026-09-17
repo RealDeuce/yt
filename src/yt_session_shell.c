@@ -131,7 +131,7 @@ yt_session_quit(struct yt_session *session, struct yt_error *error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "normal-exit post-generator blank", error))
 		return false;
-	session->pager.nonstop = 1.0f;
+	session->pager.nonstop = true;
 	if (!session_display_game_file(session,
 	    session->door->game.config.scoreboard, error))
 		return false;

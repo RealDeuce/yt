@@ -24,7 +24,7 @@ test_active_spy_list(void)
 	memset(&door, 0, sizeof(door));
 	memset(&session, 0, sizeof(session));
 	session.door = &door;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	session.spies.count = 2;
 	session.spies.sectors[0] = 7;
 	session.spies.sectors[1] = 19;

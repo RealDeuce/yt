@@ -56,7 +56,7 @@ test_distinct_player_death(void)
 	session.active_player_record = 2;
 	session.presentation.foreground = 6.0f;
 	session.pager.foreground = 6;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	door.game.config.sector_offset = 4.0f;
 	door.game.config.port_offset = 6.0f;
 	door.game.config.planet_offset = 8.0f;

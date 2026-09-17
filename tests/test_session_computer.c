@@ -38,7 +38,7 @@ test_activate_and_deactivate(void)
 	memset(&planet, 0, sizeof(planet));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	session.running = true;
 	memcpy(session.io.typeahead, command, sizeof(command) - 1U);
 	session.io.typeahead_length = sizeof(command) - 1U;
@@ -121,7 +121,7 @@ test_port_visibility_through_report(void)
 	session.door = &door;
 	session.active_player_record = 2;
 	session.planet.fallback_index = 52;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	door.game.config.sector_offset = 51.0f;
 	door.game.config.port_offset = 2055.0f;
 	door.game.config.planet_offset = 3055.0f;

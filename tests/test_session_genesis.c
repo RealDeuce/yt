@@ -30,7 +30,7 @@ test_genesis_decline(void)
 	memset(&player, 0, sizeof(player));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	(void)snprintf(session.player.name, sizeof(session.player.name), "%s",
 	    "Baron");
 	memcpy(session.io.typeahead, decline, sizeof(decline) - 1U);

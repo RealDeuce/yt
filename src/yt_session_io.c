@@ -15,7 +15,7 @@
 #include <string.h>
 
 static void
-session_set_pager_newline(struct yt_session *session, float value)
+session_set_pager_newline(struct yt_session *session, bool value)
 {
 	session->pager.newline_flag = value;
 }
@@ -63,7 +63,7 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 				    prefix_length);
 			memcpy(session->io.pending_echo,
 			    session->io.editor_buffer, prefix_length + 1U);
-			session->pager.newline_flag = 1.0f;
+			session->pager.newline_flag = true;
 			if (!session_present_paged_row(session, prefix,
 			    prefix_length))
 				return false;
@@ -75,7 +75,7 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 			struct yt_present_result presentation;
 			enum yt_present_status status;
 
-			session->pager.newline_flag = 0.0f;
+			session->pager.newline_flag = false;
 			status = yt_present_line(NULL, 0,
 			    &session->presentation, &presentation);
 			if (status != YT_PRESENT_OK)
@@ -117,7 +117,7 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 			session->io.editor_buffer[length + 1U] = '\0';
 			session->io.pending_echo[0] = (char)key;
 			session->io.pending_echo[1] = '\0';
-			session->pager.newline_flag = 1.0f;
+			session->pager.newline_flag = true;
 			od_kernel();
 			continue;
 		}
@@ -268,7 +268,7 @@ session_run_paged_row(struct yt_session *session, const uint8_t *text,
 	if (status != YT_PRESENT_OK)
 		return false;
 	od_kernel();
-	status = yt_present_paged_finish(session->pager.newline_flag != 0.0f,
+	status = yt_present_paged_finish(session->pager.newline_flag,
 	    &session->presentation, &presentation);
 	yt_out_present_result(&presentation);
 	if (status != YT_PRESENT_OK)
@@ -287,7 +287,7 @@ session_run_paged_row(struct yt_session *session, const uint8_t *text,
 		yt_pager_complete(&session->pager, &session->presentation,
 		    saved_foreground);
 	}
-	session->pager.newline_flag = 0.0f;
+	session->pager.newline_flag = false;
 	return true;
 }
 

@@ -8,8 +8,8 @@
 
 struct yt_pager_state {
 	float line_count;
-	float nonstop;
-	float newline_flag;
+	bool nonstop;
+	bool newline_flag;
 	char key[YT_PAGER_KEY_SIZE];
 	int foreground;
 };

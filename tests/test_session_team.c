@@ -31,7 +31,7 @@ test_teamless_exit(void)
 	memset(&player, 0, sizeof(player));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	memcpy(session.io.typeahead, answer, sizeof(answer) - 1U);
 	session.io.typeahead_length = sizeof(answer) - 1U;
 	door.game.config.sector_offset = 3.0f;

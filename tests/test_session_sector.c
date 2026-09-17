@@ -31,7 +31,7 @@ test_current_sector_from_real_records(void)
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	door.game.config.sector_offset = 3.0f;
 	door.game.config.port_offset = 5.0f;
 	yt_record_blank(&player.record);

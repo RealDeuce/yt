@@ -27,7 +27,7 @@ test_quit_decline(void)
 	memset(&door, 0, sizeof(door));
 	memset(&session, 0, sizeof(session));
 	session.door = &door;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	memcpy(session.io.typeahead, decline, sizeof(decline) - 1U);
 	session.io.typeahead_length = sizeof(decline) - 1U;
 	yt_error_clear(&error);

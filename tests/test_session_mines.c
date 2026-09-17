@@ -60,7 +60,7 @@ test_shielded_encounter(void)
 	session.active_player_record = 2;
 	session.presentation.foreground = 6.0f;
 	session.pager.foreground = 6;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	door.game.config.sector_offset = 51.0f;
 	yt_random_init(&door.game.random);
 	yt_test_random_use_provider(&door.game.random, fill_zero, &random);
@@ -137,7 +137,7 @@ test_unshielded_missile_draw(void)
 	session.active_player_record = 2;
 	session.presentation.foreground = 6.0f;
 	session.pager.foreground = 6;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	door.game.config.sector_offset = 51.0f;
 	yt_random_init(&door.game.random);
 	yt_test_random_use_provider(&door.game.random, fill_zero, &random);

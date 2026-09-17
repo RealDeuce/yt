@@ -50,7 +50,7 @@ test_self_owned_planet(void)
 	yt_test_random_use_provider(&door.game.random, zero_random_fill, NULL);
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	door.game.config.epoch_year = 26.0f;
 	door.game.config.planet_offset = 3.0f;
 	yt_error_clear(&error);
@@ -113,7 +113,7 @@ test_land_and_leave_owned_planet(void)
 	yt_test_random_use_provider(&door.game.random, zero_random_fill, NULL);
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	session.running = true;
 	memcpy(session.io.typeahead, answer, sizeof(answer) - 1U);
 	session.io.typeahead_length = sizeof(answer) - 1U;

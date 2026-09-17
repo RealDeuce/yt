@@ -65,7 +65,7 @@ test_direct_warp_decline(void)
 	memset(&player, 0, sizeof(player));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	memcpy(session.io.typeahead, decline, sizeof(decline) - 1U);
 	session.io.typeahead_length = sizeof(decline) - 1U;
 	yt_record_blank(&player.record);
@@ -103,7 +103,7 @@ test_emergency_warp_persistence(void)
 	memset(&player, 0, sizeof(player));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	session.presentation.foreground = 7.0f;
 	door.game.config.sector_offset = 51.0f;
 	door.game.config.port_offset = 2055.0f;
@@ -147,7 +147,7 @@ test_action_finalizer_persistence(void)
 	memset(&player, 0, sizeof(player));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	door.game.config.sector_offset = 2.0f;
 	yt_test_random_use_provider(&door.game.random, sequence_fill, &sequence);
 	yt_record_blank(&player.record);

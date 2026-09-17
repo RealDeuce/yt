@@ -145,7 +145,7 @@ test_no_port_purchase(void)
 	memset(&sector, 0, sizeof(sector));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	door.game.config.sector_offset = 100.0f;
 	door.game.config.port_offset = 200.0f;
 	(void)snprintf(door.identity.real_first,
@@ -200,7 +200,7 @@ test_owned_port_purchase(void)
 	memset(&port, 0, sizeof(port));
 	session.door = &door;
 	session.active_player_record = 2;
-	session.pager.nonstop = -1.0f;
+	session.pager.nonstop = true;
 	door.game.config.epoch_year = 26.0f;
 	door.game.config.sector_offset = 100.0f;
 	door.game.config.port_offset = 200.0f;
