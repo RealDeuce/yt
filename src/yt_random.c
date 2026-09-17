@@ -19,16 +19,6 @@ yt_random_init(struct yt_random *random)
 	random->fill = system_fill;
 }
 
-void
-yt_random_set_provider(struct yt_random *random, yt_random_fill_fn fill,
-    void *context)
-{
-	random->fill = fill != NULL ? fill : system_fill;
-	random->context = context;
-	random->has_last = false;
-	random->draws = 0;
-}
-
 bool
 yt_random_next(struct yt_random *random, float *value, struct yt_error *error)
 {

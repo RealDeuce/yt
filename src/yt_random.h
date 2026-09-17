@@ -15,8 +15,6 @@ struct yt_random {
 };
 
 void yt_random_init(struct yt_random *random);
-void yt_random_set_provider(struct yt_random *random, yt_random_fill_fn fill,
-    void *context);
 bool yt_random_next(struct yt_random *random, float *value,
     struct yt_error *error);
 bool yt_random_one_based_single(struct yt_random *random, float range,

@@ -12,6 +12,7 @@
 #include "yt_portname.h"
 #include "yt_text.h"
 #include "text_test_support.h"
+#include "random_test_support.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -121,7 +122,7 @@ test_port_name_generator(void)
 
 	yt_error_clear(&error);
 	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_random_fill, &zero);
+	yt_test_random_use_provider(&random, utility_random_fill, &zero);
 	if (!yt_generate_port_name(&random, name, &error)
 	    || strcmp(name, "Inging") != 0 || random.draws != 4U
 	    || zero.position != sizeof(zero_draws) / 2U)
@@ -130,7 +131,7 @@ test_port_name_generator(void)
 	    || strcmp(name, "Inging") != 0 || random.draws != 8U
 	    || zero.position != sizeof(zero_draws))
 		return false;
-	yt_random_set_provider(&random, utility_random_fill, &longest);
+	yt_test_random_use_provider(&random, utility_random_fill, &longest);
 	return yt_generate_port_name(&random, name, &error)
 	    && strcmp(name, "Monkey Kangeroo Tractor Lightning") == 0
 	    && random.draws == 6U && longest.position == sizeof(long_draws);
@@ -740,7 +741,7 @@ test_maintenance_random_helpers(void)
 
 	yt_error_clear(&error);
 	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_random_fill, &script);
+	yt_test_random_use_provider(&random, utility_random_fill, &script);
 	if (!yt_random_integer(&random, 10, &value, &error)
 	    || value != 1
 	    || !yt_random_integer(&random, 10, &value, &error)
@@ -766,7 +767,7 @@ test_maintenance_random_helpers(void)
 		return false;
 	script.position = 0;
 	script.length = 3;
-	yt_random_set_provider(&random, utility_random_fill, &script);
+	yt_test_random_use_provider(&random, utility_random_fill, &script);
 	value = 37;
 	yt_error_clear(&error);
 	return !yt_random_nested_integer(&random, 2, 100, &value, &error)
@@ -788,7 +789,7 @@ test_maintenance_xannor_defense(void)
 
 	yt_error_clear(&error);
 	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_random_fill, &script);
+	yt_test_random_use_provider(&random, utility_random_fill, &script);
 	group = 10.0f;
 	fighters = 2.0f;
 	owner = 0.0f;
@@ -826,7 +827,7 @@ test_maintenance_xannor_defense(void)
 
 	script = (struct utility_random_script){zero_draw,
 	    sizeof(zero_draw), 0};
-	yt_random_set_provider(&random, utility_random_fill, &script);
+	yt_test_random_use_provider(&random, utility_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_maintenance_xannor_defense(&random, &group, &fighters,
 	    &owner, &error) || group != 1.0f || fighters != 0.0f
@@ -836,7 +837,7 @@ test_maintenance_xannor_defense(void)
 
 	script = (struct utility_random_script){high_draw,
 	    sizeof(high_draw), 0};
-	yt_random_set_provider(&random, utility_random_fill, &script);
+	yt_test_random_use_provider(&random, utility_random_fill, &script);
 	group = 1.0f;
 	fighters = 1.0f;
 	owner = 7.0f;
@@ -1182,7 +1183,7 @@ test_yt_init_pre_input_presentation(void)
 		return false;
 
 	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
+	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	yt_error_clear(&error);
 	if (!yt_initializer_prepare_yt(&clock_source, &random, &preparation,
 	    &error)) {
@@ -1307,7 +1308,7 @@ test_yt_init_presented_world(void)
 
 	yt_error_clear(&error);
 	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
+	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	ok = yt_init_present_confirmation_prefix(&presenter, &error)
 	    && yt_init_present_opening(&presenter, &error)
 	    && yt_initialize_begin_yt(&error)
@@ -1353,7 +1354,7 @@ test_yt_init_presentation_before_first_record(void)
 
 	yt_error_clear(&error);
 	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
+	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	initialized = yt_initialize_begin_yt(&error)
 	    && yt_initializer_prepare_yt(&utility_fixed_clock_source, &random,
 	    &preparation, &error)
@@ -1387,7 +1388,7 @@ test_yt_init_presentation_after_config_record(void)
 
 	yt_error_clear(&error);
 	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
+	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	initialized = yt_initialize_begin_yt(&error)
 	    && yt_initializer_prepare_yt(&utility_fixed_clock_source, &random,
 	    &preparation, &error)
@@ -1557,7 +1558,7 @@ test_initializer_world_image(void)
 
 	yt_error_clear(&error);
 	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
+	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	ok = initialize_unprepared_yt("YTSCORE.ASC", &utility_fixed_clock_source,
 	    &random, &error);
 	if (!ok || random.draws != 31297U || lcg.state != UINT32_C(0x9f26f4)
@@ -1608,7 +1609,7 @@ test_initializer_graph_retries(void)
 	options.use_existing_config = true;
 	yt_error_clear(&error);
 	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_graph_retry_fill, &script);
+	yt_test_random_use_provider(&random, utility_graph_retry_fill, &script);
 	ok = yt_initialize_world(&options, &random, &error);
 	if (!ok || random.draws != 105U || script.draws != 105U
 	    || !read_file("YTDATA.DAT", &database, &length)
@@ -1685,7 +1686,7 @@ test_rmt_initializer_world_image(void)
 	rmt_small_config(&config);
 	yt_error_clear(&error);
 	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
+	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	ok = yt_initialize_rmt_presented(&config, "The Sysop",
 	    &utility_fixed_clock_source, &random, &presenter, &error);
 	if (!ok || random.draws != 245U || lcg.state != UINT32_C(0x3fed05)
@@ -1753,7 +1754,7 @@ test_rmt_presentation_failure_prefixes(void)
 			return false;
 		yt_error_clear(&error);
 		yt_random_init(&random);
-		yt_random_set_provider(&random, utility_lcg_fill, &lcg);
+		yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 		ok = yt_initialize_rmt_presented(&config, "The Sysop",
 		    &utility_fixed_clock_source, &random, &presenter, &error);
 		if (ok || error.status != YT_IO_ERROR
@@ -1809,7 +1810,7 @@ test_rmt_dynamic_presentation(void)
 		config.local_screen = 0.0f;
 		yt_error_clear(&error);
 		yt_random_init(&random);
-		yt_random_set_provider(&random, utility_lcg_fill, &lcg);
+		yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 		ok = yt_initialize_rmt_presented(&config, "The Sysop",
 		    &utility_fixed_clock_source, &random, &presenter, &error);
 		if (!ok || random.draws != cases[index].draws
@@ -1847,7 +1848,7 @@ test_rmt_dynamic_presentation(void)
 		config.total_records = 135.0f;
 		yt_error_clear(&error);
 		yt_random_init(&random);
-		yt_random_set_provider(&random, utility_lcg_fill, &lcg);
+		yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 		ok = yt_initialize_rmt_presented(&config, "The Sysop",
 		    &utility_fixed_clock_source, &random, &presenter, &error);
 		if (!ok || random.draws != 1288U
@@ -1889,7 +1890,7 @@ test_yt_clock_boundaries(void)
 
 	yt_error_clear(&error);
 	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
+	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	ok = yt_initialize_begin_yt(&error)
 	    && yt_initializer_prepare_yt(&clock, &random, &preparation, &error)
 	    && yt_initialize_yt_prepared_bound(NULL, &preparation,
@@ -1941,7 +1942,7 @@ test_rmt_clock_boundaries(void)
 	rmt_small_config(&config);
 	yt_error_clear(&error);
 	yt_random_init(&random);
-	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
+	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	ok = yt_initialize_rmt_presented(&config, "The Sysop", &clock, &random,
 	    &discard_rmt_presenter, &error);
 	port_offset = ((size_t)yt_port_basic_record(&config, 1) - 1U)
@@ -2823,7 +2824,7 @@ test_xannor_player_arrival(struct yt_error *error)
 	cloak_cache[3] = 0.75f;
 	sector_cache[4] = 44.0f;
 	cloak_cache[4] = 0.5f;
-	yt_random_set_provider(&game.random, utility_random_fill, &script);
+	yt_test_random_use_provider(&game.random, utility_random_fill, &script);
 	if (!yt_game_read_sector(&game, 42, &sector_before, error)
 	    || !yt_game_read_sector(&game, 43, &survivor_sector_before, error)
 	    || !yt_game_read_sector(&game, 44, &large_sector_before, error)
@@ -2962,7 +2963,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 	sector.planet = 1.0f;
 	if (!yt_game_write_planet(&game, 1, &planet, error))
 		goto done;
-	yt_random_set_provider(&game.random, utility_random_fill, &script);
+	yt_test_random_use_provider(&game.random, utility_random_fill, &script);
 	if (!yt_maintenance_xannor_planet_arrival(&game, &location,
 	    &group_size, &sector, utility_capture_line, &tape, error)
 	    || location != 733.0f || group_size != 2.0f
@@ -2982,7 +2983,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 		goto done;
 	script = (struct utility_random_script){high_draws,
 	    sizeof(high_draws), 0};
-	yt_random_set_provider(&game.random, utility_random_fill, &script);
+	yt_test_random_use_provider(&game.random, utility_random_fill, &script);
 	if (!yt_maintenance_xannor_planet_arrival(&game, &location,
 	    &group_size, &sector, utility_capture_line, &tape, error))
 		goto done;
@@ -3021,7 +3022,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 	location = 733.0f;
 	group_size = 2.0f;
 	script = (struct utility_random_script){NULL, 0, 0};
-	yt_random_set_provider(&game.random, utility_random_fill, &script);
+	yt_test_random_use_provider(&game.random, utility_random_fill, &script);
 	if (!yt_game_write_planet(&game, 1, &planet, error))
 		goto done;
 	if (!yt_maintenance_xannor_planet_arrival(&game, &location,

@@ -1,5 +1,6 @@
 #include "yt_session_internal.h"
 #include "session_test_runtime.h"
+#include "random_test_support.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -58,7 +59,7 @@ test_same_sector_plasma_route(void)
 	(void)snprintf(door.identity.real_first,
 	    sizeof(door.identity.real_first), "%s", "Sysop");
 	yt_random_init(&door.game.random);
-	yt_random_set_provider(&door.game.random, fill_zero, &random);
+	yt_test_random_use_provider(&door.game.random, fill_zero, &random);
 
 	yt_record_blank(&player.record);
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Launcher");

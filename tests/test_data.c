@@ -6,6 +6,7 @@
 #include "yt_text.h"
 #include "text_test_support.h"
 #include "file_viewer_test_model.h"
+#include "random_test_support.h"
 
 #include <errno.h>
 #include <math.h>
@@ -327,21 +328,21 @@ test_random(void)
 	int integer = -1;
 
 	yt_random_init(&random);
-	yt_random_set_provider(&random, scripted_fill, &script);
+	yt_test_random_use_provider(&random, scripted_fill, &script);
 	CHECK(yt_random_next(&random, &value, NULL));
 	CHECK(value == 0.16776585578918457f);
 	CHECK(random.has_last && random.last == value);
 	CHECK(yt_random_next(&random, &value, NULL));
 	CHECK(value == 0.1780800223350525f);
 	CHECK(random.draws == 2);
-	yt_random_set_provider(&random, scripted_fill, &market_script);
+	yt_test_random_use_provider(&random, scripted_fill, &market_script);
 	CHECK(yt_random_market_bases(&random, bases, NULL));
 	CHECK(bases[0] == 22.5f);
 	CHECK(bases[1] == 33.5f);
 	CHECK(bases[2] == 35.0f);
 	CHECK(random.draws == 6 && market_script.position == sizeof(market_bytes));
 
-	yt_random_set_provider(&random, scripted_fill, &integer_script);
+	yt_test_random_use_provider(&random, scripted_fill, &integer_script);
 	CHECK(yt_random_integer(&random, 2004, &integer, NULL));
 	CHECK(integer == 1);
 	CHECK(yt_random_integer(&random, 2004, &integer, NULL));
@@ -363,7 +364,7 @@ test_random(void)
 	CHECK(error.status == YT_RANDOM_ERROR && integer == 77
 	    && random.draws == 5);
 
-	yt_random_set_provider(&random, scripted_fill, &one_based_script);
+	yt_test_random_use_provider(&random, scripted_fill, &one_based_script);
 	value = 77.0f;
 	CHECK(yt_random_one_based_single(&random, 3.5f, &value, NULL));
 	CHECK(value == 2.0f);
@@ -380,7 +381,7 @@ test_random(void)
 
 	/* YT-SUB:4ADB copies its raw SINGLE terminal, mutates the range and
 	 * result after every draw, and gates only exact numeric zero. */
-	yt_random_set_provider(&random, scripted_fill, &nested_script);
+	yt_test_random_use_provider(&random, scripted_fill, &nested_script);
 	range = 100.0f;
 	value = 77.0f;
 	CHECK(yt_random_nested_single(&random, 3.0f, &range, &value, NULL));
@@ -398,7 +399,7 @@ test_random(void)
 	CHECK(yt_random_nested_single(&random, 3.0f, &range, &value, NULL));
 	CHECK(value == 77.0f && range == 0.0f && random.draws == 3);
 
-	yt_random_set_provider(&random, scripted_fill, &negative_nested_script);
+	yt_test_random_use_provider(&random, scripted_fill, &negative_nested_script);
 	range = -3.5f;
 	value = 77.0f;
 	CHECK(yt_random_nested_single(&random, 2.5f, &range, &value, NULL));
@@ -408,7 +409,7 @@ test_random(void)
 	/* A provider failure exposes every completed assignment prefix. */
 	nested_script.position = 0;
 	nested_script.length = 0;
-	yt_random_set_provider(&random, scripted_fill, &nested_script);
+	yt_test_random_use_provider(&random, scripted_fill, &nested_script);
 	range = 100.0f;
 	value = 77.0f;
 	yt_error_clear(&error);
@@ -417,7 +418,7 @@ test_random(void)
 	    && range == 100.0f && random.draws == 0
 	    && nested_script.position == 0);
 	nested_script.length = 3;
-	yt_random_set_provider(&random, scripted_fill, &nested_script);
+	yt_test_random_use_provider(&random, scripted_fill, &nested_script);
 	yt_error_clear(&error);
 	CHECK(!yt_random_nested_single(&random, 3.0f, &range, &value, &error));
 	CHECK(error.status == YT_RANDOM_ERROR && value == 51.0f
@@ -425,7 +426,7 @@ test_random(void)
 	    && nested_script.position == 3);
 	nested_script.length = 6;
 	nested_script.position = 0;
-	yt_random_set_provider(&random, scripted_fill, &nested_script);
+	yt_test_random_use_provider(&random, scripted_fill, &nested_script);
 	range = 100.0f;
 	value = 77.0f;
 	yt_error_clear(&error);
@@ -435,7 +436,7 @@ test_random(void)
 	    && nested_script.position == 6);
 	nested_script.length = 3;
 	nested_script.position = 0;
-	yt_random_set_provider(&random, scripted_fill, &nested_script);
+	yt_test_random_use_provider(&random, scripted_fill, &nested_script);
 	integer = 77;
 	yt_error_clear(&error);
 	CHECK(!yt_random_nested_integer(&random, 3, 100, &integer, &error));

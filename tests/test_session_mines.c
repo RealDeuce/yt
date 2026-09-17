@@ -1,5 +1,6 @@
 #include "yt_session_internal.h"
 #include "session_test_runtime.h"
+#include "random_test_support.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -62,7 +63,7 @@ test_shielded_encounter(void)
 	session.pager.nonstop = -1.0f;
 	door.game.config.sector_offset = 51.0f;
 	yt_random_init(&door.game.random);
-	yt_random_set_provider(&door.game.random, fill_zero, &random);
+	yt_test_random_use_provider(&door.game.random, fill_zero, &random);
 
 	yt_record_blank(&player.record);
 	memcpy(player.name, "Ada", 4U);
@@ -139,7 +140,7 @@ test_unshielded_missile_draw(void)
 	session.pager.nonstop = -1.0f;
 	door.game.config.sector_offset = 51.0f;
 	yt_random_init(&door.game.random);
-	yt_random_set_provider(&door.game.random, fill_zero, &random);
+	yt_test_random_use_provider(&door.game.random, fill_zero, &random);
 
 	yt_record_blank(&player.record);
 	memcpy(player.name, "Max", 4U);

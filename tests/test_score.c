@@ -18,6 +18,7 @@
 #include "yt_score_format.h"
 #include "yt_text.h"
 #include "text_test_support.h"
+#include "random_test_support.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -461,7 +462,7 @@ check_projectile_damage_model(void)
 	tape.position = 0U;
 	tape.fail_at = SIZE_MAX;
 	yt_random_init(&random);
-	yt_random_set_provider(&random, projectile_damage_fill, &tape);
+	yt_test_random_use_provider(&random, projectile_damage_fill, &tape);
 	if (!yt_projectile_player_damage(&target, &remaining,
 	    &random, &damage, &error)
 	    || tape.position != 8U || damage.iterations != 2U
@@ -672,7 +673,7 @@ check_projectile_planet_damage_model(void)
 	tape.position = 0U;
 	tape.fail_at = SIZE_MAX;
 	yt_random_init(&random);
-	yt_random_set_provider(&random, projectile_damage_fill, &tape);
+	yt_test_random_use_provider(&random, projectile_damage_fill, &tape);
 	remaining = 2.0f;
 	if (!yt_projectile_planet_ground_damage(20.0f, 7.0f, &remaining,
 	    &random, &ground, &error)
@@ -3086,7 +3087,7 @@ check_maintenance_port_model(void)
 	port.last_day = 100.0f;
 	port.last_minute = 720.0f;
 	yt_random_init(&random);
-	yt_random_set_provider(&random, score_random_fill, &script);
+	yt_test_random_use_provider(&random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_maintenance_update_port(&random, &port, 105.0f, 720.0f,
 	    &mutation, &error) || mutation.elapsed != 5.0f
@@ -3113,7 +3114,7 @@ check_maintenance_port_model(void)
 	port.commodity_class = 1.0f;
 	port.last_day = 1.0f;
 	script.position = 0U;
-	yt_random_set_provider(&random, score_random_fill, &script);
+	yt_test_random_use_provider(&random, score_random_fill, &script);
 	if (!yt_maintenance_update_port(&random, &port, 1.0f, 0.0f,
 	    &mutation, &error) || !mutation.plagued
 	    || mutation.selected_stock_index != 1
@@ -3384,7 +3385,7 @@ check_maintenance_mercenary_active_phase_pass(void)
 	game.config.planet_offset = 5.0f;
 	game.config.total_records = 7.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -3504,7 +3505,7 @@ check_maintenance_mercenary_defection_phase_pass(void)
 	game.config.planet_offset = 5.0f;
 	game.config.total_records = 7.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -3636,7 +3637,7 @@ check_maintenance_planet_model(void)
 	planet.production[2] = 300.0f;
 	planet.last_day = 1.0f;
 	yt_random_init(&random);
-	yt_random_set_provider(&random, score_random_fill, &script);
+	yt_test_random_use_provider(&random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_maintenance_update_planet(&random, &planet, 2.0f, 0.0f,
 	    &mutation, &error)
@@ -3663,7 +3664,7 @@ check_maintenance_planet_model(void)
 	script = (struct score_random_script){
 		civil_draws, sizeof(civil_draws), 0U
 	};
-	yt_random_set_provider(&random, score_random_fill, &script);
+	yt_test_random_use_provider(&random, score_random_fill, &script);
 	if (!yt_maintenance_update_planet(&random, &planet, 1.0f, 0.0f,
 	    &mutation, &error)
 	    || mutation.event != YT_MAINTENANCE_PLANET_CIVIL_WAR
@@ -3690,7 +3691,7 @@ check_maintenance_planet_model(void)
 	script = (struct score_random_script){
 		plague_draws, sizeof(plague_draws), 0U
 	};
-	yt_random_set_provider(&random, score_random_fill, &script);
+	yt_test_random_use_provider(&random, score_random_fill, &script);
 	if (!yt_maintenance_update_planet(&random, &planet, 1.0f, 0.0f,
 	    &mutation, &error)
 	    || mutation.event != YT_MAINTENANCE_PLANET_PLAGUE
@@ -3825,7 +3826,7 @@ check_maintenance_xannor_target_model(void)
 	struct yt_error error;
 
 	yt_random_init(&random);
-	yt_random_set_provider(&random, score_random_fill, &script);
+	yt_test_random_use_provider(&random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_maintenance_xannor_target(&random, 2004, 2, 8,
 	    &target, &error)
@@ -3842,7 +3843,7 @@ check_maintenance_xannor_target_model(void)
 	script = (struct score_random_script){
 		high_draw, sizeof(high_draw), 0U
 	};
-	yt_random_set_provider(&random, score_random_fill, &script);
+	yt_test_random_use_provider(&random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_target(&random, 2004, 2, 7,
 	    &target, &error)
 	    || target.hunt_player != 0 || target.target_sector != 2004
@@ -4451,7 +4452,7 @@ check_maintenance_port_pass(void)
 	game.config.planet_offset = 3.0f;
 	game.config.epoch_year = 26.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -4634,7 +4635,7 @@ check_maintenance_mercenary_rebuild_phase_pass(void)
 	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
 		goto done;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -4735,7 +4736,7 @@ check_maintenance_mercenary_funding_phase_pass(void)
 	game.config.planet_offset = 15.0f;
 	game.config.total_records = 17.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -4850,7 +4851,7 @@ check_maintenance_mercenary_attack_phase_pass(void)
 	game.config.planet_offset = 5.0f;
 	game.config.total_records = 7.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -4968,7 +4969,7 @@ check_maintenance_mercenary_mine_planet_phase_pass(void)
 	game.config.planet_offset = 5.0f;
 	game.config.total_records = 7.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -5078,7 +5079,7 @@ check_maintenance_mercenary_disconnected_phase_pass(void)
 	game.config.planet_offset = 5.0f;
 	game.config.total_records = 7.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -5176,7 +5177,7 @@ check_maintenance_mercenary_base_pass(void)
 	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
 		goto done;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -5298,7 +5299,7 @@ check_maintenance_mercenary_funding_pass(void)
 	memset(&game, 0, sizeof(game));
 	game.config.sector_offset = 1.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -5387,7 +5388,7 @@ check_maintenance_mercenary_defection_pass(void)
 	memset(&game, 0, sizeof(game));
 	game.config.sector_offset = 10.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -5500,7 +5501,7 @@ check_maintenance_mercenary_movement_pass(void)
 	game.config.sector_offset = 1.0f;
 	game.config.port_offset = 5.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -5602,7 +5603,7 @@ check_maintenance_mercenary_lower_reentry_pass(void)
 	game.config.sector_offset = 1.0f;
 	game.config.port_offset = 5.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -5724,7 +5725,7 @@ check_maintenance_mercenary_destination_pass(void)
 	memset(&game, 0, sizeof(game));
 	game.config.sector_offset = 10.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -5782,7 +5783,7 @@ check_maintenance_mercenary_destination_pass(void)
 		goto done;
 	/* Both strengths begin above 200, so the first combat draw removes
 	 * 150 defenders; the remaining 51 zero draws use the one-unit lane. */
-	yt_random_set_provider(&game.random, score_random_fill, &large_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &large_script);
 	if (!yt_game_read_sector(&game, 5, &arrival, &error)
 	    || !yt_maintenance_mercenary_destination(&game, 5, 201.0f,
 	    score_line_collect, &screen, &arrival, &moving_after, &continues,
@@ -5878,7 +5879,7 @@ check_maintenance_mercenary_mine_pass(void)
 	memset(&game, 0, sizeof(game));
 	game.config.sector_offset = 1.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -6156,7 +6157,7 @@ check_maintenance_super_lottery_pass(void)
 	game.config.sector_offset = 10.0f;
 	game.config.planet_offset = 30.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -6255,7 +6256,7 @@ check_maintenance_super_lottery_pass(void)
 	script = (struct score_random_script){failure_draws,
 	    sizeof(failure_draws), 0U};
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_record_set_number(&player, YT_F85, 0.0f)
 	    || !yt_database_write(&game.database, 2U, &player, &error)
 	    || !yt_maintenance_super_lottery(&game, 1, 1, 1,
@@ -6270,7 +6271,7 @@ check_maintenance_super_lottery_pass(void)
 	memset(&screen, 0, sizeof(screen));
 	script.position = 0U;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_record_set_number(&player, YT_F85, 4.0f)
 	    || !yt_database_write(&game.database, 2U, &player, &error)
 	    || !yt_record_set_number(&planet_before, YT_F85, 1.0f)
@@ -6287,7 +6288,7 @@ check_maintenance_super_lottery_pass(void)
 	memset(&screen, 0, sizeof(screen));
 	script.position = 0U;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_record_set_number(&planet_before, YT_F85, 0.0f)
 	    || !yt_database_write(&game.database, 31U, &planet_before, &error)
 	    || !yt_record_set_number(&sector_before, YT_F93, 1.0f)
@@ -6304,7 +6305,7 @@ check_maintenance_super_lottery_pass(void)
 	memset(&screen, 0, sizeof(screen));
 	script = (struct score_random_script){coin_draw, sizeof(coin_draw), 0U};
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen,
 	    &result, &error)
@@ -6334,7 +6335,7 @@ check_maintenance_super_lottery_pass(void)
 		script = (struct score_random_script){success_draws, index * 3U,
 		    0U};
 		yt_random_init(&game.random);
-		yt_random_set_provider(&game.random, score_random_fill, &script);
+		yt_test_random_use_provider(&game.random, score_random_fill, &script);
 		yt_error_clear(&error);
 		if (yt_maintenance_super_lottery(&game, 1, 1, 1,
 		    NULL, 0U, score_line_collect, &screen, &result, &error)
@@ -6366,7 +6367,7 @@ check_maintenance_super_lottery_pass(void)
 	script = (struct score_random_script){success_draws,
 	    sizeof(success_draws), 0U};
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_fail, &line_fault, &result, &error)
@@ -6390,7 +6391,7 @@ check_maintenance_super_lottery_pass(void)
 	script = (struct score_random_script){success_draws,
 	    sizeof(success_draws), 0U};
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	lottery_call = yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen, &result, &error);
@@ -6417,7 +6418,7 @@ check_maintenance_super_lottery_pass(void)
 		script = (struct score_random_script){coin_draw,
 		    sizeof(coin_draw), 0U};
 		yt_random_init(&game.random);
-		yt_random_set_provider(&game.random, score_random_fill, &script);
+		yt_test_random_use_provider(&game.random, score_random_fill, &script);
 		yt_error_clear(&error);
 		if (yt_maintenance_super_lottery(&game, 1, 1, 1,
 		    NULL, 0U, score_line_fail, &line_fault, &result, &error)
@@ -6441,7 +6442,7 @@ check_maintenance_super_lottery_pass(void)
 	memset(&screen, 0, sizeof(screen));
 	script = (struct score_random_script){NULL, 0U, 0U};
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen, &result, &error)
@@ -6609,7 +6610,7 @@ check_maintenance_final_suffix_pass(void)
 	if (!yt_record_set_number(&expected, YT_F81, 204.0f))
 		goto done;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
@@ -6683,7 +6684,7 @@ check_maintenance_final_suffix_pass(void)
 				++cut_rows;
 		}
 		random_script.position = 0U;
-		yt_random_set_provider(&game.random, score_random_fill,
+		yt_test_random_use_provider(&game.random, score_random_fill,
 		    &random_script);
 		clock_script.position = 0U;
 		output_fault = (struct maintenance_final_output_fault){
@@ -6721,7 +6722,7 @@ check_maintenance_final_suffix_pass(void)
 
 	/* The wrapper blank-row failure occurs immediately after CLOSE-all. */
 	random_script.position = 0U;
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	clock_script.position = 0U;
 	output_fault = (struct maintenance_final_output_fault){
 		.tape = {
@@ -6751,7 +6752,7 @@ check_maintenance_final_suffix_pass(void)
 
 	/* The completion-row failure occurs after CLOSE-all and the blank row. */
 	random_script.position = 0U;
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	clock_script.position = 0U;
 	output_fault = (struct maintenance_final_output_fault){
 		.tape = {
@@ -6787,7 +6788,7 @@ check_maintenance_final_suffix_pass(void)
 	    || !yt_database_write(&game.database, 1U, &after, &error))
 		goto done;
 	random_script.position = 0U;
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	clock_script.position = YT_ARRAY_LEN(clock_script.values);
 	tape = (struct maintenance_final_suffix_tape){
 		.screen = {0},
@@ -6918,7 +6919,7 @@ check_maintenance_planet_pass(void)
 	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
 		goto done;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -7060,7 +7061,7 @@ check_maintenance_wanderer_pass(void)
 		existing_draws, sizeof(existing_draws), 0U
 	};
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -7122,7 +7123,7 @@ check_maintenance_wanderer_pass(void)
 		missing_draws, sizeof(missing_draws), 0U
 	};
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
 		goto done;
@@ -7254,7 +7255,7 @@ check_maintenance_xannor_home_pass(void)
 	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
 		goto done;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -7323,7 +7324,7 @@ check_maintenance_xannor_home_pass(void)
 	random_script = (struct score_random_script){
 		bypass_draw, sizeof(bypass_draw), 0U
 	};
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	memset(&screen, 0, sizeof(screen));
 	clock_script.position = 0U;
 	if (!yt_maintenance_maintain_xannor_home(&game,
@@ -7363,7 +7364,7 @@ check_maintenance_xannor_home_pass(void)
 	random_script = (struct score_random_script){
 		existing_draw, sizeof(existing_draw), 0U
 	};
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	memset(&screen, 0, sizeof(screen));
 	clock_script.position = 0U;
 	if (!yt_maintenance_maintain_xannor_home(&game,
@@ -7449,7 +7450,7 @@ check_maintenance_xannor_hunt_pass(void)
 	memset(&game, 0, sizeof(game));
 	game.config.sector_offset = 4.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -7505,7 +7506,7 @@ check_maintenance_xannor_hunt_pass(void)
 	random_script = (struct score_random_script){
 		rejected_draw, sizeof(rejected_draw), 0U
 	};
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	memset(&screen, 0, sizeof(screen));
 	(void)remove("YTNEWS.DAT");
 	if (!yt_maintenance_xannor_hunt(&game, sector_cache, cloak_cache,
@@ -7811,7 +7812,7 @@ check_maintenance_xannor_roaming_groups_pass(void)
 	game.config.total_records = 44.0f;
 	game.config.headquarters = 40.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -7936,7 +7937,7 @@ check_maintenance_xannor_phase_pass(void)
 	(void)yt_record_set_number(&game.config.record, YT_F117,
 	    game.config.headquarters);
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -8070,7 +8071,7 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	(void)remove("YTNEWS.DAT");
 	memset(&game, 0, sizeof(game));
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -8113,7 +8114,7 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	script = (struct score_random_script){
 		high_draw, sizeof(high_draw), 0U
 	};
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_record_blank(&sector.record);
 	sector.mines = 0.0f;
 	sector.fighters = 1.0f;
@@ -8142,7 +8143,7 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	(void)remove("YTNEWS.DAT");
 	memset(&screen, 0, sizeof(screen));
 	script = (struct score_random_script){no_draws, 0U, 0U};
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_record_blank(&sector.record);
 	sector.mines = 0.0f;
 	sector.fighters = 7.0f;
@@ -8218,7 +8219,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	game.config.port_offset = 7.0f;
 	game.config.planet_offset = 10.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -8429,7 +8430,7 @@ check_maintenance_xannor_headquarters_reclaim_pass(void)
 	(void)yt_record_set_number(&game.config.record, YT_F117,
 	    game.config.headquarters);
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -8484,7 +8485,7 @@ check_maintenance_xannor_headquarters_reclaim_pass(void)
 	script = (struct score_random_script){
 		failure_draw, sizeof(failure_draw), 0U
 	};
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	location[1] = 2.0f;
 	size[1] = 1.0f;
 	if (!yt_maintenance_xannor_headquarters_reclaim(&game, location, size,
@@ -8550,7 +8551,7 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 	game.config.total_records = 112.0f;
 	game.config.headquarters = 8.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -8854,7 +8855,7 @@ check_maintenance_xannor_roaming_split(void)
 	    || yt_maintenance_xannor_player_scan_continue(3, 1))
 		return false;
 	yt_random_init(&random);
-	yt_random_set_provider(&random, score_random_fill, &script);
+	yt_test_random_use_provider(&random, score_random_fill, &script);
 	yt_error_clear(&error);
 
 	/* Exact one in both planes bypasses the split gate. */
@@ -8887,7 +8888,7 @@ check_maintenance_xannor_roaming_split(void)
 	script = (struct score_random_script){
 		half_draws, sizeof(half_draws), 0U
 	};
-	yt_random_set_provider(&random, score_random_fill, &script);
+	yt_test_random_use_provider(&random, score_random_fill, &script);
 	group_one = 99.0f;
 	group_size = 0.5f;
 	location = 900.0f;
@@ -8950,7 +8951,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	game.config.sector_offset = 60.0f;
 	game.config.port_offset = 70.0f;
 	yt_random_init(&game.random);
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
@@ -8990,7 +8991,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	script = (struct score_random_script){
 		immediate_draws, sizeof(immediate_draws), 0U
 	};
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 1, 22, 9,
 	    &discovery, &error)
@@ -9009,7 +9010,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	script = (struct score_random_script){
 		immediate_draws, sizeof(immediate_draws), 0U
 	};
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 1, 22, 9,
 	    &discovery, &error)
@@ -9027,7 +9028,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	script = (struct score_random_script){
 		immediate_draws, sizeof(immediate_draws), 0U
 	};
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 1, 22, 9,
 	    &discovery, &error) || discovery.discovery_target != 9)
@@ -9042,7 +9043,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	script = (struct score_random_script){
 		immediate_draws, sizeof(immediate_draws), 0U
 	};
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 1, 22, 9,
 	    &discovery, &error) || discovery.discovery_target != 8)
@@ -9058,7 +9059,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	script = (struct score_random_script){
 		ordinary_failure_draws, sizeof(ordinary_failure_draws), 0U
 	};
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 10, 0, 0,
 	    &discovery, &error)
@@ -9072,7 +9073,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	script = (struct score_random_script){
 		revenge_failure_draws, sizeof(revenge_failure_draws), 0U
 	};
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 10, 22, 0,
 	    &discovery, &error)
@@ -9087,7 +9088,7 @@ check_maintenance_xannor_candidate_discovery(void)
 	script = (struct score_random_script){
 		low_discovery_draws, sizeof(low_discovery_draws), 0U
 	};
-	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_xannor_candidate_discovery(&game, player_sector,
 	    player_cloak, YT_ARRAY_LEN(player_sector), 10, 22, 0,
 	    &discovery, &error)

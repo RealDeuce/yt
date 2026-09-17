@@ -1,5 +1,6 @@
 #include "yt_session_internal.h"
 #include "session_test_runtime.h"
+#include "random_test_support.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -107,7 +108,7 @@ test_emergency_warp_persistence(void)
 	door.game.config.sector_offset = 51.0f;
 	door.game.config.port_offset = 2055.0f;
 	door.game.config.headquarters = 42.0f;
-	yt_random_set_provider(&door.game.random, sequence_fill, &sequence);
+	yt_test_random_use_provider(&door.game.random, sequence_fill, &sequence);
 	yt_record_blank(&player.record);
 	player.turns = 20.0f;
 	player.sector = 7.0f;

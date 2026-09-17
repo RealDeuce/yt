@@ -1,5 +1,6 @@
 #include "yt_session_internal.h"
 #include "session_test_runtime.h"
+#include "random_test_support.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -122,7 +123,7 @@ test_combat_attrition(void)
 	session.pager.nonstop = -1.0f;
 	door.game.config.sector_offset = 3.0f;
 	yt_record_blank(&door.game.config.record);
-	yt_random_set_provider(&door.game.random, fill_zero, &random);
+	yt_test_random_use_provider(&door.game.random, fill_zero, &random);
 
 	yt_error_clear(&error);
 	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
@@ -189,7 +190,7 @@ test_deployed_surrender(void)
 	(void)snprintf(door.identity.real_first,
 	    sizeof(door.identity.real_first), "%s", "Sysop");
 	yt_random_init(&door.game.random);
-	yt_random_set_provider(&door.game.random, fill_max, &random);
+	yt_test_random_use_provider(&door.game.random, fill_max, &random);
 
 	yt_error_clear(&error);
 	CHECK(yt_database_open(&door.game.database, database_path,
@@ -272,7 +273,7 @@ test_accepted_bribe(void)
 	(void)snprintf(door.identity.real_first,
 	    sizeof(door.identity.real_first), "%s", "Sysop");
 	yt_random_init(&door.game.random);
-	yt_random_set_provider(&door.game.random, fill_max, &random);
+	yt_test_random_use_provider(&door.game.random, fill_max, &random);
 
 	yt_error_clear(&error);
 	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
