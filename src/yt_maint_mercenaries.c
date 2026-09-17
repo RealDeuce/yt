@@ -411,46 +411,39 @@ mercenary_mine_line(float value, int sector_number, int kind,
 
 bool
 yt_maintenance_mercenary_mines(struct yt_game *game, int sector_number,
-    float moving_fighters, yt_maintenance_score_line_fn line_output,
+    float *moving_fighters, yt_maintenance_score_line_fn line_output,
     void *line_context, struct yt_sector *arrival_sector,
-    struct yt_maintenance_mercenary_mine_result *result,
     struct yt_error *error)
 {
-	struct yt_maintenance_mercenary_mine_result local = {0};
-	uint64_t starting_draws;
 	uint8_t line[YT_MAINTENANCE_OUTPUT_ROW_SIZE];
 	size_t line_length;
+	float moving_before;
+	float survivors;
+	float losses;
+	bool killed;
 	int damage;
 
 	if (game == NULL || sector_number < 1 || line_output == NULL
-	    || arrival_sector == NULL || result == NULL) {
+	    || arrival_sector == NULL || moving_fighters == NULL) {
 		set_error(error, YT_INVALID, "Mercenary mine arrival",
 		    "YTDATA.DAT");
 		return false;
 	}
-	local.moving_before = moving_fighters;
-	local.survivors = moving_fighters;
-	starting_draws = game->random.draws;
+	moving_before = *moving_fighters;
 	if (!yt_game_read_sector(game, sector_number, arrival_sector, error))
 		return false;
-	if (arrival_sector->mines <= 0.0f || moving_fighters <= 0.0f) {
-		*result = local;
+	if (arrival_sector->mines <= 0.0f || moving_before <= 0.0f)
 		return true;
-	}
 	if (!yt_random_nested_integer(&game->random, 2, 10000, &damage,
 	    error))
 		return false;
-	if ((float)damage > moving_fighters)
-		damage = (int)moving_fighters;
-	local.draws_consumed = game->random.draws - starting_draws;
-	if (damage <= 0) {
-		*result = local;
+	if ((float)damage > moving_before)
+		damage = (int)moving_before;
+	if (damage <= 0)
 		return true;
-	}
-	local.losses = (float)damage;
-	local.survivors = qb_single_subtract(moving_fighters, local.losses);
-	local.mine_hit = true;
-	local.killed = local.survivors == 0.0f;
+	losses = (float)damage;
+	survivors = qb_single_subtract(moving_before, losses);
+	killed = survivors == 0.0f;
 	if (!yt_game_read_sector(game, sector_number, arrival_sector, error))
 		return false;
 	arrival_sector->mines = qb_single_subtract(arrival_sector->mines, 1.0f);
@@ -463,17 +456,17 @@ yt_maintenance_mercenary_mines(struct yt_game *game, int sector_number,
 	if (!yt_database_write(&game->database,
 	    (size_t)yt_sector_basic_record(&game->config, sector_number),
 	    &arrival_sector->record, error)
-	    || !mercenary_mine_line(local.moving_before, sector_number, 0,
+	    || !mercenary_mine_line(moving_before, sector_number, 0,
 	    line, &line_length)
 	    || !yt_news_append_bytes(line, line_length, error)
 	    || !line_output(line_context, line, line_length, error))
 		return false;
-	if (!mercenary_mine_line(local.killed ? 0.0f : local.losses,
-	    sector_number, local.killed ? 1 : 2, line, &line_length)
+	if (!mercenary_mine_line(killed ? 0.0f : losses,
+	    sector_number, killed ? 1 : 2, line, &line_length)
 	    || !yt_news_append_bytes(line, line_length, error)
 	    || !line_output(line_context, line, line_length, error))
 		return false;
-	*result = local;
+	*moving_fighters = survivors;
 	return true;
 }
 

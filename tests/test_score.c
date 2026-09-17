@@ -5817,7 +5817,6 @@ check_maintenance_mercenary_mine_pass(void)
 		random_bytes, sizeof(random_bytes), 0U
 	};
 	struct score_line_tape screen = {0};
-	struct yt_maintenance_mercenary_mine_result result;
 	struct yt_text_file news = {0};
 	struct yt_record before;
 	struct yt_record expected;
@@ -5826,6 +5825,7 @@ check_maintenance_mercenary_mine_pass(void)
 	struct yt_sector arrival;
 	struct yt_game game;
 	struct yt_error error;
+	float moving;
 	bool valid = false;
 
 	(void)remove("YTDATA.DAT");
@@ -5846,11 +5846,10 @@ check_maintenance_mercenary_mine_pass(void)
 	    || !yt_record_set_number(&before, YT_F129, 3.0f)
 	    || !yt_database_write(&game.database, 8U, &before, &error))
 		goto done;
-	if (!yt_maintenance_mercenary_mines(&game, 7, 10.0f,
-	    score_line_collect, &screen, &arrival, &result, &error)
-	    || !result.mine_hit || result.killed
-	    || result.moving_before != 10.0f || result.losses != 1.0f
-	    || result.survivors != 9.0f || result.draws_consumed != 2U
+	moving = 10.0f;
+	if (!yt_maintenance_mercenary_mines(&game, 7, &moving,
+	    score_line_collect, &screen, &arrival, &error)
+	    || moving != 9.0f
 	    || game.random.draws != 2U || script.position != 6U
 	    || arrival.mines != 2.0f || arrival.fighters != 23.0f
 	    || arrival.fighter_owner != 4.0f || arrival.planet != 9.0f
@@ -5872,13 +5871,13 @@ check_maintenance_mercenary_mine_pass(void)
 	/* CINT-like clamp to a fractional moving force can produce zero damage. */
 	yt_record_blank(&fractional);
 	fractional.bytes[YT_RECORD_TAIL_OFFSET] = 0x5CU;
+	moving = 0.5f;
 	if (!yt_record_set_number(&fractional, YT_F81, 17.0f)
 	    || !yt_record_set_number(&fractional, YT_F129, 3.0f)
 	    || !yt_database_write(&game.database, 10U, &fractional, &error)
-	    || !yt_maintenance_mercenary_mines(&game, 9, 0.5f,
-	    score_line_collect, &screen, &arrival, &result, &error)
-	    || result.mine_hit || result.killed || result.losses != 0.0f
-	    || result.survivors != 0.5f || result.draws_consumed != 2U
+	    || !yt_maintenance_mercenary_mines(&game, 9, &moving,
+	    score_line_collect, &screen, &arrival, &error)
+	    || moving != 0.5f
 	    || game.random.draws != 4U || script.position != 12U
 	    || screen.lines != 2U
 	    || !yt_database_read(&game.database, 10U, &after, &error)
@@ -5886,13 +5885,13 @@ check_maintenance_mercenary_mine_pass(void)
 		goto done;
 	yt_record_blank(&before);
 	before.bytes[YT_RECORD_TAIL_OFFSET] = 0x93U;
+	moving = 1.0f;
 	if (!yt_record_set_number(&before, YT_F81, 41.0f)
 	    || !yt_record_set_number(&before, YT_F129, 2.0f)
 	    || !yt_database_write(&game.database, 11U, &before, &error)
-	    || !yt_maintenance_mercenary_mines(&game, 10, 1.0f,
-	    score_line_collect, &screen, &arrival, &result, &error)
-	    || !result.mine_hit || !result.killed || result.losses != 1.0f
-	    || result.survivors != 0.0f || result.draws_consumed != 2U
+	    || !yt_maintenance_mercenary_mines(&game, 10, &moving,
+	    score_line_collect, &screen, &arrival, &error)
+	    || moving != 0.0f
 	    || game.random.draws != 6U || script.position != sizeof(random_bytes)
 	    || arrival.mines != 1.0f || arrival.fighters != 41.0f
 	    || screen.lines != 4U
@@ -5910,19 +5909,19 @@ check_maintenance_mercenary_mine_pass(void)
 	    != 0)
 		goto done;
 	yt_record_blank(&before);
+	moving = 10.0f;
 	if (!yt_record_set_number(&before, YT_F129, 0.0f)
 	    || !yt_database_write(&game.database, 9U, &before, &error)
-	    || !yt_maintenance_mercenary_mines(&game, 8, 10.0f,
-	    score_line_collect, &screen, &arrival, &result, &error)
-	    || result.mine_hit || result.killed || result.survivors != 10.0f
-	    || result.draws_consumed != 0U || game.random.draws != 6U
+	    || !yt_maintenance_mercenary_mines(&game, 8, &moving,
+	    score_line_collect, &screen, &arrival, &error)
+	    || moving != 10.0f || game.random.draws != 6U
 	    || screen.lines != 4U
-	    || yt_maintenance_mercenary_mines(NULL, 7, 1.0f,
-	    score_line_collect, &screen, &arrival, &result, &error)
-	    || yt_maintenance_mercenary_mines(&game, 0, 1.0f,
-	    score_line_collect, &screen, &arrival, &result, &error)
-	    || yt_maintenance_mercenary_mines(&game, 7, 1.0f, NULL,
-	    &screen, &arrival, &result, &error))
+	    || yt_maintenance_mercenary_mines(NULL, 7, &moving,
+	    score_line_collect, &screen, &arrival, &error)
+	    || yt_maintenance_mercenary_mines(&game, 0, &moving,
+	    score_line_collect, &screen, &arrival, &error)
+	    || yt_maintenance_mercenary_mines(&game, 7, &moving, NULL,
+	    &screen, &arrival, &error))
 		goto done;
 	valid = true;
 

@@ -151,15 +151,6 @@ struct yt_maintenance_mercenary_tax_result {
 	int taxed_ports;
 };
 
-struct yt_maintenance_mercenary_mine_result {
-	float moving_before;
-	float survivors;
-	float losses;
-	bool mine_hit;
-	bool killed;
-	uint64_t draws_consumed;
-};
-
 struct yt_maintenance_mercenary_planet_result {
 	bool absorbed;
 	bool capture_report;
@@ -234,10 +225,9 @@ bool yt_maintenance_mercenary_defections(struct yt_game *game,
     int sector_count, yt_maintenance_score_line_fn line_output,
     void *line_context, struct yt_error *error);
 bool yt_maintenance_mercenary_mines(struct yt_game *game,
-    int sector_number, float moving_fighters,
+    int sector_number, float *moving_fighters,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_sector *arrival_sector,
-    struct yt_maintenance_mercenary_mine_result *result,
     struct yt_error *error);
 bool yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
     int sector_number, int selected_destination, double moving_fighters,
