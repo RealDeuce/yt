@@ -26,7 +26,7 @@ struct yt_player {
 	int team;
 	int danger_scanner;
 	float missiles;
-	float lottery_plays;
+	int lottery_plays;
 	float score;
 	float plasma;
 	int ports_owned;

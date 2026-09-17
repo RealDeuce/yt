@@ -212,13 +212,13 @@ check_current_player_cache_model(void)
 	player.name_length = 11U;
 	player.last_active = 71.0f;
 	player.killed_by = 72;
-	player.lottery_plays = 73.0f;
+	player.lottery_plays = 73;
 	memset(&fresh, 0, sizeof(fresh));
 	(void)snprintf(fresh.name, sizeof(fresh.name), "%s", "Field Name");
 	fresh.name_length = 10U;
 	fresh.last_active = 1.0f;
 	fresh.killed_by = 2;
-	fresh.lottery_plays = 3.0f;
+	fresh.lottery_plays = 3;
 	fresh.turns = 4.0f;
 	fresh.shields = 5.0f;
 	fresh.sector = 6.0f;
@@ -245,7 +245,7 @@ check_current_player_cache_model(void)
 	    &current_sector, &player_cache)
 	    || strcmp(player.name, "Cached Name") != 0
 	    || player.name_length != 11U || player.last_active != 71.0f
-	    || player.killed_by != 72 || player.lottery_plays != 73.0f
+	    || player.killed_by != 72 || player.lottery_plays != 73
 	    || player.turns != 4.0f || player.shields != 5.0f
 	    || player.sector != 6 || player.fighters != 7.0f
 	    || player.holds != 8.0f || player.ore != 9.0f

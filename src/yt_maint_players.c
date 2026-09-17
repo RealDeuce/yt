@@ -197,7 +197,7 @@ expire_player_impl(struct maint_state *state, int player_record,
 
 	state->player_sector[player_record] = 0;
 	state->player_cloak[player_record] = 0.0f;
-	player->lottery_plays = 0.0f;
+	player->lottery_plays = 0;
 	if (!yt_maintenance_remove_player_from_teams(state, player_record, error))
 		return false;
 	for (logical = 1; logical <= state->planet_count; ++logical) {

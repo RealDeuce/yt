@@ -64,17 +64,16 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 	}
 	if (!session_reload_player(session, error))
 		return false;
-	session->player.lottery_plays =
-	    qb_single_add(session->player.lottery_plays, 1.0f);
-	if (session->player.lottery_plays > session->door->game.config.lottery_plays) {
+	++session->player.lottery_plays;
+	if ((float)session->player.lottery_plays
+	    > session->door->game.config.lottery_plays) {
 		if (!session_present_text(session,
 		    (const uint8_t *)
 		    "You will be allowed to play again tomorrow.",
 		    strlen("You will be allowed to play again tomorrow."),
 		    SESSION_PRESENT_BOLD_LINE, "lottery daily reached row", error))
 			return false;
-		session->player.lottery_plays = qb_single_subtract(
-		    session->player.lottery_plays, 1.0f);
+		--session->player.lottery_plays;
 		return lottery_settle(session, cached_earth, 0.0f, error);
 	}
 	if (!session_write_player(session, error))
@@ -84,7 +83,7 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 		char row[128];
 
 		if (qb_str_single(plays, sizeof(plays),
-		    session->player.lottery_plays) < 0
+		    (float)session->player.lottery_plays) < 0
 		    || snprintf(row, sizeof(row),
 		    "You've played%s times already.", plays) < 0
 		    || !session_present_text(session, (const uint8_t *)row,
@@ -270,5 +269,4 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 		return false;
 	return lottery_settle(session, cached_earth, 5.0f, error);
 }
-
 

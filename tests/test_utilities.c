@@ -2381,7 +2381,7 @@ test_expired_player_cleanup(struct yt_error *error)
 	strcpy(victim.name, "Victim Pilot");
 	victim.name_length = 12U;
 	victim.team = 10;
-	victim.lottery_plays = 7.0f;
+	victim.lottery_plays = 7;
 	victim.credits = 123.0f;
 	victim.fighters = 45.0f;
 	other.killed_by = 2;
@@ -2447,7 +2447,7 @@ test_expired_player_cleanup(struct yt_error *error)
 	valid = sector_cache[2] == 0 && cloak_cache[2] == 0.0f
 	    && sector_cache[3] == 30 && cloak_cache[3] == 0.25f
 	    && victim.name_length == 0U && victim.team == 0
-	    && victim.lottery_plays == 0.0f && victim.credits == 123.0f
+	    && victim.lottery_plays == 0 && victim.credits == 123.0f
 	    && victim.fighters == 45.0f
 	    && memcmp(victim.record.bytes, "Victim Pilot", 12U) == 0
 	    && yt_record_get_number(&team.record, YT_F109) == 0.0f

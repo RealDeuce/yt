@@ -60,7 +60,7 @@ yt_player_decode(struct yt_player *player, const struct yt_record *record)
 	player->team = (int)yt_record_get_number(record, YT_F89);
 	player->danger_scanner = (int)yt_record_get_number(record, YT_F93);
 	player->missiles = yt_record_get_number(record, YT_F97);
-	player->lottery_plays = yt_record_get_number(record, YT_F105);
+	player->lottery_plays = (int)yt_record_get_number(record, YT_F105);
 	player->score = yt_record_get_number(record, YT_F109);
 	player->plasma = yt_record_get_number(record, YT_F113);
 	player->ports_owned = (int)yt_record_get_number(record, YT_F117);
@@ -100,7 +100,7 @@ yt_player_encode(struct yt_player *player)
 	yt_record_set_number_if_changed(&player->record, YT_F97,
 	    player->missiles);
 	yt_record_set_number_if_changed(&player->record, YT_F105,
-	    player->lottery_plays);
+	    (float)player->lottery_plays);
 	yt_record_set_number_if_changed(&player->record, YT_F109, player->score);
 	yt_record_set_number_if_changed(&player->record, YT_F113, player->plasma);
 	yt_record_set_number_if_changed(&player->record, YT_F117,
