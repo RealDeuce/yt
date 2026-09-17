@@ -202,42 +202,6 @@ yt_projectile_route_avoid_enabled(bool plasma, int counterattack, int shooter)
 }
 
 bool
-yt_projectile_route_failure_row(bool caller_suffix, uint8_t *row,
-    size_t capacity, size_t *length)
-{
-	static const uint8_t helper[] =
-	    "*** You can't get there without going someplace you dont want to!";
-	static const uint8_t suffix[] = "Missles self destructed!";
-	const uint8_t *source = caller_suffix ? suffix : helper;
-	size_t source_length = caller_suffix
-	    ? sizeof(suffix) - 1U : sizeof(helper) - 1U;
-
-	if (length == NULL)
-		return false;
-	*length = 0U;
-	if (capacity < source_length || row == NULL)
-		return false;
-	memcpy(row, source, source_length);
-	*length = source_length;
-	return true;
-}
-
-bool
-yt_projectile_footer_row(uint8_t *row, size_t capacity, size_t *length)
-{
-	static const uint8_t footer[] = "*** End of Report ***";
-
-	if (length == NULL)
-		return false;
-	*length = 0U;
-	if (capacity < sizeof(footer) - 1U || row == NULL)
-		return false;
-	memcpy(row, footer, sizeof(footer) - 1U);
-	*length = sizeof(footer) - 1U;
-	return true;
-}
-
-bool
 yt_projectile_player_damage(struct yt_player *target, float *remaining,
     struct yt_random *random,
     struct yt_projectile_damage_result *result, struct yt_error *error)

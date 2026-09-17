@@ -16,8 +16,6 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	    "What sector do you want to go to? ";
 	static const uint8_t working[] = "Working. ";
 	static const uint8_t same[] = "Hey, look out the window dummy!";
-	static const uint8_t route_failure[] =
-	    "*** You can't get there without going someplace you dont want to!";
 	static const uint8_t insufficient[] =
 	    "Not enough turns left to autopilot this course!";
 	static const uint8_t confirmation[] =
@@ -90,16 +88,8 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	if (!yt_session_build_route(session, start_value, destination_value,
 	    true, &route, error))
 		return false;
-	if (route.outcome == YT_ROUTE_NOT_FOUND) {
-		yt_present_set_blink(&session->presentation, 1.0f);
-		return session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "path failure first blank", error)
-		    && session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "path failure second blank", error)
-		    && session_present_text(session, route_failure,
-		    sizeof(route_failure) - 1U, SESSION_PRESENT_BOLD_LINE,
-		    "path route failure", error);
-	}
+	if (route.outcome == YT_ROUTE_NOT_FOUND)
+		return true;
 	start = route.start;
 	destination = route.destination;
 	{

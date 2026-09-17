@@ -95,37 +95,16 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 }
 
 static bool
-route_failure_report(struct yt_session *session, struct yt_error *error)
-{
-	uint8_t row[96];
-	size_t length;
-
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "projectile route failure blank", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "projectile route failure blank", error)
-	    || !yt_projectile_route_failure_row(false, row, sizeof(row),
-	    &length))
-		return false;
-	yt_present_set_blink(&session->presentation, 1.0f);
-	return session_present_text(session, row, length,
-	    SESSION_PRESENT_BOLD_LINE, "projectile route failure row", error);
-}
-
-static bool
 missile_route_failure_suffix(struct yt_session *session,
     struct yt_error *error)
 {
-	uint8_t row[32];
-	size_t length;
+	static const uint8_t row[] = "Missles self destructed!";
 
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "cruise missile self-destruct blank", error)
-	    || !yt_projectile_route_failure_row(true, row, sizeof(row),
-	    &length))
+	    "cruise missile self-destruct blank", error))
 		return false;
 	yt_present_set_blink(&session->presentation, 1.0f);
-	return session_present_text(session, row, length,
+	return session_present_text(session, row, sizeof(row) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "cruise missile self-destruct row", error);
 }
 
@@ -145,11 +124,10 @@ plasma_footer(struct yt_session *session, struct yt_error *error)
 static bool
 missile_footer(struct yt_session *session, struct yt_error *error)
 {
-	uint8_t row[32];
-	size_t length;
+	static const uint8_t row[] = "*** End of Report ***";
 
-	return yt_projectile_footer_row(row, sizeof(row), &length)
-	    && session_present_text(session, row, length, SESSION_PRESENT_LINE,
+	return session_present_text(session, row, sizeof(row) - 1U,
+	    SESSION_PRESENT_LINE,
 	    "cruise missile end report", error);
 }
 
@@ -186,9 +164,6 @@ plasma_route_run(struct yt_session *session,
 				return false;
 			*origin = route->origin;
 			*destination = route->destination;
-			if (plan.outcome == YT_ROUTE_NOT_FOUND
-			    && !route_failure_report(session, error))
-				return false;
 		}
 		current_hop = *origin;
 		for (;;) {
@@ -326,10 +301,6 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 		destination = *target;
 		if (!route_success)
 			return false;
-		if (plan.outcome == YT_ROUTE_NOT_FOUND
-		    && !route_failure_report(session, error)) {
-			return false;
-		}
 		if (plan.outcome == YT_ROUTE_NOT_FOUND
 		    || (plan.outcome == YT_ROUTE_SAME && use_avoid)) {
 			if (!missile_route_failure_suffix(session, error))

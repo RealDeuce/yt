@@ -258,8 +258,6 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	static const uint8_t range_prefix[] =
 	    "Valid sector numbers are from 1 to";
 	static const uint8_t working[] = "Working. ";
-	static const uint8_t route_failure[] =
-	    "*** You can't get there without going someplace you dont want to!";
 	static const uint8_t insufficient[] =
 	    "Not enough turns left to move the planet that far!";
 	static const uint8_t confirmation[] = "Move the planet? (Y/[N])";
@@ -319,19 +317,8 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	if (!yt_session_build_route(session, start, destination, true, &route,
 	    error))
 		return false;
-	if (route.outcome == YT_ROUTE_NOT_FOUND) {
-		bool ok = session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "planet Thrusters route first blank", error)
-		    && session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "planet Thrusters route second blank", error);
-
-		yt_present_set_blink(&session->presentation, 1.0f);
-		if (ok)
-			ok = session_present_text(session, route_failure,
-			    sizeof(route_failure) - 1U, SESSION_PRESENT_BOLD_LINE,
-			    "planet Thrusters route failure", error);
-		return ok;
-	}
+	if (route.outcome == YT_ROUTE_NOT_FOUND)
+		return true;
 	start_node = route.start;
 	destination_node = route.destination;
 	if (!yt_planet_move_path_heading(start, destination, row, sizeof(row),

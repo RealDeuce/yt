@@ -102,9 +102,20 @@ yt_session_build_route(struct yt_session *session, float start_value,
 	}
 
 	if (tail < head) {
+		static const uint8_t failure[] =
+		    "*** You can't get there without going someplace you dont want to!";
+
 		plan->next_hop[plan->start] = 0;
 		plan->outcome = YT_ROUTE_NOT_FOUND;
-		return true;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "route failure first blank", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "route failure second blank", error))
+			return false;
+		yt_present_set_blink(&session->presentation, 1.0f);
+		return session_present_text(session, failure,
+		    sizeof(failure) - 1U, SESSION_PRESENT_BOLD_LINE,
+		    "route failure row", error);
 	}
 
 	head = (int16_t)plan->destination;

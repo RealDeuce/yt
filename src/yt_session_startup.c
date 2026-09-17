@@ -43,22 +43,6 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 
 	if (!yt_session_build_route(session, 1.0f, 2.0f, false, &route, error))
 		return false;
-	if (route.outcome == YT_ROUTE_NOT_FOUND) {
-		static const uint8_t diagnostic[] =
-		    "*** You can't get there without going someplace you dont want to!";
-
-		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-		    "startup route failure blank", error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "startup route failure blank", error))
-			return false;
-		yt_present_set_bold(&session->presentation, 1.0f);
-		yt_present_set_blink(&session->presentation, 1.0f);
-		if (!session_present_text(session, diagnostic,
-		    sizeof(diagnostic) - 1U, SESSION_PRESENT_LINE,
-		    "startup route failure diagnostic", error))
-			return false;
-	}
 	if (session->presentation.sound.ansi != 0.0f) {
 		if (!yt_out_opening_file("YTOPEN.ANS",
 		    session->presentation.sound.mode,

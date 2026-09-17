@@ -759,10 +759,6 @@ enum yt_projectile_post_impact_route yt_projectile_post_impact_route(
 bool yt_projectile_route_has_next(int16_t next_hop);
 bool yt_projectile_route_avoid_enabled(bool plasma, int counterattack,
     int shooter);
-bool yt_projectile_route_failure_row(bool caller_suffix, uint8_t *row,
-    size_t capacity, size_t *length);
-bool yt_projectile_footer_row(uint8_t *row, size_t capacity,
-    size_t *length);
 bool yt_projectile_player_damage(struct yt_player *target, float *remaining,
     struct yt_random *random,
     struct yt_projectile_damage_result *result, struct yt_error *error);

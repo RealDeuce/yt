@@ -1332,11 +1332,6 @@ check_projectile_parent_model(void)
 	    "The plasma bolts hit planet P\0P in sector 7!";
 	static const uint8_t plasma_planet_news_expected[] =
 	    "A\0A's plasma bolts hit planet P\0P in sector 7!";
-	static const uint8_t footer_expected[] = "*** End of Report ***";
-	static const uint8_t route_failure_expected[] =
-	    "*** You can't get there without going someplace you dont want to!";
-	static const uint8_t self_destruct_expected[] =
-	    "Missles self destructed!";
 	static const uint8_t victory_winner_expected[] =
 	    "Congratulations go to A\0A who defeated the Xannor HQ!!!";
 	struct yt_planet planet;
@@ -1443,21 +1438,6 @@ check_projectile_parent_model(void)
 	    terminal_length) != 0
 	    || news_length != sizeof(plasma_planet_news_expected) - 1U
 	    || memcmp(news, plasma_planet_news_expected, news_length) != 0
-	    || !yt_projectile_route_failure_row(false, direct, sizeof(direct),
-	    &terminal_length)
-	    || terminal_length != sizeof(route_failure_expected) - 1U
-	    || memcmp(direct, route_failure_expected, terminal_length) != 0
-	    || !yt_projectile_route_failure_row(true, direct, sizeof(direct),
-	    &terminal_length)
-	    || terminal_length != sizeof(self_destruct_expected) - 1U
-	    || memcmp(direct, self_destruct_expected, terminal_length) != 0
-	    || yt_projectile_route_failure_row(false, direct, 8U,
-	    &terminal_length)
-	    || !yt_projectile_footer_row(direct, sizeof(direct),
-	    &terminal_length)
-	    || terminal_length != sizeof(footer_expected) - 1U
-	    || memcmp(direct, footer_expected, terminal_length) != 0
-	    || yt_projectile_footer_row(direct, 8U, &terminal_length)
 	    || !yt_xannor_victory_winner(saved_binary,
 	    sizeof(saved_binary), news, sizeof(news), &news_length)
 	    || news_length != sizeof(victory_winner_expected) - 1U
