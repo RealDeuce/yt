@@ -158,7 +158,7 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 			continue;
 		credited = qb_single_add(credited, 1.0f);
 		if (!treasury_add(total, port.record.bytes + YT_F89, error)
-		    || !treasury_format_single("Sector:", port.sector, text,
+		    || !treasury_format_single("Sector:", (float)port.sector, text,
 		    sizeof(text), error, "treasury sector field")
 		    || !session_fixed_width_bytes(session, (const uint8_t *)text,
 		    strlen(text), 14.0f, "treasury sector field", error))

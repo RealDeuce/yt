@@ -73,7 +73,7 @@ struct yt_port {
 	float factor[3];
 	size_t name_length;
 	float treasury;
-	float sector;
+	int sector;
 	float owner;
 	float last_minute;
 };

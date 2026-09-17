@@ -392,7 +392,7 @@ main(void)
 		goto close;
 	}
 	for (basic = 1; basic <= 4; ++basic) {
-		static const float fixed_sectors[4] = {1, 3, 5, 7};
+		static const int fixed_sectors[4] = {1, 3, 5, 7};
 
 		if (!yt_game_read_port(&game, basic, &port, &error)
 		    || port.sector != fixed_sectors[basic - 1]) {

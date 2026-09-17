@@ -104,7 +104,8 @@ static bool
 scanner_write_port(struct yt_session *session, uint32_t physical_record,
     struct yt_port *port, struct yt_error *error)
 {
-	yt_record_set_number_if_changed(&port->record, YT_F93, port->sector);
+	yt_record_set_number_if_changed(&port->record, YT_F93,
+	    (float)port->sector);
 	return yt_database_write(&session->door->game.database,
 	    (size_t)physical_record, &port->record, error);
 }
@@ -196,7 +197,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "sector port row", error))
 			return false;
-		port.sector = (float)logical_sector;
+		port.sector = logical_sector;
 		if (!scanner_write_port(session, physical_port, &port,
 		    error))
 			return false;

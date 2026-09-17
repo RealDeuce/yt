@@ -239,7 +239,7 @@ test_owned_port_purchase(void)
 	    &door.game.clock),
 	    60.0f);
 	port.treasury = 4.0f;
-	port.sector = 9.0f;
+	port.sector = 9;
 	port.owner = 7.0f;
 	for (index = 0U; index < 3U; ++index) {
 		port.stock[index] = (float)(100U * (index + 1U));
