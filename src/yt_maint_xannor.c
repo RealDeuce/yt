@@ -897,22 +897,22 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
     const float *player_sector, const float *player_cloak, size_t cache_count,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_maintenance_xannor_hunt_result *result,
+    int *hunt_player, float *top_score, int *target_sector,
     struct yt_error *error)
 {
-	struct yt_maintenance_xannor_hunt_result local = {0};
 	struct yt_maintenance_output_result output;
 	struct yt_maintenance_text name;
 	struct yt_player player;
-	uint64_t starting_draws;
 	float gate;
 	float selection;
 	int player_count;
+	int top_record = 0;
 	int candidate;
 	size_t row;
 
 	if (game == NULL || player_sector == NULL || player_cloak == NULL
-	    || line_output == NULL || (blank == NULL
+	    || line_output == NULL || hunt_player == NULL || top_score == NULL
+	    || target_sector == NULL || (blank == NULL
 	    && blank_length != 0U)) {
 		set_error(error, YT_INVALID, "Xannor hunt", "YTDATA.DAT");
 		return false;
@@ -924,8 +924,9 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 		set_error(error, YT_RANGE, "Xannor hunt", "YTDATA.DAT");
 		return false;
 	}
-	if (result != NULL)
-		memset(result, 0, sizeof(*result));
+	*hunt_player = 0;
+	*top_score = 0.0f;
+	*target_sector = 0;
 	for (row = 0U; row < output.row_count; ++row) {
 		if (!line_output(line_context, output.rows[row].data,
 		    output.rows[row].length, error))
@@ -935,30 +936,22 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 		if (!yt_game_read_player(game, candidate, &player, error))
 			return false;
 		if (player.name_length != 0U
-		    && player.score > local.top_score) {
-			local.top_record = candidate;
-			local.top_score = player.score;
+		    && player.score > *top_score) {
+			top_record = candidate;
+			*top_score = player.score;
 		}
 	}
 	if (!yt_news_append("  -  Xannor report:", error))
 		return false;
-	starting_draws = game->random.draws;
-	if (local.top_record == 0) {
-		if (result != NULL)
-			*result = local;
+	if (top_record == 0)
 		return true;
-	}
-	if (!yt_game_read_player(game, local.top_record, &player, error)
+	if (!yt_game_read_player(game, top_record, &player, error)
 	    || !yt_random_next(&game->random, &gate, error))
 		return false;
-	if (local.top_score < 2500000.0f
-	    || qb_single_subtract(player_cloak[local.top_record],
-	    0.33000001311302185f) > gate) {
-		local.draws_consumed = game->random.draws - starting_draws;
-		if (result != NULL)
-			*result = local;
+	if (*top_score < 2500000.0f
+	    || qb_single_subtract(player_cloak[top_record],
+	    0.33000001311302185f) > gate)
 		return true;
-	}
 	name.data = player.record.bytes;
 	name.length = player.name_length < YT_TEXT_FIELD_SIZE
 	    ? player.name_length : YT_TEXT_FIELD_SIZE;
@@ -970,16 +963,11 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 		    output.rows[row].length, error))
 			return false;
 	}
-	local.selected = true;
-	local.target_sector = (int)player.sector;
+	*hunt_player = top_record;
+	*target_sector = (int)player.sector;
 	if (!yt_random_next(&game->random, &selection, error))
 		return false;
-	if (selection > 0.25f) {
-		local.used_cached_sector = true;
-		local.target_sector = (int)player_sector[local.top_record];
-	}
-	local.draws_consumed = game->random.draws - starting_draws;
-	if (result != NULL)
-		*result = local;
+	if (selection > 0.25f)
+		*target_sector = (int)player_sector[top_record];
 	return true;
 }

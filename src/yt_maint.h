@@ -145,15 +145,6 @@ struct yt_maintenance_planet_result {
 	uint64_t draws_consumed;
 };
 
-struct yt_maintenance_xannor_hunt_result {
-	int top_record;
-	float top_score;
-	bool selected;
-	bool used_cached_sector;
-	int target_sector;
-	uint64_t draws_consumed;
-};
-
 struct yt_maintenance_mercenary_tax_result {
 	float tax_pool;
 	float fleet_strength;
@@ -325,7 +316,7 @@ bool yt_maintenance_xannor_hunt(struct yt_game *game,
     const float *player_sector, const float *player_cloak, size_t cache_count,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_maintenance_xannor_hunt_result *result,
+    int *hunt_player, float *top_score, int *target_sector,
     struct yt_error *error);
 bool yt_maintenance_xannor_target(struct yt_random *random, int sector_count,
     int *hunt_player, int *target_sector,

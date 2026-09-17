@@ -7359,7 +7359,6 @@ check_maintenance_xannor_hunt_pass(void)
 		selected_draws, sizeof(selected_draws), 0U
 	};
 	struct score_line_tape screen = {0};
-	struct yt_maintenance_xannor_hunt_result hunt;
 	struct yt_text_file news = {0};
 	struct yt_record before[3];
 	struct yt_record after;
@@ -7367,6 +7366,9 @@ check_maintenance_xannor_hunt_pass(void)
 	struct yt_error error;
 	float sector_cache[5] = {0};
 	float cloak_cache[5] = {0};
+	float top_score;
+	int hunt_player;
+	int target_sector;
 	int record;
 	bool valid = false;
 
@@ -7395,10 +7397,10 @@ check_maintenance_xannor_hunt_pass(void)
 	cloak_cache[2] = 0.33000001311302185f;
 	if (!yt_maintenance_xannor_hunt(&game, sector_cache, cloak_cache,
 	    YT_ARRAY_LEN(sector_cache), NULL, 0U,
-	    score_line_collect, &screen, &hunt, &error)
-	    || hunt.top_record != 2 || hunt.top_score != 2500000.0f
-	    || !hunt.selected || hunt.used_cached_sector
-	    || hunt.target_sector != 10 || hunt.draws_consumed != 2U
+	    score_line_collect, &screen, &hunt_player, &top_score,
+	    &target_sector, &error)
+	    || hunt_player != 2 || top_score != 2500000.0f
+	    || target_sector != 10
 	    || game.random.draws != 2U
 	    || random_script.position != sizeof(selected_draws)
 	    || screen.lines != 6U
@@ -7436,10 +7438,10 @@ check_maintenance_xannor_hunt_pass(void)
 	(void)remove("YTNEWS.DAT");
 	if (!yt_maintenance_xannor_hunt(&game, sector_cache, cloak_cache,
 	    YT_ARRAY_LEN(sector_cache), NULL, 0U,
-	    score_line_collect, &screen, &hunt, &error)
-	    || hunt.top_record != 2 || hunt.top_score != 2499999.0f
-	    || hunt.selected || hunt.used_cached_sector
-	    || hunt.target_sector != 0 || hunt.draws_consumed != 1U
+	    score_line_collect, &screen, &hunt_player, &top_score,
+	    &target_sector, &error)
+	    || hunt_player != 0 || top_score != 2499999.0f
+	    || target_sector != 0
 	    || game.random.draws != 1U
 	    || random_script.position != sizeof(rejected_draw)
 	    || screen.lines != 4U

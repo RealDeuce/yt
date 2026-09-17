@@ -931,7 +931,6 @@ yt_maintenance_xannor_run(struct maint_state *state,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error)
 {
-	struct yt_maintenance_xannor_hunt_result hunt;
 	struct yt_maintenance_output_result regen_output;
 	struct yt_maintenance_output_result roaming_output;
 	float location[21];
@@ -949,11 +948,9 @@ yt_maintenance_xannor_run(struct maint_state *state,
 	    || !yt_maintenance_xannor_hunt(&state->game, state->player_sector,
 	    state->player_cloak, (size_t)state->player_count + 2U,
 	    NULL, 0U,
-	    line_output, line_context, &hunt, error))
+	    line_output, line_context, &hunt_player, &score, &top_target,
+	    error))
 		return false;
-	score = hunt.top_score;
-	hunt_player = hunt.selected ? hunt.top_record : 0;
-	top_target = hunt.target_sector;
 	if (!yt_maintenance_xannor_target(&state->game.random,
 	    state->sector_count, &hunt_player, &top_target, error)
 	    || !yt_maintenance_xannor_groups_extract(&state->game, location,
