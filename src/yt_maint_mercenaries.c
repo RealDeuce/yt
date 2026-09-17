@@ -66,20 +66,26 @@ maintenance_write_mercenary_rebuild(struct yt_game *game,
 		goto range;
 	for (index = 0; index < 3; ++index) {
 		if (!yt_record_set_number(&planet->record,
-		    production_offsets[index], planet->production[index])
-		    || !yt_record_set_number(&planet->record,
+		    production_offsets[index], planet->production[index]))
+			goto range;
+		if (!yt_record_set_number(&planet->record,
 		    stock_offsets[index], planet->stock[index]))
 			goto range;
 	}
-	if (!yt_record_set_number(&planet->record, YT_F69, planet->missiles)
-	    || !yt_record_set_number(&planet->record, YT_F73,
-	    (float)planet->owner)
-	    || !yt_record_set_number(&planet->record, YT_F77,
-	    planet->ground_forces)
-	    || !yt_record_set_number(&planet->record, YT_F85,
-	    (float)planet->name_length)
-	    || !yt_record_set_number(&planet->record, YT_F117, planet->bank)
-	    || !yt_record_set_number(&planet->record, YT_F125, planet->mines))
+	if (!yt_record_set_number(&planet->record, YT_F69, planet->missiles))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F73,
+	    (float)planet->owner))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F77,
+	    planet->ground_forces))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F85,
+	    (float)planet->name_length))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F117, planet->bank))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F125, planet->mines))
 		goto range;
 	return yt_database_write(&game->database,
 	    (size_t)yt_planet_basic_record(&game->config, planet_number),
@@ -97,14 +103,26 @@ maintenance_write_mercenary_daily(struct yt_game *game, int planet_number,
     struct yt_error *error)
 {
 	if (!yt_record_set_number(&planet->record, YT_F73,
-	    (float)planet->owner)
-	    || (ground_changed && !yt_record_set_number(&planet->record, YT_F77,
-	    planet->ground_forces))
-	    || (bank_changed && !yt_record_set_number(&planet->record, YT_F117,
-	    planet->bank))) {
+	    (float)planet->owner)) {
 		set_error(error, YT_RANGE, "encode Mercenary Base daily",
 		    "YTDATA.DAT");
 		return false;
+	}
+	if (ground_changed) {
+		if (!yt_record_set_number(&planet->record, YT_F77,
+		    planet->ground_forces)) {
+			set_error(error, YT_RANGE, "encode Mercenary Base daily",
+			    "YTDATA.DAT");
+			return false;
+		}
+	}
+	if (bank_changed) {
+		if (!yt_record_set_number(&planet->record, YT_F117,
+		    planet->bank)) {
+			set_error(error, YT_RANGE, "encode Mercenary Base daily",
+			    "YTDATA.DAT");
+			return false;
+		}
 	}
 	return yt_database_write(&game->database,
 	    (size_t)yt_planet_basic_record(&game->config, planet_number),
@@ -143,9 +161,9 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 		int today;
 
 		if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
-		    &today, NULL,
-		    error)
-		    || !yt_game_read_planet(game, planet_number, &planet, error))
+		    &today, NULL, error))
+			return false;
+		if (!yt_game_read_planet(game, planet_number, &planet, error))
 			return false;
 		yt_record_set_text(&planet.record,
 		    (const uint8_t *)"Mercenary Base", 14);
@@ -166,8 +184,9 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 			return false;
 		do {
 			if (!yt_random_integer(&game->random,
-			    sector_count, &sector_number, error)
-			    || !yt_game_read_sector(game, sector_number, &sector,
+			    sector_count, &sector_number, error))
+				return false;
+			if (!yt_game_read_sector(game, sector_number, &sector,
 			    error))
 				return false;
 		} while (sector.planet > 0);
@@ -262,8 +281,12 @@ yt_maintenance_place_mercenary_fleets(struct yt_game *game,
 		sector.fighters = strength;
 		sector.fighter_owner = -2;
 		if (!yt_record_set_number(&sector.record, YT_F81,
-		    sector.fighters)
-		    || !yt_record_set_number(&sector.record, YT_F85,
+		    sector.fighters)) {
+			set_error(error, YT_RANGE, "encode Mercenary fleet",
+			    "YTDATA.DAT");
+			return false;
+		}
+		if (!yt_record_set_number(&sector.record, YT_F85,
 		    (float)sector.fighter_owner)) {
 			set_error(error, YT_RANGE, "encode Mercenary fleet",
 			    "YTDATA.DAT");
@@ -326,8 +349,9 @@ yt_maintenance_mercenary_defections(struct yt_game *game, int sector_count,
 				}
 				if (!yt_database_write(&game->database,
 				    (size_t)yt_sector_basic_record(&game->config, logical),
-				    &sector.record, error)
-				    || !yt_game_read_player(game, owner_record, &owner,
+				    &sector.record, error))
+					return false;
+				if (!yt_game_read_player(game, owner_record, &owner,
 				    error))
 					return false;
 				name_length = owner.name_length < YT_TEXT_FIELD_SIZE
@@ -336,26 +360,34 @@ yt_maintenance_mercenary_defections(struct yt_game *game, int sector_count,
 				    sector.fighters);
 				sector_length = qb_str_single(sector_text,
 				    sizeof(sector_text), (float)logical);
-				if (amount_length < 0 || sector_length < 0
-				    || !maintenance_copy_part(line, sizeof(line),
-				    &line_length, prefix, sizeof(prefix) - 1U)
-				    || !maintenance_copy_part(line, sizeof(line),
+				if (amount_length < 0 || sector_length < 0)
+					return false;
+				if (!maintenance_copy_part(line, sizeof(line),
+				    &line_length, prefix, sizeof(prefix) - 1U))
+					return false;
+				if (!maintenance_copy_part(line, sizeof(line),
 				    &line_length, (const uint8_t *)amount,
-				    (size_t)amount_length)
-				    || !maintenance_copy_part(line, sizeof(line),
-				    &line_length, fighters, sizeof(fighters) - 1U)
-				    || !maintenance_copy_part(line, sizeof(line),
+				    (size_t)amount_length))
+					return false;
+				if (!maintenance_copy_part(line, sizeof(line),
+				    &line_length, fighters, sizeof(fighters) - 1U))
+					return false;
+				if (!maintenance_copy_part(line, sizeof(line),
 				    &line_length, (const uint8_t *)sector_text,
-				    (size_t)sector_length)
-				    || !maintenance_copy_part(line, sizeof(line),
-				    &line_length, belonging, sizeof(belonging) - 1U)
-				    || !maintenance_copy_part(line, sizeof(line),
-				    &line_length, owner.record.bytes, name_length)
-				    || !maintenance_copy_part(line, sizeof(line),
-				    &line_length, suffix, sizeof(suffix) - 1U)
-				    || !line_output(line_context, line, line_length, error)
-				    || !yt_news_append_bytes(line, line_length,
-				    error))
+				    (size_t)sector_length))
+					return false;
+				if (!maintenance_copy_part(line, sizeof(line),
+				    &line_length, belonging, sizeof(belonging) - 1U))
+					return false;
+				if (!maintenance_copy_part(line, sizeof(line),
+				    &line_length, owner.record.bytes, name_length))
+					return false;
+				if (!maintenance_copy_part(line, sizeof(line),
+				    &line_length, suffix, sizeof(suffix) - 1U))
+					return false;
+				if (!line_output(line_context, line, line_length, error))
+					return false;
+				if (!yt_news_append_bytes(line, line_length, error))
 					return false;
 			}
 		}
@@ -386,28 +418,36 @@ mercenary_mine_line(float value, int sector_number, int kind,
 	number_length = qb_str_single(number, sizeof(number), value);
 	if (number_length < 0)
 		return false;
-	if (kind == 2)
-		return maintenance_copy_part(line,
+	if (kind == 2) {
+		if (!maintenance_copy_part(line,
 		    YT_MAINTENANCE_OUTPUT_ROW_SIZE, line_length, lost_prefix,
-		    sizeof(lost_prefix) - 1U)
-		    && maintenance_copy_part(line,
+		    sizeof(lost_prefix) - 1U))
+			return false;
+		if (!maintenance_copy_part(line,
 		    YT_MAINTENANCE_OUTPUT_ROW_SIZE, line_length,
-		    (const uint8_t *)number, (size_t)number_length)
-		    && maintenance_copy_part(line,
+		    (const uint8_t *)number, (size_t)number_length))
+			return false;
+		return maintenance_copy_part(line,
 		    YT_MAINTENANCE_OUTPUT_ROW_SIZE, line_length, lost_suffix,
 		    sizeof(lost_suffix) - 1U);
+	}
 	sector_length = qb_str_single(sector, sizeof(sector),
 	    (float)sector_number);
-	return sector_length >= 0
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, hit_prefix, sizeof(hit_prefix) - 1U)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, (const uint8_t *)number, (size_t)number_length)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, hit_middle, sizeof(hit_middle) - 1U)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, (const uint8_t *)sector, (size_t)sector_length)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	if (sector_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, hit_prefix, sizeof(hit_prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, (const uint8_t *)number, (size_t)number_length))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, hit_middle, sizeof(hit_middle) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, (const uint8_t *)sector, (size_t)sector_length))
+		return false;
+	return maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
 	    line_length, (const uint8_t *)"!", 1U);
 }
 
@@ -457,16 +497,21 @@ yt_maintenance_mercenary_mines(struct yt_game *game, int sector_number,
 	}
 	if (!yt_database_write(&game->database,
 	    (size_t)yt_sector_basic_record(&game->config, sector_number),
-	    &arrival_sector->record, error)
-	    || !mercenary_mine_line(moving_before, sector_number, 0,
-	    line, &line_length)
-	    || !yt_news_append_bytes(line, line_length, error)
-	    || !line_output(line_context, line, line_length, error))
+	    &arrival_sector->record, error))
+		return false;
+	if (!mercenary_mine_line(moving_before, sector_number, 0,
+	    line, &line_length))
+		return false;
+	if (!yt_news_append_bytes(line, line_length, error))
+		return false;
+	if (!line_output(line_context, line, line_length, error))
 		return false;
 	if (!mercenary_mine_line(killed ? 0.0f : losses,
-	    sector_number, killed ? 1 : 2, line, &line_length)
-	    || !yt_news_append_bytes(line, line_length, error)
-	    || !line_output(line_context, line, line_length, error))
+	    sector_number, killed ? 1 : 2, line, &line_length))
+		return false;
+	if (!yt_news_append_bytes(line, line_length, error))
+		return false;
+	if (!line_output(line_context, line, line_length, error))
 		return false;
 	*moving_fighters = survivors;
 	return true;
@@ -491,23 +536,30 @@ mercenary_planet_line(double mercenaries, float planet_fighters,
 	if (taking)
 		second_length = qb_str_single(second, sizeof(second),
 		    planet_fighters);
-	return first_length >= 0 && second_length >= 0
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, prefix, sizeof(prefix) - 1U)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, (const uint8_t *)first, (size_t)first_length)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	if (first_length < 0 || second_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, prefix, sizeof(prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, (const uint8_t *)first, (size_t)first_length))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
 	    line_length, taking ? taking_text : captured,
-	    taking ? sizeof(taking_text) - 1U : sizeof(captured) - 1U)
-	    && (!taking || maintenance_copy_part(line,
-	    YT_MAINTENANCE_OUTPUT_ROW_SIZE, line_length,
-	    (const uint8_t *)second, (size_t)second_length))
-	    && (!taking || maintenance_copy_part(line,
-	    YT_MAINTENANCE_OUTPUT_ROW_SIZE, line_length, fighters,
-	    sizeof(fighters) - 1U))
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, name, name_length)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    taking ? sizeof(taking_text) - 1U : sizeof(captured) - 1U))
+		return false;
+	if (taking) {
+		if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+		    line_length, (const uint8_t *)second, (size_t)second_length))
+			return false;
+		if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+		    line_length, fighters, sizeof(fighters) - 1U))
+			return false;
+	}
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, name, name_length))
+		return false;
+	return maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
 	    line_length, (const uint8_t *)"!", 1U);
 }
 
@@ -555,16 +607,21 @@ yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 	}
 	if (!yt_database_write(&game->database,
 	    (size_t)yt_planet_basic_record(&game->config, planet_number),
-	    &planet.record, error)
-	    || !yt_game_read_sector(game, sector_number, arrival_sector, error))
+	    &planet.record, error))
+		return false;
+	if (!yt_game_read_sector(game, sector_number, arrival_sector, error))
 		return false;
 	existing = (double)arrival_sector->fighters;
 	incoming = (double)planet_fighters + moving_fighters;
 	arrival_sector->fighters = (float)(incoming + existing);
 	arrival_sector->fighter_owner = -2;
 	if (!yt_record_set_number(&arrival_sector->record, YT_F81,
-	    arrival_sector->fighters)
-	    || !yt_record_set_number(&arrival_sector->record, YT_F85, -2.0f)) {
+	    arrival_sector->fighters)) {
+		set_error(error, YT_RANGE, "encode Mercenary planet sector",
+		    "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_record_set_number(&arrival_sector->record, YT_F85, -2.0f)) {
 		set_error(error, YT_RANGE, "encode Mercenary planet sector",
 		    "YTDATA.DAT");
 		return false;
@@ -576,19 +633,25 @@ yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 	capture_report = selected_destination != sector_number
 	    && moving_fighters != 0.0;
 	taking_report = planet_fighters > 0.0f;
-	if (capture_report
-	    && (!mercenary_planet_line(incoming, planet_fighters,
-	    planet.record.bytes, name_length, false, line, &line_length)
-	    || !line_output(line_context, line, line_length, error)
-	    || !yt_news_append_bytes(line, line_length, error)))
-		return false;
-	if (taking_report
-	    && (!mercenary_planet_line(moving_fighters + existing,
-	    planet_fighters, planet.record.bytes, name_length,
-	    true, line, &line_length)
-	    || !yt_news_append_bytes(line, line_length, error)
-	    || !line_output(line_context, line, line_length, error)))
-		return false;
+	if (capture_report) {
+		if (!mercenary_planet_line(incoming, planet_fighters,
+		    planet.record.bytes, name_length, false, line, &line_length))
+			return false;
+		if (!line_output(line_context, line, line_length, error))
+			return false;
+		if (!yt_news_append_bytes(line, line_length, error))
+			return false;
+	}
+	if (taking_report) {
+		if (!mercenary_planet_line(moving_fighters + existing,
+		    planet_fighters, planet.record.bytes, name_length,
+		    true, line, &line_length))
+			return false;
+		if (!yt_news_append_bytes(line, line_length, error))
+			return false;
+		if (!line_output(line_context, line, line_length, error))
+			return false;
+	}
 	*absorbed = true;
 	return true;
 }
@@ -606,69 +669,88 @@ yt_maintenance_mercenaries_run(struct maint_state *state,
 	float hired;
 
 	if (!yt_maintenance_compose_mercenary_phase(
-	    NULL, 0U,
-	    0.0f, false, 0.0f, &output)
-	    || !maintenance_emit_output_row(&output,
+	    NULL, 0U, 0.0f, false, 0.0f, &output))
+		return false;
+	if (!maintenance_emit_output_row(&output,
 	    YT_MAINT_ROW_MERCENARY_START_BLANK,
-	    line_output, line_context, error)
-	    || !maintenance_emit_output_row(&output,
+	    line_output, line_context, error))
+		return false;
+	if (!maintenance_emit_output_row(&output,
 	    YT_MAINT_ROW_MERCENARY_START_SEPARATOR,
-	    line_output, line_context, error)
-	    || !yt_maintenance_collect_mercenary_tax(&state->game,
-	    state->port_count, &tax_pool, &fleet_strength, error)
-	    || !yt_maintenance_compose_mercenary_phase(
-	    NULL, 0U,
-	    tax_pool, false, 0.0f, &output))
+	    line_output, line_context, error))
 		return false;
-	if (tax_pool != 0.0f
-	    && (!maintenance_emit_output_row(&output,
-	    YT_MAINT_ROW_MERCENARY_TAX_REPORT,
-	    line_output, line_context, error)
-	    || !maintenance_news_output_row(&output,
-	    YT_MAINT_ROW_MERCENARY_TAX_REPORT, error)))
+	if (!yt_maintenance_collect_mercenary_tax(&state->game,
+	    state->port_count, &tax_pool, &fleet_strength, error))
 		return false;
-	if (!maintenance_emit_output_row(&output, YT_MAINT_ROW_MERCENARY_PHASE_BLANK,
-	    line_output, line_context, error)
-	    || !maintenance_emit_output_row(&output,
+	if (!yt_maintenance_compose_mercenary_phase(
+	    NULL, 0U, tax_pool, false, 0.0f, &output))
+		return false;
+	if (tax_pool != 0.0f) {
+		if (!maintenance_emit_output_row(&output,
+		    YT_MAINT_ROW_MERCENARY_TAX_REPORT,
+		    line_output, line_context, error))
+			return false;
+		if (!maintenance_news_output_row(&output,
+		    YT_MAINT_ROW_MERCENARY_TAX_REPORT, error))
+			return false;
+	}
+	if (!maintenance_emit_output_row(&output,
+	    YT_MAINT_ROW_MERCENARY_PHASE_BLANK,
+	    line_output, line_context, error))
+		return false;
+	if (!maintenance_emit_output_row(&output,
 	    YT_MAINT_ROW_MERCENARY_PHASE_HEADER,
-	    line_output, line_context, error)
-	    || !maintenance_emit_output_row(&output,
+	    line_output, line_context, error))
+		return false;
+	if (!maintenance_emit_output_row(&output,
 	    YT_MAINT_ROW_MERCENARY_PHASE_SEPARATOR,
-	    line_output, line_context, error)
-	    || !yt_news_append(report, error)
-	    || !maintenance_emit_output_row(&output, YT_MAINT_ROW_MERCENARY_BASE_CHECK,
-	    line_output, line_context, error)
-	    || !yt_maintenance_maintain_mercenary_base(&state->game,
+	    line_output, line_context, error))
+		return false;
+	if (!yt_news_append(report, error))
+		return false;
+	if (!maintenance_emit_output_row(&output,
+	    YT_MAINT_ROW_MERCENARY_BASE_CHECK,
+	    line_output, line_context, error))
+		return false;
+	if (!yt_maintenance_maintain_mercenary_base(&state->game,
 	    state->sector_count, state->planet_count - 1, &rebuilt, error))
 		return false;
 	if (rebuilt) {
 		if (!yt_maintenance_compose_mercenary_phase(
 		    NULL, 0U, tax_pool, true, 0.0f,
-		    &output)
-		    || !maintenance_emit_output_row(&output,
+		    &output))
+			return false;
+		if (!maintenance_emit_output_row(&output,
 		    YT_MAINT_ROW_MERCENARY_REBUILD_BLANK,
-		    line_output, line_context, error)
-		    || !maintenance_emit_output_row(&output, YT_MAINT_ROW_MERCENARY_REBUILT,
-		    line_output, line_context, error)
-		    || !maintenance_news_output_row(&output,
+		    line_output, line_context, error))
+			return false;
+		if (!maintenance_emit_output_row(&output,
+		    YT_MAINT_ROW_MERCENARY_REBUILT,
+		    line_output, line_context, error))
+			return false;
+		if (!maintenance_news_output_row(&output,
 		    YT_MAINT_ROW_MERCENARY_REBUILT, error))
 			return false;
 	}
 	if (!yt_maintenance_place_mercenary_fleets(&state->game,
 	    state->sector_count, fleet_strength, &hired, error))
 		return false;
-	if (hired != 0.0f
-	    && (!yt_maintenance_compose_mercenary_phase(
-	    NULL, 0U,
-	    tax_pool, rebuilt, hired, &output)
-	    || !maintenance_emit_output_row(&output, YT_MAINT_ROW_MERCENARY_HIRED,
-	    line_output, line_context, error)
-	    || !maintenance_news_output_row(&output,
-	    YT_MAINT_ROW_MERCENARY_HIRED, error)))
-		return false;
+	if (hired != 0.0f) {
+		if (!yt_maintenance_compose_mercenary_phase(
+		    NULL, 0U, tax_pool, rebuilt, hired, &output))
+			return false;
+		if (!maintenance_emit_output_row(&output,
+		    YT_MAINT_ROW_MERCENARY_HIRED,
+		    line_output, line_context, error))
+			return false;
+		if (!maintenance_news_output_row(&output,
+		    YT_MAINT_ROW_MERCENARY_HIRED, error))
+			return false;
+	}
 	if (!yt_maintenance_mercenary_defections(&state->game,
-	    state->sector_count, line_output, line_context, error)
-	    || !yt_maintenance_move_mercenaries(&state->game,
+	    state->sector_count, line_output, line_context, error))
+		return false;
+	if (!yt_maintenance_move_mercenaries(&state->game,
 	    state->sector_count,
 	    &state->route_cache, line_output, line_context, error))
 		return false;
