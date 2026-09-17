@@ -81,6 +81,7 @@ set(YT_GAME_SOURCES
     src/yt_game_combat.c
     src/yt_game_commands.c
     src/yt_game_earth.c
+    src/yt_game_fighters.c
     src/yt_game_genesis.c
     src/yt_game_hazards.c
     src/yt_game_internal.c
@@ -88,6 +89,7 @@ set(YT_GAME_SOURCES
     src/yt_game_nearest.c
     src/yt_game_planet.c
     src/yt_game_planet_creation.c
+    src/yt_game_planet_garrison.c
     src/yt_game_planet_move.c
     src/yt_game_planet_inventory.c
     src/yt_game_player_combat.c
