@@ -97,6 +97,7 @@ set(YT_GAME_SOURCES
     src/yt_game_projectile.c
     src/yt_game_projectile_damage.c
     src/yt_game_projectile_impact.c
+    src/yt_game_projectile_planet.c
     src/yt_game_radio.c
     src/yt_game_records.c
     src/yt_game_salvage.c
