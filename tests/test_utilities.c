@@ -1427,7 +1427,7 @@ test_yt_init_sector_prepass(void)
 	    &error)
 	    || !yt_database_write(&database, 1U, &initial, &error)
 	    || !yt_database_flush(&database, &error)
-	    || !yt_init_sector_prepass(&database, 51.0f, 2004,
+	    || !yt_init_sector_prepass(&database, 51, 2004,
 	    &port_offset, &error)
 	    || port_offset != 2055.0f
 	    || !yt_database_read(&database, 1U, &actual, &error)
@@ -1440,7 +1440,7 @@ test_yt_init_sector_prepass(void)
 	    &error))
 		goto done;
 	port_offset = 0.0f;
-	if (yt_init_sector_prepass(&database, 51.0f, 2004,
+	if (yt_init_sector_prepass(&database, 51, 2004,
 	    &port_offset, &error)
 	    || port_offset != 2055.0f || error.status != YT_IO_ERROR
 	    || strcmp(error.operation, "write record") != 0)
@@ -1456,7 +1456,7 @@ test_yt_init_sector_prepass(void)
 	yt_record_clear(&expected);
 	memcpy(expected.bytes + YT_F57, port_offset_raw,
 	    sizeof(port_offset_raw));
-	ok = yt_init_sector_prepass(&database, 51.0f, 2004,
+	ok = yt_init_sector_prepass(&database, 51, 2004,
 	    &port_offset, &error)
 	    && port_offset == 2055.0f
 	    && yt_database_read(&database, 1U, &actual, &error)
