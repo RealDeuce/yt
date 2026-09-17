@@ -104,33 +104,6 @@ struct yt_text_close_result {
 	bool handle_open;
 };
 
-enum yt_text_input_read_outcome {
-	YT_TEXT_INPUT_READ_NONE,
-	YT_TEXT_INPUT_READ_RETURNED,
-	YT_TEXT_INPUT_READ_DISK_ERROR,
-	YT_TEXT_INPUT_READ_MEMORY_ERROR,
-};
-
-struct yt_text_input_read_result {
-	enum yt_text_input_read_outcome outcome;
-	size_t operation_count;
-	size_t accepted;
-	size_t consumed;
-	size_t returned;
-	uint16_t dos_error;
-	uint16_t basic_error;
-	uint32_t refill_index;
-	size_t buffer_total;
-	size_t buffer_remaining;
-	uint64_t logical_position;
-	int64_t terminal_position;
-	bool eof_probe;
-	bool eof;
-	bool buffer_cleared;
-	bool registered;
-	bool handle_open;
-};
-
 struct yt_text_input {
 	FILE *file;
 	FILE *orphaned_file;
@@ -140,11 +113,9 @@ struct yt_text_input {
 	uint8_t read_ahead[YT_TEXT_INPUT_BUFFER_SIZE];
 	size_t read_total;
 	size_t read_remaining;
-	uint32_t refill_index;
 	uint64_t logical_position;
-	int64_t physical_position;
+	uint16_t last_read_basic_error;
 	struct yt_text_open_result last_open;
-	struct yt_text_input_read_result last_read;
 	struct yt_text_close_result last_close;
 };
 

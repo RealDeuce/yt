@@ -300,14 +300,14 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 		bool ready;
 
 		OPENING_TEXT_RETRY(yt_text_input_eof(&input, &eof, active_error),
-		    input.last_read.basic_error);
+		    input.last_read_basic_error);
 		if (eof) {
 			if (!out_opening_wait(session_input, active_error))
 				goto done;
 			break;
 		}
 		OPENING_TEXT_RETRY(yt_text_input_read_line(&input, &line, &length,
-		    &available, active_error), input.last_read.basic_error);
+		    &available, active_error), input.last_read_basic_error);
 		if (!available) {
 			errno = 0;
 			out_opening_set_error(active_error, YT_EOF,

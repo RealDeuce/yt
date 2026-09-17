@@ -16,7 +16,6 @@ static bool text_output_open_execute(struct yt_text_output *output,
     const char *path, struct yt_error *error);
 static bool text_input_get_byte(struct yt_text_input *input, uint8_t *value,
     bool *eof, struct yt_error *error);
-static void text_input_read_snapshot(struct yt_text_input *input);
 static uint16_t text_output_dos_error(const char *path, int system_error);
 static int64_t text_output_position(FILE *file);
 
@@ -36,11 +35,8 @@ yt_text_input_open(struct yt_text_input *input, const char *path,
 		memset(input->read_ahead, 0, sizeof(input->read_ahead));
 		input->read_total = 0U;
 		input->read_remaining = 0U;
-		input->refill_index = 0U;
 		input->logical_position = 0U;
-		input->physical_position = 0;
-		memset(&input->last_read, 0, sizeof(input->last_read));
-		input->last_read.terminal_position = -1;
+		input->last_read_basic_error = 0U;
 	}
 	return text_input_open_execute(input, path, error);
 }
@@ -75,49 +71,25 @@ text_input_reserve(struct yt_text_input *input, size_t needed,
 	return true;
 }
 
-static void
-text_input_read_snapshot(struct yt_text_input *input)
-{
-	input->last_read.refill_index = input->refill_index;
-	input->last_read.buffer_total = input->read_total;
-	input->last_read.buffer_remaining = input->read_remaining;
-	input->last_read.logical_position = input->logical_position;
-	input->last_read.registered = input->file != NULL;
-	input->last_read.handle_open = input->file != NULL
-	    || input->orphaned_file != NULL;
-}
-
 static bool
 text_input_refill(struct yt_text_input *input, struct yt_error *error)
 {
 	size_t accepted;
-	int64_t terminal_position;
 	int saved_errno;
 
 	memset(input->read_ahead, 0, sizeof(input->read_ahead));
-	input->last_read.buffer_cleared = true;
-	++input->last_read.operation_count;
 	errno = 0;
 	accepted = fread(input->read_ahead, 1U, sizeof(input->read_ahead),
 	    input->file);
 	saved_errno = errno;
-	terminal_position = text_output_position(input->file);
-	input->last_read.accepted = accepted;
-	input->last_read.terminal_position = terminal_position;
-	if (terminal_position >= 0)
-		input->physical_position = terminal_position;
 	if (ferror(input->file) != 0) {
-		input->last_read.outcome = YT_TEXT_INPUT_READ_DISK_ERROR;
-		input->last_read.dos_error = text_output_dos_error(NULL, saved_errno);
-		input->last_read.basic_error = 57U;
-		text_input_read_snapshot(input);
+		input->last_read_basic_error = 57U;
 		errno = saved_errno;
 		set_error(error, YT_IO_ERROR, "sequential INPUT read",
 		    input->path);
 		return false;
 	}
 	errno = saved_errno;
-	input->refill_index = (input->refill_index + 1U) & 0x00ffffffU;
 	if (accepted != 0U) {
 		input->read_total = accepted;
 		input->read_remaining = accepted;
@@ -156,7 +128,6 @@ yt_text_input_read_line(struct yt_text_input *input, const uint8_t **line,
     size_t *length, bool *available, struct yt_error *error)
 {
 	size_t used = 0U;
-	uint64_t entry_position;
 	bool consumed = false;
 
 	if (line != NULL)
@@ -172,22 +143,13 @@ yt_text_input_read_line(struct yt_text_input *input, const uint8_t **line,
 		    ? NULL : input->path);
 		return false;
 	}
-	memset(&input->last_read, 0, sizeof(input->last_read));
-	entry_position = input->logical_position;
-	input->last_read.terminal_position = input->physical_position;
-	input->last_read.registered = true;
-	input->last_read.handle_open = true;
+	input->last_read_basic_error = 0U;
 	for (;;) {
 		uint8_t value;
 		bool eof;
 
-		if (!text_input_get_byte(input, &value, &eof, error)) {
-			input->last_read.consumed = (size_t)(input->logical_position
-			    - entry_position);
-			input->last_read.returned = used;
-			text_input_read_snapshot(input);
+		if (!text_input_get_byte(input, &value, &eof, error))
 			return false;
-		}
 		if (eof)
 			break;
 		consumed = true;
@@ -197,13 +159,8 @@ yt_text_input_read_line(struct yt_text_input *input, const uint8_t **line,
 			bool following_eof;
 
 			if (!text_input_get_byte(input, &following,
-			    &following_eof, error)) {
-				input->last_read.consumed = (size_t)(input->logical_position
-				    - entry_position);
-				input->last_read.returned = used;
-				text_input_read_snapshot(input);
+			    &following_eof, error))
 				return false;
-			}
 			if (!following_eof) {
 				if (following == '\n')
 					++input->logical_position;
@@ -215,11 +172,6 @@ yt_text_input_read_line(struct yt_text_input *input, const uint8_t **line,
 		if (value == 0U)
 			continue;
 		if (!text_input_reserve(input, used + 1U, error)) {
-			input->last_read.outcome = YT_TEXT_INPUT_READ_MEMORY_ERROR;
-			input->last_read.consumed = (size_t)(input->logical_position
-			    - entry_position);
-			input->last_read.returned = used;
-			text_input_read_snapshot(input);
 			return false;
 		}
 		input->line[used++] = value;
@@ -227,12 +179,6 @@ yt_text_input_read_line(struct yt_text_input *input, const uint8_t **line,
 	*line = input->line;
 	*length = used;
 	*available = consumed;
-	input->last_read.outcome = YT_TEXT_INPUT_READ_RETURNED;
-	input->last_read.consumed = (size_t)(input->logical_position
-	    - entry_position);
-	input->last_read.returned = used;
-	input->last_read.eof = !consumed;
-	text_input_read_snapshot(input);
 	return true;
 }
 
@@ -259,7 +205,6 @@ text_input_token_append(struct yt_text_input *input, size_t *used,
     uint8_t value, struct yt_error *error)
 {
 	if (!text_input_reserve(input, *used + 1U, error)) {
-		input->last_read.outcome = YT_TEXT_INPUT_READ_MEMORY_ERROR;
 		return false;
 	}
 	input->line[(*used)++] = value;
@@ -274,10 +219,8 @@ yt_text_input_read_string_token(struct yt_text_input *input,
 	size_t used = 0U;
 	size_t start;
 	size_t output;
-	uint64_t entry_position;
 	uint8_t byte;
 	bool eof;
-	bool reached_eof = false;
 	bool provider_quote;
 
 	if (value != NULL)
@@ -293,16 +236,11 @@ yt_text_input_read_string_token(struct yt_text_input *input,
 		    ? NULL : input->path);
 		return false;
 	}
-	memset(&input->last_read, 0, sizeof(input->last_read));
-	entry_position = input->logical_position;
-	input->last_read.terminal_position = input->physical_position;
-	input->last_read.registered = true;
-	input->last_read.handle_open = true;
+	input->last_read_basic_error = 0U;
 	do {
 		if (!text_input_consume_byte(input, &byte, &eof, error))
 			goto failed;
 		if (eof) {
-			reached_eof = true;
 			goto returned;
 		}
 	} while (byte == ' ');
@@ -314,7 +252,6 @@ yt_text_input_read_string_token(struct yt_text_input *input,
 			if (!text_input_consume_byte(input, &byte, &eof, error))
 				goto failed;
 			if (eof) {
-				reached_eof = true;
 				break;
 			}
 			if (byte == 0U)
@@ -329,7 +266,6 @@ yt_text_input_read_string_token(struct yt_text_input *input,
 				    error))
 					goto failed;
 				if (eof) {
-					reached_eof = true;
 					break;
 				}
 			} while (byte == ' ');
@@ -337,9 +273,7 @@ yt_text_input_read_string_token(struct yt_text_input *input,
 				if (!text_input_consume_byte(input, &byte, &eof,
 				    error))
 					goto failed;
-				if (eof)
-					reached_eof = true;
-				else if (byte != '\n')
+				if (!eof && byte != '\n')
 					text_input_unread_byte(input);
 			}
 			else if (!eof && byte != ',')
@@ -353,9 +287,7 @@ yt_text_input_read_string_token(struct yt_text_input *input,
 				if (!text_input_consume_byte(input, &byte, &eof,
 				    error))
 					goto failed;
-				if (eof)
-					reached_eof = true;
-				else if (byte != '\n')
+				if (!eof && byte != '\n')
 					text_input_unread_byte(input);
 				break;
 			}
@@ -365,8 +297,7 @@ yt_text_input_read_string_token(struct yt_text_input *input,
 					    &eof, error))
 						goto failed;
 					if (eof) {
-						reached_eof = true;
-						if (!text_input_token_append(input,
+					if (!text_input_token_append(input,
 						    &used, 0x1aU, error))
 							goto failed;
 						goto convert;
@@ -377,7 +308,6 @@ yt_text_input_read_string_token(struct yt_text_input *input,
 					    &eof, error))
 						goto failed;
 					if (eof) {
-						reached_eof = true;
 						break;
 					}
 				}
@@ -391,7 +321,6 @@ yt_text_input_read_string_token(struct yt_text_input *input,
 			if (!text_input_consume_byte(input, &byte, &eof, error))
 				goto failed;
 			if (eof) {
-				reached_eof = true;
 				break;
 			}
 		}
@@ -418,19 +347,9 @@ convert:
 	*available = true;
 
 returned:
-	input->last_read.outcome = YT_TEXT_INPUT_READ_RETURNED;
-	input->last_read.consumed = (size_t)(input->logical_position
-	    - entry_position);
-	input->last_read.returned = *length;
-	input->last_read.eof = reached_eof;
-	text_input_read_snapshot(input);
 	return true;
 
 failed:
-	input->last_read.consumed = (size_t)(input->logical_position
-	    - entry_position);
-	input->last_read.returned = 0U;
-	text_input_read_snapshot(input);
 	return false;
 }
 
@@ -449,21 +368,12 @@ yt_text_input_eof(struct yt_text_input *input, bool *eof,
 		    ? NULL : input->path);
 		return false;
 	}
-	memset(&input->last_read, 0, sizeof(input->last_read));
-	input->last_read.terminal_position = input->physical_position;
-	input->last_read.eof_probe = true;
-	input->last_read.registered = true;
-	input->last_read.handle_open = true;
-	if (!text_input_get_byte(input, &value, &physical_eof, error)) {
-		text_input_read_snapshot(input);
+	input->last_read_basic_error = 0U;
+	if (!text_input_get_byte(input, &value, &physical_eof, error))
 		return false;
-	}
 	if (!physical_eof)
 		++input->read_remaining;
 	*eof = physical_eof;
-	input->last_read.outcome = YT_TEXT_INPUT_READ_RETURNED;
-	input->last_read.eof = physical_eof;
-	text_input_read_snapshot(input);
 	return true;
 }
 
