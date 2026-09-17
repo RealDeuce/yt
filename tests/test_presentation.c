@@ -2583,8 +2583,8 @@ test_sector_scanner_rows(void)
 	struct yt_team team;
 	uint8_t row[256];
 	uint8_t scratch[160] = {'k', 'e', 'e', 'p'};
-	float caller_warps[6] = {9.0f, 0.0f, 9.0f, 42.0f, 0.0f, 7.0f};
-	float targets[6] = {0};
+	int caller_warps[6] = {9, 0, 9, 42, 0, 7};
+	int targets[6] = {0};
 	size_t length;
 	size_t scratch_length = 4U;
 	bool changed;
@@ -2599,8 +2599,8 @@ test_sector_scanner_rows(void)
 	    && !yt_sector_cloak_revealed(0.5f, 0.5f)
 	    && yt_sector_cloak_revealed(0.5001f, 0.5f));
 	CHECK(yt_sector_sensor_targets(caller_warps, targets) == 4U
-	    && targets[0] == 9.0f && targets[1] == 9.0f
-	    && targets[2] == 42.0f && targets[3] == 7.0f);
+	    && targets[0] == 9 && targets[1] == 9
+	    && targets[2] == 42 && targets[3] == 7);
 
 	yt_record_blank(&record);
 	memcpy(record.bytes, raw_name, sizeof(raw_name));
@@ -31590,8 +31590,8 @@ main_movement_accepted_cycle_run(struct physical_viewer_join *viewer,
 	static const uint8_t warps[] = "Warps lead to:";
 	static const uint8_t warp_one[] = " 12";
 	static const uint8_t warp_two[] = ", 99";
-	static const float warp_values[6] = {
-		7.0f, 42.0f, 0.0f, 0.0f, 12.5f, 0.0f
+	static const int warp_values[6] = {
+		7, 42, 0, 0, 12, 0
 	};
 	struct viewer_pager_join *join = &viewer->join;
 	struct yt_present_result result;
@@ -31676,14 +31676,14 @@ test_main_movement_accepted_cycle_presentation(void)
 {
 	static const uint8_t plain[] =
 	    "\r\nTime: 14:59  Main Command (?=Help)? M\r\n"
-	    "\r\nWarps lead to, 7, 42, 12.5\n\r"
+	    "\r\nWarps lead to, 7, 42, 12\n\r"
 	    "\r\nMove to which sector? 42\r\n"
 	    "\r\nOne Turn Deducted, 59 left.\n\r"
 	    "\r\nSector: 42\r\nWarps lead to: 12, 99\r\n"
 	    "\r\nTime: 14:59  Main Command (?=Help)? ";
 	static const uint8_t ansi[] =
 	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? M\r\n"
-	    "\r\nWarps lead to, 7, 42, 12.5\n\r"
+	    "\r\nWarps lead to, 7, 42, 12\n\r"
 	    "\r\nMove to which sector? 42\r\n"
 	    "\r\nOne Turn Deducted, 59 left.\n\r"
 	    "\x1b[0;31;40m\r\nSector: 42\r\nWarps lead to: 12, 99\r\n"
@@ -31694,8 +31694,8 @@ test_main_movement_accepted_cycle_presentation(void)
 		size_t expected_length;
 		size_t ends[3];
 	} cases[] = {
-		{false, plain, sizeof(plain) - 1U, {41U, 130U, 205U}},
-		{true, ansi, sizeof(ansi) - 1U, {51U, 140U, 235U}},
+		{false, plain, sizeof(plain) - 1U, {41U, 128U, 203U}},
+		{true, ansi, sizeof(ansi) - 1U, {51U, 138U, 233U}},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -31731,7 +31731,7 @@ test_main_movement_accepted_cycle_presentation(void)
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
 		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
-	CHECK(sizeof(plain) - 1U == 205U && sizeof(ansi) - 1U == 235U);
+	CHECK(sizeof(plain) - 1U == 203U && sizeof(ansi) - 1U == 233U);
 }
 
 static bool
@@ -32491,8 +32491,8 @@ planet_movement_accepted_cycle_run(struct physical_viewer_join *viewer,
 	static const uint8_t warp_two[] = ", 99";
 	static const uint8_t main_prompt[] =
 	    "Time: 14:59  Main Command (?=Help)? ";
-	static const float warp_values[6] = {
-		7.0f, 42.0f, 0.0f, 0.0f, 12.5f, 0.0f
+	static const int warp_values[6] = {
+		7, 42, 0, 0, 12, 0
 	};
 	struct viewer_pager_join *join = &viewer->join;
 	struct yt_present_result result;
@@ -32579,7 +32579,7 @@ test_planet_movement_accepted_cycle_presentation(void)
 	static const uint8_t plain[] =
 	    "\r\nYou have 65 free cargo holds.\n\r"
 	    "\r\nTime: 14:59  Planet command (?=help) [A]? M\r\n"
-	    "\r\nWarps lead to, 7, 42, 12.5\n\r"
+	    "\r\nWarps lead to, 7, 42, 12\n\r"
 	    "\r\nMove to which sector? 42\r\n"
 	    "\r\nOne Turn Deducted, 59 left.\n\r"
 	    "\r\nSector: 42\r\nWarps lead to: 12, 99\r\n"
@@ -32587,7 +32587,7 @@ test_planet_movement_accepted_cycle_presentation(void)
 	static const uint8_t ansi[] =
 	    "\r\nYou have 65 free cargo holds.\n\r"
 	    "\r\nTime: 14:59  Planet command (?=help) [A]? M\r\n"
-	    "\r\nWarps lead to, 7, 42, 12.5\n\r"
+	    "\r\nWarps lead to, 7, 42, 12\n\r"
 	    "\r\nMove to which sector? 42\r\n"
 	    "\r\nOne Turn Deducted, 59 left.\n\r"
 	    "\x1b[0;31;40m\r\nSector: 42\r\nWarps lead to: 12, 99\r\n"
@@ -32598,8 +32598,8 @@ test_planet_movement_accepted_cycle_presentation(void)
 		size_t expected_length;
 		size_t ends[4];
 	} cases[] = {
-		{false, plain, sizeof(plain) - 1U, {77U, 80U, 169U, 244U}},
-		{true, ansi, sizeof(ansi) - 1U, {77U, 80U, 169U, 264U}},
+		{false, plain, sizeof(plain) - 1U, {77U, 80U, 167U, 242U}},
+		{true, ansi, sizeof(ansi) - 1U, {77U, 80U, 167U, 262U}},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -32629,7 +32629,7 @@ test_planet_movement_accepted_cycle_presentation(void)
 		    && viewer.join.pager.nonstop == 0.0f
 		    && viewer.join.local_row_count == 14U
 		    && viewer_rows_fnv1a64(&viewer.join)
-		    == UINT64_C(0x738bf22fcb00cbf5)
+		    == UINT64_C(0xde28881d279b7e6e)
 		    && viewer.join.local_color_count
 		    == (cases[pass].ansi ? 26U : 6U)
 		    && viewer_colors_fnv1a64(&viewer.join)
@@ -32646,7 +32646,7 @@ test_planet_movement_accepted_cycle_presentation(void)
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
 		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
-	CHECK(sizeof(plain) - 1U == 244U && sizeof(ansi) - 1U == 264U);
+	CHECK(sizeof(plain) - 1U == 242U && sizeof(ansi) - 1U == 262U);
 }
 
 static bool
@@ -34638,12 +34638,12 @@ test_movement_presentation(void)
 	static const uint8_t finalizer_row[] = "One Turn Deducted, 59 left.";
 	static const uint8_t expected[] =
 	    "\r\n"
-	    "Warps lead to, 7, 42, 12.5\n\r"
+	    "Warps lead to, 7, 42, 12\n\r"
 	    "\r\n"
 	    "Move to which sector? 42\r\n"
 	    "\r\n"
 	    "One Turn Deducted, 59 left.\n\r";
-	const float warps[6] = {7.0f, 42.0f, 0.0f, 0.0f, 12.5f, 0.0f};
+	const int warps[6] = {7, 42, 0, 0, 12, 0};
 	struct yt_present_state current = state(false);
 	struct yt_present_result result;
 	struct yt_pager_state pager;
@@ -34677,7 +34677,7 @@ test_movement_presentation(void)
 	    sizeof(finalizer_row) - 1U, &capture);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
-	CHECK(capture.remote_length == 89U && pager.line_count == 1.0f);
+	CHECK(capture.remote_length == 87U && pager.line_count == 1.0f);
 }
 
 static void

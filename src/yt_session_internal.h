@@ -46,7 +46,7 @@ struct session_combat_state {
 
 struct session_navigation_state {
 	int current_sector_physical_record;
-	float current_warps[6];
+	int current_warps[6];
 	float route_marker;
 	float route_start_sector;
 	float avoided_sectors[YT_ROUTE_AVOID_COUNT];

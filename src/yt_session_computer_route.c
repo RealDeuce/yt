@@ -239,7 +239,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 			return false;
 		for (index = 0; index < 6U; ++index)
 			session->navigation.current_warps[index] =
-			    current_sector.warps[index];
+			    (int)current_sector.warps[index];
 	}
 	return true;
 }

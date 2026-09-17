@@ -2886,12 +2886,12 @@ static bool
 check_movement_model(void)
 {
 	static const uint8_t warps_expected[] =
-	    "Warps lead to,-2, 9, 12.5, 9";
+	    "Warps lead to,-2, 9, 12, 9";
 	static const uint8_t empty_expected[] = "Warps lead to";
 	static const uint8_t prompt_expected[] =
 	    "Move into sector 42? [y/N] ";
-	const float warps[6] = {0.0f, -2.0f, 9.0f, 0.0f, 12.5f, 9.0f};
-	const float empty[6] = {0};
+	const int warps[6] = {0, -2, 9, 0, 12, 9};
+	const int empty[6] = {0};
 	struct yt_player player;
 	struct yt_record before;
 	uint8_t row[128];

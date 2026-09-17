@@ -554,7 +554,7 @@ bool yt_emergency_warp_result_row(int destination, float cost,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_emergency_warp_stranded_row(int destination, uint8_t *row,
     size_t capacity, size_t *length);
-bool yt_movement_warp_row(const float warps[6], uint8_t *row,
+bool yt_movement_warp_row(const int warps[6], uint8_t *row,
     size_t capacity, size_t *length);
 bool yt_movement_confirmation_prompt(float target, uint8_t *row,
     size_t capacity, size_t *length);
@@ -677,8 +677,7 @@ bool yt_sector_mine_warning_row(float mines, uint8_t *row,
 bool yt_sector_candidate_eligible(int candidate, int current_player_record,
     float cached_sector, float logical_sector);
 bool yt_sector_cloak_revealed(float draw, float cached_cloak);
-size_t yt_sector_sensor_targets(const float caller_warps[6],
-    float targets[6]);
+size_t yt_sector_sensor_targets(const int caller_warps[6], int targets[6]);
 bool yt_sector_port_row(const struct yt_port *port, uint8_t *row,
     size_t capacity, size_t *length);
 bool yt_sector_planet_row(const struct yt_planet *planet, uint8_t *row,

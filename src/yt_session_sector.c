@@ -402,8 +402,8 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 {
 	int current;
 	struct yt_sector_pager_state private_pager;
-	float caller_warps[6];
-	float targets[6];
+	int caller_warps[6];
+	int targets[6];
 	float saved_foreground = session->presentation.foreground;
 	size_t target_count;
 	size_t slot;
@@ -439,7 +439,7 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 		return false;
 	session_set_foreground(session, 1.0f);
 	for (slot = 0; slot < target_count; ++slot) {
-		if (!display_sector_one(session, (int)targets[slot],
+		if (!display_sector_one(session, targets[slot],
 		    &private_pager, error))
 			return false;
 	}

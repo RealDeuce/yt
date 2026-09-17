@@ -85,7 +85,7 @@ yt_sector_cloak_revealed(float draw, float cached_cloak)
 }
 
 size_t
-yt_sector_sensor_targets(const float caller_warps[6], float targets[6])
+yt_sector_sensor_targets(const int caller_warps[6], int targets[6])
 {
 	size_t count = 0U;
 	size_t slot;
@@ -93,7 +93,7 @@ yt_sector_sensor_targets(const float caller_warps[6], float targets[6])
 	if (caller_warps == NULL || targets == NULL)
 		return 0U;
 	for (slot = 0U; slot < 6U; ++slot) {
-		if (caller_warps[slot] != 0.0f)
+		if (caller_warps[slot] != 0)
 			targets[count++] = caller_warps[slot];
 	}
 	return count;

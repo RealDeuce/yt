@@ -319,7 +319,7 @@ yt_emergency_warp_stranded_row(int destination, uint8_t *row,
 }
 
 bool
-yt_movement_warp_row(const float warps[6], uint8_t *row,
+yt_movement_warp_row(const int warps[6], uint8_t *row,
     size_t capacity, size_t *length)
 {
 	static const uint8_t heading[] = "Warps lead to";
@@ -334,9 +334,10 @@ yt_movement_warp_row(const float warps[6], uint8_t *row,
 		char number[64];
 		int number_length;
 
-		if (warps[slot] == 0.0f)
+		if (warps[slot] == 0)
 			continue;
-		number_length = qb_str_single(number, sizeof(number), warps[slot]);
+		number_length = qb_str_single(number, sizeof(number),
+		    (float)warps[slot]);
 		if (number_length < 0 || used + 1U + (size_t)number_length
 		    > capacity)
 			return false;

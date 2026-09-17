@@ -313,7 +313,7 @@ yt_session_command_move(struct yt_session *session, bool *moved,
 		return session_present_alert(session, same_sector,
 		    sizeof(same_sector) - 1U, "movement same-sector row", error);
 	for (slot = 0U; slot < YT_ARRAY_LEN(session->navigation.current_warps); ++slot) {
-		if (session->navigation.current_warps[slot] == target) {
+		if ((float)session->navigation.current_warps[slot] == target) {
 			adjacent = true;
 			break;
 		}
