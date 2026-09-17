@@ -104,20 +104,16 @@ struct yt_maintenance_output_result {
 	size_t final_column;
 };
 
-struct yt_maintenance_player_aging_result {
-	float cached_cloak;
-	float persisted_cloak;
-	float cutoff;
-	bool cloak_written;
-	bool cloak_expired;
-	bool delete_player;
+enum yt_maintenance_player_action {
+	YT_MAINTENANCE_PLAYER_UNCHANGED,
+	YT_MAINTENANCE_PLAYER_CLOAK_EXPIRED,
+	YT_MAINTENANCE_PLAYER_DELETE
 };
 
 struct yt_maintenance_player_output_result {
 	struct yt_maintenance_output_result screen;
 	uint8_t radio_message[256];
 	size_t radio_length;
-	bool deletion_reached;
 };
 
 enum yt_maintenance_planet_event {
@@ -217,9 +213,9 @@ bool yt_maintenance_super_lottery(struct yt_game *game, int player_count,
     void *line_context, struct yt_error *error);
 bool yt_maintenance_store_final_marker(struct yt_game *game, float serial,
     struct yt_error *error);
-bool yt_maintenance_age_player(float cloak, float last_active,
+bool yt_maintenance_age_player(float *cloak, float last_active,
     float killer_status, float today, float retention_days,
-    struct yt_maintenance_player_aging_result *result);
+    float *cached_cloak, enum yt_maintenance_player_action *action);
 bool yt_maintenance_compose_player_aging(
     const struct yt_maintenance_text *name,
     const struct yt_maintenance_text *time_text,

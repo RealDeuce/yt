@@ -289,10 +289,11 @@ yt_maintenance_players_run(struct maint_state *state,
 
 	for (record = 2; record <= state->player_count + 1; ++record) {
 		struct yt_player player;
-		struct yt_maintenance_player_aging_result aging;
 		struct yt_maintenance_player_output_result output;
 		struct yt_maintenance_text name;
 		struct yt_maintenance_text empty = {NULL, 0U};
+		enum yt_maintenance_player_action action;
+		float cached_cloak;
 
 		if (!yt_game_read_player(&state->game, record, &player, error))
 			return false;
@@ -301,19 +302,18 @@ yt_maintenance_players_run(struct maint_state *state,
 		name.data = player.record.bytes;
 		name.length = player.name_length < YT_TEXT_FIELD_SIZE
 		    ? player.name_length : YT_TEXT_FIELD_SIZE;
-		if (!yt_maintenance_age_player(player.cloak, player.last_active,
+		if (!yt_maintenance_age_player(&player.cloak, player.last_active,
 		    player.killed_by, (float)state->today,
-		    state->game.config.retention_days, &aging))
+		    state->game.config.retention_days, &cached_cloak, &action))
 			return false;
 		state->player_sector[record] = player.sector;
-		state->player_cloak[record] = aging.cached_cloak;
-		if (aging.cloak_written) {
-			player.cloak = aging.persisted_cloak;
+		state->player_cloak[record] = cached_cloak;
+		if (cached_cloak > 0.0f) {
 			if (!yt_game_write_player(&state->game, record, &player,
 			    error))
 				return false;
 		}
-		if (aging.cloak_expired) {
+		if (action == YT_MAINTENANCE_PLAYER_CLOAK_EXPIRED) {
 			struct yt_clock_value time_now;
 			struct yt_clock_value date_now;
 			char time_text[9];
@@ -322,7 +322,7 @@ yt_maintenance_players_run(struct maint_state *state,
 			struct yt_maintenance_text date_value;
 
 			if (!yt_maintenance_compose_player_aging(&name, &empty,
-			    &empty, true, aging.delete_player, &output)
+			    &empty, true, false, &output)
 			    || !yt_news_append_bytes(output.screen.rows[0].data,
 			    output.screen.rows[0].length, error)
 			    || !line_output(line_context,
@@ -338,13 +338,13 @@ yt_maintenance_players_run(struct maint_state *state,
 			date_value.data = (const uint8_t *)date_text;
 			date_value.length = strlen(date_text);
 			if (!yt_maintenance_compose_player_aging(&name, &time_value,
-			    &date_value, true, aging.delete_player, &output)
+			    &date_value, true, false, &output)
 			    || !yt_radio_append_maintenance_bytes(output.radio_message,
 			    output.radio_length, -2.0f, (float)record, error))
 				return false;
 			continue;
 		}
-		if (aging.delete_player) {
+		if (action == YT_MAINTENANCE_PLAYER_DELETE) {
 			if (!yt_maintenance_compose_player_aging(&name, &empty,
 			    &empty, false, true, &output)
 			    || !yt_news_append_bytes(output.screen.rows[0].data,
@@ -364,32 +364,33 @@ yt_maintenance_players_run(struct maint_state *state,
 }
 
 bool
-yt_maintenance_age_player(float cloak, float last_active,
+yt_maintenance_age_player(float *cloak, float last_active,
     float killer_status, float today, float retention_days,
-    struct yt_maintenance_player_aging_result *result)
+    float *cached_cloak, enum yt_maintenance_player_action *action)
 {
 	static const float cloak_charge = -0.05000000074505806f;
+	float cutoff;
 	float working;
 
-	if (result == NULL)
+	if (cloak == NULL || cached_cloak == NULL || action == NULL)
 		return false;
-	memset(result, 0, sizeof(*result));
-	working = cloak;
+	working = *cloak;
 	if (working < 0.0f)
 		working = 1.0f;
-	result->cached_cloak = working;
-	result->persisted_cloak = working;
-	result->cloak_written = working > 0.0f;
-	if (result->cloak_written) {
+	*cached_cloak = working;
+	*action = YT_MAINTENANCE_PLAYER_UNCHANGED;
+	if (working > 0.0f) {
 		working = qb_single_add(working, cloak_charge);
 		if (working < 0.0f)
 			working = 0.0f;
-		result->persisted_cloak = working;
-		result->cloak_expired = working == 0.0f;
+		*cloak = working;
+		if (working == 0.0f)
+			*action = YT_MAINTENANCE_PLAYER_CLOAK_EXPIRED;
 	}
-	result->cutoff = qb_single_subtract(today, retention_days);
-	result->delete_player = !result->cloak_expired
-	    && last_active <= result->cutoff && killer_status != 0.0f;
+	cutoff = qb_single_subtract(today, retention_days);
+	if (*action != YT_MAINTENANCE_PLAYER_CLOAK_EXPIRED
+	    && last_active <= cutoff && killer_status != 0.0f)
+		*action = YT_MAINTENANCE_PLAYER_DELETE;
 	return true;
 }
 

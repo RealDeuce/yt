@@ -3945,28 +3945,33 @@ check_maintenance_player_aging(void)
 	    (const uint8_t *)"12:34:56", 8U};
 	struct yt_maintenance_text date_text = {
 	    (const uint8_t *)"07/23/26", 8U};
-	struct yt_maintenance_player_aging_result aging;
 	struct yt_maintenance_player_output_result output;
+	enum yt_maintenance_player_action action;
+	float cached_cloak;
+	float cloak;
 
-	if (!yt_maintenance_age_player(0.0f, 100.0f, 0.0f, 204.0f,
-	    14.0f, &aging)
-	    || aging.cloak_written || aging.cloak_expired
-	    || aging.delete_player || aging.persisted_cloak != 0.0f
-	    || aging.cutoff != 190.0f)
+	cloak = 0.0f;
+	if (!yt_maintenance_age_player(&cloak, 100.0f, 0.0f, 204.0f,
+	    14.0f, &cached_cloak, &action)
+	    || cached_cloak != 0.0f || cloak != 0.0f
+	    || action != YT_MAINTENANCE_PLAYER_UNCHANGED)
 		return false;
-	if (!yt_maintenance_age_player(0.02f, 190.0f, -1.0f, 204.0f,
-	    14.0f, &aging)
-	    || !aging.cloak_written || !aging.cloak_expired
-	    || aging.delete_player || aging.persisted_cloak != 0.0f)
+	cloak = 0.02f;
+	if (!yt_maintenance_age_player(&cloak, 190.0f, -1.0f, 204.0f,
+	    14.0f, &cached_cloak, &action)
+	    || cached_cloak != 0.02f || cloak != 0.0f
+	    || action != YT_MAINTENANCE_PLAYER_CLOAK_EXPIRED)
 		return false;
-	if (!yt_maintenance_age_player(-4.0f, 191.0f, -1.0f, 204.0f,
-	    14.0f, &aging)
-	    || aging.cached_cloak != 1.0f
-	    || fabsf(aging.persisted_cloak - 0.95f) > 0.000001f
-	    || aging.delete_player)
+	cloak = -4.0f;
+	if (!yt_maintenance_age_player(&cloak, 191.0f, -1.0f, 204.0f,
+	    14.0f, &cached_cloak, &action)
+	    || cached_cloak != 1.0f || fabsf(cloak - 0.95f) > 0.000001f
+	    || action != YT_MAINTENANCE_PLAYER_UNCHANGED)
 		return false;
-	if (!yt_maintenance_age_player(0.0f, 190.0f, -1.0f, 204.0f,
-	    14.0f, &aging) || !aging.delete_player
+	cloak = 0.0f;
+	if (!yt_maintenance_age_player(&cloak, 190.0f, -1.0f, 204.0f,
+	    14.0f, &cached_cloak, &action)
+	    || action != YT_MAINTENANCE_PLAYER_DELETE
 	    || !yt_maintenance_compose_player_aging(&name, &time_text,
 	    &date_text, true, true, &output)
 	    || output.screen.row_count != 1U
@@ -3976,8 +3981,7 @@ check_maintenance_player_aging(void)
 	    sizeof(expiry_screen) - 1U) != 0
 	    || output.radio_length != sizeof(expiry_radio) - 1U
 	    || memcmp(output.radio_message, expiry_radio,
-	    sizeof(expiry_radio) - 1U) != 0
-	    || output.deletion_reached)
+	    sizeof(expiry_radio) - 1U) != 0)
 		return false;
 	if (!yt_maintenance_compose_player_aging(&name, &time_text,
 	    &date_text, false, true, &output)
@@ -3986,13 +3990,13 @@ check_maintenance_player_aging(void)
 	    || output.screen.output_length != sizeof(deletion_screen) - 1U
 	    || memcmp(output.screen.output, deletion_screen,
 	    sizeof(deletion_screen) - 1U) != 0
-	    || output.radio_length != 0U || !output.deletion_reached)
+	    || output.radio_length != 0U)
 		return false;
 	return yt_maintenance_compose_player_aging(&name, &time_text,
 	    &date_text, false, false, &output)
 	    && output.screen.row_count == 0U && output.radio_length == 0U
-	    && !yt_maintenance_age_player(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-	    NULL)
+	    && !yt_maintenance_age_player(NULL, 0.0f, 0.0f, 0.0f, 0.0f,
+	    &cached_cloak, &action)
 	    && !yt_maintenance_compose_player_aging(NULL, &time_text,
 	    &date_text, false, false, &output);
 }

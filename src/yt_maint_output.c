@@ -849,7 +849,6 @@ yt_maintenance_compose_player_aging(
 		    YT_MAINT_ROW_PLAYER_DELETED, line,
 		    line_length, true))
 			return false;
-		result->deletion_reached = true;
 	}
 	return true;
 }
