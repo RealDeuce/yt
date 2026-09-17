@@ -21,18 +21,8 @@ struct yt_database {
 	uint16_t last_put_basic_error;
 };
 
-#define YT_RADIO_FIELD_COUNT 4U
-
-struct yt_radio_field {
-	size_t offset;
-	size_t length;
-};
-
 struct yt_radio_file {
 	struct yt_database random;
-	size_t record_length;
-	struct yt_radio_field fields[YT_RADIO_FIELD_COUNT];
-	size_t field_count;
 };
 
 bool yt_resolve_case_path(const char *requested, bool allow_missing,

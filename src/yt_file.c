@@ -721,9 +721,6 @@ yt_radio_file_close(struct yt_radio_file *radio, struct yt_error *error)
 		return false;
 	}
 	result = yt_database_random_close(&radio->random, error);
-	radio->record_length = 0U;
-	radio->field_count = 0U;
-	memset(radio->fields, 0, sizeof(radio->fields));
 	return result;
 }
 
@@ -738,12 +735,6 @@ bool
 yt_radio_file_open_text_width(struct yt_radio_file *radio, const char *path,
     size_t text_width, struct yt_error *error)
 {
-	const struct yt_radio_field fields[YT_RADIO_FIELD_COUNT] = {
-		{0U, 4U},
-		{4U, 4U},
-		{8U, 4U},
-		{12U, text_width},
-	};
 	if (radio == NULL || path == NULL) {
 		set_error(error, YT_INVALID, "open radio", path);
 		return false;
@@ -757,9 +748,6 @@ yt_radio_file_open_text_width(struct yt_radio_file *radio, const char *path,
 	if (!database_open_sized(&radio->random, path,
 	    YT_OPEN_UPDATE_CREATE, error))
 		return false;
-	radio->record_length = YT_RADIO_RECORD_SIZE;
-	memcpy(radio->fields, fields, sizeof(fields));
-	radio->field_count = YT_RADIO_FIELD_COUNT;
 	return true;
 }
 

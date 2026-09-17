@@ -47,7 +47,6 @@ struct yt_text_output {
 	uint8_t pending[YT_TEXT_OUTPUT_BUFFER_SIZE];
 	size_t pending_count;
 	uint16_t last_output_open_basic_error;
-	uint16_t last_append_open_basic_error;
 	uint16_t last_write_basic_error;
 	uint16_t last_close_basic_error;
 };

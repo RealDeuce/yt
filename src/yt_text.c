@@ -622,9 +622,7 @@ text_output_open_failure(struct yt_text_output *output,
     bool append, uint16_t basic_error, int saved_errno,
     struct yt_error *error)
 {
-	if (append)
-		output->last_append_open_basic_error = basic_error;
-	else
+	if (!append)
 		output->last_output_open_basic_error = basic_error;
 	errno = saved_errno;
 	set_error(error, basic_error == 53U || basic_error == 76U
@@ -651,7 +649,6 @@ text_output_open_execute(struct yt_text_output *output, const char *path,
 		return false;
 	}
 	output->last_output_open_basic_error = 0U;
-	output->last_append_open_basic_error = 0U;
 	if (!yt_resolve_case_path(path, true, resolved, sizeof(resolved), error))
 		return false;
 	(void)snprintf(output->path, sizeof(output->path), "%s", resolved);
@@ -725,7 +722,6 @@ yt_text_output_open_append(struct yt_text_output *output, const char *path,
 		set_error(error, YT_INVALID, "open text append", path);
 		return false;
 	}
-	output->last_append_open_basic_error = 0U;
 	output->last_output_open_basic_error = 0U;
 	if (!yt_resolve_case_path(path, true, resolved, sizeof(resolved), error))
 		return false;

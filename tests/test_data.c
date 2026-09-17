@@ -954,22 +954,10 @@ test_radio_file(void)
 	yt_error_clear(&error);
 	CHECK(yt_radio_file_open(&radio, requested_path, &error));
 	CHECK(radio.random.file != NULL
-	    && strcmp(radio.random.path, mixed_path) == 0
-	    && radio.record_length == YT_RADIO_RECORD_SIZE
-	    && radio.field_count == YT_RADIO_FIELD_COUNT
-	    && radio.fields[0].offset == 0U && radio.fields[0].length == 4U
-	    && radio.fields[1].offset == 4U && radio.fields[1].length == 4U
-	    && radio.fields[2].offset == 8U && radio.fields[2].length == 4U
-	    && radio.fields[3].offset == 12U && radio.fields[3].length == 74U);
+	    && strcmp(radio.random.path, mixed_path) == 0);
 	CHECK(yt_radio_file_close(&radio, &error));
 	CHECK(yt_radio_file_open_text_width(&radio, requested_path, 72U,
-	    &error)
-	    && radio.record_length == YT_RADIO_RECORD_SIZE
-	    && radio.field_count == YT_RADIO_FIELD_COUNT
-	    && radio.fields[0].offset == 0U && radio.fields[0].length == 4U
-	    && radio.fields[1].offset == 4U && radio.fields[1].length == 4U
-	    && radio.fields[2].offset == 8U && radio.fields[2].length == 4U
-	    && radio.fields[3].offset == 12U && radio.fields[3].length == 72U);
+	    &error));
 	memset(&record, 0xff, sizeof(record));
 	accepted = 99U;
 	CHECK(!yt_radio_file_get(&radio, 0U, &record, &accepted, &error)
@@ -1027,8 +1015,7 @@ test_radio_file(void)
 	CHECK(yt_radio_file_next_record(&radio, &next, &error) && next == 2U);
 	CHECK(yt_radio_file_close(&radio, &error)
 	    && radio.random.file == NULL
-	    && radio.random.last_close_basic_error == 0U
-	    && radio.record_length == 0U && radio.field_count == 0U);
+	    && radio.random.last_close_basic_error == 0U);
 
 	file = fopen(second_path, "rb");
 	CHECK(file != NULL);
@@ -1056,8 +1043,7 @@ test_radio_file(void)
 	yt_radio_file_init(&radio);
 	yt_error_clear(&error);
 	CHECK(!yt_radio_file_open(&radio, failed_path, &error)
-	    && error.status == YT_IO_ERROR && radio.random.file == NULL
-	    && radio.field_count == 0U && radio.record_length == 0U);
+	    && error.status == YT_IO_ERROR && radio.random.file == NULL);
 	CHECK(!yt_radio_file_get(&radio, 1U, &record, NULL, &error));
 	CHECK(!yt_radio_file_put(&radio, 1U, &record, &error));
 
@@ -1116,12 +1102,12 @@ test_append_window(void)
 	yt_error_clear(&error);
 	CHECK(yt_text_output_open_append(&output, path, &error)
 	    && output.file != NULL
-	    && output.last_append_open_basic_error == 0U
 	    && ftell(output.file) == 0L);
 	yt_text_output_destroy(&output);
 	yt_text_output_init(&output);
 	CHECK(!yt_text_output_open_append(&output, missing_parent_path, &error)
-	    && output.last_append_open_basic_error == 76U);
+	    && error.status == YT_NOT_FOUND
+	    && strcmp(error.operation, "sequential APPEND OPEN") == 0);
 	yt_text_output_destroy(&output);
 
 	/* Empty sequential OUTPUT/CLOSE retains the BRUN DOS EOF byte. */
@@ -1169,8 +1155,7 @@ test_append_window(void)
 	CHECK(write_bytes(path, (const uint8_t *)"old\x1a" "stale", 9U));
 	yt_text_output_init(&output);
 	CHECK(yt_text_output_open_append(&output, path, &error)
-	    && ftell(output.file) == 3L
-	    && output.last_append_open_basic_error == 0U);
+	    && ftell(output.file) == 3L);
 	yt_text_output_destroy(&output);
 	CHECK(yt_text_read(path, &text, &error));
 	CHECK(text.length == 9U && memcmp(text.data, "old\x1a" "stale", 9U) == 0);
