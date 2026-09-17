@@ -3010,10 +3010,10 @@ check_maintenance_port_model(void)
 	};
 	struct score_random_script script = {draws, sizeof(draws), 0U};
 	struct yt_maintenance_output_result output;
-	struct yt_maintenance_port_result mutation;
 	struct yt_random random;
 	struct yt_port port;
 	struct yt_error error;
+	bool plagued;
 
 	if (!yt_maintenance_compose_port_phase(NULL,
 	    0U, 0, &output) || output.row_count != 2U
@@ -3051,9 +3051,7 @@ check_maintenance_port_model(void)
 	yt_test_random_use_provider(&random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_maintenance_update_port(&random, &port, 105.0f, 720.0f,
-	    &mutation, &error) || mutation.elapsed != 5.0f
-	    || mutation.plagued || mutation.selected_stock_index != 0
-	    || mutation.draws_consumed != 0U || random.draws != 0U
+	    &plagued, &error) || plagued || random.draws != 0U
 	    || port.stock[0] != 9000.0f || port.stock[1] != 15000.0f
 	    || port.stock[2] != 30000.0f
 	    || port.production[0] != 900.0f
@@ -3077,9 +3075,7 @@ check_maintenance_port_model(void)
 	script.position = 0U;
 	yt_test_random_use_provider(&random, score_random_fill, &script);
 	if (!yt_maintenance_update_port(&random, &port, 1.0f, 0.0f,
-	    &mutation, &error) || !mutation.plagued
-	    || mutation.selected_stock_index != 1
-	    || mutation.draws_consumed != 3U || random.draws != 3U
+	    &plagued, &error) || !plagued || random.draws != 3U
 	    || script.position != sizeof(draws)
 	    || port.production[0] != 2500500.0f
 	    || port.production[1] != 2500500.0f
@@ -3092,7 +3088,7 @@ check_maintenance_port_model(void)
 	    || port.factor[2] != -4.0f)
 		return false;
 	return !yt_maintenance_update_port(NULL, &port, 1.0f, 0.0f,
-	    &mutation, &error);
+	    &plagued, &error);
 }
 
 static bool

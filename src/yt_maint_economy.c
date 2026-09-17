@@ -49,22 +49,18 @@ elapsed_days(float day, float minute, float old_day, float old_minute)
 bool
 yt_maintenance_update_port(struct yt_random *random, struct yt_port *port,
     float current_day, float current_minute,
-    struct yt_maintenance_port_result *result, struct yt_error *error)
+    bool *plagued, struct yt_error *error)
 {
 	double stock[3];
-	uint64_t starting_draws;
 	float elapsed;
 	int commodity;
 
-	if (random == NULL || port == NULL || result == NULL) {
+	if (random == NULL || port == NULL || plagued == NULL) {
 		set_error(error, YT_INVALID, "maintain port", "YTDATA.DAT");
 		return false;
 	}
-	memset(result, 0, sizeof(*result));
-	starting_draws = random->draws;
 	elapsed = elapsed_days(current_day, current_minute, port->last_day,
 	    port->last_minute);
-	result->elapsed = elapsed;
 	for (commodity = 0; commodity < 3; ++commodity) {
 		stock[commodity] = (double)port->stock[commodity]
 		    + (double)qb_single_multiply(port->production[commodity], elapsed);
@@ -73,9 +69,9 @@ yt_maintenance_update_port(struct yt_random *random, struct yt_port *port,
 			port->production[commodity] =
 			    (float)(stock[commodity] / 10.0);
 	}
-	result->plagued = qb_single_add(qb_single_add(port->production[0],
+	*plagued = qb_single_add(qb_single_add(port->production[0],
 	    port->production[1]), port->production[2]) > 16000000.0f;
-	if (result->plagued) {
+	if (*plagued) {
 		float maximum = 0.0f;
 		int selected = 0;
 
@@ -106,13 +102,11 @@ yt_maintenance_update_port(struct yt_random *random, struct yt_port *port,
 		if (selected > 0)
 			port->factor[selected - 1] =
 			    fabsf(port->factor[selected - 1]);
-		result->selected_stock_index = selected;
 	}
 	for (commodity = 0; commodity < 3; ++commodity)
 		port->stock[commodity] = (float)stock[commodity];
 	port->last_day = current_day;
 	port->last_minute = current_minute;
-	result->draws_consumed = random->draws - starting_draws;
 	return true;
 }
 
@@ -182,18 +176,18 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 			return false;
 	}
 	for (logical = 1; logical <= port_count; ++logical) {
-		struct yt_maintenance_port_result mutation;
 		struct yt_port port;
 		float day;
 		float minute;
+		bool port_plagued;
 
 		if (!yt_game_read_port(game, logical, &port, error)
 		    || !current_day_minute(game, &day, &minute, error)
 		    || !yt_maintenance_update_port(&game->random, &port, day,
-		    minute, &mutation, error)
+		    minute, &port_plagued, error)
 		    || !maintenance_write_port(game, logical, &port, error))
 			return false;
-		if (mutation.plagued)
+		if (port_plagued)
 			++plagued;
 	}
 	if (!yt_maintenance_compose_port_phase(blank,

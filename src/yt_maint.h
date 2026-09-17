@@ -120,13 +120,6 @@ struct yt_maintenance_player_output_result {
 	bool deletion_reached;
 };
 
-struct yt_maintenance_port_result {
-	float elapsed;
-	bool plagued;
-	int selected_stock_index;
-	uint64_t draws_consumed;
-};
-
 enum yt_maintenance_planet_event {
 	YT_MAINTENANCE_PLANET_NO_EVENT,
 	YT_MAINTENANCE_PLANET_PLAGUE,
@@ -236,7 +229,7 @@ bool yt_maintenance_compose_player_aging(
     bool delete_player, struct yt_maintenance_player_output_result *result);
 bool yt_maintenance_update_port(struct yt_random *random,
     struct yt_port *port, float current_day, float current_minute,
-    struct yt_maintenance_port_result *result, struct yt_error *error);
+    bool *plagued, struct yt_error *error);
 bool yt_maintenance_maintain_ports(struct yt_game *game,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
