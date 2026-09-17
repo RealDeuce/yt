@@ -6,40 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static bool
-spy_failure(struct yt_error *error, const char *operation)
-{
-	if (error != NULL) {
-		error->status = YT_RANGE;
-		error->system_error = 0;
-		(void)snprintf(error->operation, sizeof(error->operation), "%s",
-		    operation);
-		error->path[0] = '\0';
-	}
-	return false;
-}
-
-struct spy_route_choices {
-	int destinations[6];
-};
-
-static bool
-spy_route_choices_decode(const struct yt_sector *sector,
-    struct spy_route_choices *choices, struct yt_error *error)
-{
-	size_t slot;
-
-	for (slot = 0U; slot < YT_ARRAY_LEN(choices->destinations); ++slot) {
-		bool overflow;
-
-		choices->destinations[slot] = qb_cint((double)yt_record_get_number(
-		    &sector->record, YT_F105 + 4U * slot), &overflow);
-		if (overflow)
-			return spy_failure(error, "active spy warp CINT");
-	}
-	return true;
-}
-
 bool
 yt_session_list_spies(struct yt_session *session, struct yt_error *error)
 {
@@ -94,14 +60,6 @@ append_bytes(uint8_t *row, size_t capacity, size_t *length,
 }
 
 static bool
-spy_line(struct yt_session *session, const uint8_t *text, size_t length,
-    enum session_present_text_kind kind, struct yt_error *error)
-{
-	return session_present_text(session, text, length, kind,
-	    "spy direct output", error);
-}
-
-static bool
 spy_first_finding(struct yt_session *session, size_t spy, int sector,
     struct yt_error *error)
 {
@@ -114,7 +72,8 @@ spy_first_finding(struct yt_session *session, size_t spy, int sector,
 	size_t length = 0U;
 	int amount;
 
-	if (!spy_line(session, NULL, 0U, SESSION_PRESENT_LINE, error))
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "spy direct output", error))
 		return false;
 	if (session->spies.found)
 		return true;
@@ -137,8 +96,10 @@ spy_first_finding(struct yt_session *session, size_t spy, int sector,
 	    || !append_bytes(row, sizeof(row), &length,
 	    sector_number, strlen(sector_number))
 	    || !append_bytes(row, sizeof(row), &length, ":", 1U)
-	    || !spy_line(session, row, length, SESSION_PRESENT_BOLD_LINE, error)
-	    || !spy_line(session, NULL, 0U, SESSION_PRESENT_LINE, error))
+	    || !session_present_text(session, row, length,
+	    SESSION_PRESENT_BOLD_LINE, "spy direct output", error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "spy direct output", error))
 		return false;
 	return true;
 }
@@ -148,34 +109,6 @@ spy_clear_cached_cloak(struct yt_session *session, int player_record)
 {
 	(void)yt_player_cache_set(&session->player_cache, player_record,
 	    YT_PLAYER_CACHE_CLOAK, 0.0f);
-}
-
-static bool
-spy_update_planet(struct yt_session *session, int link,
-    struct yt_error *error)
-{
-	uint32_t physical = session_planet_basic_record(session, link);
-	struct yt_planet planet;
-
-	return yt_session_update_planet_physical(session, physical, &planet, NULL,
-	    error);
-}
-
-static bool
-spy_read_planet(struct yt_session *session, int link,
-    struct yt_planet *planet, struct yt_error *error)
-{
-	uint32_t physical = session_planet_basic_record(session, link);
-
-	return read_planet_physical(session, physical, planet, error);
-}
-
-static bool
-spy_read_player(struct yt_session *session, int record,
-    struct yt_player *player, struct yt_error *error)
-{
-	return yt_game_read_player(&session->door->game, record, player,
-	    error);
 }
 
 bool
@@ -232,17 +165,20 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 			}
 			if (sector.planet > 0.0f) {
 				struct yt_planet planet;
+				struct yt_planet updated_planet;
 				uint8_t row[160];
 				size_t length;
+				uint32_t physical = session_planet_basic_record(session,
+				    (int)sector.planet);
 
-				if (!spy_update_planet(session, (int)sector.planet, error)
-				    || !spy_read_planet(session, (int)sector.planet, &planet,
-				    error)
+				if (!yt_session_update_planet_physical(session, physical,
+				    &updated_planet, NULL, error)
+				    || !read_planet_physical(session, physical, &planet, error)
 				    || !spy_first_finding(session, spy, sector_number, error)
 				    || !yt_sector_planet_row(&planet, row, sizeof(row),
 				    &length)
-				    || !spy_line(session, row, length,
-				    SESSION_PRESENT_BOLD_LINE, error)
+				    || !session_present_text(session, row, length,
+				    SESSION_PRESENT_BOLD_LINE, "spy direct output", error)
 				    || !session_read_sector(session, sector_number, &sector,
 				    error))
 					return false;
@@ -253,9 +189,6 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				float cloak;
 				bool detected;
 
-				if (!yt_player_cache_contains(candidate))
-					return spy_failure(error,
-					    "last player cache aliases adjacent memory");
 				if (!yt_sector_candidate_eligible(candidate,
 				    current_player_record,
 				    yt_player_cache_value(&session->player_cache,
@@ -271,9 +204,10 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				if (detected) {
 					if (!spy_first_finding(session, spy,
 					    sector_number, error)
-					    || !spy_line(session, cloak_notice,
+					    || !session_present_text(session, cloak_notice,
 					    sizeof(cloak_notice) - 1U,
-					    SESSION_PRESENT_BOLD_LINE, error))
+					    SESSION_PRESENT_BOLD_LINE, "spy direct output",
+					    error))
 						return false;
 					spy_clear_cached_cloak(session, candidate);
 					if (!session_sound(session, YT_SOUND_CUE_ACTION,
@@ -287,9 +221,10 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				if (!spy_first_finding(session, spy, sector_number, error))
 					return false;
 				if (first_ship) {
-					if (!spy_line(session, ship_heading,
+					if (!session_present_text(session, ship_heading,
 					    sizeof(ship_heading) - 1U,
-					    SESSION_PRESENT_BOLD_LINE, error))
+					    SESSION_PRESENT_BOLD_LINE, "spy direct output",
+					    error))
 						return false;
 					first_ship = false;
 				}
@@ -298,14 +233,14 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 					uint8_t row[256];
 					size_t length;
 
-					if (!spy_read_player(session, candidate,
-					    &player, error)
+					if (!yt_game_read_player(&session->door->game,
+					    candidate, &player, error)
 					    || !yt_sector_player_row(&player, row,
 					    sizeof(row), &length))
 						return false;
 					yt_present_set_bold(&session->presentation, 1.0f);
-					if (!spy_line(session, row, length,
-					    SESSION_PRESENT_LINE, error))
+					if (!session_present_text(session, row, length,
+					    SESSION_PRESENT_LINE, "spy direct output", error))
 						return false;
 				}
 			}
@@ -330,16 +265,16 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				if (!session_read_sector(session, sector_number, &refreshed,
 				    error)
 				    || !spy_first_finding(session, spy, sector_number, error)
-				    || !spy_line(session, fighter_heading,
+				    || !session_present_text(session, fighter_heading,
 				    sizeof(fighter_heading) - 1U,
-				    SESSION_PRESENT_BOLD_RAW, error))
+				    SESSION_PRESENT_BOLD_RAW, "spy direct output", error))
 					return false;
 				yt_present_set_bold(&session->presentation, 1.0f);
 				displayed = refreshed;
 				displayed.fighter_owner = owner;
 				if (owner != -1.0f && owner != -2.0f) {
-					if (!spy_read_player(session, (int)owner, &owner_player,
-					    error))
+					if (!yt_game_read_player(&session->door->game,
+					    (int)owner, &owner_player, error))
 						return false;
 					owner_pointer = &owner_player;
 					if (owner_player.team != 0.0f) {
@@ -353,23 +288,25 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				    current_player_record, owner_pointer, team_pointer,
 				    row, sizeof(row), &length, scratch, sizeof(scratch),
 				    &scratch_length, &scratch_changed)
-				    || !spy_line(session, row, length,
-				    SESSION_PRESENT_LINE, error))
+				    || !session_present_text(session, row, length,
+				    SESSION_PRESENT_LINE, "spy direct output", error))
 					return false;
 			}
 		}
 		if (session->spies.found) {
-			if (!spy_line(session, NULL, 0U, SESSION_PRESENT_LINE, error)
+			if (!session_present_text(session, NULL, 0U,
+			    SESSION_PRESENT_LINE, "spy direct output", error)
 			    || !session_press_any_key(session, true, error))
 				return false;
 		}
 		if (!session_read_sector(session, sector_number, &sector, error))
 			return false;
 		{
-			struct spy_route_choices routes;
+			int destinations[6];
+			size_t slot;
 
-			if (!spy_route_choices_decode(&sector, &routes, error))
-				return false;
+			for (slot = 0U; slot < YT_ARRAY_LEN(destinations); ++slot)
+				destinations[slot] = (int)sector.warps[slot];
 			for (;;) {
 				float draw;
 				int selected;
@@ -378,12 +315,9 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				    error))
 					return false;
 				selected = (int)floorf(qb_single_multiply(draw, 6.0f));
-				if (selected < 0 || selected >= 6)
-					return spy_failure(error,
-					    "active spy RND slot");
-				if (routes.destinations[selected] != 0) {
+				if (destinations[selected] != 0) {
 					session->spies.sectors[spy] =
-					    routes.destinations[selected];
+					    destinations[selected];
 					break;
 				}
 			}
