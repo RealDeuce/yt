@@ -145,7 +145,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	float duration;
 	float heat = 0.0f;
 	int counter = 1;
-	float destination;
+	int destination;
 	float override;
 	float turn_draw;
 	float cost;
@@ -225,9 +225,9 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	    || !yt_random_next(&session->door->game.random, &turn_draw, error))
 		return false;
 	destination = yt_emergency_warp_destination(first,
-	    (float)session_sector_count(session));
+	    session_sector_count(session));
 	if (override > 0.949999988079071f)
-		destination = session->door->game.config.headquarters;
+		destination = (int)session->door->game.config.headquarters;
 	cost = yt_emergency_warp_cost(heat, turn_draw, session->player.turns,
 	    heat >= 31.0f);
 	if (heat >= 31.0f) {

@@ -545,14 +545,14 @@ bool yt_direct_fighter_mine_warning(const uint8_t *victim_name,
     size_t victim_name_length, uint8_t *row, size_t capacity,
     size_t *length);
 float yt_emergency_warp_duration(float first, float second);
-float yt_emergency_warp_destination(float draw, float sector_count);
+int yt_emergency_warp_destination(float draw, int sector_count);
 float yt_emergency_warp_cost(float heat, float draw, float turns,
     bool meltdown);
 void yt_emergency_warp_player_overlay(struct yt_player *player,
-    float destination, float cost);
-bool yt_emergency_warp_result_row(float destination, float cost,
+    int destination, float cost);
+bool yt_emergency_warp_result_row(int destination, float cost,
     uint8_t *row, size_t capacity, size_t *length);
-bool yt_emergency_warp_stranded_row(float destination, uint8_t *row,
+bool yt_emergency_warp_stranded_row(int destination, uint8_t *row,
     size_t capacity, size_t *length);
 bool yt_movement_warp_row(const float warps[6], uint8_t *row,
     size_t capacity, size_t *length);

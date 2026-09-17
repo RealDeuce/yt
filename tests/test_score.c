@@ -2849,16 +2849,16 @@ check_emergency_warp_model(void)
 
 	if (yt_emergency_warp_duration(0.0f, 0.0f) != 0.0f
 	    || yt_emergency_warp_duration(0.5f, 0.25f) != 52.5f
-	    || yt_emergency_warp_destination(0.5f, 2004.0f) != 1003.0f
-	    || yt_emergency_warp_destination(0.0f, 2004.0f) != 1.0f
+	    || yt_emergency_warp_destination(0.5f, 2004) != 1003
+	    || yt_emergency_warp_destination(0.0f, 2004) != 1
 	    || yt_emergency_warp_cost(0.0f, 0.75f, 77.0f, false) != 3.0f
 	    || yt_emergency_warp_cost(20.0f, 0.0f, 77.0f, false) != 77.0f
 	    || yt_emergency_warp_cost(31.0f, 0.0f, 77.0f, true) != 77.0f
-	    || !yt_emergency_warp_result_row(1003.0f, 3.0f, row,
+	    || !yt_emergency_warp_result_row(1003, 3.0f, row,
 	    sizeof(row), &length)
 	    || length != sizeof(result_expected) - 1U
 	    || memcmp(row, result_expected, length) != 0
-	    || !yt_emergency_warp_stranded_row(1003.0f, row,
+	    || !yt_emergency_warp_stranded_row(1003, row,
 	    sizeof(row), &length)
 	    || length != sizeof(stranded_expected) - 1U
 	    || memcmp(row, stranded_expected, length) != 0)
@@ -2869,7 +2869,7 @@ check_emergency_warp_model(void)
 	player.turns = 77.0f;
 	player.sector = 42.0f;
 	before = player.record;
-	yt_emergency_warp_player_overlay(&player, 1003.0f, 3.0f);
+	yt_emergency_warp_player_overlay(&player, 1003, 3.0f);
 	if (player.turns != 74.0f || player.sector != 1003.0f
 	    || yt_record_get_number(&player.record, YT_F49) != 74.0f
 	    || yt_record_get_number(&player.record, YT_F57) != 1003.0f)

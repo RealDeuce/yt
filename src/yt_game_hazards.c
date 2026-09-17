@@ -235,14 +235,14 @@ yt_emergency_warp_duration(float first, float second)
 	return result;
 }
 
-float
-yt_emergency_warp_destination(float draw, float sector_count)
+int
+yt_emergency_warp_destination(float draw, int sector_count)
 {
-	volatile float product = draw * sector_count;
+	volatile float product = draw * (float)sector_count;
 	volatile float integral = floorf(product);
 	volatile float result = integral + 1.0f;
 
-	return result;
+	return (int)result;
 }
 
 float
@@ -262,21 +262,22 @@ yt_emergency_warp_cost(float heat, float draw, float turns, bool meltdown)
 
 void
 yt_emergency_warp_player_overlay(struct yt_player *player,
-    float destination, float cost)
+    int destination, float cost)
 {
 	volatile float remaining;
 
 	if (player == NULL)
 		return;
 	remaining = player->turns - cost;
-	player->sector = destination;
+	player->sector = (float)destination;
 	player->turns = remaining;
-	(void)yt_record_set_number(&player->record, YT_F57, destination);
+	(void)yt_record_set_number(&player->record, YT_F57,
+	    (float)destination);
 	(void)yt_record_set_number(&player->record, YT_F49, remaining);
 }
 
 bool
-yt_emergency_warp_result_row(float destination, float cost,
+yt_emergency_warp_result_row(int destination, float cost,
     uint8_t *row, size_t capacity, size_t *length)
 {
 	static const uint8_t first[] = "sector";
@@ -287,7 +288,7 @@ yt_emergency_warp_result_row(float destination, float cost,
 	char destination_text[64];
 	char cost_text[64];
 	int destination_length = qb_str_single(destination_text,
-	    sizeof(destination_text), destination);
+	    sizeof(destination_text), (float)destination);
 	int cost_length = qb_str_single(cost_text, sizeof(cost_text), cost);
 
 	if (destination_length < 0 || cost_length < 0)
@@ -300,14 +301,14 @@ yt_emergency_warp_result_row(float destination, float cost,
 }
 
 bool
-yt_emergency_warp_stranded_row(float destination, uint8_t *row,
+yt_emergency_warp_stranded_row(int destination, uint8_t *row,
     size_t capacity, size_t *length)
 {
 	static const uint8_t first[] = "You are stranded in sector";
 	static const uint8_t suffix[] = ".";
 	char destination_text[64];
 	int destination_length = qb_str_single(destination_text,
-	    sizeof(destination_text), destination);
+	    sizeof(destination_text), (float)destination);
 
 	if (destination_length < 0)
 		return false;
