@@ -240,8 +240,9 @@ yt_error_attach_basic_fault_number(struct yt_error *error,
     enum yt_basic_fault_site site, uint16_t error_number)
 {
 	if (error_number > UINT8_MAX
-	    || !yt_basic_fault_admits(site, (uint8_t)error_number)
-	    || !yt_error_attach_basic_fault(error, site))
+	    || !yt_basic_fault_admits(site, (uint8_t)error_number))
+		return false;
+	if (!yt_error_attach_basic_fault(error, site))
 		return false;
 	error->basic_error = error_number;
 	error->basic_error_valid = true;
@@ -311,10 +312,13 @@ compose_debug(int16_t error_number, int32_t source_line,
 		result->debug, sizeof(result->debug), 0U
 	};
 
-	if (!append_literal(&builder, "YT DEBUG Error Trap Entry ERL= ")
-	    || !append_str_single(&builder, (float)source_line, true)
-	    || !append_literal(&builder, "  ERR= ")
-	    || !append_print_integer(&builder, error_number))
+	if (!append_literal(&builder, "YT DEBUG Error Trap Entry ERL= "))
+		return false;
+	if (!append_str_single(&builder, (float)source_line, true))
+		return false;
+	if (!append_literal(&builder, "  ERR= "))
+		return false;
+	if (!append_print_integer(&builder, error_number))
 		return false;
 	result->debug_length = builder.length;
 	return true;
@@ -328,10 +332,13 @@ compose_missing_file(const uint8_t *pathname, size_t pathname_length,
 		result->action, sizeof(result->action), 0U
 	};
 
-	if ((pathname == NULL && pathname_length != 0U)
-	    || !append_literal(&builder, "*** GAME FILE [")
-	    || !append(&builder, pathname, pathname_length)
-	    || !append_literal(&builder, "] NOT FOUND! ***"))
+	if (pathname == NULL && pathname_length != 0U)
+		return false;
+	if (!append_literal(&builder, "*** GAME FILE ["))
+		return false;
+	if (!append(&builder, pathname, pathname_length))
+		return false;
+	if (!append_literal(&builder, "] NOT FOUND! ***"))
 		return false;
 	result->action_length = builder.length;
 	return true;
@@ -348,16 +355,24 @@ compose_fatal(int16_t error_number, int32_t source_line,
 	};
 
 	if ((date_text == NULL && date_length != 0U)
-	    || (time_text == NULL && time_length != 0U)
-	    || !append_literal(&builder,
-	    "YTMerg2 1.15 Untrapped Error ERL=")
-	    || !append_str_single(&builder, (float)source_line, false)
-	    || !append_literal(&builder, " ERR=")
-	    || !append_str_single(&builder, (float)error_number, false)
-	    || !append_literal(&builder, " Date >")
-	    || !append(&builder, date_text, date_length)
-	    || !append_literal(&builder, " ")
-	    || !append(&builder, time_text, time_length))
+	    || (time_text == NULL && time_length != 0U))
+		return false;
+	if (!append_literal(&builder,
+	    "YTMerg2 1.15 Untrapped Error ERL="))
+		return false;
+	if (!append_str_single(&builder, (float)source_line, false))
+		return false;
+	if (!append_literal(&builder, " ERR="))
+		return false;
+	if (!append_str_single(&builder, (float)error_number, false))
+		return false;
+	if (!append_literal(&builder, " Date >"))
+		return false;
+	if (!append(&builder, date_text, date_length))
+		return false;
+	if (!append_literal(&builder, " "))
+		return false;
+	if (!append(&builder, time_text, time_length))
 		return false;
 	result->action_length = builder.length;
 	return true;
@@ -435,10 +450,13 @@ compose_shared_debug(int16_t error_number, int32_t source_line,
 	};
 
 	if (!append_literal(&builder,
-	    "YT-SUB DEBUG Error Trap Entry ERL= ")
-	    || !append_str_single(&builder, (float)source_line, false)
-	    || !append_literal(&builder, " ERR=")
-	    || !append_print_integer(&builder, error_number))
+	    "YT-SUB DEBUG Error Trap Entry ERL= "))
+		return false;
+	if (!append_str_single(&builder, (float)source_line, false))
+		return false;
+	if (!append_literal(&builder, " ERR="))
+		return false;
+	if (!append_print_integer(&builder, error_number))
 		return false;
 	result->debug_length = builder.length;
 	return true;
@@ -475,10 +493,13 @@ add_shared_generic(int16_t error_number, int32_t source_line,
 	builder = (struct text_builder){
 		event->data, sizeof(event->data), 0U
 	};
-	if (!append_literal(&builder, "Untrapped YT-SUB Error> ")
-	    || !append_str_integer(&builder, error_number)
-	    || !append_literal(&builder, " Line> ")
-	    || !append_str_single(&builder, (float)source_line, false))
+	if (!append_literal(&builder, "Untrapped YT-SUB Error> "))
+		return false;
+	if (!append_str_integer(&builder, error_number))
+		return false;
+	if (!append_literal(&builder, " Line> "))
+		return false;
+	if (!append_str_single(&builder, (float)source_line, false))
 		return false;
 	event->length = builder.length;
 	return true;
@@ -545,10 +566,12 @@ yt_shared_error_compose(int16_t error_number, int32_t source_line,
 		    "Error with YTNAME.DAT file!");
 	}
 	result->route = YT_SHARED_ERROR_GENERIC;
-	return add_shared_generic(error_number, source_line, result)
-	    && add_shared_literal(result, YT_SHARED_ERROR_NEWS,
-	    "Please record error and circumstances. Also, if the error")
-	    && add_shared_literal(result, YT_SHARED_ERROR_NEWS,
+	if (!add_shared_generic(error_number, source_line, result))
+		return false;
+	if (!add_shared_literal(result, YT_SHARED_ERROR_NEWS,
+	    "Please record error and circumstances. Also, if the error"))
+		return false;
+	return add_shared_literal(result, YT_SHARED_ERROR_NEWS,
 	    "is Severe, Please inform Alan Davenport!");
 }
 
