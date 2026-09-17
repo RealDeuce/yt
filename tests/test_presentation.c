@@ -3413,8 +3413,6 @@ test_basic_fault_registry(void)
 		    0xB2DAU, 2U},
 		{YT_BASIC_FAULT_MAIN, 0x92E1U, 0x92E4U, 0x92CCU, 33890,
 		    0xB2DAU, 0U},
-		{YT_BASIC_FAULT_MAIN, 0x025CU, 0x025FU, 0x0259U, 60,
-		    0xB2DAU, 2U},
 		{YT_BASIC_FAULT_SHARED, 0x1584U, 0x1587U, 0x1579U, 0,
 		    0x45F7U, 3U},
 		{YT_BASIC_FAULT_SHARED, 0x163CU, 0x163FU, 0x1631U, 0,
@@ -3800,17 +3798,6 @@ test_basic_fault_projection(void)
 	    sizeof(date) - 1U, time_text, sizeof(time_text) - 1U, &projection)
 	    && projection.disposition == YT_BASIC_FAULT_RESUME_GAMEPLAY
 	    && projection.identity->source_line == 33880
-	    && projection.main.route == YT_MAIN_ERROR_GAMEPLAY);
-
-	yt_error_clear(&error);
-	CHECK(yt_error_attach_basic_fault_number(&error,
-	    YT_BASIC_FAULT_NORMAL_EXIT_REGISTERED_CINT, 6U)
-	    && yt_basic_fault_project(&error, NULL, 0U, date,
-	    sizeof(date) - 1U, time_text, sizeof(time_text) - 1U, &projection)
-	    && projection.disposition == YT_BASIC_FAULT_RESUME_GAMEPLAY
-	    && projection.identity->saved_ip == 0x025FU
-	    && projection.identity->retry_statement == 0x0259U
-	    && projection.identity->source_line == 60
 	    && projection.main.route == YT_MAIN_ERROR_GAMEPLAY);
 
 	yt_error_clear(&error);

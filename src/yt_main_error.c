@@ -87,8 +87,6 @@ static const struct yt_basic_fault_identity basic_faults[] = {
 	    0x9120U, 33880, CINT_ERRORS, 1U),
 	MAIN_FAULT("autopilot final-sector GET", 0x92E1U, 0x92E4U,
 	    0x92CCU, 33890, GET_ERRORS, 6U),
-	MAIN_FAULT("normal-exit registration CINT", 0x025CU, 0x025FU,
-	    0x0259U, 60, CINT_ERRORS, 1U),
 	SHARED_FAULT("returning daily player GET", 0x1584U, 0x1587U,
 	    0x1579U, 0, RETURNING_GET_ERRORS, 4U),
 	SHARED_FAULT("returning daily player PUT", 0x163CU, 0x163FU,
