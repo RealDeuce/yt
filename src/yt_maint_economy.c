@@ -226,7 +226,6 @@ yt_maintenance_update_planet(struct yt_random *random,
 	float first;
 	float second;
 	float third;
-	uint64_t starting_draws;
 	enum yt_maintenance_planet_event event =
 	    YT_MAINTENANCE_PLANET_NO_EVENT;
 	int index;
@@ -236,7 +235,6 @@ yt_maintenance_update_planet(struct yt_random *random,
 		return false;
 	}
 	memset(result, 0, sizeof(*result));
-	starting_draws = random->draws;
 	for (index = 0; index < 3; ++index) {
 		production[index] = planet->production[index];
 		quantity[index] = planet->stock[index];
@@ -351,7 +349,6 @@ yt_maintenance_update_planet(struct yt_random *random,
 	planet->plasma = quantity[8];
 	planet->last_day = day;
 	planet->last_minute = minute;
-	result->elapsed = elapsed;
 	result->event = event;
 	result->old_event_total = old_total;
 	result->new_event_total = qb_single_add(qb_single_add(production[0], production[1]),
@@ -360,7 +357,6 @@ yt_maintenance_update_planet(struct yt_random *random,
 	result->new_event_ground = quantity[7];
 	result->emit_ground_line = floorf(quantity[7]) != floorf(old_ground)
 	    && floorf(quantity[7]) > 0.0f;
-	result->draws_consumed = random->draws - starting_draws;
 	return true;
 }
 

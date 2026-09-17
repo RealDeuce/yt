@@ -127,7 +127,6 @@ enum yt_maintenance_planet_event {
 };
 
 struct yt_maintenance_planet_result {
-	float elapsed;
 	enum yt_maintenance_planet_event event;
 	float old_event_total;
 	float new_event_total;
@@ -135,7 +134,6 @@ struct yt_maintenance_planet_result {
 	float new_event_ground;
 	float civil_war_expense;
 	bool emit_ground_line;
-	uint64_t draws_consumed;
 };
 
 bool yt_maintenance_xannor_should_retarget(float group_location,

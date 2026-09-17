@@ -3555,8 +3555,7 @@ check_maintenance_planet_model(void)
 		.old_event_ground = 200.0f,
 		.new_event_ground = 150.0f,
 		.civil_war_expense = 50.0f,
-		.emit_ground_line = true,
-		.draws_consumed = 9U
+		.emit_ground_line = true
 	};
 	struct yt_maintenance_text name = {
 		(const uint8_t *)"Xannoron", 8U
@@ -3599,7 +3598,6 @@ check_maintenance_planet_model(void)
 	if (!yt_maintenance_update_planet(&random, &planet, 2.0f, 0.0f,
 	    &mutation, &error)
 	    || mutation.event != YT_MAINTENANCE_PLANET_NO_EVENT
-	    || mutation.elapsed != 1.0f || mutation.draws_consumed != 3U
 	    || planet.production[0] != 101.0f
 	    || planet.production[1] != 202.0f
 	    || planet.production[2] != 303.0f
@@ -3625,7 +3623,6 @@ check_maintenance_planet_model(void)
 	if (!yt_maintenance_update_planet(&random, &planet, 1.0f, 0.0f,
 	    &mutation, &error)
 	    || mutation.event != YT_MAINTENANCE_PLANET_CIVIL_WAR
-	    || mutation.draws_consumed != 9U
 	    || mutation.old_event_total != 600.0f
 	    || mutation.new_event_total != 300.0f
 	    || mutation.old_event_ground != 20000000.0f
@@ -3652,7 +3649,7 @@ check_maintenance_planet_model(void)
 	if (!yt_maintenance_update_planet(&random, &planet, 1.0f, 0.0f,
 	    &mutation, &error)
 	    || mutation.event != YT_MAINTENANCE_PLANET_PLAGUE
-	    || mutation.draws_consumed != 6U || mutation.emit_ground_line
+	    || mutation.emit_ground_line
 	    || mutation.civil_war_expense != 0.0f
 	    || planet.production[0] != 5000000.0f
 	    || planet.production[1] != 2500000.0f
