@@ -151,14 +151,18 @@ randomize_sector(struct yt_init_world *world, int sector,
 						    (size_t)destination_length);
 						if (!yt_present_number(options,
 						    (float)sector, YT_INIT_OUTPUT_INLINE,
-						    error)
-						    || !yt_present_text(options,
-						    YT_INIT_OUTPUT_INLINE, "-", error)
-						    || !yt_present_number(options,
+						    error))
+							return false;
+						if (!yt_present_text(options,
+						    YT_INIT_OUTPUT_INLINE, "-", error))
+							return false;
+						if (!yt_present_number(options,
 						    (float)destination, YT_INIT_OUTPUT_LINE,
-						    error)
-						    || !rmt_present(options, YT_RMT_OUTPUT_WORMHOLE,
-						    payload, length, error))
+						    error))
+							return false;
+						if (!rmt_present(options,
+						    YT_RMT_OUTPUT_WORMHOLE, payload, length,
+						    error))
 							return false;
 					}
 					break;
@@ -230,30 +234,35 @@ yt_init_world_build_graph(struct yt_init_world *world,
 		if (!randomize_sector(world, sector, random, options, error))
 			return false;
 	}
-	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    "Verifying warps.. linking isolated sectors.", error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present_text(options, YT_RMT_OUTPUT_LINE,
-	    "Verifying warps.. linking isolated sectors.", error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error))
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    "Verifying warps.. linking isolated sectors.", error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	    "Verifying warps.. linking isolated sectors.", error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
 		return false;
 	for (sector = 2; sector <= world->sectors; ++sector) {
 		bool found;
 
 		if (!yt_present(options, YT_INIT_OUTPUT_LOCATE_COLUMN_ONE,
-		    NULL, 0U, error)
-		    || !yt_present_text(options, YT_INIT_OUTPUT_INLINE,
-		    "Verifying warp to sector", error)
-		    || !yt_present_number(options, (float)sector,
-		    YT_INIT_OUTPUT_INLINE, error)
-		    || !reachable(world, sector, &found, error))
+		    NULL, 0U, error))
+			return false;
+		if (!yt_present_text(options, YT_INIT_OUTPUT_INLINE,
+		    "Verifying warp to sector", error))
+			return false;
+		if (!yt_present_number(options, (float)sector,
+		    YT_INIT_OUTPUT_INLINE, error))
+			return false;
+		if (!reachable(world, sector, &found, error))
 			return false;
 		if (!found) {
 			int candidate;
@@ -283,15 +292,19 @@ yt_init_world_build_graph(struct yt_init_world *world,
 			    target_text, (size_t)target_length);
 			memcpy(payload + length - 2U, "!!", 2U);
 			if (!yt_present(options, YT_INIT_OUTPUT_LOCATE_COLUMN_ONE,
-			    NULL, 0U, error)
-			    || !yt_present_text(options, YT_INIT_OUTPUT_INLINE,
-			    "*** Error - No Path to sector", error)
-			    || !yt_present(options, YT_INIT_OUTPUT_INLINE,
+			    NULL, 0U, error))
+				return false;
+			if (!yt_present_text(options, YT_INIT_OUTPUT_INLINE,
+			    "*** Error - No Path to sector", error))
+				return false;
+			if (!yt_present(options, YT_INIT_OUTPUT_INLINE,
 			    (const uint8_t *)target_text,
-			    (size_t)target_length, error)
-			    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-			    "!!", error)
-			    || !rmt_present(options, YT_RMT_OUTPUT_LINE,
+			    (size_t)target_length, error))
+				return false;
+			if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+			    "!!", error))
+				return false;
+			if (!rmt_present(options, YT_RMT_OUTPUT_LINE,
 			    payload, length, error))
 				return false;
 			length = sizeof("Sector") - 1U + (size_t)target_length
@@ -306,14 +319,18 @@ yt_init_world_build_graph(struct yt_init_world *world,
 			memcpy(payload + length - (size_t)candidate_length,
 			    candidate_text, (size_t)candidate_length);
 			if (!yt_present_text(options, YT_INIT_OUTPUT_INLINE,
-			    "Sector", error)
-			    || !yt_present_number(options, (float)sector,
-			    YT_INIT_OUTPUT_INLINE, error)
-			    || !yt_present_text(options, YT_INIT_OUTPUT_INLINE,
-			    "has been linked to sector", error)
-			    || !yt_present_number(options, (float)candidate,
-			    YT_INIT_OUTPUT_LINE, error)
-			    || !rmt_present(options, YT_RMT_OUTPUT_LINE,
+			    "Sector", error))
+				return false;
+			if (!yt_present_number(options, (float)sector,
+			    YT_INIT_OUTPUT_INLINE, error))
+				return false;
+			if (!yt_present_text(options, YT_INIT_OUTPUT_INLINE,
+			    "has been linked to sector", error))
+				return false;
+			if (!yt_present_number(options, (float)candidate,
+			    YT_INIT_OUTPUT_LINE, error))
+				return false;
+			if (!rmt_present(options, YT_RMT_OUTPUT_LINE,
 			    payload, length, error))
 				return false;
 			/* The stale reciprocal at the target is deliberately kept. */
@@ -321,22 +338,26 @@ yt_init_world_build_graph(struct yt_init_world *world,
 			world->warps[candidate][5] = sector;
 		}
 	}
-	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    " ** Warp verification complete!! **", error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, YT_INIT_OUTPUT_LINE,
-	    " ** Building shortcuts back to sector 1", error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present_text(options, YT_RMT_OUTPUT_LINE,
-	    " ** Warp verification complete!! **", error)
-	    || !rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    " ** Warp verification complete!! **", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
+	    " ** Building shortcuts back to sector 1", error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
+	    " ** Warp verification complete!! **", error))
+		return false;
+	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
+		return false;
+	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
 	    " ** Building shortcuts back to sector 1", error))
 		return false;
 	if (!yt_random_next(random, &position, error))
