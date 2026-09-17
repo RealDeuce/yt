@@ -66,10 +66,11 @@ yt_direct_attack_team_row(const uint8_t *name, size_t name_length,
 		return false;
 	*length = 0U;
 	if (!direct_attack_append(row, capacity, &position, prefix,
-	    sizeof(prefix) - 1U)
-	    || !direct_attack_append(row, capacity, &position, name,
-	    name_length)
-	    || !direct_attack_append(row, capacity, &position, suffix,
+	    sizeof(prefix) - 1U))
+		return false;
+	if (!direct_attack_append(row, capacity, &position, name, name_length))
+		return false;
+	if (!direct_attack_append(row, capacity, &position, suffix,
 	    sizeof(suffix) - 1U))
 		return false;
 	*length = position;
@@ -88,10 +89,11 @@ yt_direct_attack_candidate_prompt(const uint8_t *name,
 		return false;
 	*length = 0U;
 	if (!direct_attack_append(prompt, capacity, &position, prefix,
-	    sizeof(prefix) - 1U)
-	    || !direct_attack_append(prompt, capacity, &position, name,
-	    name_length)
-	    || !direct_attack_append(prompt, capacity, &position, suffix,
+	    sizeof(prefix) - 1U))
+		return false;
+	if (!direct_attack_append(prompt, capacity, &position, name, name_length))
+		return false;
+	if (!direct_attack_append(prompt, capacity, &position, suffix,
 	    sizeof(suffix) - 1U))
 		return false;
 	*length = position;
@@ -112,12 +114,15 @@ yt_direct_attack_commitment_prompt(double fighters, uint8_t *prompt,
 		return false;
 	*length = 0U;
 	number_length = qb_str_double(number, sizeof(number), fighters);
-	if (number_length < 0
-	    || !direct_attack_append(prompt, capacity, &position, prefix,
-	    sizeof(prefix) - 1U)
-	    || !direct_attack_append(prompt, capacity, &position, number,
-	    (size_t)number_length)
-	    || !direct_attack_append(prompt, capacity, &position, suffix,
+	if (number_length < 0)
+		return false;
+	if (!direct_attack_append(prompt, capacity, &position, prefix,
+	    sizeof(prefix) - 1U))
+		return false;
+	if (!direct_attack_append(prompt, capacity, &position, number,
+	    (size_t)number_length))
+		return false;
+	if (!direct_attack_append(prompt, capacity, &position, suffix,
 	    sizeof(suffix) - 1U))
 		return false;
 	*length = position;
@@ -138,12 +143,15 @@ yt_direct_attack_too_many_row(double fighters, uint8_t *row,
 		return false;
 	*length = 0U;
 	number_length = qb_str_double(number, sizeof(number), fighters);
-	if (number_length < 0
-	    || !direct_attack_append(row, capacity, &position, prefix,
-	    sizeof(prefix) - 1U)
-	    || !direct_attack_append(row, capacity, &position, number,
-	    (size_t)number_length)
-	    || !direct_attack_append(row, capacity, &position, suffix,
+	if (number_length < 0)
+		return false;
+	if (!direct_attack_append(row, capacity, &position, prefix,
+	    sizeof(prefix) - 1U))
+		return false;
+	if (!direct_attack_append(row, capacity, &position, number,
+	    (size_t)number_length))
+		return false;
+	if (!direct_attack_append(row, capacity, &position, suffix,
 	    sizeof(suffix) - 1U))
 		return false;
 	*length = position;
@@ -186,28 +194,38 @@ yt_direct_attack_result_rows(double attacker_loss,
 	defenders_length = qb_str_double(defenders_text,
 	    sizeof(defenders_text), defenders);
 	if (attacker_loss_length < 0 || reserve_length < 0
-	    || defender_loss_length < 0 || defenders_length < 0
-	    || !direct_attack_append(attacker_row, attacker_capacity,
-	    &attacker_position, attacker_prefix, sizeof(attacker_prefix) - 1U)
-	    || !direct_attack_append(attacker_row, attacker_capacity,
+	    || defender_loss_length < 0 || defenders_length < 0)
+		return false;
+	if (!direct_attack_append(attacker_row, attacker_capacity,
+	    &attacker_position, attacker_prefix, sizeof(attacker_prefix) - 1U))
+		return false;
+	if (!direct_attack_append(attacker_row, attacker_capacity,
 	    &attacker_position, attacker_loss_text,
-	    (size_t)attacker_loss_length)
-	    || !direct_attack_append(attacker_row, attacker_capacity,
-	    &attacker_position, attacker_middle, sizeof(attacker_middle) - 1U)
-	    || !direct_attack_append(attacker_row, attacker_capacity,
-	    &attacker_position, reserve_text, (size_t)reserve_length)
-	    || !direct_attack_append(attacker_row, attacker_capacity,
-	    &attacker_position, remain, sizeof(remain) - 1U)
-	    || !direct_attack_append(defender_row, defender_capacity,
-	    &defender_position, defender_prefix, sizeof(defender_prefix) - 1U)
-	    || !direct_attack_append(defender_row, defender_capacity,
+	    (size_t)attacker_loss_length))
+		return false;
+	if (!direct_attack_append(attacker_row, attacker_capacity,
+	    &attacker_position, attacker_middle, sizeof(attacker_middle) - 1U))
+		return false;
+	if (!direct_attack_append(attacker_row, attacker_capacity,
+	    &attacker_position, reserve_text, (size_t)reserve_length))
+		return false;
+	if (!direct_attack_append(attacker_row, attacker_capacity,
+	    &attacker_position, remain, sizeof(remain) - 1U))
+		return false;
+	if (!direct_attack_append(defender_row, defender_capacity,
+	    &defender_position, defender_prefix, sizeof(defender_prefix) - 1U))
+		return false;
+	if (!direct_attack_append(defender_row, defender_capacity,
 	    &defender_position, defender_loss_text,
-	    (size_t)defender_loss_length)
-	    || !direct_attack_append(defender_row, defender_capacity,
-	    &defender_position, defender_middle, sizeof(defender_middle) - 1U)
-	    || !direct_attack_append(defender_row, defender_capacity,
-	    &defender_position, defenders_text, (size_t)defenders_length)
-	    || !direct_attack_append(defender_row, defender_capacity,
+	    (size_t)defender_loss_length))
+		return false;
+	if (!direct_attack_append(defender_row, defender_capacity,
+	    &defender_position, defender_middle, sizeof(defender_middle) - 1U))
+		return false;
+	if (!direct_attack_append(defender_row, defender_capacity,
+	    &defender_position, defenders_text, (size_t)defenders_length))
+		return false;
+	if (!direct_attack_append(defender_row, defender_capacity,
 	    &defender_position, remain, sizeof(remain) - 1U))
 		return false;
 	*attacker_length = attacker_position;
@@ -333,16 +351,21 @@ yt_death_title_row(const uint8_t *victim, size_t victim_length,
 	if (row == NULL || (victim == NULL && victim_length != 0U))
 		return false;
 	number_length = qb_str_single(number, sizeof(number), ports);
-	if (number_length < 0
-	    || !direct_attack_append(row, capacity, &position, prefix,
-	    sizeof(prefix) - 1U)
-	    || !direct_attack_append(row, capacity, &position,
-	    (const uint8_t *)number, (size_t)number_length)
-	    || !direct_attack_append(row, capacity, &position, middle,
-	    sizeof(middle) - 1U)
-	    || !direct_attack_append(row, capacity, &position, victim,
-	    victim_length)
-	    || !direct_attack_append(row, capacity, &position, suffix,
+	if (number_length < 0)
+		return false;
+	if (!direct_attack_append(row, capacity, &position, prefix,
+	    sizeof(prefix) - 1U))
+		return false;
+	if (!direct_attack_append(row, capacity, &position,
+	    (const uint8_t *)number, (size_t)number_length))
+		return false;
+	if (!direct_attack_append(row, capacity, &position, middle,
+	    sizeof(middle) - 1U))
+		return false;
+	if (!direct_attack_append(row, capacity, &position, victim,
+	    victim_length))
+		return false;
+	if (!direct_attack_append(row, capacity, &position, suffix,
 	    sizeof(suffix) - 1U))
 		return false;
 	*length = position;
@@ -366,15 +389,20 @@ yt_death_kill_news_row(const uint8_t *killer, size_t killer_length,
 	    || (victim == NULL && victim_length != 0U))
 		return false;
 	if (!direct_attack_append(row, capacity, &position, prefix,
-	    sizeof(prefix) - 1U)
-	    || !direct_attack_append(row, capacity, &position, killer,
-	    killer_length)
-	    || !direct_attack_append(row, capacity, &position,
-	    self ? self_suffix : other_infix,
-	    self ? sizeof(self_suffix) - 1U : sizeof(other_infix) - 1U)
-	    || (!self && !direct_attack_append(row, capacity, &position,
-	    victim, victim_length)))
+	    sizeof(prefix) - 1U))
 		return false;
+	if (!direct_attack_append(row, capacity, &position, killer,
+	    killer_length))
+		return false;
+	if (!direct_attack_append(row, capacity, &position,
+	    self ? self_suffix : other_infix,
+	    self ? sizeof(self_suffix) - 1U : sizeof(other_infix) - 1U))
+		return false;
+	if (!self) {
+		if (!direct_attack_append(row, capacity, &position,
+		    victim, victim_length))
+			return false;
+	}
 	*length = position;
 	return true;
 }
@@ -395,14 +423,18 @@ yt_death_port_news_row(const uint8_t *victim, size_t victim_length,
 	if (row == NULL || (victim == NULL && victim_length != 0U))
 		return false;
 	number_length = qb_str_single(number, sizeof(number), ports);
-	if (number_length < 0
-	    || !direct_attack_append(row, capacity, &position, prefix,
-	    sizeof(prefix) - 1U)
-	    || !direct_attack_append(row, capacity, &position,
-	    (const uint8_t *)number, (size_t)number_length)
-	    || !direct_attack_append(row, capacity, &position, middle,
-	    sizeof(middle) - 1U)
-	    || !direct_attack_append(row, capacity, &position, victim,
+	if (number_length < 0)
+		return false;
+	if (!direct_attack_append(row, capacity, &position, prefix,
+	    sizeof(prefix) - 1U))
+		return false;
+	if (!direct_attack_append(row, capacity, &position,
+	    (const uint8_t *)number, (size_t)number_length))
+		return false;
+	if (!direct_attack_append(row, capacity, &position, middle,
+	    sizeof(middle) - 1U))
+		return false;
+	if (!direct_attack_append(row, capacity, &position, victim,
 	    victim_length))
 		return false;
 	*length = position;
