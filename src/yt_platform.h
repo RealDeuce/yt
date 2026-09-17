@@ -50,7 +50,6 @@ bool yt_platform_sibling_program(char *dest, size_t size,
     const char *executable_path, const char *program, struct yt_error *error);
 bool yt_platform_spawn(const char *program, char *const argv[],
     enum yt_spawn_mode mode, int *exit_code, struct yt_error *error);
-void yt_platform_delay(unsigned milliseconds);
 bool yt_platform_rmt_serial_prepare(int port,
     const struct yt_startup_framing *framing,
     struct yt_platform_rmt_serial *serial, struct yt_error *error);

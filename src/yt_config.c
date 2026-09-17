@@ -303,27 +303,6 @@ yt_config_redraw_repairs(struct yt_database *database,
 }
 
 void
-yt_config_normalize_game(struct yt_config *config, bool local_mode)
-{
-	if (config->genesis_ports < 20.0f)
-		config->genesis_ports = 200.0f;
-	if (config->scoreboard[0] == '\0')
-		strcpy(config->scoreboard, "YTSCORE.ASC");
-	if (config->local_screen < -1.0f || config->local_screen > 0.0f)
-		config->local_screen = -1.0f;
-	if (local_mode)
-		config->local_screen = -1.0f;
-	if (config->lottery_plays < 0.0f || config->lottery_plays > 9.0f)
-		config->lottery_plays = 3.0f;
-	if (config->maximum_planets == 0.0f)
-		config->maximum_planets = 100.0f;
-	if (config->maximum_holds < 5.0f || config->maximum_holds > 1000.0f)
-		config->maximum_holds = 1000.0f;
-	if (config->turns_per_day < 100.0f || config->turns_per_day > 2500.0f)
-		config->turns_per_day = 500.0f;
-}
-
-void
 yt_config_normalize_maintenance(struct yt_config *config)
 {
 	if (config->scoreboard[0] == '\0')
@@ -422,12 +401,6 @@ yt_format_time(const struct yt_clock_value *value, char dest[9])
 	dest[6] = (char)('0' + second / 10);
 	dest[7] = (char)('0' + second % 10);
 	dest[8] = '\0';
-}
-
-int
-yt_player_basic_record(int logical_player)
-{
-	return logical_player + 1;
 }
 
 int

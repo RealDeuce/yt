@@ -1026,7 +1026,4 @@ bool yt_current_player_hydrate(struct yt_player *player,
     float *current_sector_record, struct yt_player_cache *player_cache,
     struct yt_error *error);
 
-void yt_player_construct(struct yt_player *player,
-    const struct yt_config *config, float today);
-
 #endif

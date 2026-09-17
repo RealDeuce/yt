@@ -191,19 +191,6 @@ yt_out_cursor_position(int *row, int *column)
 		*column = current_column;
 }
 
-void
-yt_out_plain_line(const char *text)
-{
-	yt_out_plain(text);
-	yt_out_plain("\r\n");
-}
-
-void
-yt_out_clear(void)
-{
-	od_clr_scr();
-}
-
 static bool
 out_opening_text_result(uint16_t *observed,
     bool ok, uint16_t basic_error, struct yt_error *error)

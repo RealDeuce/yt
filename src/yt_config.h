@@ -44,7 +44,6 @@ bool yt_config_decode(struct yt_config *config,
     const struct yt_record *record, struct yt_error *error);
 bool yt_config_load(struct yt_database *database, struct yt_config *config,
     struct yt_error *error);
-void yt_config_normalize_game(struct yt_config *config, bool local_mode);
 void yt_config_normalize_maintenance(struct yt_config *config);
 bool yt_config_headquarters_relocate(struct yt_database *database,
 	const struct yt_config *config, float candidate,
@@ -70,7 +69,6 @@ bool yt_current_date_serial(const struct yt_clock *clock, float epoch,
 void yt_format_date(const struct yt_clock_value *value, char dest[11]);
 void yt_format_time(const struct yt_clock_value *value, char dest[9]);
 
-int yt_player_basic_record(int logical_player);
 int yt_sector_basic_record(const struct yt_config *config, int logical_sector);
 int yt_port_basic_record(const struct yt_config *config, int logical_port);
 int yt_planet_basic_record(const struct yt_config *config, int logical_planet);

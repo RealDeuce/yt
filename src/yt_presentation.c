@@ -107,28 +107,12 @@ yt_present_cached_foreground(const struct yt_present_state *state)
 	return state->cached_foreground;
 }
 
-void
-yt_present_set_cached_foreground(struct yt_present_state *state, float value)
-{
-	if (state == NULL)
-		return;
-	state->cached_foreground = value;
-}
-
 float
 yt_present_cached_background(const struct yt_present_state *state)
 {
 	if (state == NULL)
 		return 0.0f;
 	return state->cached_background;
-}
-
-void
-yt_present_set_cached_background(struct yt_present_state *state, float value)
-{
-	if (state == NULL)
-		return;
-	state->cached_background = value;
 }
 
 static enum yt_present_status

@@ -354,21 +354,6 @@ yt_platform_spawn(const char *program, char *const argv[],
 #endif
 }
 
-void
-yt_platform_delay(unsigned milliseconds)
-{
-#ifdef _WIN32
-	Sleep(milliseconds);
-#else
-	struct timespec duration;
-
-	duration.tv_sec = (time_t)(milliseconds / 1000U);
-	duration.tv_nsec = (long)(milliseconds % 1000U) * 1000000L;
-	while (nanosleep(&duration, &duration) != 0 && errno == EINTR)
-		;
-#endif
-}
-
 #ifndef _WIN32
 static uint32_t
 rmt_termios_baud(speed_t speed)

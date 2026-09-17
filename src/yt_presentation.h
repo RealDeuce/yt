@@ -82,11 +82,7 @@ float yt_present_color_memory(const struct yt_present_state *state,
 void yt_present_set_color_memory(struct yt_present_state *state,
     size_t index, float value);
 float yt_present_cached_foreground(const struct yt_present_state *state);
-void yt_present_set_cached_foreground(struct yt_present_state *state,
-    float value);
 float yt_present_cached_background(const struct yt_present_state *state);
-void yt_present_set_cached_background(struct yt_present_state *state,
-    float value);
 enum yt_present_status yt_present_color(struct yt_present_state *state,
     struct yt_present_result *result);
 enum yt_present_status yt_present_line(const uint8_t *text, size_t length,

@@ -128,6 +128,5 @@ enum yt_alias_key_status yt_names_prepare_alias(char *alias,
     size_t alias_size, const char *real_first, const char *real_last,
     char *alias_first, size_t first_size, char *alias_last,
     size_t last_size, char *display, size_t display_size);
-bool yt_names_create_default(struct yt_error *error);
 
 #endif

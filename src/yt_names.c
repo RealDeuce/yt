@@ -786,12 +786,3 @@ yt_names_prepare_alias(char *alias, size_t alias_size,
 		display[40] = '\0';
 	return YT_ALIAS_KEY_READY;
 }
-
-bool
-yt_names_create_default(struct yt_error *error)
-{
-	static const uint8_t sentinel[] = "Dummy,Dummy,Dummy,Dummy\r\n";
-
-	return yt_text_write("YTNAME.DAT", sentinel, sizeof(sentinel) - 1U,
-	    true, error);
-}

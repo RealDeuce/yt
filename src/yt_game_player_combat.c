@@ -476,30 +476,3 @@ yt_player_name_matches(const struct yt_player *player, const uint8_t *name,
 	return length == stored
 	    && (stored == 0U || memcmp(stored_name, name, stored) == 0);
 }
-
-void
-yt_player_construct(struct yt_player *player, const struct yt_config *config,
-    float today)
-{
-	player->last_active = today;
-	player->killed_by = 0;
-	player->turns = config->turns_per_day;
-	player->shields = 100;
-	player->sector = 1;
-	player->fighters = config->initial_fighters;
-	player->holds = config->initial_holds;
-	player->ore = 0;
-	player->organics = 0;
-	player->equipment = 0;
-	player->credits = config->initial_credits;
-	player->team = 0;
-	player->danger_scanner = 0;
-	player->missiles = 1;
-	yt_record_set_number(&player->record, YT_F101, 0);
-	player->lottery_plays = 0;
-	player->plasma = 0;
-	player->ports_owned = 0;
-	player->ground_forces = 0;
-	player->cloak = 1;
-	player->mines = 0;
-}
