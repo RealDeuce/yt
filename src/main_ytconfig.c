@@ -12,8 +12,9 @@
 static bool
 ytconfig_close_all(struct yt_game *game, struct yt_error *error)
 {
-	return game->database.file == NULL
-	    || yt_database_close_all_single(&game->database, error);
+	if (game->database.file == NULL)
+		return true;
+	return yt_database_close_all_single(&game->database, error);
 }
 
 static bool
@@ -22,9 +23,10 @@ redraw_repairs(struct yt_game *game, float maximum,
 {
 	struct yt_record result;
 
-	return yt_config_redraw_repairs(&game->database, &game->config.record,
-	    maximum, &result, error)
-	    && yt_config_decode(&game->config, &result, error);
+	if (!yt_config_redraw_repairs(&game->database, &game->config.record,
+	    maximum, &result, error))
+		return false;
+	return yt_config_decode(&game->config, &result, error);
 }
 
 static bool
@@ -33,16 +35,17 @@ write_output(const struct yt_config_output_result *output,
 {
 	unsigned beep;
 
-	if (output->output_length != 0U
-	    && fwrite(output->output, 1, output->output_length, stdout)
-	    != output->output_length) {
-		if (error != NULL) {
-			error->status = YT_IO_ERROR;
-			snprintf(error->operation, sizeof(error->operation),
-			    "write configuration screen");
-			snprintf(error->path, sizeof(error->path), "stdout");
+	if (output->output_length != 0U) {
+		if (fwrite(output->output, 1, output->output_length, stdout)
+		    != output->output_length) {
+			if (error != NULL) {
+				error->status = YT_IO_ERROR;
+				snprintf(error->operation, sizeof(error->operation),
+				    "write configuration screen");
+				snprintf(error->path, sizeof(error->path), "stdout");
+			}
+			return false;
 		}
-		return false;
 	}
 	for (beep = 0U; beep < output->local_beeps; ++beep) {
 		if (fputc('\a', stdout) == EOF) {
@@ -115,8 +118,9 @@ numeric_edit(struct yt_game *game, char key, float *maximum, float *lottery,
 		game->config.record = updated;
 		*field = yt_record_get_number(&updated, offset);
 	}
-	if (!yt_config_compose_scalar_prompt(scalar, *maximum, 0U, &output)
-	    || !write_output(&output, error))
+	if (!yt_config_compose_scalar_prompt(scalar, *maximum, 0U, &output))
+		return false;
+	if (!write_output(&output, error))
 		return false;
 	if (!yt_cli_line(line, sizeof(line)))
 		return true;
@@ -127,7 +131,9 @@ numeric_edit(struct yt_game *game, char key, float *maximum, float *lottery,
 	value = (float)(parsed.valid ? parsed.value : 0.0);
 	if (!yt_config_scalar_valid(scalar, value)) {
 		if (!yt_config_compose_scalar_rejection(scalar,
-		    output.final_column, &output) || !write_output(&output, error))
+		    output.final_column, &output))
+			return false;
+		if (!write_output(&output, error))
 			return false;
 		return true;
 	}
@@ -160,16 +166,18 @@ edit_genesis(struct yt_game *game, struct yt_error *error)
 	uint8_t raw[4];
 	float threshold;
 
-	if (!yt_config_compose_genesis_prompt(NULL, 0U, 0U, &output)
-	    || !write_output(&output, error))
+	if (!yt_config_compose_genesis_prompt(NULL, 0U, 0U, &output))
+		return false;
+	if (!write_output(&output, error))
 		return false;
 	if (!yt_cli_line(line, sizeof(line)) || line[0] == '\0')
 		return true;
 	parsed = qb_val(line);
 	threshold = (float)(parsed.valid ? parsed.value : 0.0);
 	if (!yt_config_genesis_valid(threshold)) {
-		if (!yt_config_compose_local_beep(output.final_column, &output)
-		    || !write_output(&output, error))
+		if (!yt_config_compose_local_beep(output.final_column, &output))
+			return false;
+		if (!write_output(&output, error))
 			return false;
 		return true;
 	}
@@ -202,7 +210,9 @@ edit_maintenance(struct yt_game *game, struct yt_error *error)
 
 	for (;;) {
 		if (!yt_config_compose_scalar_prompt(YT_CONFIG_SCALAR_MAINTENANCE,
-		    0.0f, 0U, &output) || !write_output(&output, error))
+		    0.0f, 0U, &output))
+			return false;
+		if (!write_output(&output, error))
 			return false;
 		if (!yt_cli_line(line, sizeof(line)) || line[0] == '\0')
 			return true;
@@ -256,14 +266,17 @@ edit_scoreboard(struct yt_game *game, uint8_t working_path[41],
 	const char *stored;
 	size_t length;
 
-	if (!yt_config_compose_scoreboard_prompt(0U, &output)
-	    || !write_output(&output, error))
+	if (!yt_config_compose_scoreboard_prompt(0U, &output))
+		return false;
+	if (!write_output(&output, error))
 		return false;
 	if (!yt_cli_line(line, sizeof(line)))
 		return true;
 	if (strlen(line) > 41U) {
 		if (!yt_config_compose_scoreboard_too_long(output.final_column,
-		    &output) || !write_output(&output, error))
+		    &output))
+			return false;
+		if (!write_output(&output, error))
 			return false;
 		return true;
 	}
@@ -304,7 +317,9 @@ edit_headquarters(struct yt_game *game, struct yt_error *error)
 	    - game->config.sector_offset;
 
 	if (!yt_config_compose_hq_prompt(game->config.headquarters, upper, 0U,
-	    &output) || !write_output(&output, error))
+	    &output))
+		return false;
+	if (!write_output(&output, error))
 		return false;
 	if (!yt_cli_line(line, sizeof(line)) || line[0] == '\0')
 		return true;
@@ -312,7 +327,9 @@ edit_headquarters(struct yt_game *game, struct yt_error *error)
 	raw = (float)(parsed.valid ? parsed.value : 0.0);
 	if (!yt_config_hq_in_range(raw, upper)) {
 		if (!yt_config_compose_hq_diagnostic(YT_CONFIG_HQ_INVALID,
-		    output.final_column, &output) || !write_output(&output, error))
+		    output.final_column, &output))
+			return false;
+		if (!write_output(&output, error))
 			return false;
 		return true;
 	}
@@ -321,7 +338,9 @@ edit_headquarters(struct yt_game *game, struct yt_error *error)
 		return false;
 	if (route == YT_CONFIG_HQ_ROUTE_OCCUPIED) {
 		if (!yt_config_compose_hq_diagnostic(YT_CONFIG_HQ_OCCUPIED,
-		    output.final_column, &output) || !write_output(&output, error))
+		    output.final_column, &output))
+			return false;
+		if (!write_output(&output, error))
 			return false;
 		return true;
 	}
@@ -351,8 +370,9 @@ edit_planets(struct yt_game *game, struct yt_error *error)
 		++active_count;
 		memcpy(names[logical], planet.record.bytes, YT_TEXT_FIELD_SIZE);
 	}
-	if (!yt_config_compose_planet_entry(active_count, 0U, &output)
-	    || !write_output(&output, error))
+	if (!yt_config_compose_planet_entry(active_count, 0U, &output))
+		return false;
+	if (!write_output(&output, error))
 		return false;
 	if (active_count == 0U)
 		return true;
@@ -360,8 +380,9 @@ edit_planets(struct yt_game *game, struct yt_error *error)
 		int raw_key;
 		uint8_t folded;
 
-		if (!yt_config_compose_planet_menu(0U, &output)
-		    || !write_output(&output, error))
+		if (!yt_config_compose_planet_menu(0U, &output))
+			return false;
+		if (!write_output(&output, error))
 			return false;
 		raw_key = yt_cli_key();
 		if (raw_key == EOF)
@@ -369,37 +390,43 @@ edit_planets(struct yt_game *game, struct yt_error *error)
 		if (raw_key == '\n')
 			raw_key = '\r';
 		if (!yt_config_compose_planet_key_echo((uint8_t)raw_key,
-		    output.final_column, &folded, &output)
-		    || !write_output(&output, error))
+		    output.final_column, &folded, &output))
+			return false;
+		if (!write_output(&output, error))
 			return false;
 		if (folded == '\r')
 			return true;
 		if (folded == 'L') {
-			if (!yt_config_compose_planet_list_header(0U, &output)
-			    || !write_output(&output, error))
+			if (!yt_config_compose_planet_list_header(0U, &output))
+				return false;
+			if (!write_output(&output, error))
 				return false;
 			for (logical = 1; logical <= 75; ++logical) {
 				if (!active[logical])
 					continue;
 				if (!yt_config_compose_planet_list_row(logical,
-				    names[logical], YT_TEXT_FIELD_SIZE, 0U, &output)
-				    || !write_output(&output, error))
+				    names[logical], YT_TEXT_FIELD_SIZE, 0U, &output))
+					return false;
+				if (!write_output(&output, error))
 					return false;
 				if (yt_config_planet_pause_after(logical,
 				    active_count)) {
 					if (!yt_config_compose_planet_pause(
-					    output.final_column, &output)
-					    || !write_output(&output, error))
+					    output.final_column, &output))
+						return false;
+					if (!write_output(&output, error))
 						return false;
 					(void)yt_cli_key();
 					if (!yt_config_compose_planet_blank(
-					    output.final_column, &output)
-					    || !write_output(&output, error))
+					    output.final_column, &output))
+						return false;
+					if (!write_output(&output, error))
 						return false;
 				}
 			}
-			if (!yt_config_compose_planet_blank(0U, &output)
-			    || !write_output(&output, error))
+			if (!yt_config_compose_planet_blank(0U, &output))
+				return false;
+			if (!write_output(&output, error))
 				return false;
 			continue;
 		}
@@ -411,8 +438,9 @@ edit_planets(struct yt_game *game, struct yt_error *error)
 			char entered[160];
 			char name[160];
 
-			if (!yt_config_compose_planet_number_prompt(0U, &output)
-			    || !write_output(&output, error))
+			if (!yt_config_compose_planet_number_prompt(0U, &output))
+				return false;
+			if (!write_output(&output, error))
 				return false;
 			if (!yt_cli_line(entered, sizeof(entered)))
 				return true;
@@ -423,8 +451,9 @@ edit_planets(struct yt_game *game, struct yt_error *error)
 			if (!yt_config_planet_selection_in_range(raw)) {
 				if (!yt_config_compose_planet_invalid(
 				    (const uint8_t *)entered, strlen(entered),
-				    output.final_column, &output)
-				    || !write_output(&output, error))
+				    output.final_column, &output))
+					return false;
+				if (!write_output(&output, error))
 					return false;
 				continue;
 			}
@@ -434,22 +463,25 @@ edit_planets(struct yt_game *game, struct yt_error *error)
 			if (!active[selected]) {
 				if (!yt_config_compose_planet_invalid(
 				    (const uint8_t *)entered, strlen(entered),
-				    output.final_column, &output)
-				    || !write_output(&output, error))
+				    output.final_column, &output))
+					return false;
+				if (!write_output(&output, error))
 					return false;
 				continue;
 			}
 			if (yt_config_planet_selection_protected(raw)) {
 				if (!yt_config_compose_planet_protected(
-				    output.final_column, &output)
-				    || !write_output(&output, error))
+				    output.final_column, &output))
+					return false;
+				if (!write_output(&output, error))
 					return false;
 				continue;
 			}
 			for (;;) {
 				if (!yt_config_compose_planet_edit(
-				    names[selected], YT_TEXT_FIELD_SIZE, 0U, &output)
-				    || !write_output(&output, error))
+				    names[selected], YT_TEXT_FIELD_SIZE, 0U, &output))
+					return false;
+				if (!write_output(&output, error))
 					return false;
 				if (!yt_cli_line(name, sizeof(name)))
 					return true;
@@ -457,24 +489,27 @@ edit_planets(struct yt_game *game, struct yt_error *error)
 				qb_title_case(name);
 				if (name[0] == '\0') {
 					if (!yt_config_compose_planet_blank(
-					    output.final_column, &output)
-					    || !write_output(&output, error))
+					    output.final_column, &output))
+						return false;
+					if (!write_output(&output, error))
 						return false;
 					break;
 				}
 				for (;;) {
 					if (!yt_config_compose_planet_confirmation(
 					    (const uint8_t *)name, strlen(name),
-					    output.final_column, &output)
-					    || !write_output(&output, error))
+					    output.final_column, &output))
+						return false;
+					if (!write_output(&output, error))
 						return false;
 					raw_key = yt_cli_key();
 					if (raw_key == EOF)
 						return true;
 					if (!yt_config_compose_planet_response_echo(
 					    (uint8_t)raw_key, output.final_column,
-					    &folded, &output)
-					    || !write_output(&output, error))
+					    &folded, &output))
+						return false;
+					if (!write_output(&output, error))
 						return false;
 					if (folded == 'Y')
 						goto save_planet_name;
@@ -483,8 +518,9 @@ edit_planets(struct yt_game *game, struct yt_error *error)
 				}
 				if (!yt_config_compose_planet_cancel(
 				    (const uint8_t *)name, strlen(name),
-				    output.final_column, &output)
-				    || !write_output(&output, error))
+				    output.final_column, &output))
+					return false;
+				if (!write_output(&output, error))
 					return false;
 			}
 			continue;
@@ -501,8 +537,9 @@ save_planet_name:
 			}
 			memset(names[selected], ' ', YT_TEXT_FIELD_SIZE);
 			memcpy(names[selected], name, strlen(name));
-			if (!yt_config_compose_planet_saved(output.final_column, &output)
-			    || !write_output(&output, error))
+			if (!yt_config_compose_planet_saved(output.final_column, &output))
+				return false;
+			if (!write_output(&output, error))
 				return false;
 			(void)yt_cli_key();
 			return true;
@@ -537,14 +574,16 @@ edit_ports(struct yt_game *game, struct yt_error *error)
 	int logical;
 	bool matched = false;
 
-	if (!yt_config_compose_port_search_prompt(0U, &output)
-	    || !write_output(&output, error))
+	if (!yt_config_compose_port_search_prompt(0U, &output))
+		return false;
+	if (!write_output(&output, error))
 		return false;
 	if (!yt_cli_line(search, sizeof(search)))
 		return true;
 	if (!yt_config_compose_port_search_echo((const uint8_t *)search,
-	    strlen(search), output.final_column, &output)
-	    || !write_output(&output, error))
+	    strlen(search), output.final_column, &output))
+		return false;
+	if (!write_output(&output, error))
 		return false;
 	if (search[0] == '\0')
 		return true;
@@ -573,15 +612,17 @@ edit_ports(struct yt_game *game, struct yt_error *error)
 
 			if (!yt_config_compose_port_match_prompt(
 			    port.record.bytes, name_length,
-			    output.final_column, &output)
-			    || !write_output(&output, error))
+			    output.final_column, &output))
+				return false;
+			if (!write_output(&output, error))
 				return false;
 			raw_key = yt_cli_key();
 			if (raw_key == EOF)
 				return true;
 			if (!yt_config_compose_port_response_echo((uint8_t)raw_key,
-			    output.final_column, &folded, &output)
-			    || !write_output(&output, error))
+			    output.final_column, &folded, &output))
+				return false;
+			if (!write_output(&output, error))
 				return false;
 			if (folded == 'N')
 				break;
@@ -594,8 +635,9 @@ replace_port_name:
 			char name[160];
 
 			if (!yt_config_compose_port_replacement_prompt(
-			    output.final_column, &output)
-			    || !write_output(&output, error))
+			    output.final_column, &output))
+				return false;
+			if (!write_output(&output, error))
 				return false;
 			if (!yt_cli_line(name, sizeof(name)))
 				return true;
@@ -609,26 +651,31 @@ replace_port_name:
 
 				if (!yt_config_compose_port_confirmation(
 				    (const uint8_t *)name, strlen(name),
-				    output.final_column, &output)
-				    || !write_output(&output, error))
+				    output.final_column, &output))
+					return false;
+				if (!write_output(&output, error))
 					return false;
 				raw_key = yt_cli_key();
 				if (raw_key == EOF)
 					return true;
 				if (!yt_config_compose_port_response_echo(
 				    (uint8_t)raw_key, output.final_column,
-				    &folded, &output)
-				    || !write_output(&output, error))
+				    &folded, &output))
+					return false;
+				if (!write_output(&output, error))
 					return false;
 				if (folded == 'Y')
 					break;
 				if (folded == 'N') {
 					if (!yt_config_compose_port_cancel(
-					    output.final_column, &output)
-					    || !write_output(&output, error)
-					    || !yt_config_compose_port_wait_prompt(
-					    output.final_column, &output)
-					    || !write_output(&output, error))
+					    output.final_column, &output))
+						return false;
+					if (!write_output(&output, error))
+						return false;
+					if (!yt_config_compose_port_wait_prompt(
+					    output.final_column, &output))
+						return false;
+					if (!write_output(&output, error))
 						return false;
 					(void)yt_cli_line(search, sizeof(search));
 					return true;
@@ -636,30 +683,40 @@ replace_port_name:
 			}
 			snprintf(port.name, sizeof(port.name), "%s", name);
 			port.name_length = strlen(name);
-			if (!yt_game_write_port(game, logical, &port, error)
-			    || !yt_config_compose_port_saved(output.final_column,
-				&output)
-			    || !write_output(&output, error)
-			    || !yt_config_compose_port_wait_prompt(
-				output.final_column, &output)
-			    || !write_output(&output, error))
+			if (!yt_game_write_port(game, logical, &port, error))
+				return false;
+			if (!yt_config_compose_port_saved(output.final_column,
+			    &output))
+				return false;
+			if (!write_output(&output, error))
+				return false;
+			if (!yt_config_compose_port_wait_prompt(
+			    output.final_column, &output))
+				return false;
+			if (!write_output(&output, error))
 				return false;
 			(void)yt_cli_line(search, sizeof(search));
 			return true;
 		}
 	}
 	if (matched) {
-		if (!yt_config_compose_port_end_list(output.final_column, &output)
-		    || !write_output(&output, error)
-		    || !yt_config_compose_port_wait_prompt(output.final_column,
-			&output)
-		    || !write_output(&output, error))
+		if (!yt_config_compose_port_end_list(output.final_column, &output))
+			return false;
+		if (!write_output(&output, error))
+			return false;
+		if (!yt_config_compose_port_wait_prompt(output.final_column,
+		    &output))
+			return false;
+		if (!write_output(&output, error))
 			return false;
 		(void)yt_cli_line(search, sizeof(search));
 	}
-	else if (!yt_config_compose_port_not_found(output.final_column, &output)
-	    || !write_output(&output, error))
-		return false;
+	else {
+		if (!yt_config_compose_port_not_found(output.final_column, &output))
+			return false;
+		if (!write_output(&output, error))
+			return false;
+	}
 	return true;
 }
 
@@ -683,8 +740,11 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 		return false;
 	}
 	player_count = (unsigned)(names.count - 1U);
-	if (!yt_config_compose_alias_entry(player_count, 0U, &output)
-	    || !write_output(&output, error)) {
+	if (!yt_config_compose_alias_entry(player_count, 0U, &output)) {
+		yt_names_free(&names);
+		return false;
+	}
+	if (!write_output(&output, error)) {
 		yt_names_free(&names);
 		return false;
 	}
@@ -697,8 +757,11 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 		uint8_t folded;
 		size_t index;
 
-		if (!yt_config_compose_alias_menu(0U, &output)
-		    || !write_output(&output, error)) {
+		if (!yt_config_compose_alias_menu(0U, &output)) {
+			yt_names_free(&names);
+			return false;
+		}
+		if (!write_output(&output, error)) {
 			yt_names_free(&names);
 			return false;
 		}
@@ -710,8 +773,11 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 		if (raw_key == '\n')
 			raw_key = '\r';
 		if (!yt_config_compose_alias_key_echo((uint8_t)raw_key,
-		    output.final_column, &folded, &output)
-		    || !write_output(&output, error)) {
+		    output.final_column, &folded, &output)) {
+			yt_names_free(&names);
+			return false;
+		}
+		if (!write_output(&output, error)) {
 			yt_names_free(&names);
 			return false;
 		}
@@ -720,8 +786,11 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 			return true;
 		}
 		if (folded == 'L') {
-			if (!yt_config_compose_alias_list_header(0U, &output)
-			    || !write_output(&output, error)) {
+			if (!yt_config_compose_alias_list_header(0U, &output)) {
+				yt_names_free(&names);
+				return false;
+			}
+			if (!write_output(&output, error)) {
 				yt_names_free(&names);
 				return false;
 			}
@@ -736,30 +805,42 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 				    (const uint8_t *)row->alias_first,
 				    strlen(row->alias_first),
 				    (const uint8_t *)row->alias_last,
-				    strlen(row->alias_last), 0U, &output)
-				    || !write_output(&output, error)) {
+				    strlen(row->alias_last), 0U, &output)) {
+					yt_names_free(&names);
+					return false;
+				}
+				if (!write_output(&output, error)) {
 					yt_names_free(&names);
 					return false;
 				}
 				if (yt_config_alias_pause_after((int)index,
 				    player_count)) {
 					if (!yt_config_compose_alias_pause(
-					    output.final_column, &output)
-					    || !write_output(&output, error)) {
+					    output.final_column, &output)) {
+						yt_names_free(&names);
+						return false;
+					}
+					if (!write_output(&output, error)) {
 						yt_names_free(&names);
 						return false;
 					}
 					(void)yt_cli_key();
 					if (!yt_config_compose_alias_blank(
-					    output.final_column, &output)
-					    || !write_output(&output, error)) {
+					    output.final_column, &output)) {
+						yt_names_free(&names);
+						return false;
+					}
+					if (!write_output(&output, error)) {
 						yt_names_free(&names);
 						return false;
 					}
 				}
 			}
-			if (!yt_config_compose_alias_blank(0U, &output)
-			    || !write_output(&output, error)) {
+			if (!yt_config_compose_alias_blank(0U, &output)) {
+				yt_names_free(&names);
+				return false;
+			}
+			if (!write_output(&output, error)) {
 				yt_names_free(&names);
 				return false;
 			}
@@ -774,8 +855,11 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 			char old_alias[90];
 			char first[90];
 			char last[90];
-			if (!yt_config_compose_alias_number_prompt(0U, &output)
-			    || !write_output(&output, error)) {
+			if (!yt_config_compose_alias_number_prompt(0U, &output)) {
+				yt_names_free(&names);
+				return false;
+			}
+			if (!write_output(&output, error)) {
 				yt_names_free(&names);
 				return false;
 			}
@@ -790,8 +874,11 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 			if (!yt_config_alias_selection_in_range(raw, player_count)) {
 				if (!yt_config_compose_alias_invalid(
 				    (const uint8_t *)entered, strlen(entered),
-				    output.final_column, &output)
-				    || !write_output(&output, error)) {
+				    output.final_column, &output)) {
+					yt_names_free(&names);
+					return false;
+				}
+				if (!write_output(&output, error)) {
 					yt_names_free(&names);
 					return false;
 				}
@@ -802,7 +889,11 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 			    || (unsigned)selected > player_count)
 				continue;
 			if (!yt_config_compose_alias_blank(output.final_column,
-			    &output) || !write_output(&output, error)) {
+			    &output)) {
+				yt_names_free(&names);
+				return false;
+			}
+			if (!write_output(&output, error)) {
 				yt_names_free(&names);
 				return false;
 			}
@@ -817,8 +908,11 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 				    (const uint8_t *)row->alias_first,
 				    strlen(row->alias_first),
 				    (const uint8_t *)row->alias_last,
-				    strlen(row->alias_last), 0U, &output)
-				    || !write_output(&output, error)) {
+				    strlen(row->alias_last), 0U, &output)) {
+					yt_names_free(&names);
+					return false;
+				}
+				if (!write_output(&output, error)) {
 					yt_names_free(&names);
 					return false;
 				}
@@ -834,8 +928,11 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 				qb_title_case(entered);
 				if (entered[0] == '\0') {
 					if (!yt_config_compose_alias_blank(
-					    output.final_column, &output)
-					    || !write_output(&output, error)) {
+					    output.final_column, &output)) {
+						yt_names_free(&names);
+						return false;
+					}
+					if (!write_output(&output, error)) {
 						yt_names_free(&names);
 						return false;
 					}
@@ -844,8 +941,11 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 				for (;;) {
 					if (!yt_config_compose_alias_confirmation(
 					    (const uint8_t *)entered, strlen(entered),
-					    output.final_column, &output)
-					    || !write_output(&output, error)) {
+					    output.final_column, &output)) {
+						yt_names_free(&names);
+						return false;
+					}
+					if (!write_output(&output, error)) {
 						yt_names_free(&names);
 						return false;
 					}
@@ -856,24 +956,33 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 					}
 					if (!yt_config_compose_alias_response_echo(
 					    (uint8_t)raw_key, output.final_column,
-					    &folded, &output)
-					    || !write_output(&output, error)) {
+					    &folded, &output)) {
+						yt_names_free(&names);
+						return false;
+					}
+					if (!write_output(&output, error)) {
 						yt_names_free(&names);
 						return false;
 					}
 					if (folded != 'Y' && folded != 'N')
 						continue;
 					if (!yt_config_compose_alias_blank(
-					    output.final_column, &output)
-					    || !write_output(&output, error)) {
+					    output.final_column, &output)) {
+						yt_names_free(&names);
+						return false;
+					}
+					if (!write_output(&output, error)) {
 						yt_names_free(&names);
 						return false;
 					}
 					if (folded == 'Y')
 						goto save_alias;
 					if (!yt_config_compose_alias_cancel(
-					    output.final_column, &output)
-					    || !write_output(&output, error)) {
+					    output.final_column, &output)) {
+						yt_names_free(&names);
+						return false;
+					}
+					if (!write_output(&output, error)) {
 						yt_names_free(&names);
 						return false;
 					}
@@ -904,8 +1013,11 @@ save_alias:
 				yt_names_free(&names);
 				return false;
 			}
-			if (!yt_config_compose_alias_saved(0U, &output)
-			    || !write_output(&output, error)) {
+			if (!yt_config_compose_alias_saved(0U, &output)) {
+				yt_names_free(&names);
+				return false;
+			}
+			if (!write_output(&output, error)) {
 				yt_names_free(&names);
 				return false;
 			}
@@ -927,23 +1039,30 @@ main(void)
 
 	yt_error_clear(&error);
 	memset(&game, 0, sizeof(game));
-	if (!yt_database_random_close(&game.database, &error)
-	    || !yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
-	    &error)) {
-		if (error.status != YT_NOT_FOUND)
-			goto failure;
-		yt_error_clear(&error);
-		if (!yt_database_open(&game.database, "YTDATA.DAT",
-		    YT_OPEN_CREATE, &error))
-			goto failure;
-	}
+	if (!yt_database_random_close(&game.database, &error))
+		goto open_failed;
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
+	    &error))
+		goto open_failed;
+	goto open_complete;
+
+open_failed:
+	if (error.status != YT_NOT_FOUND)
+		goto failure;
+	yt_error_clear(&error);
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
+	    &error))
+		goto failure;
+
+open_complete:
 	if (!yt_database_random_lof(&game.database, &file_size, &error))
 		goto failure;
 	if (file_size == 0) {
 		struct yt_config_output_result output;
 
-		if (!yt_config_compose_missing_data(0U, &output)
-		    || !write_output(&output, &error))
+		if (!yt_config_compose_missing_data(0U, &output))
+			goto failure;
+		if (!write_output(&output, &error))
 			goto failure;
 		if (!ytconfig_close_all(&game, &error))
 			goto failure;
@@ -963,22 +1082,26 @@ main(void)
 		uint8_t folded;
 		char key;
 
-		if (!yt_config_load(&game.database, &game.config, &error)
-		    || !yt_current_date_serial(&game.clock,
-		    game.config.epoch_year, &today,
-		        &year, &error)
-		    || !redraw_repairs(&game, working.maximum_holds, &error))
+		if (!yt_config_load(&game.database, &game.config, &error))
+			goto failure;
+		if (!yt_current_date_serial(&game.clock,
+		    game.config.epoch_year, &today, &year, &error))
+			goto failure;
+		if (!redraw_repairs(&game, working.maximum_holds, &error))
 			goto failure;
 		if (!yt_config_compose_menu_prompt(&game.config, &working, today,
-		    0U, &output) || !write_output(&output, &error))
+		    0U, &output))
+			goto failure;
+		if (!write_output(&output, &error))
 			goto failure;
 		fflush(stdout);
 		raw_key = yt_cli_key();
 		if (raw_key == EOF)
 			break;
 		if (!yt_config_compose_command_echo((uint8_t)raw_key,
-		    output.final_column, &folded, &output)
-		    || !write_output(&output, &error))
+		    output.final_column, &folded, &output))
+			goto failure;
+		if (!write_output(&output, &error))
 			goto failure;
 		key = (char)folded;
 		if (strchr("ABCDEFK", key) != NULL) {
@@ -1027,8 +1150,9 @@ main(void)
 				goto failure;
 		}
 		else if (key == 'X') {
-			if (!yt_config_compose_exit(output.final_column, &output)
-			    || !write_output(&output, &error))
+			if (!yt_config_compose_exit(output.final_column, &output))
+				goto failure;
+			if (!write_output(&output, &error))
 				goto failure;
 			break;
 		}
