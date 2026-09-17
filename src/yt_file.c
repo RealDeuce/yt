@@ -284,14 +284,9 @@ database_open_fd(const char *path, uint8_t access, bool create)
 
 static void
 database_open_failure(struct yt_database *database,
-    enum yt_database_open_outcome outcome, uint16_t basic_error,
-    uint16_t dos_error, struct yt_error *error)
+    uint16_t basic_error, struct yt_error *error)
 {
-	database->last_open.outcome = outcome;
-	database->last_open.basic_error = basic_error;
-	database->last_open.dos_error = dos_error;
-	database->last_open.registered = database->file != NULL;
-	database->last_open.handle_open = database->file != NULL;
+	database->last_open_basic_error = basic_error;
 	set_error(error, basic_error == 53U ? YT_NOT_FOUND : YT_IO_ERROR,
 	    "random OPEN", database->path);
 }
@@ -302,21 +297,17 @@ database_open_random(struct yt_database *database, const char *path,
 {
 	uint64_t length;
 	uint8_t access = 2U;
+	size_t access_attempts = 0U;
 	bool created = false;
 
 	for (;;) {
 		uint16_t dos_error;
 		int saved_errno;
 
-		if (database->last_open.access_attempt_count
-		    >= YT_ARRAY_LEN(database->last_open.access_attempts)) {
-			database_open_failure(database,
-			    YT_DATABASE_OPEN_INITIAL_ERROR, 75U, 0U, error);
+		if (access_attempts++ >= 6U) {
+			database_open_failure(database, 75U, error);
 			return false;
 		}
-		database->last_open.access_attempts[
-		    database->last_open.access_attempt_count++] = access;
-		++database->last_open.operation_count;
 		errno = 0;
 		database->file = database_open_fd(path, access, false);
 		if (database->file != NULL)
@@ -330,55 +321,37 @@ database_open_random(struct yt_database *database, const char *path,
 		if (!created && dos_error == 2U) {
 			FILE *temporary;
 
-			++database->last_open.operation_count;
 			errno = 0;
 			temporary = database_open_fd(path, 2U, true);
 			if (temporary == NULL) {
 				saved_errno = errno;
 				dos_error = database_dos_error(path, saved_errno);
 				database_open_failure(database,
-				    YT_DATABASE_OPEN_CREATE_ERROR,
-				    dos_error == 2U ? 53U : 75U,
-				    dos_error, error);
+				    dos_error == 2U ? 53U : 75U, error);
 				return false;
 			}
-			database->last_open.created = true;
-			database->last_open.temporary_close_attempted = true;
-			++database->last_open.operation_count;
 			errno = 0;
 			if (fclose(temporary) != 0) {
 				saved_errno = errno;
-				database_open_failure(database,
-				    YT_DATABASE_OPEN_TEMP_CLOSE_ERROR, 70U,
-				    database_dos_error(path, saved_errno), error);
+				database_open_failure(database, 70U, error);
 				return false;
 			}
 			created = true;
 			access = 2U;
 			continue;
 		}
-		database_open_failure(database, created
-		    ? YT_DATABASE_OPEN_REOPEN_ERROR
-		    : YT_DATABASE_OPEN_INITIAL_ERROR,
+		database_open_failure(database,
 		    dos_error == 2U ? 53U : dos_error == 3U ? 76U : 75U,
-		    dos_error, error);
+		    error);
 		return false;
 	}
 
-	++database->last_open.operation_count;
-	database->last_open.device =
-	    yt_isatty(yt_fileno(database->file)) != 0;
-	if (database->last_open.device)
-		++database->last_open.operation_count;
+	database->device = yt_isatty(yt_fileno(database->file)) != 0;
 	if (!database_file_length(database->file, &length)) {
-		database_open_failure(database, YT_DATABASE_OPEN_SIZE_ERROR,
-		    57U, database_dos_error(path, errno), error);
+		database_open_failure(database, 57U, error);
 		return false;
 	}
 	database->records = (size_t)(length / record_size);
-	database->last_open.outcome = YT_DATABASE_OPEN_RETURNED;
-	database->last_open.registered = true;
-	database->last_open.handle_open = true;
 	return true;
 }
 
@@ -428,9 +401,6 @@ database_open_sized(struct yt_database *database, const char *path,
 		return false;
 	}
 	database->records = (size_t)(length / record_size);
-	database->last_open.outcome = YT_DATABASE_OPEN_RETURNED;
-	database->last_open.registered = true;
-	database->last_open.handle_open = true;
 	return true;
 }
 
@@ -583,30 +553,17 @@ database_close_execute(struct yt_database *database, bool close_all,
 		    close_all ? "CLOSE all" : "random CLOSE", NULL);
 		return false;
 	}
-	memset(&database->last_close, 0, sizeof(database->last_close));
-	database->last_close.close_all = close_all;
-	if (database->file == NULL) {
-		database->last_close.outcome = YT_DATABASE_CLOSE_RETURNED;
-		database->last_close.missing = !close_all;
+	database->last_close_basic_error = 0U;
+	if (database->file == NULL)
 		return true;
-	}
-	database->last_close.device = database->last_open.device;
 	file = database->file;
 	database->file = NULL;
 	database->records = 0U;
-	database->last_close.attempt_count = 1U;
 	errno = 0;
-	if (fclose(file) == 0) {
-		database->last_close.outcome = YT_DATABASE_CLOSE_RETURNED;
+	if (fclose(file) == 0)
 		return true;
-	}
 	saved_errno = errno;
-	database->last_close.outcome = database->last_close.device
-	    ? YT_DATABASE_CLOSE_DEVICE_ERROR : YT_DATABASE_CLOSE_DISK_ERROR;
-	database->last_close.dos_error =
-	    database_dos_error(NULL, saved_errno);
-	database->last_close.basic_error =
-	    database->last_close.device ? 57U : 70U;
+	database->last_close_basic_error = database->device ? 57U : 70U;
 	errno = saved_errno;
 	set_error(error, YT_IO_ERROR,
 	    close_all ? "CLOSE all" : "random CLOSE", database->path);
@@ -627,17 +584,11 @@ yt_database_close_all_single(struct yt_database *database,
 }
 
 static bool
-database_lof_fail(struct yt_database *database,
-    enum yt_database_lof_operation operation, struct yt_error *error)
+database_lof_fail(struct yt_database *database, struct yt_error *error)
 {
 	int saved_errno = errno;
 
-	database->last_lof.outcome = YT_DATABASE_LOF_SEEK_ERROR;
-	database->last_lof.failed_operation = operation;
-	database->last_lof.dos_error = database_dos_error(NULL, saved_errno);
-	database->last_lof.basic_error = 52U;
-	database->last_lof.registered = database->file != NULL;
-	database->last_lof.handle_open = database->file != NULL;
+	database->last_lof_basic_error = 52U;
 	errno = saved_errno;
 	set_error(error, YT_IO_ERROR, "random LOF seek", database->path);
 	return false;
@@ -649,6 +600,7 @@ yt_database_random_lof(struct yt_database *database, uint32_t *length,
 {
 	int64_t position;
 	uint32_t saved_position;
+	uint32_t file_length;
 
 	if (length != NULL)
 		*length = 0U;
@@ -657,45 +609,30 @@ yt_database_random_lof(struct yt_database *database, uint32_t *length,
 		    ? database->path : NULL);
 		return false;
 	}
-	memset(&database->last_lof, 0, sizeof(database->last_lof));
-	database->last_lof.device = database->last_open.device;
-	database->last_lof.registered = true;
-	database->last_lof.handle_open = true;
-	if (database->last_lof.device) {
-		database->last_lof.outcome = YT_DATABASE_LOF_RETURNED;
-		database->last_lof.length = database->device_position;
-		database->last_lof.saved_position = database->device_position;
-		database->last_lof.terminal_position = database->device_position;
+	database->last_lof_basic_error = 0U;
+	if (database->device) {
 		*length = database->device_position;
 		return true;
 	}
 
 	database_prepare_io(database->file);
-	++database->last_lof.operation_count;
 	if (yt_fseeko(database->file, 0, SEEK_CUR) != 0
 	    || (position = yt_ftello(database->file)) < 0
 	    || (uint64_t)position > UINT32_MAX)
-		return database_lof_fail(database, YT_DATABASE_LOF_CURRENT, error);
+		return database_lof_fail(database, error);
 	saved_position = (uint32_t)position;
-	database->last_lof.saved_position = saved_position;
-	database->last_lof.terminal_position = position;
 
 	database_prepare_io(database->file);
-	++database->last_lof.operation_count;
 	if (yt_fseeko(database->file, 0, SEEK_END) != 0
 	    || (position = yt_ftello(database->file)) < 0
 	    || (uint64_t)position > UINT32_MAX)
-		return database_lof_fail(database, YT_DATABASE_LOF_END, error);
-	database->last_lof.length = (uint32_t)position;
-	database->last_lof.terminal_position = position;
+		return database_lof_fail(database, error);
+	file_length = (uint32_t)position;
 
 	database_prepare_io(database->file);
-	++database->last_lof.operation_count;
 	if (yt_fseeko(database->file, (int64_t)saved_position, SEEK_SET) != 0)
-		return database_lof_fail(database, YT_DATABASE_LOF_RESTORE, error);
-	database->last_lof.terminal_position = saved_position;
-	database->last_lof.outcome = YT_DATABASE_LOF_RETURNED;
-	*length = database->last_lof.length;
+		return database_lof_fail(database, error);
+	*length = file_length;
 	return true;
 }
 

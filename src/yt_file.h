@@ -10,88 +10,17 @@ enum yt_open_mode {
 	YT_OPEN_UPDATE_CREATE
 };
 
-enum yt_database_open_outcome {
-	YT_DATABASE_OPEN_NONE,
-	YT_DATABASE_OPEN_RETURNED,
-	YT_DATABASE_OPEN_INITIAL_ERROR,
-	YT_DATABASE_OPEN_CREATE_ERROR,
-	YT_DATABASE_OPEN_TEMP_CLOSE_ERROR,
-	YT_DATABASE_OPEN_REOPEN_ERROR,
-	YT_DATABASE_OPEN_DEVICE_ERROR,
-	YT_DATABASE_OPEN_PROVIDER_ERROR,
-	YT_DATABASE_OPEN_SIZE_ERROR,
-};
-
-struct yt_database_open_result {
-	enum yt_database_open_outcome outcome;
-	uint16_t dos_error;
-	uint16_t basic_error;
-	uint16_t temporary_close_retry_dos_error;
-	uint8_t access_attempts[6];
-	size_t access_attempt_count;
-	size_t operation_count;
-	bool created;
-	bool temporary_close_attempted;
-	bool temporary_close_retried;
-	bool device;
-	bool registered;
-	bool handle_open;
-};
-
-enum yt_database_close_outcome {
-	YT_DATABASE_CLOSE_NONE,
-	YT_DATABASE_CLOSE_RETURNED,
-	YT_DATABASE_CLOSE_DISK_ERROR,
-	YT_DATABASE_CLOSE_DEVICE_ERROR,
-};
-
-struct yt_database_close_result {
-	enum yt_database_close_outcome outcome;
-	uint16_t dos_error;
-	uint16_t basic_error;
-	size_t attempt_count;
-	bool missing;
-	bool device;
-	bool close_all;
-};
-
-enum yt_database_lof_operation {
-	YT_DATABASE_LOF_OPERATION_NONE,
-	YT_DATABASE_LOF_CURRENT,
-	YT_DATABASE_LOF_END,
-	YT_DATABASE_LOF_RESTORE,
-};
-
-enum yt_database_lof_outcome {
-	YT_DATABASE_LOF_NONE,
-	YT_DATABASE_LOF_RETURNED,
-	YT_DATABASE_LOF_SEEK_ERROR,
-};
-
-struct yt_database_lof_result {
-	enum yt_database_lof_outcome outcome;
-	enum yt_database_lof_operation failed_operation;
-	uint32_t length;
-	uint32_t saved_position;
-	uint16_t dos_error;
-	uint16_t basic_error;
-	size_t operation_count;
-	int64_t terminal_position;
-	bool device;
-	bool registered;
-	bool handle_open;
-};
-
 struct yt_database {
 	FILE *file;
 	char path[512];
 	size_t records;
 	uint32_t device_position;
+	bool device;
+	uint16_t last_open_basic_error;
+	uint16_t last_close_basic_error;
+	uint16_t last_lof_basic_error;
 	uint16_t last_get_basic_error;
 	uint16_t last_put_basic_error;
-	struct yt_database_open_result last_open;
-	struct yt_database_close_result last_close;
-	struct yt_database_lof_result last_lof;
 };
 
 #define YT_RADIO_FIELD_COUNT 4U

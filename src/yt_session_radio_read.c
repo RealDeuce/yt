@@ -112,16 +112,16 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 	yt_radio_pager_begin(&pager);
 	yt_radio_file_init(&file);
 	if (!yt_radio_file_open(&file, "YTRMSG.DAT", error)) {
-		uint16_t basic_error = file.random.last_open.basic_error != 0U
-		    ? file.random.last_open.basic_error
-		    : file.random.last_close.basic_error;
+		uint16_t basic_error = file.random.last_open_basic_error != 0U
+		    ? file.random.last_open_basic_error
+		    : file.random.last_close_basic_error;
 
 		return radio_read_attach_fault(error, YT_BASIC_FAULT_RADIO_OPEN,
 		    basic_error);
 	}
 	if (!yt_radio_file_size(&file, &byte_length, error)) {
 		(void)radio_read_attach_fault(error, YT_BASIC_FAULT_RADIO_LOF,
-		    file.random.last_lof.basic_error);
+		    file.random.last_lof_basic_error);
 		goto abort;
 	}
 	probe_count = byte_length / YT_RADIO_RECORD_SIZE + 1U;
@@ -238,7 +238,7 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 	if (!yt_radio_file_close(&file, error)) {
 		return radio_read_attach_fault(error,
 		    YT_BASIC_FAULT_RADIO_FINAL_CLOSE,
-		    file.random.last_close.basic_error);
+		    file.random.last_close_basic_error);
 	}
 	return true;
 

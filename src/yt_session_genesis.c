@@ -56,7 +56,7 @@ genesis_handoff_close_all(struct yt_session *session,
 	if (!yt_database_close_all_single(&session->door->game.database,
 	    error)) {
 		uint16_t basic_error =
-		    session->door->game.database.last_close.basic_error;
+		    session->door->game.database.last_close_basic_error;
 
 		if (basic_error != 0U)
 			(void)yt_error_attach_basic_fault_number(error,
@@ -188,4 +188,3 @@ yt_session_command_genesis(struct yt_session *session, struct yt_error *error)
 	    sizeof(success_second) - 1U)
 	    && genesis_handoff(session, error);
 }
-

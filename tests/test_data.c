@@ -452,7 +452,7 @@ database_close_fixture(struct yt_database *database, bool device)
 	if (database->file == NULL)
 		return false;
 	database->records = 1U;
-	database->last_open.device = device;
+	database->device = device;
 	(void)snprintf(database->path, sizeof(database->path), "%s",
 	    "CLOSE-FIXTURE.DAT");
 	return true;
@@ -617,33 +617,23 @@ test_database_random_close(void)
 
 	memset(&database, 0, sizeof(database));
 	CHECK(yt_database_random_close(&database, &error)
-	    && database.last_close.outcome == YT_DATABASE_CLOSE_RETURNED
-	    && database.last_close.missing
-	    && database.last_close.attempt_count == 0U);
+	    && database.last_close_basic_error == 0U);
 	CHECK(yt_database_close_all_single(&database, &error)
-	    && database.last_close.outcome == YT_DATABASE_CLOSE_RETURNED
-	    && database.last_close.close_all && !database.last_close.missing
-	    && database.last_close.attempt_count == 0U);
+	    && database.last_close_basic_error == 0U);
 
 	for (device = 0U; device < 2U; ++device) {
 		CHECK(database_close_fixture(&database, device != 0U));
 		yt_error_clear(&error);
 		CHECK(yt_database_random_close(&database, &error)
 		    && database.file == NULL && database.records == 0U
-		    && database.last_close.outcome
-		    == YT_DATABASE_CLOSE_RETURNED
-		    && database.last_close.attempt_count == 1U
-		    && database.last_close.device == (device != 0U)
-		    && !database.last_close.missing);
+		    && database.last_close_basic_error == 0U);
 	}
 
 	CHECK(database_close_fixture(&database, false));
 	yt_error_clear(&error);
 	CHECK(yt_database_close_all_single(&database, &error)
 	    && database.file == NULL
-	    && database.last_close.close_all
-	    && database.last_close.outcome == YT_DATABASE_CLOSE_RETURNED
-	    && database.last_close.attempt_count == 1U);
+	    && database.last_close_basic_error == 0U);
 }
 
 static void
@@ -830,10 +820,7 @@ test_database_random_lof(void)
 		    && fseek(database.file, 2L, SEEK_SET) == 0
 		    && yt_database_random_lof(&database, &length, &error)
 		    && length == 5U && ftell(database.file) == 2L
-		    && database.last_lof.outcome == YT_DATABASE_LOF_RETURNED
-		    && database.last_lof.saved_position == 2U
-		    && database.last_lof.length == 5U
-		    && database.last_lof.operation_count == 3U);
+		    && database.last_lof_basic_error == 0U);
 	}
 	yt_database_close(&database);
 	CHECK(!yt_database_random_lof(NULL, &length, &error)
@@ -1024,10 +1011,7 @@ test_radio_file(void)
 	CHECK(fseek(radio.random.file, 2L, SEEK_SET) == 0
 	    && yt_radio_file_size(&radio, &size, &error) && size == 3U
 	    && ftell(radio.random.file) == 2L
-	    && radio.random.last_lof.outcome == YT_DATABASE_LOF_RETURNED
-	    && radio.random.last_lof.saved_position == 2U
-	    && radio.random.last_lof.length == 3U
-	    && radio.random.last_lof.operation_count == 3U);
+	    && radio.random.last_lof_basic_error == 0U);
 	memset(&record, 0xff, sizeof(record));
 	CHECK(yt_radio_file_get(&radio, 1U, &record, &accepted, &error)
 	    && accepted == sizeof(partial)
@@ -1066,8 +1050,7 @@ test_radio_file(void)
 	CHECK(yt_radio_file_next_record(&radio, &next, &error) && next == 2U);
 	CHECK(yt_radio_file_close(&radio, &error)
 	    && radio.random.file == NULL
-	    && radio.random.last_close.outcome == YT_DATABASE_CLOSE_RETURNED
-	    && radio.random.last_close.attempt_count == 1U
+	    && radio.random.last_close_basic_error == 0U
 	    && radio.record_length == 0U && radio.field_count == 0U);
 
 	file = fopen(second_path, "rb");
