@@ -5,18 +5,10 @@
 #include <math.h>
 #include <string.h>
 
-static bool
-system_fill(void *context, void *buffer, size_t length, struct yt_error *error)
-{
-	(void)context;
-	return yt_platform_entropy(buffer, length, error);
-}
-
 void
 yt_random_init(struct yt_random *random)
 {
 	memset(random, 0, sizeof(*random));
-	random->fill = system_fill;
 }
 
 bool
@@ -25,7 +17,9 @@ yt_random_next(struct yt_random *random, float *value, struct yt_error *error)
 	uint8_t bytes[3];
 	uint32_t sample;
 
-	if (!random->fill(random->context, bytes, sizeof(bytes), error))
+	if (random->fill != NULL
+	    ? !random->fill(random->context, bytes, sizeof(bytes), error)
+	    : !yt_platform_entropy(bytes, sizeof(bytes), error))
 		return false;
 	sample = (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8)
 	    | ((uint32_t)bytes[2] << 16);
