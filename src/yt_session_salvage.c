@@ -131,7 +131,7 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 		requested_holds = qb_single_subtract(
 		    session->door->game.config.maximum_holds, killer.holds);
 	if (requested_holds > 0.0f) {
-		float counter;
+		int counter;
 
 		emitted = true;
 		if (!yt_game_read_player(&session->door->game, victim_record,
@@ -141,8 +141,7 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 		cargo_stock[1] = victim.organics;
 		cargo_stock[2] = victim.equipment;
 		cargo_remaining = victim.holds;
-		for (counter = 1.0f; counter <= requested_holds;
-		    counter = qb_single_add(counter, 1.0f)) {
+		for (counter = 1; (float)counter <= requested_holds; ++counter) {
 			float one_based;
 			float pick;
 			float boundary;

@@ -575,7 +575,7 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 	struct yt_maintenance_output_result output;
 	struct yt_record config_record;
 	struct yt_sector sector;
-	float planet_number;
+	int planet_number;
 	int old_logical;
 	int sector_count;
 	int candidate;
@@ -631,9 +631,9 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 			    "YTDATA.DAT");
 		return false;
 	}
-	planet_number = qb_single_subtract(game->config.total_records,
+	planet_number = (int)qb_single_subtract(game->config.total_records,
 	    game->config.planet_offset);
-	if (sector.planet == planet_number) {
+	if ((int)sector.planet == planet_number) {
 		if (!yt_record_set_number(&sector.record, YT_F93, 0.0f)
 		    || !yt_database_write(&game->database,
 		    (size_t)yt_sector_basic_record(&game->config, old_logical),
@@ -645,7 +645,8 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 		}
 	}
 	if (!yt_game_read_sector(game, candidate, &sector, error)
-	    || !yt_record_set_number(&sector.record, YT_F93, planet_number)
+	    || !yt_record_set_number(&sector.record, YT_F93,
+	    (float)planet_number)
 	    || !yt_database_write(&game->database,
 	    (size_t)yt_sector_basic_record(&game->config, candidate),
 	    &sector.record, error)) {

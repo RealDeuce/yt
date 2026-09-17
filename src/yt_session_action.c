@@ -144,7 +144,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	float second;
 	float duration;
 	float heat = 0.0f;
-	float counter = 1.0f;
+	int counter = 1;
 	float destination;
 	float override;
 	float turn_draw;
@@ -209,8 +209,8 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 			return false;
 		if (heat >= 31.0f)
 			break;
-		counter = qb_single_add(counter, 1.0f);
-		if (counter > duration)
+		++counter;
+		if ((float)counter > duration)
 			break;
 	}
 	session_set_foreground(session, 2.0f);
