@@ -81,6 +81,7 @@ set(YT_GAME_SOURCES
     src/yt_game_combat.c
     src/yt_game_commands.c
     src/yt_game_earth.c
+    src/yt_game_genesis.c
     src/yt_game_hazards.c
     src/yt_game_internal.c
     src/yt_game_market.c
