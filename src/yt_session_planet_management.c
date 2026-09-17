@@ -44,12 +44,15 @@ yt_session_planet_garrison(struct yt_session *session, int logical_planet,
 		return false;
 	session_set_foreground(session, 6);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "planet garrison opening blank", error)
-	    || !yt_planet_garrison_prompt(session->player.ground_forces,
-	    old_garrison, prompt, sizeof(prompt), &prompt_length)
-	    || !session_present_timed_paged_row(session, prompt, prompt_length,
-	    "planet garrison prompt", error)
-	    || !session_read_number_command(session, response, sizeof(response)))
+	    "planet garrison opening blank", error))
+		return false;
+	if (!yt_planet_garrison_prompt(session->player.ground_forces,
+	    old_garrison, prompt, sizeof(prompt), &prompt_length))
+		return false;
+	if (!session_present_timed_paged_row(session, prompt, prompt_length,
+	    "planet garrison prompt", error))
+		return false;
+	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
 	if (response[0] == '\0')
 		return true;
@@ -66,8 +69,9 @@ yt_session_planet_garrison(struct yt_session *session, int logical_planet,
 	yt_planet_garrison_overlay(&planet, desired, 0);
 	if (desired >= 1.0f) {
 		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "planet garrison success blank", error)
-		    || !yt_planet_garrison_success_row(desired, success,
+		    SESSION_PRESENT_LINE, "planet garrison success blank", error))
+			return false;
+		if (!yt_planet_garrison_success_row(desired, success,
 		    sizeof(success), &success_length))
 			return false;
 		session->presentation.bold = true;
@@ -76,15 +80,17 @@ yt_session_planet_garrison(struct yt_session *session, int logical_planet,
 			return false;
 		planet.owner = session_record(session);
 		if (!yt_record_set_number(&planet.record, YT_F73,
-		    (float)planet.owner)
-		    || !session_sound(session, YT_SOUND_CUE_ACTION,
+		    (float)planet.owner))
+			return false;
+		if (!session_sound(session, YT_SOUND_CUE_ACTION,
 		    "planet garrison sound", error))
 			return false;
 	}
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)session_planet_basic_record(session, logical_planet),
-	    &planet.record, error)
-	    || !session_reload_player(session, error))
+	    &planet.record, error))
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	yt_planet_garrison_player_overlay(&session->player, after);
 	return yt_database_write(&session->door->game.database,
@@ -122,18 +128,24 @@ yt_session_planet_bank(struct yt_session *session, int logical_planet,
 	available = yt_planet_bank_available(session->player.credits, old_bank);
 	if (snprintf(title, sizeof(title),
 	    "Welcome to the intergalactic bank of %s!",
-	    session->planet.name) < 0
-	    || qb_str_double(available_text, sizeof(available_text), available) < 0
-	    || snprintf(prompt, sizeof(prompt),
+	    session->planet.name) < 0)
+		return false;
+	if (qb_str_double(available_text, sizeof(available_text), available) < 0)
+		return false;
+	if (snprintf(prompt, sizeof(prompt),
 	    "How many credits do you want in the account?%s Available ->",
-	    available_text) < 0
-	    || !session_present_paged_line(session, (const uint8_t *)title, strlen(title),
-	    "planet Bank title", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "planet Bank pre-prompt blank", error)
-	    || !session_present_timed_paged_row(session, (const uint8_t *)prompt, strlen(prompt),
-	    "planet Bank amount prompt", error)
-	    || !session_read_number_command(session, response, sizeof(response)))
+	    available_text) < 0)
+		return false;
+	if (!session_present_paged_line(session, (const uint8_t *)title,
+	    strlen(title), "planet Bank title", error))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet Bank pre-prompt blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, (const uint8_t *)prompt,
+	    strlen(prompt), "planet Bank amount prompt", error))
+		return false;
+	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
 	if (response[0] == '\0')
 		return true;
@@ -159,8 +171,10 @@ yt_session_planet_bank(struct yt_session *session, int logical_planet,
 		return false;
 	session->player.credits = (float)remaining;
 	if (target != 0.0) {
-		if (qb_str_double(amount_text, sizeof(amount_text), target) < 0
-		    || snprintf(success, sizeof(success),
+		if (qb_str_double(amount_text, sizeof(amount_text), target) < 0)
+			return session_range_error(error,
+			    "planet Bank success format");
+		if (snprintf(success, sizeof(success),
 		    "You have%s credits on deposit at 1%% interest. %s",
 		    amount_text, farewell) < 0)
 			return session_range_error(error,
@@ -170,8 +184,10 @@ yt_session_planet_bank(struct yt_session *session, int logical_planet,
 		memcpy(success, farewell, sizeof(farewell));
 	}
 	if (!session_present_paged_line(session, (const uint8_t *)success, strlen(success),
-	    "planet Bank accepted", error)
-	    || !session_sound(session, YT_SOUND_CUE_ACTION, "planet bank sound", error))
+	    "planet Bank accepted", error))
+		return false;
+	if (!session_sound(session, YT_SOUND_CUE_ACTION,
+	    "planet bank sound", error))
 		return false;
 	credit_argument = yt_planet_bank_credit_argument(old_bank, target);
 	return session_mutate_player_credits(session, credit_argument, NULL,
@@ -214,10 +230,12 @@ yt_session_planet_rename(struct yt_session *session, int logical_planet,
 			    sizeof(protected) - 1U,
 			    "planet Rename protected", error);
 		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "planet Rename leading blank", error)
-		    || !session_present_timed_paged_row(session, prompt, sizeof(prompt) - 1U,
-		    "planet Rename name prompt", error)
-		    || !session_read_command(session, name, sizeof(name)))
+		    SESSION_PRESENT_LINE, "planet Rename leading blank", error))
+			return false;
+		if (!session_present_timed_paged_row(session, prompt,
+		    sizeof(prompt) - 1U, "planet Rename name prompt", error))
+			return false;
+		if (!session_read_command(session, name, sizeof(name)))
 			return false;
 		name_result = yt_planet_rename_prepare_name(name, &name_length);
 		if (name_result == YT_PLANET_RENAME_EMPTY)
@@ -233,8 +251,9 @@ yt_session_planet_rename(struct yt_session *session, int logical_planet,
 		    sizeof(confirmation_suffix) - 1U);
 		confirmation_length += sizeof(confirmation_suffix) - 1U;
 		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "planet Rename confirmation blank", error)
-		    || !session_confirm(session, confirmation, confirmation_length,
+		    SESSION_PRESENT_LINE, "planet Rename confirmation blank", error))
+			return false;
+		if (!session_confirm(session, confirmation, confirmation_length,
 		    &answer, error))
 			return false;
 		if (answer != YT_YES_NO_NO)
@@ -268,20 +287,33 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 	char command[80];
 
 	if (!session_present_paged_line(session, title, sizeof(title) - 1U,
-	    "planet Transfer title", error)
-	    || !session_present_paged_line(session, question, sizeof(question) - 1U,
-	    "planet Transfer question", error)
-	    || !session_present_paged_line(session, plasma_row, sizeof(plasma_row) - 1U,
-	    "planet Transfer plasma row", error)
-	    || !session_present_paged_fragment(session, cargo_row, sizeof(cargo_row) - 1U)
-	    || !session_present_paged_fragment(session, fighter_row, sizeof(fighter_row) - 1U)
-	    || !session_present_paged_fragment(session, missile_row, sizeof(missile_row) - 1U)
-	    || !session_present_paged_fragment(session, mine_row, sizeof(mine_row) - 1U)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "planet Transfer selector blank", error)
-	    || !session_present_timed_paged_row(session, selector_prompt,
-	    sizeof(selector_prompt) - 1U, "planet Transfer selector", error)
-	    || !session_read_upper_command(session, command, sizeof(command)))
+	    "planet Transfer title", error))
+		return false;
+	if (!session_present_paged_line(session, question, sizeof(question) - 1U,
+	    "planet Transfer question", error))
+		return false;
+	if (!session_present_paged_line(session, plasma_row,
+	    sizeof(plasma_row) - 1U, "planet Transfer plasma row", error))
+		return false;
+	if (!session_present_paged_fragment(session, cargo_row,
+	    sizeof(cargo_row) - 1U))
+		return false;
+	if (!session_present_paged_fragment(session, fighter_row,
+	    sizeof(fighter_row) - 1U))
+		return false;
+	if (!session_present_paged_fragment(session, missile_row,
+	    sizeof(missile_row) - 1U))
+		return false;
+	if (!session_present_paged_fragment(session, mine_row,
+	    sizeof(mine_row) - 1U))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet Transfer selector blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, selector_prompt,
+	    sizeof(selector_prompt) - 1U, "planet Transfer selector", error))
+		return false;
+	if (!session_read_upper_command(session, command, sizeof(command)))
 		return false;
 	if (command[0] == '\0')
 		return true;
@@ -322,8 +354,9 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 		    session_record(session), &session->player, error))
 			return false;
 		yt_planet_transfer_cargo_player_overlay(&session->player);
-		if (!session_write_player(session, error)
-		    || !session_read_planet(session,
+		if (!session_write_player(session, error))
+			return false;
+		if (!session_read_planet(session,
 		    logical_planet, &planet, error))
 			return false;
 		yt_planet_transfer_cargo_planet_overlay(&planet,
@@ -346,16 +379,21 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 		float amount;
 
 		if (qb_str_double(number, sizeof(number),
-		    (double)cached_fighters) < 0
-		    || snprintf(prompt, sizeof(prompt),
+		    (double)cached_fighters) < 0)
+			return session_range_error(error,
+			    "planet Transfer fighter prompt format");
+		if (snprintf(prompt, sizeof(prompt),
 		    "You have%s fighters. Transfer how many -=>", number) < 0)
 			return session_range_error(error,
 			    "planet Transfer fighter prompt format");
 		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "planet Transfer fighter blank", error)
-		    || !session_present_timed_paged_row(session, (const uint8_t *)prompt,
-		    strlen(prompt), "planet Transfer fighter prompt", error)
-		    || !session_read_number_command(session, response, sizeof(response)))
+		    SESSION_PRESENT_LINE, "planet Transfer fighter blank", error))
+			return false;
+		if (!session_present_timed_paged_row(session,
+		    (const uint8_t *)prompt, strlen(prompt),
+		    "planet Transfer fighter prompt", error))
+			return false;
+		if (!session_read_number_command(session, response, sizeof(response)))
 			return false;
 		if (response[0] == '\0')
 			return true;
@@ -368,8 +406,9 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 			return false;
 		yt_planet_transfer_fighter_player_overlay(&session->player,
 		    cached_fighters, amount);
-		if (!session_write_player(session, error)
-		    || !session_read_planet(session,
+		if (!session_write_player(session, error))
+			return false;
+		if (!session_read_planet(session,
 		    logical_planet, &planet, error))
 			return false;
 		yt_planet_transfer_fighter_planet_overlay(&planet,
@@ -404,15 +443,17 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 		    session_record(session), &session->player, error))
 			return false;
 		yt_planet_transfer_direct_player_overlay(&session->player, item);
-		if (!session_write_player(session, error)
-		    || !session_read_planet(session,
+		if (!session_write_player(session, error))
+			return false;
+		if (!session_read_planet(session,
 		    logical_planet, &planet, error))
 			return false;
 		yt_planet_transfer_direct_planet_overlay(&planet, item,
 		    session->planet.economy.quantity[item], amount);
 		if (!session_write_planet(session, logical_planet,
-		    &planet, error)
-		    || !session_present_text(session, NULL, 0,
+		    &planet, error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "planet Transfer weapon success blank",
 		    error))
 			return false;
@@ -438,8 +479,9 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 		if (!session_present_paged_fragment(session, success, success_length))
 			return false;
 	}
-	if (!session_reload_player(session, error)
-	    || !yt_session_update_planet(session, logical_planet, &planet,
+	if (!session_reload_player(session, error))
+		return false;
+	if (!yt_session_update_planet(session, logical_planet, &planet,
 	    NULL, error))
 		return false;
 	return session_sound(session, YT_SOUND_CUE_ACTION,
@@ -476,23 +518,30 @@ yt_session_planet_productivity(struct yt_session *session,
 	float credit_argument;
 	size_t index;
 
-	if (!session_reload_player(session, error)
-	    || !yt_session_update_planet(session, logical_planet, &planet,
+	if (!session_reload_player(session, error))
+		return false;
+	if (!yt_session_update_planet(session, logical_planet, &planet,
 	    &economy, error))
 		return false;
 	if (qb_str_double(credits_text, sizeof(credits_text),
-	    (double)session->player.credits) < 0
-	    || snprintf(credits_row, sizeof(credits_row),
-	    "You have%s Credits.", credits_text) < 0
-	    || !session_present_paged_line(session, explanation, sizeof(explanation) - 1U,
-	    "planet Productivity explanation", error)
-	    || !session_present_paged_line(session, (const uint8_t *)credits_row,
-	    strlen(credits_row), "planet Productivity credits", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "planet Productivity pre-prompt blank", error)
-	    || !session_present_timed_paged_row(session, prompt, sizeof(prompt) - 1U,
-	    "planet Productivity spend prompt", error)
-	    || !session_read_number_command(session, response, sizeof(response)))
+	    (double)session->player.credits) < 0)
+		return false;
+	if (snprintf(credits_row, sizeof(credits_row),
+	    "You have%s Credits.", credits_text) < 0)
+		return false;
+	if (!session_present_paged_line(session, explanation,
+	    sizeof(explanation) - 1U, "planet Productivity explanation", error))
+		return false;
+	if (!session_present_paged_line(session, (const uint8_t *)credits_row,
+	    strlen(credits_row), "planet Productivity credits", error))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet Productivity pre-prompt blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, prompt,
+	    sizeof(prompt) - 1U, "planet Productivity spend prompt", error))
+		return false;
+	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
 	parsed = qb_val(response);
 	if (parsed.overflow)
@@ -506,11 +555,13 @@ yt_session_planet_productivity(struct yt_session *session,
 		    sizeof(insufficient) - 1U,
 		    "planet Productivity credit error", error);
 	units = yt_planet_productivity_units(spend);
-	if (qb_str_double(units_text, sizeof(units_text), units) < 0
-	    || snprintf(success, sizeof(success),
+	if (qb_str_double(units_text, sizeof(units_text), units) < 0)
+		return false;
+	if (snprintf(success, sizeof(success),
 	    "Productivity increased by%s units of ORE, ORG & EQU!",
-	    units_text) < 0
-	    || !session_present_paged_line(session, (const uint8_t *)success,
+	    units_text) < 0)
+		return false;
+	if (!session_present_paged_line(session, (const uint8_t *)success,
 	    strlen(success), "planet Productivity accepted", error))
 		return false;
 	yt_planet_productivity_cache(economy.production, units, delta);
@@ -520,21 +571,25 @@ yt_session_planet_productivity(struct yt_session *session,
 
 		if (delta[index] == 0.0f)
 			continue;
-		if (qb_str_single(delta_text, sizeof(delta_text), delta[index]) < 0
-		    || snprintf(fragment, sizeof(fragment), "%s%s",
-		    fragments[index], delta_text) < 0
-		    || !session_present_timed_paged_row(session, (const uint8_t *)fragment,
-		    strlen(fragment), "planet Productivity derived fragment",
-		    error))
+		if (qb_str_single(delta_text, sizeof(delta_text), delta[index]) < 0)
+			return false;
+		if (snprintf(fragment, sizeof(fragment), "%s%s",
+		    fragments[index], delta_text) < 0)
+			return false;
+		if (!session_present_timed_paged_row(session,
+		    (const uint8_t *)fragment, strlen(fragment),
+		    "planet Productivity derived fragment", error))
 			return false;
 	}
-	if (delta[0] != 0.0f
-	    && !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "planet Productivity derived ending", error))
-		return false;
+	if (delta[0] != 0.0f) {
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "planet Productivity derived ending", error))
+			return false;
+	}
 	credit_argument = yt_planet_productivity_credit_argument(units);
-	if (!session_mutate_player_credits(session, credit_argument, NULL, error)
-	    || !session_read_planet(session, logical_planet,
+	if (!session_mutate_player_credits(session, credit_argument, NULL, error))
+		return false;
+	if (!session_read_planet(session, logical_planet,
 	    &planet, error))
 		return false;
 	yt_planet_productivity_planet_overlay(&planet, economy.production,
