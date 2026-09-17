@@ -36,12 +36,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	bool stale_marker = autopilot && session->navigation.route_marker == 9999.0f;
 	int start;
 	int destination;
-	int count = session_sector_count(session);
-	bool conversion_overflow;
-	bool found;
 	int cursor;
-	enum yt_route_outcome route_outcome;
-	float route_status;
 
 	if (!autopilot) {
 		session->navigation.route_marker = 9999.0f;
@@ -87,28 +82,15 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	if (start_value == destination_value)
 		return session_present_alert(session, same, sizeof(same) - 1U,
 		    "path equal endpoint", error);
-	start = (int)qb_cint_mode((double)start_value,
-	    session->presentation.sound.conversion_mode, &conversion_overflow);
-	if (conversion_overflow)
-		return false;
-	destination = (int)qb_cint_mode((double)destination_value,
-	    session->presentation.sound.conversion_mode, &conversion_overflow);
-	if (conversion_overflow)
-		return false;
-	if (start < 0 || start > count || destination < 0
-	    || destination > count)
-		return true;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "path working blank", error)
 	    || !session_present_timed_paged_row(session, working,
 	    sizeof(working) - 1U, "path working prompt", error))
 		return false;
-	route_status = 1.0f;
 	if (!yt_session_build_route(session, start_value, destination_value,
-	    &route, true, &found, &route_outcome, &route_status,
-	    error))
+	    true, &route, error))
 		return false;
-	if (!found) {
+	if (route.outcome == YT_ROUTE_NOT_FOUND) {
 		yt_present_set_blink(&session->presentation, 1.0f);
 		return session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "path failure first blank", error)
@@ -118,6 +100,8 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		    sizeof(route_failure) - 1U, SESSION_PRESENT_BOLD_LINE,
 		    "path route failure", error);
 	}
+	start = route.start;
+	destination = route.destination;
 	{
 		char start_text[64];
 		char destination_text[64];

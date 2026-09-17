@@ -181,16 +181,14 @@ plasma_route_run(struct yt_session *session,
 			plan.next_hop[0] = (int16_t)destination_index;
 			plan.next_hop[(int16_t)destination_index] = 0;
 		} else {
-			bool found;
-			enum yt_route_outcome outcome;
-			float status = 0.0f;
-
 			if (!yt_session_build_route(session, route->origin,
-			    route->destination, &plan, false, &found, &outcome,
-			    &status, error))
+			    route->destination, false, &plan, error))
 				return false;
 			*origin = route->origin;
 			*destination = route->destination;
+			if (plan.outcome == YT_ROUTE_NOT_FOUND
+			    && !route_failure_report(session, error))
+				return false;
 		}
 		current_hop = *origin;
 		for (;;) {
@@ -278,7 +276,6 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 {
 	float destination = *target;
 	bool overflow;
-	bool found;
 	int cursor;
 	float *missiles = amount;
 	double energy;
@@ -316,14 +313,11 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 	}
 	for (;;) {
 		bool rerouted = false;
-		enum yt_route_outcome route_outcome;
-		float route_status;
+		bool use_avoid = yt_projectile_route_avoid_enabled(plasma,
+		    *counterattack, session_record(session));
 
 		bool route_success = yt_session_build_route(session,
-		    route->origin, route->destination, &plan,
-		    yt_projectile_route_avoid_enabled(plasma, *counterattack,
-		    session_record(session)), &found, &route_outcome,
-		    &route_status, error);
+		    route->origin, route->destination, use_avoid, &plan, error);
 
 		*origin_alias = route->origin;
 		*target = route->destination;
@@ -332,11 +326,12 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 		destination = *target;
 		if (!route_success)
 			return false;
-		if (route_outcome == YT_ROUTE_NOT_FOUND
+		if (plan.outcome == YT_ROUTE_NOT_FOUND
 		    && !route_failure_report(session, error)) {
 			return false;
 		}
-		if (route_status != 0.0f) {
+		if (plan.outcome == YT_ROUTE_NOT_FOUND
+		    || (plan.outcome == YT_ROUTE_SAME && use_avoid)) {
 			if (!missile_route_failure_suffix(session, error))
 				return false;
 			return true;

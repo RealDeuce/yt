@@ -38,13 +38,12 @@ static bool
 opening_and_date(struct yt_session *session, struct yt_error *error)
 {
 	struct yt_shared_error_result shared_error;
+	struct session_route_plan route;
 	uint16_t opening_basic_error;
-	bool found;
 
-	if (!yt_session_build_route(session, 1, 2, NULL, false, &found, NULL, NULL,
-	    error))
+	if (!yt_session_build_route(session, 1.0f, 2.0f, false, &route, error))
 		return false;
-	if (!found) {
+	if (route.outcome == YT_ROUTE_NOT_FOUND) {
 		static const uint8_t diagnostic[] =
 		    "*** You can't get there without going someplace you dont want to!";
 

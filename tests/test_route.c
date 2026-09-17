@@ -44,9 +44,6 @@ test_routes_from_database(void)
 	struct yt_session session;
 	struct session_route_plan route;
 	struct yt_error error;
-	enum yt_route_outcome outcome;
-	float status;
-	bool found;
 
 	(void)remove(path);
 	memset(&door, 0, sizeof(door));
@@ -62,43 +59,44 @@ test_routes_from_database(void)
 	write_sector(&door.game, 3, sector_three, &error);
 	write_sector(&door.game, 4, sector_four, &error);
 
-	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, &route, false,
-	    &found, &outcome, &status, &error));
-	CHECK(found && outcome == YT_ROUTE_FOUND && status == 0.0f);
+	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, false, &route,
+	    &error));
+	CHECK(route.start == 1 && route.destination == 4
+	    && route.outcome == YT_ROUTE_FOUND);
 	CHECK(route.next_hop[1] == 3
 	    && route.next_hop[3] == 4
 	    && route.next_hop[4] == 0);
 
 	write_sector(&door.game, 1, isolated_one, &error);
 	write_sector(&door.game, 2, isolated_two, &error);
-	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, &route, false,
-	    &found, &outcome, &status, &error));
-	CHECK(!found && outcome == YT_ROUTE_NOT_FOUND && status == 1.0f);
+	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, false, &route,
+	    &error));
+	CHECK(route.outcome == YT_ROUTE_NOT_FOUND);
 	CHECK(route.next_hop[1] == 0 && route.next_hop[2] == 2);
 
 	write_sector(&door.game, 1, sector_one, &error);
 	write_sector(&door.game, 2, sector_two, &error);
 	memset(session.navigation.avoided_sectors, 0, sizeof(session.navigation.avoided_sectors));
 	session.navigation.avoided_sectors[0] = 3.0f;
-	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, &route, true,
-	    &found, &outcome, &status, &error));
-	CHECK(found && outcome == YT_ROUTE_FOUND && status == 0.0f);
+	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, true, &route,
+	    &error));
+	CHECK(route.outcome == YT_ROUTE_FOUND);
 	CHECK(route.next_hop[1] == 2 && route.next_hop[2] == 4);
 
 	session.navigation.avoided_sectors[0] = 1.5f;
-	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, &route, true,
-	    &found, &outcome, &status, &error));
-	CHECK(found && outcome == YT_ROUTE_FOUND && status == 0.0f);
+	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, true, &route,
+	    &error));
+	CHECK(route.outcome == YT_ROUTE_FOUND);
 	CHECK(route.next_hop[1] == 3 && route.next_hop[3] == 4);
 
 	session.navigation.avoided_sectors[0] = 1.0f;
-	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, &route, true,
-	    &found, &outcome, &status, &error));
-	CHECK(!found && outcome == YT_ROUTE_NOT_FOUND && status == 1.0f);
+	CHECK(yt_session_build_route(&session, 1.0f, 4.0f, true, &route,
+	    &error));
+	CHECK(route.outcome == YT_ROUTE_NOT_FOUND);
 
-	CHECK(yt_session_build_route(&session, 1.0f, 1.0f, &route, true,
-	    &found, &outcome, &status, &error));
-	CHECK(found && outcome == YT_ROUTE_SAME && status == 1.0f);
+	CHECK(yt_session_build_route(&session, 1.0f, 1.0f, true, &route,
+	    &error));
+	CHECK(route.outcome == YT_ROUTE_SAME);
 	CHECK(route.next_hop[1] == 0);
 
 	yt_database_close(&door.game.database);

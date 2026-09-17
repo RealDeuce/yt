@@ -5,7 +5,6 @@
 #include "yt_port_math.h"
 
 #include <math.h>
-#include <stdio.h>
 #include <string.h>
 
 static bool
@@ -278,8 +277,6 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	int start_node;
 	int destination_node;
 	int cursor;
-	bool conversion_overflow;
-	bool found;
 	bool stop = false;
 	bool final = false;
 	enum yt_yes_no_answer answer;
@@ -319,30 +316,10 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	    || !session_present_timed_paged_row(session, working,
 	    sizeof(working) - 1U, "planet Thrusters working", error))
 		return false;
-	start_node = (int)qb_cint_mode((double)start,
-	    session->presentation.sound.conversion_mode, &conversion_overflow);
-	if (conversion_overflow) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation), "%s",
-			    "planet Thrusters start CINT");
-		}
+	if (!yt_session_build_route(session, start, destination, true, &route,
+	    error))
 		return false;
-	}
-	destination_node = (int)qb_cint_mode((double)destination,
-	    session->presentation.sound.conversion_mode, &conversion_overflow);
-	if (conversion_overflow) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation), "%s",
-			    "planet Thrusters destination CINT");
-		}
-		return false;
-	}
-	if (!yt_session_build_route(session, start, destination, &route, true,
-	    &found, NULL, NULL, error))
-		return false;
-	if (!found) {
+	if (route.outcome == YT_ROUTE_NOT_FOUND) {
 		bool ok = session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "planet Thrusters route first blank", error)
 		    && session_present_text(session, NULL, 0,
@@ -355,6 +332,8 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 			    "planet Thrusters route failure", error);
 		return ok;
 	}
+	start_node = route.start;
+	destination_node = route.destination;
 	if (!yt_planet_move_path_heading(start, destination, row, sizeof(row),
 	    &row_length)
 	    || !session_present_paged_fragment(session, row, row_length)

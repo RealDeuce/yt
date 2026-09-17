@@ -31,6 +31,9 @@ struct session_projectile_state {
 };
 
 struct session_route_plan {
+	int start;
+	int destination;
+	enum yt_route_outcome outcome;
 	int16_t next_hop[YT_ROUTE_CAPACITY];
 };
 
@@ -137,9 +140,8 @@ bool yt_session_players_are_friendly(struct yt_session *session,
 bool yt_session_destination_is_dangerous(struct yt_session *session,
     float target, bool *dangerous, struct yt_error *error);
 bool yt_session_build_route(struct yt_session *session, float start,
-    float destination, struct session_route_plan *plan, bool use_avoid,
-    bool *found, enum yt_route_outcome *route_outcome,
-    float *returned_status, struct yt_error *error);
+    float destination, bool use_avoid, struct session_route_plan *plan,
+    struct yt_error *error);
 bool yt_session_store_move(struct yt_session *session, float target,
     struct yt_error *error);
 bool yt_session_command_move(struct yt_session *session, bool *moved,
