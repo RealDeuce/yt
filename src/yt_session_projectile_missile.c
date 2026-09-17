@@ -79,7 +79,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	    SESSION_PRESENT_LINE, "cruise missile planet-attack row", error)
 	    || !yt_news_append_bytes(news_row, news_length, error))
 		return false;
-	if (!session_sound(session, 2.0f,
+	if (!session_sound(session, YT_SOUND_CUE_ATTACK,
 	    "cruise missile planet attack sound", error))
 		return false;
 	if (planet.ground_forces != 0.0f) {
@@ -157,7 +157,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		    || !session_present_text(session, destroyed,
 		    sizeof(destroyed) - 1U, SESSION_PRESENT_LINE,
 		    "cruise missile planet impact row", error)
-		    || !session_sound(session, 3.0f,
+		    || !session_sound(session, YT_SOUND_CUE_DESTRUCTION,
 		    "cruise missile planet destruction sound", error)
 		    || !yt_news_append_bytes(destroyed,
 		    sizeof(destroyed) - 1U, error))
@@ -314,7 +314,7 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 		if (friendly)
 			goto missile_mines;
 		yt_present_set_bold(&session->presentation, 1.0f);
-		if (!session_sound(session, 2.0f,
+		if (!session_sound(session, YT_SOUND_CUE_ATTACK,
 		    "cruise missile fighter-defense sound", error))
 			return false;
 	}
@@ -416,7 +416,7 @@ missile_mines:
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_LINE, "cruise missile sector-mine row",
 		    error)
-		    || !session_sound(session, 5.0f,
+		    || !session_sound(session, YT_SOUND_CUE_DAMAGE,
 		    "cruise missile sector-mine sound", error))
 			return false;
 		if (*last_mine_news_sector != (float)sector_number) {
@@ -494,7 +494,7 @@ missile_mines:
 		    yt_player_cache_value(&session->player_cache, basic,
 		    YT_PLAYER_CACHE_CLOAK), *xannor_provoker))
 			continue;
-		if (!session_sound(session, 2.0f,
+		if (!session_sound(session, YT_SOUND_CUE_ATTACK,
 		    "cruise missile player-attack sound", error))
 			return false;
 		if (!yt_projectile_player_damage(&target, remaining,
@@ -577,7 +577,7 @@ missile_mines:
 				return false;
 			if (yt_projectile_salvage_admitted(*counterattack,
 			    *xannor_provoker)) {
-				if (!session_sound(session, 3.0f,
+				if (!session_sound(session, YT_SOUND_CUE_DESTRUCTION,
 				    "cruise missile salvage sound", error)
 				    || !yt_session_salvage_player(session, basic,
 				    session_record(session), error))

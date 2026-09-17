@@ -78,7 +78,7 @@ direct_attack_finish_kill(struct yt_session *session, int target_record,
 
 	if (target_shields > 0.0f)
 		return true;
-	if (!session_sound(session, 3.0f, "player kill sound", error)
+	if (!session_sound(session, YT_SOUND_CUE_DESTRUCTION, "player kill sound", error)
 	    || !yt_game_read_player(&session->door->game, target_record,
 	    &target, error))
 		return false;
@@ -191,7 +191,7 @@ yt_session_attack_player(struct yt_session *session, int target_record,
 	yt_direct_attack_fighter_overlay(&current, (float)cached_reserve);
 	if (!session_write_combat_player(session, current_player_record,
 	    &current, error)
-	    || !session_sound(session, 2.0f, "player attack opening sound",
+	    || !session_sound(session, YT_SOUND_CUE_ATTACK, "player attack opening sound",
 	    error)
 	    || !direct_attack_attrition(session, committed, defenders,
 	    current.cloak, &attacker_loss, &defender_loss, error))

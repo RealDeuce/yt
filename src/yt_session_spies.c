@@ -120,7 +120,7 @@ spy_first_finding(struct yt_session *session, size_t spy, int sector,
 		return true;
 	session->spies.found = true;
 	session->spies.last_findings[spy] = sector;
-	if (!session_sound(session, 9.0f, "spy finding sound", error))
+	if (!session_sound(session, YT_SOUND_CUE_SPY, "spy finding sound", error))
 		return false;
 	amount = qb_str_single(spy_number, sizeof(spy_number), (float)(spy + 1U));
 	if (amount < 1)
@@ -284,7 +284,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 					    SESSION_PRESENT_BOLD_LINE, error))
 						return false;
 					spy_clear_cached_cloak(session, candidate);
-					if (!session_sound(session, 4.0f,
+					if (!session_sound(session, YT_SOUND_CUE_ACTION,
 					    "spy cloak sound", error))
 						return false;
 				}

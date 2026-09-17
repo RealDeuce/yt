@@ -33,7 +33,7 @@ bribe_accept(struct yt_session *session, double cached_defenders,
 
 	if (!session_present_alert(session, deal, sizeof(deal) - 1U,
 	    "accepted Mercenary Bribe", error)
-	    || !session_sound(session, 1.0f, "accepted bribe sound", error)
+	    || !session_sound(session, YT_SOUND_CUE_REWARD, "accepted bribe sound", error)
 	    || !session_read_sector(session, current_sector, &sector, error))
 		return false;
 	yt_bribe_sector_overlay(&sector);

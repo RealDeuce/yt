@@ -195,7 +195,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 		    "sector mine attention", error))
 			return false;
 		for (slot = 0; slot < 3; ++slot) {
-			if (!session_sound(session, 4.0f,
+			if (!session_sound(session, YT_SOUND_CUE_ACTION,
 			    "sector mine follow-up sound", error))
 				return false;
 		}
@@ -265,7 +265,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 			yt_sector_pager_add(private_pager, 1.0f);
 			(void)yt_player_cache_set(&session->player_cache, basic,
 			    YT_PLAYER_CACHE_CLOAK, 0.0f);
-			if (!session_sound(session, 4.0f,
+			if (!session_sound(session, YT_SOUND_CUE_ACTION,
 			    "sector cloak-reveal sound", error))
 				return false;
 		}
@@ -450,7 +450,7 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 	    strlen("[ Sensors Activated ]"), SESSION_PRESENT_BOLD_LINE,
 	    "adjacent-sector sensor heading", error))
 		return false;
-	if (!session_sound(session, 4.0f,
+	if (!session_sound(session, YT_SOUND_CUE_ACTION,
 	    "adjacent-sector sensor sound", error))
 		return false;
 	session_set_foreground(session, 1.0f);

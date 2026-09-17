@@ -58,7 +58,7 @@ yt_session_planet_assault(struct yt_session *session,
 	    SESSION_PRESENT_BOLD_LINE, "planet assault engagement row", error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "planet assault engagement blank", error)
-	    || !session_sound(session, 2.0f,
+	    || !session_sound(session, YT_SOUND_CUE_ATTACK,
 	    "planet assault engagement sound", error))
 		return false;
 	while (attackers > 0.0f && defenders > 0.0f) {
@@ -81,7 +81,7 @@ yt_session_planet_assault(struct yt_session *session,
 		    SESSION_PRESENT_LINE, "planet assault force-status row", error))
 			return false;
 		if (!attacker_damage
-		    && !session_sound(session, 2.0f,
+		    && !session_sound(session, YT_SOUND_CUE_ATTACK,
 			    "planet assault defender sound", error))
 			return false;
 	}
@@ -97,7 +97,7 @@ yt_session_planet_assault(struct yt_session *session,
 		    "planet assault defenses-destroyed row", error)
 		    || !yt_news_append_bytes(defenses_news,
 		    sizeof(defenses_news) - 1U, error)
-		    || !session_sound(session, 1.0f,
+		    || !session_sound(session, YT_SOUND_CUE_REWARD,
 		    "planet defenses destroyed sound", error))
 			return false;
 		if (attackers > 0.0f) {
@@ -113,7 +113,7 @@ yt_session_planet_assault(struct yt_session *session,
 			    player_name_length, planet_name, planet_name_length,
 			    row, sizeof(row), &row_length)
 			    || !yt_news_append_bytes(row, row_length, error)
-			    || !session_sound(session, 1.0f,
+			    || !session_sound(session, YT_SOUND_CUE_REWARD,
 			    "planet capture sound", error))
 				return false;
 		}
@@ -269,7 +269,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	    row, sizeof(row), &row_length)
 	    || !session_present_paged_line(session, row, row_length,
 	    "planet creation success row", error)
-	    || !session_sound(session, 4.0f, "planet creation sound", error)
+	    || !session_sound(session, YT_SOUND_CUE_ACTION, "planet creation sound", error)
 	    || !session_present_paged_line(session, advice, sizeof(advice) - 1U,
 	    "planet creation advice row", error))
 		return false;

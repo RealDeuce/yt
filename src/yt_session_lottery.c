@@ -250,7 +250,7 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 	if (!session_reload_player(session, error))
 		return false;
 	for (index = 0; index < matches; ++index) {
-		if (!session_sound(session, 1.0f,
+		if (!session_sound(session, YT_SOUND_CUE_REWARD,
 		    "lottery award sound", error))
 			return false;
 	}

@@ -305,7 +305,7 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 	yt_present_set_bold(&session->presentation, 1.0f);
 	yt_present_set_blink(&session->presentation, 1.0f);
 	return session_present_paged_fragment(session, row, row_length)
-	    && session_sound(session, 4.0f, "sector mine sound", error);
+	    && session_sound(session, YT_SOUND_CUE_ACTION, "sector mine sound", error);
 }
 
 bool
@@ -331,7 +331,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 	yt_present_set_blink(&session->presentation, 1.0f);
 	if (!session_present_text(session, warning, sizeof(warning) - 1U,
 	    SESSION_PRESENT_LINE, "sector mine output", error)
-	    || !session_sound(session, 5.0f, "sector mine sound", error)
+	    || !session_sound(session, YT_SOUND_CUE_DAMAGE, "sector mine sound", error)
 	    || !session_reload_player(session, error))
 		return false;
 	player = session->player;
@@ -397,7 +397,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 		working.record = persisted.record;
 		player = working;
 		session->player = working;
-		if (!session_sound(session, 2.0f, "sector mine sound", error)
+		if (!session_sound(session, YT_SOUND_CUE_ATTACK, "sector mine sound", error)
 		    || !yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		if (draw > 0.800000011920929f && working.holds < 10.0f) {

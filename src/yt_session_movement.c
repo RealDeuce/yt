@@ -41,7 +41,7 @@ danger_first_warning(struct yt_session *session, float target, bool finding,
 
 	if (finding)
 		return true;
-	if (!session_sound(session, 8.0f, "danger warning sound", error)
+	if (!session_sound(session, YT_SOUND_CUE_DANGER, "danger warning sound", error)
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "danger leading blank", error))
 		return false;

@@ -128,7 +128,7 @@ yt_session_clearance(struct yt_session *session, bool create,
 	}
 	if (!announced)
 		return true;
-	return session_sound(session, 1.0f, "clearance sale sound", error)
+	return session_sound(session, YT_SOUND_CUE_REWARD, "clearance sale sound", error)
 	    && session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "clearance trailing blank", error);
 }

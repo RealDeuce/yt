@@ -249,7 +249,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 		    SESSION_PRESENT_BOLD_LINE, "meltdown repair row", error))
 			return false;
 		for (int ordinal = 0; ordinal < 5; ++ordinal) {
-			if (!session_sound(session, 5.0f,
+			if (!session_sound(session, YT_SOUND_CUE_DAMAGE,
 			    "meltdown sound", error))
 				return false;
 		}
@@ -262,7 +262,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 			return false;
 	}
 	else {
-		if (!session_sound(session, 1.0f,
+		if (!session_sound(session, YT_SOUND_CUE_REWARD,
 		    "emergency warp completion sound", error))
 			return false;
 		if (!session_present_text(session, relief, sizeof(relief) - 1U,

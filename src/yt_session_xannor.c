@@ -185,7 +185,7 @@ yt_session_xannor_victory(struct yt_session *session, struct yt_error *error)
 		return xannor_victory_failure(error,
 		    "Xannor victory credit hydrate");
 	for (ordinal = 0U; ordinal < 3U; ++ordinal) {
-		if (!session_sound(session, 2.0f, "Xannor victory sound", error))
+		if (!session_sound(session, YT_SOUND_CUE_ATTACK, "Xannor victory sound", error))
 			return false;
 	}
 

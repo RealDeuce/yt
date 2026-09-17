@@ -328,7 +328,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 	    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error)
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "anti-cloak transaction row", error)
-	    || !session_sound(session, 2.0f,
+	    || !session_sound(session, YT_SOUND_CUE_ATTACK,
 	    "anti-cloak transaction sound", error))
 		return false;
 	for (player_record = YT_PLAYER_FIRST_RECORD;
@@ -358,7 +358,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 		if (!session_present_text(session, row,
 		    name_length + sizeof(uncloaked) - 1U,
 		    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error)
-		    || !session_sound(session, 1.0f,
+		    || !session_sound(session, YT_SOUND_CUE_REWARD,
 		    "anti-cloak transaction sound", error)) {
 			session->player.record = field_player.record;
 			return false;
@@ -380,7 +380,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 	    "anti-cloak transaction row", error)
 	    || !session_present_text(session, fade, sizeof(fade) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error)
-	    || !session_sound(session, 5.0f,
+	    || !session_sound(session, YT_SOUND_CUE_DAMAGE,
 	    "anti-cloak transaction sound", error)) {
 		if (field_loaded)
 			session->player.record = field_player.record;

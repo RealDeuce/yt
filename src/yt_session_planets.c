@@ -154,7 +154,7 @@ yt_session_planet_permission(struct yt_session *session,
 		if (!session_present_text(session, governor,
 		    sizeof(governor) - 1U, SESSION_PRESENT_LINE,
 		    "vacant planet governor row", error)
-		    || !session_sound(session, 1.0f, "vacant planet sound", error)
+		    || !session_sound(session, YT_SOUND_CUE_REWARD, "vacant planet sound", error)
 		    || !session_wait(session, 2.0,
 		    "vacant-planet governor wait", error)
 		    || !read_planet_physical(session, physical_planet_record,

@@ -225,7 +225,7 @@ bool session_attention_bytes(struct yt_session *session,
     struct yt_error *error);
 bool session_press_any_key(struct yt_session *session, bool drain,
     struct yt_error *error);
-bool session_sound(struct yt_session *session, float selector,
+bool session_sound(struct yt_session *session, enum yt_sound_cue cue,
     const char *operation, struct yt_error *error);
 bool yt_session_display_sector(struct yt_session *session, bool adjacent,
     struct yt_error *error);

@@ -117,5 +117,5 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 		return false;
 	return session_present_paged_fragment(session, (const uint8_t *)row,
 	    strlen(row))
-	    && session_sound(session, 4.0f, "sector fighter sound", error);
+	    && session_sound(session, YT_SOUND_CUE_ACTION, "sector fighter sound", error);
 }

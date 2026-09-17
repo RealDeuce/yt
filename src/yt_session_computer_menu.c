@@ -10,7 +10,7 @@ computer_activate(struct yt_session *session, struct yt_error *error)
 	session_set_foreground(session, 1.0f);
 	return session_present_paged_line(session, notice, sizeof(notice) - 1U,
 	    "computer activation notice", error)
-	    && session_sound(session, 4.0f, "computer activation sound", error);
+	    && session_sound(session, YT_SOUND_CUE_ACTION, "computer activation sound", error);
 }
 
 static bool

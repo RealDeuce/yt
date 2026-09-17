@@ -277,7 +277,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	    || !session_present_text(session, direct_row, direct_length,
 	    SESSION_PRESENT_LINE, "plasma planet-hit row", error)
 	    || !yt_news_append_bytes(news_row, news_length, error)
-	    || !session_sound(session, 2.0f, "plasma planet attack sound",
+	    || !session_sound(session, YT_SOUND_CUE_ATTACK, "plasma planet attack sound",
 	    error))
 		return false;
 
@@ -352,7 +352,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		    || !session_present_text(session, destroyed_row,
 		    sizeof(destroyed_row) - 1U, SESSION_PRESENT_LINE,
 		    "plasma planet-destroyed row", error)
-		    || !session_sound(session, 3.0f,
+		    || !session_sound(session, YT_SOUND_CUE_DESTRUCTION,
 		    "plasma planet destruction sound", error)
 		    || !yt_news_append_bytes(destroyed_row,
 		    sizeof(destroyed_row) - 1U, error))
@@ -422,7 +422,7 @@ yt_session_plasma_sector(struct yt_session *session, int sector_number,
 		    SESSION_PRESENT_BOLD_LINE, "plasma defense report", error))
 			return false;
 		session->presentation.bold = 1.0f;
-		if (!session_sound(session, 2.0f, "plasma fighter-defense sound",
+		if (!session_sound(session, YT_SOUND_CUE_ATTACK, "plasma fighter-defense sound",
 		    error))
 			return false;
 		if (*energy > 0.0) {
@@ -493,7 +493,7 @@ plasma_reload_sector:
 		uint8_t row[256];
 		size_t row_length;
 
-		if (!session_sound(session, 5.0f, "plasma sector-mine sound",
+		if (!session_sound(session, YT_SOUND_CUE_DAMAGE, "plasma sector-mine sound",
 		    error)
 		    || !plasma_mine_entry_news_row(attacker,
 		    launch_attacker_length, sector_number, row, sizeof(row),
@@ -564,7 +564,7 @@ plasma_reload_sector:
 			original_shields = target.shields;
 			saved_foreground = session->presentation.foreground;
 			session_set_foreground(session, 5.0f);
-			if (!session_sound(session, 2.0f,
+			if (!session_sound(session, YT_SOUND_CUE_ATTACK,
 			    "plasma player-attack sound", error))
 				return false;
 			while (*energy > 0.0
@@ -722,7 +722,7 @@ plasma_reload_sector:
 			}
 			else if (!yt_session_kill_player(session, basic,
 			    (float)session_record(session), true, error)
-			    || !session_sound(session, 3.0f, "plasma salvage sound",
+			    || !session_sound(session, YT_SOUND_CUE_DESTRUCTION, "plasma salvage sound",
 			    error)
 			    || !yt_session_salvage_player(session, basic,
 			    session_record(session), error))

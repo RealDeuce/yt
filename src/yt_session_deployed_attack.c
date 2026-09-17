@@ -102,7 +102,7 @@ hostile_surrender_run(struct yt_session *session,
 	owner_route = yt_hostile_surrender_route(state->old_owner);
 	if (!session_present_paged_line(session, radio, sizeof(radio) - 1U,
 	    "surrender radio row", error)
-	    || !session_sound(session, 4.0f, "hostile surrender sound", error))
+	    || !session_sound(session, YT_SOUND_CUE_ACTION, "hostile surrender sound", error))
 		return false;
 	if (qb_str_single(sector_number, sizeof(sector_number),
 	    state->current.sector) < 0)
@@ -135,7 +135,7 @@ hostile_surrender_run(struct yt_session *session,
 	case YT_HOSTILE_SURRENDER_XANNOR:
 		if (!session_present_paged_fragment(session, xannor_refusal,
 		    sizeof(xannor_refusal) - 1U)
-		    || !session_sound(session, 5.0f,
+		    || !session_sound(session, YT_SOUND_CUE_DAMAGE,
 		    "hostile surrender sound", error))
 			return false;
 		break;
@@ -150,7 +150,7 @@ hostile_surrender_run(struct yt_session *session,
 		    &position, mercenary_suffix,
 		    sizeof(mercenary_suffix) - 1U)
 		    || !session_present_paged_fragment(session, refusal, position)
-		    || !session_sound(session, 5.0f,
+		    || !session_sound(session, YT_SOUND_CUE_DAMAGE,
 		    "hostile surrender sound", error))
 			return false;
 		break;
@@ -163,7 +163,7 @@ hostile_surrender_run(struct yt_session *session,
 		return true;
 	if (!session_present_paged_line(session, joined, sizeof(joined) - 1U,
 	    "surrender joined row", error)
-	    || !session_sound(session, 1.0f, "hostile surrender sound", error))
+	    || !session_sound(session, YT_SOUND_CUE_REWARD, "hostile surrender sound", error))
 		return false;
 	surrendered_fighters = qb_double_subtract(state->deployed_fighters,
 	    state->defender_loss);
@@ -399,7 +399,7 @@ yt_session_attack_deployed(struct yt_session *session,
 	current.cloak = session->player.cloak;
 	current.shields = session->combat.ship_shields;
 	old_ship = (double)current.fighters;
-	if (!session_sound(session, 2.0f, "deployed attack opening sound",
+	if (!session_sound(session, YT_SOUND_CUE_ATTACK, "deployed attack opening sound",
 	    error))
 		return false;
 

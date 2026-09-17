@@ -311,13 +311,13 @@ session_set_color(struct yt_session *session, int logical)
 }
 
 bool
-session_sound(struct yt_session *session, float selector,
+session_sound(struct yt_session *session, enum yt_sound_cue cue,
     const char *operation, struct yt_error *error)
 {
 	struct yt_present_result presentation;
 	enum yt_present_status status;
 
-	status = yt_present_sound(selector, &session->presentation,
+	status = yt_present_sound(cue, &session->presentation,
 	    &presentation);
 	yt_out_present_result(&presentation);
 	if (status == YT_PRESENT_OK)

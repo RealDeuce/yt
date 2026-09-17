@@ -123,7 +123,7 @@ enum yt_present_status yt_present_attention(const uint8_t *text,
     struct yt_present_result *result);
 enum yt_present_status yt_present_sound_toggle(struct yt_present_state *state,
     struct yt_present_result *result);
-enum yt_present_status yt_present_sound(float selector,
+enum yt_present_status yt_present_sound(enum yt_sound_cue cue,
     struct yt_present_state *state, struct yt_present_result *result);
 enum yt_present_status yt_present_press_prompt(
     struct yt_present_state *state, struct yt_present_result *result,

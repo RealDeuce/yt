@@ -154,7 +154,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 		    planet_name_length, player_name, player_name_length,
 		    row, sizeof(row), &row_length)
 		    || !yt_news_append_bytes(row, row_length, error)
-		    || !session_sound(session, 3.0f,
+		    || !session_sound(session, YT_SOUND_CUE_DESTRUCTION,
 		    "planet move explosion sound", error)
 		    || !session_reload_player(session, error))
 			return false;
@@ -217,7 +217,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 		    planet_name_length, row, sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "planet move final row", error)
-		    || !session_sound(session, 4.0f,
+		    || !session_sound(session, YT_SOUND_CUE_ACTION,
 		    "planet move completion sound", error))
 			return false;
 	}

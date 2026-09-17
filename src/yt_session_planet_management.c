@@ -76,7 +76,7 @@ yt_session_planet_garrison(struct yt_session *session, int logical_planet,
 			return false;
 		planet.owner = (float)session_record(session);
 		if (!yt_record_set_number(&planet.record, YT_F73, planet.owner)
-		    || !session_sound(session, 4.0f,
+		    || !session_sound(session, YT_SOUND_CUE_ACTION,
 		    "planet garrison sound", error))
 			return false;
 	}
@@ -170,7 +170,7 @@ yt_session_planet_bank(struct yt_session *session, int logical_planet,
 	}
 	if (!session_present_paged_line(session, (const uint8_t *)success, strlen(success),
 	    "planet Bank accepted", error)
-	    || !session_sound(session, 4.0f, "planet bank sound", error))
+	    || !session_sound(session, YT_SOUND_CUE_ACTION, "planet bank sound", error))
 		return false;
 	credit_argument = yt_planet_bank_credit_argument(old_bank, target);
 	return session_mutate_player_credits(session, credit_argument, NULL,
@@ -442,7 +442,7 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 	    || !yt_session_update_planet(session, logical_planet, &planet,
 	    NULL, error))
 		return false;
-	return session_sound(session, 4.0f,
+	return session_sound(session, YT_SOUND_CUE_ACTION,
 	    "planet transfer sound", error);
 }
 

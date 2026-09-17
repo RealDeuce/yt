@@ -3003,7 +3003,7 @@ test_common_fatal_notice(void)
 	present.blink = 1.0f;
 	pager_fixture_b05d(&pager, &present, notice, sizeof(notice) - 1U,
 	    &capture);
-	CHECK(yt_present_sound(3.0f, &present, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_DESTRUCTION, &present, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	CHECK(capture.remote_length == sizeof(mine_fatal_splice) - 1U
 	    && memcmp(capture.remote, mine_fatal_splice,
@@ -3158,7 +3158,6 @@ test_attention(void)
 	CHECK(yt_present_pc_attribute(30, 4) == 0xce);
 	CHECK(current.foreground == 3.0f && current.background == 0.0f);
 	CHECK(current.bold == 0.0f && current.blink == 0.0f);
-	CHECK(current.sound.scratch_length == 0);
 
 	current = state(false);
 	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5,
@@ -3339,7 +3338,7 @@ test_sound_toggle(void)
 	CHECK(result.event_count == 0 && result.remote_length == 0);
 
 	current = state(true);
-	CHECK(yt_present_sound(4.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ACTION, &current, &result) == YT_PRESENT_OK);
 	CHECK(result.event_count == 2);
 	CHECK(result.events[0].operation == YT_PRESENT_REMOTE_SEMI);
 	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_PLAY);
@@ -7068,7 +7067,7 @@ planet_bank_fixture(const uint8_t *response, size_t response_length,
 	    outcome == PLANET_BANK_ZERO ? zero : accepted,
 	    outcome == PLANET_BANK_ZERO ? sizeof(zero) - 1U
 	    : sizeof(accepted) - 1U, &capture);
-	CHECK(yt_present_sound(4.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ACTION, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 
 done:
@@ -7315,7 +7314,7 @@ test_clearance_presentation(void)
 		CHECK(yt_present_line(fighters, sizeof(fighters) - 1U, &current,
 		    &result) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		CHECK(yt_present_sound(1.0f, &current, &result)
+		CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		CHECK(yt_present_line(NULL, 0, &current, &result)
@@ -7618,13 +7617,13 @@ test_earth_anti_cloak_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ATTACK, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	current.foreground = 6.0f;
 	CHECK(yt_present_bold_line((const uint8_t *)"ALPHA is uncloaked!",
 	    strlen("ALPHA is uncloaked!"), &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	current.foreground = 2.0f;
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
@@ -7633,7 +7632,7 @@ test_earth_anti_cloak_presentation(void)
 	    strlen("...the effect fades."), &current, &result)
 	    == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	CHECK(yt_present_sound(5.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_DAMAGE, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	current.foreground = 3.0f;
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
@@ -7838,7 +7837,7 @@ planet_computer_entry_cycle_fixture(bool ansi,
 	pager_capture_result(capture, &result);
 	pager_fixture_b05d(pager, current, activated,
 	    sizeof(activated) - 1U, capture);
-	CHECK(yt_present_sound(4.0f, current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ACTION, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
@@ -8064,7 +8063,7 @@ planet_sensor_all_zero_cycle_fixture(bool ansi,
 	CHECK(yt_present_bold_line(heading, sizeof(heading) - 1U,
 	    current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
-	CHECK(yt_present_sound(4.0f, current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ACTION, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	current->foreground = 1.0f;
 	pager->foreground = 1;
@@ -8554,7 +8553,7 @@ computer_sensor_all_zero_cycle_fixture(bool ansi,
 	CHECK(yt_present_bold_line(heading, sizeof(heading) - 1U,
 	    current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
-	CHECK(yt_present_sound(4.0f, current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ACTION, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	current->foreground = 1.0f;
 	pager->foreground = 1;
@@ -11496,7 +11495,7 @@ fighters_cycle_fixture(bool ansi, struct pager_capture *capture,
 	pager->newline_flag = 0.0f;
 	pager_fixture_b05d(pager, current, success, sizeof(success) - 1U,
 	    capture);
-	CHECK(yt_present_sound(4.0f, current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ACTION, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 
 	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
@@ -11792,7 +11791,7 @@ test_planet_assault_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ATTACK, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	current.foreground = 4.0f;
 	CHECK(yt_planet_assault_status_row(false, 0.0f, row, sizeof(row),
@@ -11800,7 +11799,7 @@ test_planet_assault_presentation(void)
 	CHECK(yt_present_line(row, row_length, &current, &result)
 	    == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ATTACK, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	current.foreground = 6.0f;
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
@@ -11808,7 +11807,7 @@ test_planet_assault_presentation(void)
 	CHECK(yt_present_bold_line(defenses, sizeof(defenses) - 1U, &current,
 	    &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
@@ -11816,7 +11815,7 @@ test_planet_assault_presentation(void)
 	CHECK(yt_present_bold_line(captured, sizeof(captured) - 1U, &current,
 	    &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	CHECK(capture.remote_length == sizeof(victory) - 1U
 	    && memcmp(capture.remote, victory, sizeof(victory) - 1U) == 0);
@@ -11833,7 +11832,7 @@ test_planet_assault_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ATTACK, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	current.foreground = 3.0f;
 	CHECK(yt_planet_assault_status_row(true, 0.0f, row, sizeof(row),
@@ -11942,7 +11941,7 @@ test_planet_creation_presentation(void)
 	pager_capture_result(&capture, &result);
 	pager.newline_flag = 0.0f;
 	pager_fixture_b05d(&pager, &current, created, created_length, &capture);
-	CHECK(yt_present_sound(4.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ACTION, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
@@ -12120,7 +12119,7 @@ test_sector_mine_presentation(void)
 	CHECK(yt_present_line(warning, sizeof(warning) - 1U, &current,
 	    &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	CHECK(yt_present_sound(5.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_DAMAGE, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 
 	current.foreground = 3.0f;
@@ -12145,7 +12144,7 @@ test_sector_mine_presentation(void)
 	    == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	current.foreground = 6.0f;
-	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ATTACK, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 
 	current.foreground = 3.0f;
@@ -12166,7 +12165,7 @@ test_sector_mine_presentation(void)
 	    == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	current.foreground = 6.0f;
-	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ATTACK, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 
 	current.foreground = 3.0f;
@@ -12187,7 +12186,7 @@ test_sector_mine_presentation(void)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 	}
-	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ATTACK, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
@@ -12248,7 +12247,7 @@ direct_fighter_kill_composition_run(bool ansi, struct pager_capture *capture,
 	pager->foreground = 6;
 	memset(capture, 0, sizeof(*capture));
 
-	if (yt_present_sound(3.0f, current, &result) != YT_PRESENT_OK)
+	if (yt_present_sound(YT_SOUND_CUE_DESTRUCTION, current, &result) != YT_PRESENT_OK)
 		return false;
 	pager_capture_result(capture, &result);
 	ends[0] = capture->remote_length;
@@ -12284,7 +12283,7 @@ direct_fighter_kill_composition_run(bool ansi, struct pager_capture *capture,
 	pager_capture_line(capture, current, NULL, 0U);
 	current->blink = 1.0f;
 	pager_capture_line(capture, current, mined, sizeof(mined) - 1U);
-	if (yt_present_sound(5.0f, current, &result) != YT_PRESENT_OK)
+	if (yt_present_sound(YT_SOUND_CUE_DAMAGE, current, &result) != YT_PRESENT_OK)
 		return false;
 	pager_capture_result(capture, &result);
 	for (batch = 0U; batch < 3U; ++batch) {
@@ -12305,7 +12304,7 @@ direct_fighter_kill_composition_run(bool ansi, struct pager_capture *capture,
 		    != YT_PRESENT_OK)
 			return false;
 		pager_capture_result(capture, &result);
-		if (yt_present_sound(2.0f, current, &result) != YT_PRESENT_OK)
+		if (yt_present_sound(YT_SOUND_CUE_ATTACK, current, &result) != YT_PRESENT_OK)
 			return false;
 		pager_capture_result(capture, &result);
 	}
@@ -12482,7 +12481,7 @@ black_hole_fixture(bool ansi, bool meltdown)
 		    &current, &result) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		for (size_t cue = 0U; cue < 5U; ++cue) {
-			CHECK(yt_present_sound(5.0f, &current, &result)
+			CHECK(yt_present_sound(YT_SOUND_CUE_DAMAGE, &current, &result)
 			    == YT_PRESENT_OK);
 			pager_capture_result(&capture, &result);
 		}
@@ -12493,7 +12492,7 @@ black_hole_fixture(bool ansi, bool meltdown)
 		    sizeof(row), &row_length));
 	}
 	else {
-		CHECK(yt_present_sound(1.0f, &current, &result)
+		CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		CHECK(yt_present_line(relief, sizeof(relief) - 1U, &current,
@@ -14046,7 +14045,7 @@ direct_fighter_fatal_cycle_run(struct physical_viewer_join *viewer,
 		/* The fixture enters after this inherited color is established. */
 	}
 
-	if (yt_present_sound(3.0f, &join->presentation, &result)
+	if (yt_present_sound(YT_SOUND_CUE_DESTRUCTION, &join->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
@@ -14078,7 +14077,7 @@ direct_fighter_fatal_cycle_run(struct physical_viewer_join *viewer,
 		return false;
 	join->presentation.blink = 1.0f;
 	if (!normal_exit_line(join, mined, sizeof(mined) - 1U)
-	    || yt_present_sound(5.0f, &join->presentation, &result)
+	    || yt_present_sound(YT_SOUND_CUE_DAMAGE, &join->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
@@ -14099,7 +14098,7 @@ direct_fighter_fatal_cycle_run(struct physical_viewer_join *viewer,
 	    || !yt_sector_mine_loss_row(YT_SECTOR_MINE_LOSS_EMPTY_HOLDS,
 	    1.0f, row, sizeof(row), &row_length)
 	    || !normal_exit_line(join, row, row_length)
-	    || yt_present_sound(2.0f, &join->presentation, &result)
+	    || yt_present_sound(YT_SOUND_CUE_ATTACK, &join->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
@@ -14116,7 +14115,7 @@ direct_fighter_fatal_cycle_run(struct physical_viewer_join *viewer,
 	join->queue_position = 0U;
 	join->queue_length = 0U;
 	if (!normal_exit_b05d(join, fatal, sizeof(fatal) - 1U, 0.0f)
-	    || yt_present_sound(3.0f, &join->presentation, &result)
+	    || yt_present_sound(YT_SOUND_CUE_DESTRUCTION, &join->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
@@ -14781,7 +14780,7 @@ sensor_join_sound(struct viewer_pager_join *join)
 {
 	struct yt_present_result result;
 
-	if (yt_present_sound(4.0f, &join->presentation, &result)
+	if (yt_present_sound(YT_SOUND_CUE_ACTION, &join->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
@@ -15073,7 +15072,7 @@ planet_garrison_positive_cycle_run(struct physical_viewer_join *viewer,
 	join->presentation.bold = 1.0f;
 	join->presentation.blink = 1.0f;
 	if (!normal_exit_b05d(join, success, success_length, 0.0f)
-	    || yt_present_sound(4.0f, &join->presentation, &result)
+	    || yt_present_sound(YT_SOUND_CUE_ACTION, &join->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
@@ -18939,8 +18938,8 @@ hostile_mine_hazard_sound(void *context, float selector,
 	(void)error;
 	if (fixture->sound_count >= YT_ARRAY_LEN(fixture->sounds)
 	    || (selector != 5.0f && selector != 2.0f)
-	    || yt_present_sound(selector, &join->presentation, &result)
-	    != YT_PRESENT_OK)
+	    || yt_present_sound((enum yt_sound_cue)selector,
+	    &join->presentation, &result) != YT_PRESENT_OK)
 		return false;
 	fixture->sounds[fixture->sound_count++] = selector;
 	viewer_pager_capture_result(join, &result);
@@ -19113,7 +19112,7 @@ hostile_emergency_warp_present(struct hostile_mines_hazard_fixture *fixture)
 		fixture->emergency_destination = 733.0f;
 	fixture->emergency_cost = yt_emergency_warp_cost(fixture->emergency_heat,
 	    turn_draw, fixture->emergency_player.turns, false);
-	if (yt_present_sound(1.0f, &join->presentation, &result) != YT_PRESENT_OK)
+	if (yt_present_sound(YT_SOUND_CUE_REWARD, &join->presentation, &result) != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
 	if (!hostile_mine_hazard_present(fixture, relief, sizeof(relief) - 1U,
@@ -21335,7 +21334,7 @@ direct_emergency_warp_reentry_scanner(
 			return false;
 		if (index == 2U) {
 			cycle->target_cloak = 0.0f;
-			if (yt_present_sound(4.0f, &join->presentation, &result)
+			if (yt_present_sound(YT_SOUND_CUE_ACTION, &join->presentation, &result)
 			    != YT_PRESENT_OK)
 				return false;
 			viewer_pager_capture_result(join, &result);
@@ -21402,7 +21401,7 @@ direct_emergency_warp_reentry_failure_run(
 			return false;
 		if (index == 2U) {
 			cycle->target_cloak = 0.0f;
-			if (yt_present_sound(4.0f, &join->presentation, &result)
+			if (yt_present_sound(YT_SOUND_CUE_ACTION, &join->presentation, &result)
 			    != YT_PRESENT_OK)
 				return false;
 			viewer_pager_capture_result(join, &result);
@@ -21506,7 +21505,8 @@ direct_emergency_warp_mined_reentry_scanner(
 		if (!sensor_join_present(join, &scanner[index]))
 			return false;
 		if (index == 2U || index == 3U) {
-			if (yt_present_sound(index == 2U ? 6.0f : 4.0f,
+			if (yt_present_sound(index == 2U
+			    ? YT_SOUND_CUE_ATTENTION : YT_SOUND_CUE_ACTION,
 			    &join->presentation, &result) != YT_PRESENT_OK)
 				return false;
 			viewer_pager_capture_result(join, &result);
@@ -21559,7 +21559,7 @@ direct_emergency_warp_hostile_reentry(
 			return false;
 		if (index == 2U) {
 			cycle->target_cloak = 0.0f;
-			if (yt_present_sound(4.0f, &join->presentation, &result)
+			if (yt_present_sound(YT_SOUND_CUE_ACTION, &join->presentation, &result)
 			    != YT_PRESENT_OK)
 				return false;
 			viewer_pager_capture_result(join, &result);
@@ -21889,7 +21889,7 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 	    sizeof(entry->expected_player)) != 0
 	    || qb_mbf32_encode(2.0f,
 	    cycle->fresh_hostile_attack_sound_selector_raw) != QB_MBF_OK
-	    || yt_present_sound(2.0f, &join->presentation, &sound)
+	    || yt_present_sound(YT_SOUND_CUE_ATTACK, &join->presentation, &sound)
 	    != YT_PRESENT_OK) {
 		yt_database_close(&io->database);
 		return false;
@@ -22086,8 +22086,8 @@ direct_warp_attack_combat_sound(void *context, float selector,
 	memcpy(join->cycle->fresh_hostile_attack_sound_selector_raw,
 	    join->selector_raw, sizeof(join->selector_raw));
 	if (selector != 2.0f
-	    || yt_present_sound(selector, &viewer->presentation, &result)
-	    != YT_PRESENT_OK)
+	    || yt_present_sound((enum yt_sound_cue)selector,
+	    &viewer->presentation, &result) != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(viewer, &result);
 	++join->sound_calls;
@@ -22178,7 +22178,8 @@ direct_warp_attack_surrender_sound(void *context,
 	(void)kind;
 	(void)error;
 	(void)qb_mbf32_encode(selector, join->selector_raw);
-	if (yt_present_sound(selector, &viewer->presentation, &result)
+	if (yt_present_sound((enum yt_sound_cue)selector,
+	    &viewer->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(viewer, &result);
@@ -22611,7 +22612,8 @@ direct_warp_attack_clearance_sound(void *context, float selector,
 
 	(void)error;
 	++join->clearance_sound_attempts;
-	if (yt_present_sound(selector, &viewer->presentation, &result)
+	if (yt_present_sound((enum yt_sound_cue)selector,
+	    &viewer->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(viewer, &result);
@@ -23330,7 +23332,8 @@ hostile_bribe_fatal_sound(void *context, float selector,
 	++join->sound_calls;
 	if (join->fail_sound)
 		return false;
-	if (yt_present_sound(selector, &join->viewer->join.presentation,
+	if (yt_present_sound((enum yt_sound_cue)selector,
+	    &join->viewer->join.presentation,
 	    &result) != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(&join->viewer->join, &result);
@@ -23473,7 +23476,7 @@ direct_emergency_warp_owner_get_failure(
 			return false;
 		if (index == 2U) {
 			cycle->target_cloak = 0.0f;
-			if (yt_present_sound(4.0f, &join->presentation, &result)
+			if (yt_present_sound(YT_SOUND_CUE_ACTION, &join->presentation, &result)
 			    != YT_PRESENT_OK)
 				return false;
 			viewer_pager_capture_result(join, &result);
@@ -26821,8 +26824,7 @@ test_direct_emergency_warp_hostile_attack_opening_success(void)
 		    && viewer.join.local_color_count == callers[caller].colors
 		    && viewer.join.event_count == callers[caller].events
 		    && viewer.join.sample_calls == callers[caller].samples
-		    && viewer.join.pager.line_count == 0.0f
-		    && viewer.join.presentation.sound.scratch_length == 0U);
+		    && viewer.join.pager.line_count == 0.0f);
 		yt_database_close(&entry.io.database);
 	}
 }
@@ -32090,7 +32092,7 @@ main_attack_survivor_cycle_run(struct physical_viewer_join *viewer,
 		return false;
 	viewer_pager_capture_result(join, &result);
 	if (!normal_exit_line(join, NULL, 0U)
-	    || yt_present_sound(2.0f, &join->presentation, &result)
+	    || yt_present_sound(YT_SOUND_CUE_ATTACK, &join->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
@@ -32309,7 +32311,7 @@ main_attack_black_hole_cycle_run(bool ansi, struct pager_capture *capture,
 	pager_capture_result(capture, &result);
 	pager_capture_line(capture, current, NULL, 0U);
 	pager_capture_line(capture, current, NULL, 0U);
-	if (yt_present_sound(1.0f, current, &result) != YT_PRESENT_OK)
+	if (yt_present_sound(YT_SOUND_CUE_REWARD, current, &result) != YT_PRESENT_OK)
 		return false;
 	pager_capture_result(capture, &result);
 	pager_capture_line(capture, current, relief, sizeof(relief) - 1U);
@@ -32463,7 +32465,7 @@ mine_emergency_warp_present(struct pager_capture *capture,
 	pager_capture_result(capture, &result);
 	pager_capture_line(capture, current, NULL, 0U);
 	pager_capture_line(capture, current, NULL, 0U);
-	if (yt_present_sound(1.0f, current, &result) != YT_PRESENT_OK)
+	if (yt_present_sound(YT_SOUND_CUE_REWARD, current, &result) != YT_PRESENT_OK)
 		return false;
 	pager_capture_result(capture, &result);
 	pager_capture_line(capture, current, relief, sizeof(relief) - 1U);
@@ -32541,7 +32543,7 @@ main_attack_mine_cycle_run(bool ansi, bool emergency_warp,
 	pager_capture_line(capture, current, NULL, 0U);
 	current->blink = 1.0f;
 	pager_capture_line(capture, current, mined, sizeof(mined) - 1U);
-	if (yt_present_sound(5.0f, current, &result) != YT_PRESENT_OK)
+	if (yt_present_sound(YT_SOUND_CUE_DAMAGE, current, &result) != YT_PRESENT_OK)
 		return false;
 	pager_capture_result(capture, &result);
 	current->foreground = 3.0f;
@@ -32560,7 +32562,7 @@ main_attack_mine_cycle_run(bool ansi, bool emergency_warp,
 	    != YT_PRESENT_OK)
 		return false;
 	pager_capture_result(capture, &result);
-	if (yt_present_sound(2.0f, current, &result) != YT_PRESENT_OK)
+	if (yt_present_sound(YT_SOUND_CUE_ATTACK, current, &result) != YT_PRESENT_OK)
 		return false;
 	pager_capture_result(capture, &result);
 	ends[1] = capture->remote_length;
@@ -34997,7 +34999,7 @@ test_danger_scan_presentation_primitives(void)
 
 		current.foreground = 3.0f;
 		yt_present_set_background(&current, 4.0f);
-		CHECK(yt_present_sound(8.0f, &current, &result)
+		CHECK(yt_present_sound(YT_SOUND_CUE_DANGER, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		CHECK(yt_present_line(NULL, 0U, &current, &result)
@@ -36304,7 +36306,7 @@ test_hostile_attack_admission_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_ATTACK, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
@@ -36400,13 +36402,13 @@ test_deployed_fighter_surrender_presentation(void)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		pager_capture_line(&capture, &current, NULL, 0U);
-		CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+		CHECK(yt_present_sound(YT_SOUND_CUE_ATTACK, &current, &result) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 
 		pager_capture_line(&capture, &current, NULL, 0U);
 		pager_fixture_b05d(&pager, &current, radio,
 		    sizeof(radio) - 1U, &capture);
-		CHECK(yt_present_sound(4.0f, &current, &result) == YT_PRESENT_OK);
+		CHECK(yt_present_sound(YT_SOUND_CUE_ACTION, &current, &result) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		pager_capture_line(&capture, &current, NULL, 0U);
 		pager_fixture_b05d(&pager, &current, captain,
@@ -36431,7 +36433,7 @@ test_deployed_fighter_surrender_presentation(void)
 		pager_capture_line(&capture, &current, NULL, 0U);
 		pager_fixture_b05d(&pager, &current, joined,
 		    sizeof(joined) - 1U, &capture);
-		CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK);
+		CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, &current, &result) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		pager_fixture_b05d(&pager, &current, surrendered,
 		    sizeof(surrendered) - 1U, &capture);
@@ -36511,7 +36513,7 @@ test_deployed_fighter_faction_presentation(void)
 			memset(&capture, 0, sizeof(capture));
 			pager_fixture_b05d(&pager, &current, rows[faction],
 			    row_lengths[faction], &capture);
-			CHECK(yt_present_sound(5.0f, &current, &result)
+			CHECK(yt_present_sound(YT_SOUND_CUE_DAMAGE, &current, &result)
 			    == YT_PRESENT_OK);
 			pager_capture_result(&capture, &result);
 			if (pass == 0) {
@@ -36625,7 +36627,7 @@ hostile_bribe_offer_fixture(bool ansi, const uint8_t *response,
 		current->blink = 1.0f;
 		pager_fixture_b05d(pager, current, agreement,
 		    sizeof(agreement) - 1U, &capture);
-		CHECK(yt_present_sound(1.0f, current, &result)
+		CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 	}
@@ -36871,7 +36873,7 @@ test_hostile_sector_mine_presentation(void)
 		current.blink = 1.0f;
 		pager_fixture_b05d(&pager, &current, success,
 		    sizeof(success) - 1U, &capture);
-		CHECK(yt_present_sound(4.0f, &current, &result)
+		CHECK(yt_present_sound(YT_SOUND_CUE_ACTION, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		if (ansi) {

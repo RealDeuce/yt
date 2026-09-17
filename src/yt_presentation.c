@@ -638,7 +638,8 @@ yt_present_attention(const uint8_t *text, size_t length,
 	status = emit_line(NULL, 0, state, result);
 	if (status != YT_PRESENT_OK)
 		return status;
-	sound_status = yt_sound_dispatch(6.0f, &state->sound, &sound);
+	sound_status = yt_sound_dispatch(YT_SOUND_CUE_ATTENTION,
+	    &state->sound, &sound);
 	if (sound_status != YT_SOUND_OK)
 		return YT_PRESENT_SOUND_ERROR;
 	if (sound.remote_length != 0) {
@@ -694,7 +695,7 @@ yt_present_sound_toggle(struct yt_present_state *state,
 }
 
 enum yt_present_status
-yt_present_sound(float selector, struct yt_present_state *state,
+yt_present_sound(enum yt_sound_cue cue, struct yt_present_state *state,
     struct yt_present_result *result)
 {
 	struct yt_sound_result sound;
@@ -702,7 +703,7 @@ yt_present_sound(float selector, struct yt_present_state *state,
 	enum yt_present_status status;
 
 	memset(result, 0, sizeof(*result));
-	sound_status = yt_sound_dispatch(selector, &state->sound, &sound);
+	sound_status = yt_sound_dispatch(cue, &state->sound, &sound);
 	if (sound.remote_length != 0) {
 		status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
 		    sound.remote, sound.remote_length);

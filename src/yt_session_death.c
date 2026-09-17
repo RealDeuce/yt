@@ -20,7 +20,7 @@ yt_session_common_fatal_self(struct yt_session *session, struct yt_error *error)
 	if (!session_reload_player(session, error))
 		return false;
 	memcpy(session->player.name, cached_name, sizeof(cached_name));
-	if (!session_sound(session, 3.0f, "fatal destruction sound", error)
+	if (!session_sound(session, YT_SOUND_CUE_DESTRUCTION, "fatal destruction sound", error)
 	    || !yt_session_kill_player(session, current_player_record,
 	    (float)current_player_record, false, error)
 	    || !session_wait(session, 5.0, "common fatal wait", error))

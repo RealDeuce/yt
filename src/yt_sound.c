@@ -70,45 +70,24 @@ endpoint_gates(const struct yt_sound_state *state,
 }
 
 enum yt_sound_status
-yt_sound_dispatch(float selector, struct yt_sound_state *state,
+yt_sound_dispatch(enum yt_sound_cue cue, struct yt_sound_state *state,
     struct yt_sound_result *result)
 {
 	const uint8_t *selected;
 	size_t selected_length;
-	enum yt_sound_status status;
-	int index;
 
 	memset(result, 0, sizeof(*result));
-	if (selector == 0.0f)
-		return YT_SOUND_OK;
+	if (cue < YT_SOUND_CUE_REWARD || cue >= YT_SOUND_CUE_COUNT)
+		return YT_SOUND_INVALID_CUE;
 	if (state->ansi == 0.0f) {
-		if (selector == 2.0f || selector == 4.0f)
+		if (cue == YT_SOUND_CUE_ATTACK || cue == YT_SOUND_CUE_ACTION)
 			return YT_SOUND_OK;
 		return endpoint_gates(state, ascii_cue, sizeof(ascii_cue) - 1U,
 		    false, result);
 	}
-	if (state->scratch_length > sizeof(state->scratch))
-		return YT_SOUND_INVALID_STATE;
-	if (selector >= 1.0f && selector <= 9.0f) {
-		index = (int)selector;
-	}
-	else
-		index = 0;
-	if (index != 0 && selector == (float)index) {
-		selected = cues[index].data;
-		selected_length = cues[index].length;
-		memcpy(state->scratch, selected, selected_length);
-		state->scratch_length = selected_length;
-	}
-	else {
-		selected = state->scratch;
-		selected_length = state->scratch_length;
-	}
-	status = endpoint_gates(state, selected, selected_length, true, result);
-	if (status != YT_SOUND_OK)
-		return status;
-	state->scratch_length = 0;
-	return YT_SOUND_OK;
+	selected = cues[cue].data;
+	selected_length = cues[cue].length;
+	return endpoint_gates(state, selected, selected_length, true, result);
 }
 
 enum yt_sound_status
@@ -131,7 +110,7 @@ yt_sound_toggle(struct yt_sound_state *state, struct yt_sound_result *result)
 	if (state->mode != 0.0f)
 		state->local_sound = toggled;
 	if (toggled != 0.0f) {
-		status = yt_sound_dispatch(1.0f, state, result);
+		status = yt_sound_dispatch(YT_SOUND_CUE_REWARD, state, result);
 		memcpy(result->line, on, sizeof(on) - 1U);
 		result->line_length = sizeof(on) - 1U;
 		return status;

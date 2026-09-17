@@ -29,7 +29,7 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 		*energy = 0.0;
 		*hop_loss = 0.0f;
 		*attacker_length = 0U;
-		if (!session_sound(session, 4.0f,
+		if (!session_sound(session, YT_SOUND_CUE_ACTION,
 		    "cruise missile launch sound", error)
 		    || !session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "cruise missile opening line", error)
@@ -65,7 +65,7 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 	    SESSION_PRESENT_RAW, "plasma loading text", error)
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "plasma opening line", error)
-	    || !session_sound(session, 4.0f, "plasma launch sound", error)
+	    || !session_sound(session, YT_SOUND_CUE_ACTION, "plasma launch sound", error)
 	    || !session_wait(session, 1.0, "plasma launch wait", error)
 	    || !yt_projectile_plasma_energy_row(*energy, row, sizeof(row),
 	    &row_length)
@@ -81,7 +81,7 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 		    sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "plasma opening line", error)
-		    || !session_sound(session, 7.0f,
+		    || !session_sound(session, YT_SOUND_CUE_LAUNCH,
 		    "plasma bolt firing sound", error))
 			return false;
 		firing_counter = yt_projectile_plasma_next_firing(firing_counter);

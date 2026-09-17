@@ -432,7 +432,7 @@ test_sound_adapter(void)
 	current.sound.user_sound = -1.0f;
 	current.sound.snoop = -1.0f;
 	current.sound.local_sound = -1.0f;
-	CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, &current, &result) == YT_PRESENT_OK);
 	reset_calls();
 	od_control.od_force_local = FALSE;
 	od_control.baud = 38400U;
@@ -446,7 +446,7 @@ test_sound_adapter(void)
 	current.sound.user_sound = -1.0f;
 	current.sound.snoop = -1.0f;
 	current.sound.local_sound = -1.0f;
-	CHECK(yt_present_sound(8.0f, &current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_sound(YT_SOUND_CUE_DANGER, &current, &result) == YT_PRESENT_OK);
 	reset_calls();
 	od_control.od_force_local = FALSE;
 	od_control.baud = 38400U;
@@ -462,7 +462,7 @@ test_sound_adapter(void)
 	current.sound.user_sound = -1.0f;
 	current.sound.snoop = -1.0f;
 	current.sound.local_sound = -1.0f;
-	CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK
+	CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, &current, &result) == YT_PRESENT_OK
 	    && result.remote_length == 0U && result.event_count == 1U
 	    && result.events[0].operation == YT_PRESENT_LOCAL_PLAY);
 	reset_calls();
