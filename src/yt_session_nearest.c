@@ -8,31 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum nearest_present_mode {
-	YT_NEAREST_PRESENT_LINE,
-	YT_NEAREST_PRESENT_RAW,
-	YT_NEAREST_PRESENT_BOLD_LINE,
-	YT_NEAREST_PRESENT_BOLD_RAW,
-};
-
-enum nearest_output_kind {
-	YT_NEAREST_ENTRY_BLANK,
-	YT_NEAREST_SCANNING,
-	YT_NEAREST_SCAN_BLANK,
-	YT_NEAREST_OWNER_INSTRUCTION,
-	YT_NEAREST_OWNER_BLANK,
-	YT_NEAREST_DISTANCE,
-	YT_NEAREST_SECTOR,
-	YT_NEAREST_ORE,
-	YT_NEAREST_ORGANICS,
-	YT_NEAREST_EQUIPMENT,
-	YT_NEAREST_STOCK,
-	YT_NEAREST_NAME,
-	YT_NEAREST_PAGER_PROMPT,
-	YT_NEAREST_PAGER_ECHO,
-	YT_NEAREST_FINAL_BLANK,
-};
-
 struct nearest_scan {
 	int selector;
 	uint8_t direction;
@@ -100,73 +75,6 @@ nearest_div(float left, float right, float *result, struct yt_error *error,
 		return nearest_session_error(error, operation);
 	value = left / right;
 	return nearest_single(value, result, error, operation);
-}
-
-static bool
-nearest_read(struct yt_session *session, int physical_record,
-    struct yt_record *record, struct yt_error *error)
-{
-	return yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, record, error);
-}
-
-static const char *
-nearest_session_output_operation(enum nearest_output_kind kind)
-{
-	static const char *const operations[] = {
-		[YT_NEAREST_ENTRY_BLANK] = "nearest-port opening blank",
-		[YT_NEAREST_SCANNING] = "nearest-port scanning row",
-		[YT_NEAREST_SCAN_BLANK] = "nearest-port scanning blank",
-		[YT_NEAREST_OWNER_INSTRUCTION] = "nearest-port ownership row",
-		[YT_NEAREST_OWNER_BLANK] = "nearest-port ownership blank",
-		[YT_NEAREST_DISTANCE] = "nearest-port distance heading",
-		[YT_NEAREST_SECTOR] = "nearest-port sector prefix",
-		[YT_NEAREST_ORE] = "nearest-port ore cell",
-		[YT_NEAREST_ORGANICS] = "nearest-port organics cell",
-		[YT_NEAREST_EQUIPMENT] = "nearest-port equipment cell",
-		[YT_NEAREST_STOCK] = "nearest-port aggregate cell",
-		[YT_NEAREST_NAME] = "nearest-port name row",
-		[YT_NEAREST_PAGER_PROMPT] = "nearest-port pager prompt",
-		[YT_NEAREST_PAGER_ECHO] = "nearest-port pager echo",
-		[YT_NEAREST_FINAL_BLANK] = "nearest-port final blank",
-	};
-
-	if ((size_t)kind >= YT_ARRAY_LEN(operations)
-	    || operations[kind] == NULL)
-		return "nearest-port presentation";
-	return operations[kind];
-}
-
-static bool
-nearest_present(struct yt_session *session, enum nearest_output_kind kind,
-    enum nearest_present_mode mode, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	enum session_present_text_kind present_kind;
-
-	switch (mode) {
-	case YT_NEAREST_PRESENT_LINE:
-		present_kind = SESSION_PRESENT_LINE;
-		break;
-	case YT_NEAREST_PRESENT_RAW:
-		present_kind = SESSION_PRESENT_RAW;
-		break;
-	case YT_NEAREST_PRESENT_BOLD_LINE:
-		present_kind = SESSION_PRESENT_BOLD_LINE;
-		break;
-	case YT_NEAREST_PRESENT_BOLD_RAW:
-		present_kind = SESSION_PRESENT_BOLD_RAW;
-		break;
-	default:
-		if (error != NULL)
-			error->status = YT_INVALID;
-		return false;
-	}
-	if (mode == YT_NEAREST_PRESENT_BOLD_LINE
-	    || mode == YT_NEAREST_PRESENT_BOLD_RAW)
-		yt_present_set_bold(&session->presentation, 1.0f);
-	return session_present_text(session, text, length, present_kind,
-	    nearest_session_output_operation(kind), error);
 }
 
 static int
@@ -277,8 +185,9 @@ nearest_page(struct yt_session *session, struct nearest_scan *scan,
 	*stop = false;
 	scan->page_count = 0;
 	session_set_foreground(session, 3.0f);
-	if (!nearest_present(session, YT_NEAREST_PAGER_PROMPT,
-	    YT_NEAREST_PRESENT_BOLD_RAW, prompt, sizeof(prompt) - 1U, error))
+	yt_present_set_bold(&session->presentation, 1.0f);
+	if (!session_present_text(session, prompt, sizeof(prompt) - 1U,
+	    SESSION_PRESENT_BOLD_RAW, "nearest-port pager prompt", error))
 		return false;
 	for (;;) {
 		if (!yt_input_wait(&session->io.input, &selected))
@@ -291,8 +200,8 @@ nearest_page(struct yt_session *session, struct nearest_scan *scan,
 		yt_input_compat_upper_n(&key, 1U);
 		if (key != 'Y' && key != 'N' && key != '+')
 			continue;
-		if (!nearest_present(session, YT_NEAREST_PAGER_ECHO,
-		    YT_NEAREST_PRESENT_LINE, &key, 1U, error))
+		if (!session_present_text(session, &key, 1U,
+		    SESSION_PRESENT_LINE, "nearest-port pager echo", error))
 			return false;
 		if (key == '+')
 			scan->continuous = true;
@@ -337,23 +246,23 @@ nearest_scan_run(struct yt_session *session, int selector,
 		goto done;
 	}
 
-	if (!nearest_present(session, YT_NEAREST_ENTRY_BLANK,
-	    YT_NEAREST_PRESENT_LINE, NULL, 0U, error))
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "nearest-port opening blank", error))
 		goto done;
 	session_set_foreground(session, 3.0f);
-	if (!nearest_present(session, YT_NEAREST_SCANNING,
-	    YT_NEAREST_PRESENT_BOLD_LINE, scanning, sizeof(scanning) - 1U,
-	    error)
-	    || !nearest_present(session, YT_NEAREST_SCAN_BLANK,
-	    YT_NEAREST_PRESENT_LINE, NULL, 0U, error))
+	if (!session_present_text(session, scanning, sizeof(scanning) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "nearest-port scanning row", error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "nearest-port scanning blank", error))
 		goto done;
 	session_set_foreground(session, 7.0f);
-	if (!nearest_present(session, YT_NEAREST_OWNER_INSTRUCTION,
-	    YT_NEAREST_PRESENT_BOLD_LINE, instruction,
-	    sizeof(instruction) - 1U, error)
-	    || !nearest_present(session, YT_NEAREST_OWNER_BLANK,
-	    YT_NEAREST_PRESENT_LINE, NULL, 0U, error)
-	    || !nearest_read(session, scan.actor_number, &raw, error))
+	if (!session_present_text(session, instruction,
+	    sizeof(instruction) - 1U, SESSION_PRESENT_BOLD_LINE,
+	    "nearest-port ownership row", error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "nearest-port ownership blank", error)
+	    || !yt_database_read(&session->door->game.database,
+	    (size_t)scan.actor_number, &raw, error))
 		goto done;
 	yt_player_decode(&scan.player, &raw);
 	session->player = scan.player;
@@ -377,8 +286,8 @@ nearest_scan_run(struct yt_session *session, int selector,
 
 			scan.current_sector = sector_number;
 			scan.display_sector = sector_number;
-			if (!nearest_read(session,
-			    (int)session_sector_basic_record(session, sector_number),
+			if (!yt_database_read(&session->door->game.database,
+			    (size_t)session_sector_basic_record(session, sector_number),
 			    &raw, error))
 				goto done;
 			yt_sector_decode(&scan.sector, &raw);
@@ -409,8 +318,8 @@ nearest_scan_run(struct yt_session *session, int selector,
 			}
 			if (!nearest_single(scan.current_day, &scan.current_day,
 			    error, "nearest current day")
-			    || !nearest_read(session,
-			    (int)session_port_basic_record(session, logical_port),
+			    || !yt_database_read(&session->door->game.database,
+			    (size_t)session_port_basic_record(session, logical_port),
 			    &raw, error))
 				goto done;
 			yt_port_decode(&scan.port, &raw);
@@ -452,9 +361,9 @@ nearest_scan_run(struct yt_session *session, int selector,
 				memcpy(heading, "Distance:", 9U);
 				memcpy(heading + 9U, number, (size_t)length);
 				session_set_foreground(session, 1.0f);
-				if (!nearest_present(session, YT_NEAREST_DISTANCE,
-				    YT_NEAREST_PRESENT_BOLD_LINE, heading,
-				    9U + (size_t)length, error))
+				if (!session_present_text(session, heading,
+				    9U + (size_t)length, SESSION_PRESENT_BOLD_LINE,
+				    "nearest-port distance heading", error))
 					goto done;
 				++scan.page_count;
 				heading_emitted = true;
@@ -525,42 +434,43 @@ nearest_scan_run(struct yt_session *session, int selector,
 				if (scan.port.owner != 0.0f)
 					yt_present_set_bold(&session->presentation, 1.0f);
 				session_set_foreground(session, 2.0f);
-				if (!nearest_present(session, YT_NEAREST_SECTOR,
-				    YT_NEAREST_PRESENT_RAW, sector_cell,
-				    sizeof(sector_cell), error))
+				if (!session_present_text(session, sector_cell,
+				    sizeof(sector_cell), SESSION_PRESENT_RAW,
+				    "nearest-port sector prefix", error))
 					goto done;
 				session_set_foreground(session,
 				    scan.port.commodity_class == 3.0f ? 7.0f : 6.0f);
-				if (!nearest_present(session, YT_NEAREST_ORE,
-				    YT_NEAREST_PRESENT_BOLD_RAW, ore,
+				yt_present_set_bold(&session->presentation, 1.0f);
+				if (!session_present_text(session, ore,
 				    scan.display_sector == 1 ? 0U : sizeof(ore) - 1U,
-				    error))
+				    SESSION_PRESENT_BOLD_RAW, "nearest-port ore cell", error))
 					goto done;
 				session_set_foreground(session,
 				    scan.port.commodity_class == 2.0f ? 7.0f : 6.0f);
-				if (!nearest_present(session, YT_NEAREST_ORGANICS,
-				    YT_NEAREST_PRESENT_BOLD_RAW, organics,
-				    scan.display_sector == 1
-				    ? 0U : sizeof(organics) - 1U, error))
+				yt_present_set_bold(&session->presentation, 1.0f);
+				if (!session_present_text(session, organics,
+				    scan.display_sector == 1 ? 0U : sizeof(organics) - 1U,
+				    SESSION_PRESENT_BOLD_RAW, "nearest-port organics cell",
+				    error))
 					goto done;
 				session_set_foreground(session,
 				    scan.port.commodity_class == 1.0f ? 7.0f : 6.0f);
-				if (!nearest_present(session, YT_NEAREST_EQUIPMENT,
-				    YT_NEAREST_PRESENT_BOLD_RAW, equipment,
-				    scan.display_sector == 1
-				    ? 0U : sizeof(equipment) - 1U, error))
+				yt_present_set_bold(&session->presentation, 1.0f);
+				if (!session_present_text(session, equipment,
+				    scan.display_sector == 1 ? 0U : sizeof(equipment) - 1U,
+				    SESSION_PRESENT_BOLD_RAW, "nearest-port equipment cell",
+				    error))
 					goto done;
 				session_set_foreground(session, 2.0f);
-				if (!nearest_present(session, YT_NEAREST_STOCK,
-				    YT_NEAREST_PRESENT_RAW, stock,
+				if (!session_present_text(session, stock,
 				    scan.display_sector == 1 ? 0U : sizeof(stock),
-				    error))
+				    SESSION_PRESENT_RAW, "nearest-port aggregate cell", error))
 					goto done;
 				session_set_foreground(session, 3.0f);
 				owner_record = (int)scan.port.owner;
 				if (scan.display_sector != 1 && owner_record != 0) {
-					if (!nearest_read(session, owner_record, &raw,
-					    error))
+					if (!yt_database_read(&session->door->game.database,
+					    (size_t)owner_record, &raw, error))
 						goto done;
 					yt_player_decode(&scan.owner, &raw);
 					memmove(name + 2U, scan.owner.record.bytes,
@@ -577,9 +487,8 @@ nearest_scan_run(struct yt_session *session, int selector,
 					session_set_foreground(session, 3.0f);
 					yt_present_set_blink(&session->presentation, 1.0f);
 				}
-				if (!nearest_present(session, YT_NEAREST_NAME,
-				    YT_NEAREST_PRESENT_BOLD_LINE, name, name_length,
-				    error))
+				if (!session_present_text(session, name, name_length,
+				    SESSION_PRESENT_BOLD_LINE, "nearest-port name row", error))
 					goto done;
 				++scan.page_count;
 				if (scan.continuous)
@@ -588,10 +497,9 @@ nearest_scan_run(struct yt_session *session, int selector,
 					if (!nearest_page(session, &scan, &stop, error))
 						goto done;
 					if (stop) {
-						success = nearest_present(session,
-						    YT_NEAREST_FINAL_BLANK,
-						    YT_NEAREST_PRESENT_LINE, NULL, 0U,
-						    error);
+						success = session_present_text(session, NULL,
+						    0U, SESSION_PRESENT_LINE,
+						    "nearest-port final blank", error);
 						goto done;
 					}
 				}
@@ -604,8 +512,8 @@ nearest_scan_run(struct yt_session *session, int selector,
 		current_count = next_count;
 		++scan.distance;
 	}
-	success = nearest_present(session, YT_NEAREST_FINAL_BLANK,
-	    YT_NEAREST_PRESENT_LINE, NULL, 0U, error);
+	success = session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "nearest-port final blank", error);
 
 done:
 	free(next_layer);
