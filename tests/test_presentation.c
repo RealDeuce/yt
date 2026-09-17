@@ -28594,7 +28594,6 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 		    && combat.deployed_remaining == 2.0
 		    && combat.current.shields == 0.0f && combat.iterations == 1U
 		    && combat.spill_called && attack.spill.complete
-		    && combat.persistence.complete
 		    && combat.persistence.route == YT_HOSTILE_ATTACK_PERSISTENCE_FATAL
 		    && attack.random_calls == 2U && attack.spill_calls == 1U
 		    && attack.spill_stores == 1U
@@ -28887,8 +28886,6 @@ test_direct_emergency_warp_hostile_attack_fatal_prefixes(void)
 			    == (cut >= DIRECT_WARP_ATTACK_FATAL_SECTOR_GET ? 1U : 0U)
 			    && attack.persistence_sector_writes
 			    == (cut >= DIRECT_WARP_ATTACK_FATAL_SECTOR_PUT ? 1U : 0U)
-			    && combat.persistence.player_written
-			    == (cut > DIRECT_WARP_ATTACK_FATAL_PLAYER_PUT)
 			    && !combat.persistence.sector_written);
 			if (cut >= DIRECT_WARP_ATTACK_FATAL_SECTOR_GET) {
 				CHECK(attack.written_player.fighters == 0.0f

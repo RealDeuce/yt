@@ -164,12 +164,8 @@ hostile_attack_persistence_run(struct yt_session *session,
 	int loss_length;
 
 	state->route = YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL;
-	state->player_written = false;
 	state->sector_written = false;
-	state->post_loss_read = false;
-	state->news_written = false;
 	state->mercenaries_hurt = false;
-	state->complete = false;
 	if (!session_read_combat_player(session, state->current_player_record,
 	    &state->current, error))
 		return false;
@@ -178,7 +174,6 @@ hostile_attack_persistence_run(struct yt_session *session,
 	if (!session_write_combat_player(session, state->current_player_record,
 	    &state->current, error))
 		return false;
-	state->player_written = true;
 	if (!session_read_sector(session, state->current_sector, &state->sector,
 	    error))
 		return false;
@@ -193,7 +188,6 @@ hostile_attack_persistence_run(struct yt_session *session,
 		state->route = YT_HOSTILE_ATTACK_PERSISTENCE_FATAL;
 		if (!yt_session_common_fatal_self(session, error))
 			return false;
-		state->complete = true;
 		return true;
 	}
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -203,7 +197,6 @@ hostile_attack_persistence_run(struct yt_session *session,
 		if (!session_read_combat_player(session,
 		    state->current_player_record, &state->current, error))
 			return false;
-		state->post_loss_read = true;
 		state->ship_fighters = (double)state->current.fighters;
 		loss_length = qb_str_double(loss_number, sizeof(loss_number),
 		    state->defender_loss);
@@ -220,10 +213,8 @@ hostile_attack_persistence_run(struct yt_session *session,
 		    state->owner_label, state->owner_label_length)
 		    || !yt_news_append_bytes(news, position, error))
 			return false;
-		state->news_written = true;
 		state->mercenaries_hurt = state->old_owner == -2.0f;
 	}
-	state->complete = true;
 	return true;
 }
 

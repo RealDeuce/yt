@@ -9746,10 +9746,8 @@ check_hostile_attack_persistence_transaction(void)
 	(void)yt_record_set_number(&expected_sector, YT_F85, 0.0f);
 	if (!test_hostile_attack_persistence_run(&state,
 	    &hostile_persistence_ops, &tape, NULL)
-	    || !state.complete
 	    || state.route != YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL
-	    || !state.player_written || !state.sector_written
-	    || !state.post_loss_read || !state.news_written
+	    || !state.sector_written
 	    || !state.mercenaries_hurt || state.ship_fighters != 9.25
 	    || tape.calls != YT_ARRAY_LEN(expected_events)
 	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
@@ -9767,7 +9765,7 @@ check_hostile_attack_persistence_transaction(void)
 		yt_error_clear(&error);
 		if (test_hostile_attack_persistence_run(&state,
 		    &hostile_persistence_ops, &tape, &error)
-		    || error.status != YT_IO_ERROR || state.complete
+		    || error.status != YT_IO_ERROR
 		    || tape.calls != failure + 1U
 		    || memcmp(tape.events, expected_events,
 		    (failure + 1U) * sizeof(expected_events[0])) != 0)
@@ -9780,18 +9778,16 @@ check_hostile_attack_persistence_transaction(void)
 	state.defender_loss = 0.0;
 	if (!test_hostile_attack_persistence_run(&state,
 	    &hostile_persistence_ops, &tape, NULL)
-	    || !state.complete
 	    || state.route != YT_HOSTILE_ATTACK_PERSISTENCE_FATAL
 	    || tape.calls != YT_ARRAY_LEN(fatal_events)
-	    || memcmp(tape.events, fatal_events, sizeof(fatal_events)) != 0
-	    || state.post_loss_read || state.news_written)
+	    || memcmp(tape.events, fatal_events, sizeof(fatal_events)) != 0)
 		return false;
 
 	hostile_persistence_fixture(&tape, &state);
 	state.defender_loss = 0.0;
 	if (!test_hostile_attack_persistence_run(&state,
 	    &hostile_persistence_ops, &tape, NULL)
-	    || tape.calls != 5U || state.post_loss_read || state.news_written
+	    || tape.calls != 5U
 	    || state.mercenaries_hurt || state.ship_fighters != 7.5)
 		return false;
 
@@ -10312,7 +10308,6 @@ hostile_combat_persistence(void *context,
 	if (tape->real_children)
 		return test_hostile_attack_persistence_run(state,
 		    &hostile_persistence_ops, &tape->persistence_tape, error);
-	state->player_written = true;
 	state->sector_written = true;
 	state->sector.fighters = (float)state->deployed_fighters;
 	state->ship_fighters = tape->persistence_ship_output;
@@ -10320,7 +10315,6 @@ hostile_combat_persistence(void *context,
 	state->route = tape->persistence_fatal
 	    ? YT_HOSTILE_ATTACK_PERSISTENCE_FATAL
 	    : YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL;
-	state->complete = !tape->persistence_fail_after;
 	if (tape->persistence_fail_after)
 		return hostile_combat_fail_after(error);
 	return true;
@@ -10631,7 +10625,6 @@ check_hostile_attack_combat_transaction(void)
 	yt_error_clear(&error);
 	if (test_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, &error) || error.status != YT_IO_ERROR || state.complete
-	    || !state.persistence.player_written
 	    || !state.persistence.sector_written
 	    || state.sector.fighters != 0.0f
 	    || tape.sector_cache_calls != 2U)

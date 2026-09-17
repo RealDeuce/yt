@@ -65,12 +65,8 @@ test_hostile_attack_persistence_run(
 	    && state->owner_label == NULL))
 		return false;
 	state->route = YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL;
-	state->player_written = false;
 	state->sector_written = false;
-	state->post_loss_read = false;
-	state->news_written = false;
 	state->mercenaries_hurt = false;
-	state->complete = false;
 	if (!ops->read_player(context, state->current_player_record,
 	    &state->current, error))
 		return false;
@@ -79,7 +75,6 @@ test_hostile_attack_persistence_run(
 	if (!ops->write_player(context, state->current_player_record,
 	    &state->current, error))
 		return false;
-	state->player_written = true;
 	if (!ops->read_sector(context, state->current_sector, &state->sector,
 	    error))
 		return false;
@@ -93,7 +88,6 @@ test_hostile_attack_persistence_run(
 		state->route = YT_HOSTILE_ATTACK_PERSISTENCE_FATAL;
 		if (!ops->fatal(context, error))
 			return false;
-		state->complete = true;
 		return true;
 	}
 	if (!ops->present_blank(context, error))
@@ -102,7 +96,6 @@ test_hostile_attack_persistence_run(
 		if (!ops->read_player(context, state->current_player_record,
 		    &state->current, error))
 			return false;
-		state->post_loss_read = true;
 		state->ship_fighters = (double)state->current.fighters;
 		loss_length = qb_str_double(loss_number, sizeof(loss_number),
 		    state->defender_loss);
@@ -119,10 +112,8 @@ test_hostile_attack_persistence_run(
 		    state->owner_label, state->owner_label_length)
 		    || !ops->append_news(context, news, position, error))
 			return false;
-		state->news_written = true;
 		state->mercenaries_hurt = state->old_owner == -2.0f;
 	}
-	state->complete = true;
 	return true;
 }
 bool

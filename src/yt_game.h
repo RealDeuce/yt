@@ -862,12 +862,8 @@ struct yt_hostile_attack_persistence_state {
 	struct yt_player current;
 	struct yt_sector sector;
 	enum yt_hostile_attack_persistence_route route;
-	bool player_written;
 	bool sector_written;
-	bool post_loss_read;
-	bool news_written;
 	bool mercenaries_hurt;
-	bool complete;
 };
 
 struct yt_hostile_attack_tail_state {
