@@ -218,11 +218,11 @@ test_hostile_attack_combat_run(
 			    error);
 			state->current = state->surrender.current;
 			state->old_ship = state->surrender.ship_fighters;
-			state->surrender_checked = state->surrender.checked;
 			state->surrendered = state->surrender.accepted;
 			ops->cache_player(context, &state->current);
 			if (!child_result)
 				return false;
+			state->surrender_checked = true;
 			if (state->surrendered) {
 				state->ship_fighters =
 				    state->surrender.ship_fighters;

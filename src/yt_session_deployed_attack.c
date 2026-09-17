@@ -32,19 +32,19 @@ hostile_surrender_run(struct yt_session *session,
 	size_t position;
 	size_t sector_length;
 	size_t surrendered_length;
+	double surrendered_fighters;
 	enum yt_yes_no_answer answer;
+	enum yt_hostile_surrender_route owner_route;
 	bool accepted = false;
 
 	state->fighter_owner = state->old_owner;
 	state->deployed_remaining = state->deployed_fighters;
-	state->checked = false;
 	state->accepted = false;
-	state->complete = false;
 	if (!session_read_combat_player(session, state->current_player_record,
 	    &state->current, error))
 		return false;
 	state->ship_fighters = (double)state->current.fighters;
-	state->owner_route = yt_hostile_surrender_route(state->old_owner);
+	owner_route = yt_hostile_surrender_route(state->old_owner);
 	if (!session_present_paged_line(session, radio, sizeof(radio) - 1U,
 	    "surrender radio row", error)
 	    || !session_sound(session, 4.0f, "hostile surrender sound", error))
@@ -62,7 +62,7 @@ hostile_surrender_run(struct yt_session *session,
 	    "surrender captain row", error))
 		return false;
 
-	switch (state->owner_route) {
+	switch (owner_route) {
 	case YT_HOSTILE_SURRENDER_PLAYER:
 		if (!session_present_alert(session, wish, sizeof(wish) - 1U,
 		    "surrender wish row", error)
@@ -103,20 +103,17 @@ hostile_surrender_run(struct yt_session *session,
 		break;
 	}
 	session->shared_status = 1.0f;
-	state->checked = true;
 	state->accepted = accepted;
-	if (!accepted) {
-		state->complete = true;
+	if (!accepted)
 		return true;
-	}
 	if (!session_present_paged_line(session, joined, sizeof(joined) - 1U,
 	    "surrender joined row", error)
 	    || !session_sound(session, 1.0f, "hostile surrender sound", error))
 		return false;
-	state->surrendered_fighters = qb_double_subtract(state->deployed_fighters,
+	surrendered_fighters = qb_double_subtract(state->deployed_fighters,
 	    state->defender_loss);
 	if (qb_str_double(surrendered_number, sizeof(surrendered_number),
-	    state->surrendered_fighters) < 0)
+	    surrendered_fighters) < 0)
 		return false;
 	surrendered_length = strlen(surrendered_number);
 	position = 0U;
@@ -147,7 +144,6 @@ hostile_surrender_run(struct yt_session *session,
 	    count_suffix, sizeof(count_suffix) - 1U)
 	    || !session_present_paged_fragment(session, count, position))
 		return false;
-	state->complete = true;
 	return true;
 }
 
@@ -395,7 +391,6 @@ yt_session_attack_deployed(struct yt_session *session,
 			    cached_player_name_text);
 			current = surrender.current;
 			old_ship = surrender.ship_fighters;
-			surrender_checked = surrender.checked;
 			surrendered = surrender.accepted;
 			session->player = current;
 			(void)snprintf(session->player.name,
@@ -403,6 +398,7 @@ yt_session_attack_deployed(struct yt_session *session,
 			    cached_player_name_text);
 			if (!child_result)
 				return false;
+			surrender_checked = true;
 			if (surrendered) {
 				ship_fighters = surrender.ship_fighters;
 				deployed_remaining = surrender.deployed_remaining;

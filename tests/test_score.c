@@ -9417,9 +9417,7 @@ check_hostile_surrender_transaction(void)
 	    YT_HOSTILE_SURRENDER_ANSWER_EMPTY);
 	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL)
-	    || !state.checked || !state.accepted || !state.complete
-	    || state.owner_route != YT_HOSTILE_SURRENDER_PLAYER
-	    || state.surrendered_fighters != 10.0
+	    || !state.accepted
 	    || state.ship_fighters != 21.0 || state.current.fighters != 21.0f
 	    || state.deployed_remaining != 0.0 || state.fighter_owner != 0.0f
 	    || tape.calls != YT_ARRAY_LEN(accepted_events)
@@ -9463,9 +9461,8 @@ check_hostile_surrender_transaction(void)
 		    || error.status != YT_IO_ERROR || tape.calls != position + 1U
 		    || memcmp(tape.events, accepted_events,
 		    (position + 1U) * sizeof(accepted_events[0])) != 0
-		    || state.complete
-		    || (position < 8U && (state.checked || state.accepted))
-		    || (position >= 8U && (!state.checked || !state.accepted))
+		    || (position < 8U && state.accepted)
+		    || (position >= 8U && !state.accepted)
 		    || (position == 2U
 		    && memcmp(tape.selector_raw[YT_HOSTILE_SURRENDER_RADIO_SOUND],
 		    selector_four, sizeof(selector_four)) != 0)
@@ -9478,7 +9475,7 @@ check_hostile_surrender_transaction(void)
 	hostile_surrender_fixture(&tape, &state, 2.0f,
 	    YT_HOSTILE_SURRENDER_ANSWER_NO);
 	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
-	    &tape, NULL) || !state.checked || state.accepted || !state.complete
+	    &tape, NULL) || state.accepted
 	    || tape.calls != 8U || tape.news_length != 0U
 	    || tape.latch_store_count != 1U
 	    || state.ship_fighters != 11.0
@@ -9488,8 +9485,7 @@ check_hostile_surrender_transaction(void)
 	hostile_surrender_fixture(&tape, &state, -1.0f,
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
 	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
-	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_XANNOR
-	    || state.accepted || tape.calls != 7U
+	    &tape, NULL) || state.accepted || tape.calls != 7U
 	    || tape.events[4] != HOSTILE_SURRENDER_XANNOR
 	    || tape.events[5] != HOSTILE_SURRENDER_SOUND_FIVE
 	    || tape.events[6] != HOSTILE_SURRENDER_STORE_LATCH
@@ -9504,8 +9500,7 @@ check_hostile_surrender_transaction(void)
 	hostile_surrender_fixture(&tape, &state, -2.0f,
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
 	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
-	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_MERCENARY
-	    || state.accepted || tape.calls != 7U
+	    &tape, NULL) || state.accepted || tape.calls != 7U
 	    || tape.events[4] != HOSTILE_SURRENDER_MERCENARY
 	    || tape.events[5] != HOSTILE_SURRENDER_SOUND_FIVE
 	    || tape.events[6] != HOSTILE_SURRENDER_STORE_LATCH
@@ -9520,8 +9515,7 @@ check_hostile_surrender_transaction(void)
 	hostile_surrender_fixture(&tape, &state, 1.0f,
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
 	if (!test_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
-	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_QUIET
-	    || state.accepted || !state.complete || tape.calls != 5U
+	    &tape, NULL) || state.accepted || tape.calls != 5U
 	    || tape.events[4] != HOSTILE_SURRENDER_STORE_LATCH)
 		return false;
 
@@ -10207,15 +10201,11 @@ hostile_combat_surrender(void *context,
 	if (tape->real_children)
 		return test_hostile_attack_surrender_run(state,
 		    &hostile_surrender_ops, &tape->surrender_tape, error);
-	state->checked = true;
 	state->accepted = tape->surrender_accept;
-	state->complete = !tape->surrender_fail_after;
 	state->ship_fighters = (double)state->current.fighters;
 	state->deployed_remaining = state->deployed_fighters;
 	state->fighter_owner = state->old_owner;
 	if (state->accepted) {
-		state->surrendered_fighters = state->deployed_fighters
-		    - state->defender_loss;
 		state->ship_fighters = (double)state->current.fighters
 		    - state->attacker_loss - state->defender_loss
 		    + state->deployed_fighters;
@@ -10592,7 +10582,7 @@ check_hostile_attack_combat_transaction(void)
 	yt_error_clear(&error);
 	if (test_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, &error) || error.status != YT_IO_ERROR
-	    || !state.surrender_checked || !state.surrendered
+	    || !state.surrendered
 	    || state.complete || tape.player_cache_calls != 1U)
 		return false;
 

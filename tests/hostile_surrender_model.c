@@ -63,8 +63,10 @@ test_hostile_attack_surrender_run(
 	size_t position;
 	size_t sector_length;
 	size_t surrendered_length;
+	double surrendered_fighters;
 	enum yt_hostile_surrender_answer answer =
 	    YT_HOSTILE_SURRENDER_ANSWER_NO;
+	enum yt_hostile_surrender_route owner_route;
 	bool accepted = false;
 
 	if (state == NULL || ops == NULL || ops->read_player == NULL
@@ -78,14 +80,12 @@ test_hostile_attack_surrender_run(
 		return false;
 	state->fighter_owner = state->old_owner;
 	state->deployed_remaining = state->deployed_fighters;
-	state->checked = false;
 	state->accepted = false;
-	state->complete = false;
 	if (!ops->read_player(context, state->current_player_record,
 	    &state->current, error))
 		return false;
 	state->ship_fighters = (double)state->current.fighters;
-	state->owner_route = yt_hostile_surrender_route(state->old_owner);
+	owner_route = yt_hostile_surrender_route(state->old_owner);
 	if (!ops->present(context, radio, sizeof(radio) - 1U,
 	    YT_HOSTILE_SURRENDER_RADIO_ROW, error)
 	    || !ops->sound(context, YT_HOSTILE_SURRENDER_RADIO_SOUND, 4.0f,
@@ -104,7 +104,7 @@ test_hostile_attack_surrender_run(
 	    YT_HOSTILE_SURRENDER_CAPTAIN_ROW, error))
 		return false;
 
-	switch (state->owner_route) {
+	switch (owner_route) {
 	case YT_HOSTILE_SURRENDER_PLAYER:
 		if (!ops->present(context, wish, sizeof(wish) - 1U,
 		    YT_HOSTILE_SURRENDER_WISH_ROW, error)
@@ -146,21 +146,18 @@ test_hostile_attack_surrender_run(
 		break;
 	}
 	ops->mark_checked(context);
-	state->checked = true;
 	state->accepted = accepted;
-	if (!accepted) {
-		state->complete = true;
+	if (!accepted)
 		return true;
-	}
 	if (!ops->present(context, joined, sizeof(joined) - 1U,
 	    YT_HOSTILE_SURRENDER_JOINED_ROW, error)
 	    || !ops->sound(context, YT_HOSTILE_SURRENDER_JOINED_SOUND, 1.0f,
 	    error))
 		return false;
-	state->surrendered_fighters = surrender_double_sub(
+	surrendered_fighters = surrender_double_sub(
 	    state->deployed_fighters, state->defender_loss);
 	if (qb_str_double(surrendered_number, sizeof(surrendered_number),
-	    state->surrendered_fighters) < 0)
+	    surrendered_fighters) < 0)
 		return false;
 	surrendered_length = strlen(surrendered_number);
 	position = 0U;
@@ -193,6 +190,5 @@ test_hostile_attack_surrender_run(
 	    || !ops->present(context, count, position,
 	    YT_HOSTILE_SURRENDER_COUNT_ROW, error))
 		return false;
-	state->complete = true;
 	return true;
 }

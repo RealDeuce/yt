@@ -832,14 +832,10 @@ struct yt_hostile_surrender_state {
 	const uint8_t *real_first_name;
 	size_t real_first_name_length;
 	struct yt_player current;
-	double surrendered_fighters;
 	double ship_fighters;
 	double deployed_remaining;
 	float fighter_owner;
-	enum yt_hostile_surrender_route owner_route;
-	bool checked;
 	bool accepted;
-	bool complete;
 };
 
 enum yt_hostile_attack_persistence_route {
