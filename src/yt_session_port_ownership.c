@@ -310,7 +310,7 @@ yt_session_edit_port_name(struct yt_session *session, int logical_port,
 			return false;
 		return yt_database_write(&session->door->game.database,
 		    (size_t)session_port_basic_record(session,
-		    (float)logical_port), &port->record, error);
+		    logical_port), &port->record, error);
 	}
 }
 
@@ -338,7 +338,7 @@ yt_session_command_rename_port(struct yt_session *session,
 	logical_port = (int)sector.port;
 	relative_port = sector.port;
 	if (!session_read_port_physical(session,
-	    session_port_basic_record(session, (float)logical_port),
+	    session_port_basic_record(session, logical_port),
 	    &port, error))
 		return false;
 	if (port.owner != (float)session_record(session))
@@ -423,7 +423,7 @@ purchase_accept(struct yt_session *session, int logical_port,
 	struct yt_port port;
 	struct yt_player player;
 	uint32_t physical_port = session_port_basic_record(session,
-	    (float)logical_port);
+	    logical_port);
 	uint8_t row[512];
 	uint8_t message[512];
 	char sector_text[64];

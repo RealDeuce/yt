@@ -38,9 +38,10 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	logical_planet = (int)sector->planet;
 	if (logical_planet == 0)
 		return true;
-	physical_planet = session_planet_basic_record(session, sector->planet);
+	physical_planet = session_planet_basic_record(session,
+	    logical_planet);
 	physical_sector = session_sector_basic_record(session,
-	    (float)sector_number);
+	    sector_number);
 	if (!yt_session_update_planet_physical(session, physical_planet,
 	    &updater_planet, NULL, error))
 		return false;
@@ -180,7 +181,7 @@ deploy_victim_mines(struct yt_session *session, int sector_number,
 	if (!yt_projectile_sector_mines_overlay(&sector, mines))
 		return false;
 	return yt_database_write(&session->door->game.database,
-	    (size_t)session_sector_basic_record(session, (float)sector_number),
+	    (size_t)session_sector_basic_record(session, sector_number),
 	    &sector.record, error);
 }
 
@@ -288,15 +289,14 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 		memcpy(owner_name, initial, owner_length);
 		if (sector.fighter_owner > 1.0f) {
 			struct yt_player defender;
-			uint32_t owner_record = qb_brun_random_record_number(
-			    sector.fighter_owner);
+			int owner_record = (int)sector.fighter_owner;
 
 			if (!yt_game_read_player(&session->door->game,
-			    (int)owner_record, &defender, error))
+			    owner_record, &defender, error))
 				return false;
 			owner_length = yt_player_stored_name(&defender, owner_name);
-			if (!yt_session_players_are_friendly(session,
-			    (int)sector.fighter_owner, &friendly, error))
+			if (!yt_session_players_are_friendly(session, owner_record,
+			    &friendly, error))
 				return false;
 		}
 		if (sector.fighter_owner == (float)session_record(session)) {
@@ -384,7 +384,7 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 		}
 		if (!yt_database_write(&session->door->game.database,
 		    (size_t)session_sector_basic_record(session,
-		    (float)sector_number), &persistence.record, error))
+		    sector_number), &persistence.record, error))
 			return false;
 		if (remaining_fighters == 0.0
 		    && (float)sector_number
@@ -444,7 +444,7 @@ missile_mines:
 		    mine_sector.mines)
 		    || !yt_database_write(&session->door->game.database,
 		    (size_t)session_sector_basic_record(session,
-		    (float)sector_number), &mine_sector.record, error))
+		    sector_number), &mine_sector.record, error))
 			return false;
 		missiles_after = *remaining - destroyed;
 		*remaining = missiles_after;

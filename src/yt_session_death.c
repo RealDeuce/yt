@@ -43,7 +43,7 @@ death_read_port(struct yt_session *session, int logical_port,
 	struct yt_record record;
 
 	if (!yt_database_read(&session->door->game.database,
-	    (size_t)session_port_basic_record(session, (float)logical_port),
+	    (size_t)session_port_basic_record(session, logical_port),
 	    &record, error))
 		return false;
 	yt_port_decode(port, &record);
@@ -56,7 +56,7 @@ death_write_port(struct yt_session *session, int logical_port,
 {
 	yt_port_encode(port);
 	return yt_database_write(&session->door->game.database,
-	    (size_t)session_port_basic_record(session, (float)logical_port),
+	    (size_t)session_port_basic_record(session, logical_port),
 	    &port->record, error);
 }
 

@@ -74,7 +74,7 @@ yt_session_update_planet(struct yt_session *session, int logical_planet,
     struct yt_error *error)
 {
 	return yt_session_update_planet_physical(session,
-	    session_planet_basic_record(session, (float)logical_planet), planet,
+	    session_planet_basic_record(session, logical_planet), planet,
 	    economy, error);
 }
 
@@ -110,7 +110,7 @@ yt_session_planet_permission(struct yt_session *session,
 		return false;
 	*denied = false;
 	physical_planet_record = session_planet_basic_record(session,
-	    (float)logical_planet);
+	    logical_planet);
 	if (!yt_session_update_planet_physical(session, physical_planet_record,
 	    &(struct yt_planet){0}, NULL, error)
 	    || !read_planet_physical(session, physical_planet_record,

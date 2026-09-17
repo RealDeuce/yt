@@ -65,9 +65,9 @@ planet_move_hop(struct yt_session *session, int source_number,
 	size_t planet_name_length;
 	size_t player_name_length;
 	size_t row_length;
-	float source_link;
-	float moving_planet;
-	float actual_destination = (float)destination;
+	int source_link;
+	int moving_planet;
+	int actual_destination = destination;
 	float draw;
 	float xannor_planet = qb_single_subtract(
 	    session->door->game.config.total_records,
@@ -116,14 +116,11 @@ planet_move_hop(struct yt_session *session, int source_number,
 	}
 	if (!session_read_sector(session, source_number, &source, error))
 		return false;
-	source_link = source.planet;
+	source_link = (int)source.planet;
 	moving_record = session_planet_basic_record(session, source_link);
-	moving_planet = qb_single_subtract(qb_single_add(
-	    session_planet_offset(session), source_link),
-	    session_planet_offset(session));
+	moving_planet = source_link;
 	yt_planet_move_sector_overlay(&source, 0.0f);
-	source_record = (int)session_sector_basic_record(session,
-	    (float)source_number);
+	source_record = (int)session_sector_basic_record(session, source_number);
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)source_record, &source.record, error)
 	    || !read_planet_physical(session, moving_record, &planet, error))
@@ -184,7 +181,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 		}
 		return true;
 	}
-	if (moving_planet == 1.0f) {
+	if (moving_planet == 1) {
 		float maximum = qb_single_subtract(session_port_offset(session),
 		    session_sector_offset(session));
 
@@ -199,10 +196,10 @@ planet_move_hop(struct yt_session *session, int source_number,
 			if (!yt_random_next(&session->door->game.random, &draw,
 			    error))
 				return false;
-			actual_destination = floorf(qb_single_multiply(draw,
-			    maximum)) + 1.0f;
-			if (!session_read_sector(session,
-			    (int)actual_destination, &target, error))
+			actual_destination = (int)(floorf(qb_single_multiply(draw,
+			    maximum)) + 1.0f);
+			if (!session_read_sector(session, actual_destination,
+			    &target, error))
 				return false;
 			if (target.planet <= 0.0f)
 				break;
@@ -221,7 +218,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 		    "planet move completion sound", error))
 			return false;
 	}
-	if (!session_read_sector(session, (int)actual_destination, &target,
+	if (!session_read_sector(session, actual_destination, &target,
 	    error))
 		return false;
 	if (target.mines != 0.0f)
@@ -234,11 +231,11 @@ planet_move_hop(struct yt_session *session, int source_number,
 			return false;
 		if (!friendly)
 			*stop = true;
-		if (!session_read_sector(session,
-		    (int)actual_destination, &target, error))
+		if (!session_read_sector(session, actual_destination, &target,
+		    error))
 			return false;
 	}
-	yt_planet_move_sector_overlay(&target, moving_planet);
+	yt_planet_move_sector_overlay(&target, (float)moving_planet);
 	destination_record = (int)session_sector_basic_record(session,
 	    actual_destination);
 	if (!yt_database_write(&session->door->game.database,

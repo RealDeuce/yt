@@ -1,6 +1,5 @@
 #include "yt_session_team_internal.h"
 
-#include "qb.h"
 #include "yt_platform.h"
 
 #include <stdio.h>
@@ -12,8 +11,6 @@ yt_session_load_team_cache(struct yt_session *session, int team_id,
     bool *overlay_loaded, bool *live, struct yt_error *error)
 {
 	struct yt_record loaded;
-	float expression;
-	uint32_t physical_record;
 
 	if (overlay_loaded != NULL)
 		*overlay_loaded = false;
@@ -22,11 +19,9 @@ yt_session_load_team_cache(struct yt_session *session, int team_id,
 	memset(&session->team_cache, 0, sizeof(session->team_cache));
 	if (team_id < 1 || team_id > YT_DEFAULT_PLAYER_COUNT)
 		return true;
-	expression = qb_single_add(session_sector_offset(session),
-	    (float)team_id);
-	physical_record = qb_brun_random_record_number(expression);
 	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &loaded, error))
+	    (size_t)session_sector_basic_record(session, team_id), &loaded,
+	    error))
 		return false;
 	if (overlay != NULL)
 		*overlay = loaded;
@@ -65,7 +60,7 @@ session_team_store_inactive(struct yt_session *session, struct yt_team *team,
 		return false;
 	yt_team_inactive_overlay(&team->overlay.record);
 	return yt_database_write(&session->door->game.database,
-	    (size_t)session_sector_basic_record(session, (float)team->id),
+	    (size_t)session_sector_basic_record(session, team->id),
 	    &team->overlay.record, error);
 }
 
@@ -87,7 +82,7 @@ session_team_store_roster(struct yt_session *session, struct yt_team *team,
 {
 	yt_team_roster_overlay(&team->overlay.record, team->roster);
 	return yt_database_write(&session->door->game.database,
-	    (size_t)session_sector_basic_record(session, (float)team->id),
+	    (size_t)session_sector_basic_record(session, team->id),
 	    &team->overlay.record, error);
 }
 

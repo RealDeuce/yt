@@ -81,7 +81,7 @@ yt_session_planet_garrison(struct yt_session *session, int logical_planet,
 			return false;
 	}
 	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session_planet_basic_record(session, (float)logical_planet),
+	    (size_t)session_planet_basic_record(session, logical_planet),
 	    &planet.record, error)
 	    || !session_reload_player(session, error))
 		return false;
@@ -544,4 +544,3 @@ yt_session_planet_productivity(struct yt_session *session,
 		return false;
 	return session_reload_player(session, error);
 }
-

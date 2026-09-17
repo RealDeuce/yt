@@ -237,7 +237,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	    false, error))
 		return false;
 	sector_physical = session_sector_basic_record(session,
-	    session->player.sector);
+	    (int)session->player.sector);
 	if (!yt_database_read(&session->door->game.database,
 	    (size_t)sector_physical, &raw, error))
 		return false;
@@ -318,7 +318,7 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 	session->planet.current_physical_record = qb_single_add(
 	    session_planet_offset(session), sector.planet);
 	logical = (int)sector.planet;
-	physical = session_planet_basic_record(session, (float)logical);
+	physical = session_planet_basic_record(session, logical);
 	if (!yt_session_planet_permission(session, logical, &permission_denied,
 	    error))
 		return false;

@@ -37,7 +37,7 @@ session_team_pick_name(struct yt_session *session, int team_id, char name[42],
 	yt_team_name_overlay(&team.overlay.record,
 	    (const uint8_t *)response, name_length);
 	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session_sector_basic_record(session, (float)team.id),
+	    (size_t)session_sector_basic_record(session, team.id),
 	    &team.overlay.record, error))
 		return false;
 	*accepted = true;
@@ -81,7 +81,7 @@ session_team_create_password(struct yt_session *session, int team_id,
 		yt_team_password_overlay(&team.overlay.record,
 		    (const uint8_t *)password);
 		return yt_database_write(&session->door->game.database,
-		    (size_t)session_sector_basic_record(session, (float)team.id),
+		    (size_t)session_sector_basic_record(session, team.id),
 		    &team.overlay.record, error);
 	}
 }
@@ -138,7 +138,7 @@ session_team_create(struct yt_session *session, struct yt_error *error)
 	    (float)team.captain);
 	yt_team_roster_overlay(&team.overlay.record, team.roster);
 	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session_sector_basic_record(session, (float)team.id),
+	    (size_t)session_sector_basic_record(session, team.id),
 	    &team.overlay.record, error)
 	    || !session_team_create_password(session, id, password, error))
 		return false;

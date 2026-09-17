@@ -70,7 +70,7 @@ yt_session_sector_force_is_friendly(struct yt_session *session,
 }
 
 static bool
-scanner_read_sector(struct yt_session *session, float logical_sector,
+scanner_read_sector(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, struct yt_error *error)
 {
 	struct yt_record record;
@@ -84,7 +84,7 @@ scanner_read_sector(struct yt_session *session, float logical_sector,
 }
 
 static bool
-scanner_read_port(struct yt_session *session, float logical_port,
+scanner_read_port(struct yt_session *session, int logical_port,
     struct yt_port *port, uint32_t *physical_record, struct yt_error *error)
 {
 	struct yt_record record;
@@ -145,7 +145,7 @@ scanner_cache_hostile_sector(struct yt_session *session,
 }
 
 static bool
-display_sector_one(struct yt_session *session, float logical_sector,
+display_sector_one(struct yt_session *session, int logical_sector,
     struct yt_sector_pager_state *private_pager, struct yt_error *error)
 {
 	struct yt_sector sector;
@@ -157,15 +157,15 @@ display_sector_one(struct yt_session *session, float logical_sector,
 	bool first_visible = true;
 	bool first_warp = true;
 
-	session->navigation.current_sector_physical_record = qb_single_add(
-	    session_sector_offset(session), logical_sector);
+	session->navigation.current_sector_physical_record =
+	    (float)session_sector_basic_record(session, logical_sector);
 	if (!scanner_read_sector(session, logical_sector, &sector, error))
 		return false;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "sector leading blank", error))
 		return false;
 	if (qb_str_single(sector_number, sizeof(sector_number),
-	    logical_sector) < 0)
+	    (float)logical_sector) < 0)
 		return false;
 	row_length = sizeof("Sector:") - 1U;
 	memcpy(row, "Sector:", row_length);
@@ -175,15 +175,15 @@ display_sector_one(struct yt_session *session, float logical_sector,
 	    SESSION_PRESENT_LINE, "sector number row", error))
 		return false;
 	yt_sector_pager_add(private_pager, 1.0f);
-	if ((logical_sector == session->disruption_sectors[0]
-	    || logical_sector == session->disruption_sectors[1])
+	if (((float)logical_sector == session->disruption_sectors[0]
+	    || (float)logical_sector == session->disruption_sectors[1])
 	    && !session_attention_bytes(session,
 	    (const uint8_t *)"** Space-time disruption detected! **",
 	    strlen("** Space-time disruption detected! **"),
 	    "sector disruption attention", error))
 		return false;
-	if (logical_sector == session->disruption_sectors[0]
-	    || logical_sector == session->disruption_sectors[1])
+	if ((float)logical_sector == session->disruption_sectors[0]
+	    || (float)logical_sector == session->disruption_sectors[1])
 		yt_sector_pager_add(private_pager, 1.0f);
 	if (sector.mines != 0.0f) {
 		if (!yt_sector_mine_warning_row(sector.mines, row,
@@ -204,13 +204,13 @@ display_sector_one(struct yt_session *session, float logical_sector,
 		struct yt_port port;
 		uint32_t physical_port;
 
-		if (!scanner_read_port(session, sector.port, &port,
+		if (!scanner_read_port(session, (int)sector.port, &port,
 		    &physical_port, error)
 		    || !yt_sector_port_row(&port, row, sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "sector port row", error))
 			return false;
-		port.sector = logical_sector;
+		port.sector = (float)logical_sector;
 		if (!scanner_write_port(session, physical_port, &port,
 		    error))
 			return false;
@@ -221,7 +221,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 	if (sector.planet > 0.0f) {
 		struct yt_planet planet;
 		uint32_t physical_planet = session_planet_basic_record(session,
-		    sector.planet);
+		    (int)sector.planet);
 		float saved_foreground;
 
 		if (!yt_session_update_planet_physical(session, physical_planet,
@@ -247,7 +247,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 
 		if (!yt_sector_candidate_eligible(basic, session_record(session),
 		    yt_player_cache_value(&session->player_cache, basic,
-		    YT_PLAYER_CACHE_SECTOR), logical_sector))
+		    YT_PLAYER_CACHE_SECTOR), (float)logical_sector))
 			continue;
 		if (!yt_random_next(&session->door->game.random, &random_value,
 		    error))
@@ -415,7 +415,7 @@ bool
 yt_session_display_sector(struct yt_session *session, bool adjacent,
     struct yt_error *error)
 {
-	float current;
+	int current;
 	struct yt_sector_pager_state private_pager;
 	float caller_warps[6];
 	float targets[6];
@@ -429,7 +429,7 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 		if (!yt_game_read_player(&session->door->game,
 		    session_record(session), &session->player, error))
 			return false;
-		current = session->player.sector;
+		current = (int)session->player.sector;
 		if (!display_sector_one(session, current, &private_pager, error)
 		    || !yt_game_read_player(&session->door->game,
 		    session_record(session), &session->player, error))
@@ -454,7 +454,7 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 		return false;
 	session_set_foreground(session, 1.0f);
 	for (slot = 0; slot < target_count; ++slot) {
-		if (!display_sector_one(session, targets[slot],
+		if (!display_sector_one(session, (int)targets[slot],
 		    &private_pager, error))
 			return false;
 	}
@@ -479,7 +479,7 @@ yt_session_display_current_sector_cached(struct yt_session *session,
 {
 	struct yt_sector_pager_state private_pager;
 	float saved_foreground = session->presentation.foreground;
-	float current = session->player.sector;
+	int current = (int)session->player.sector;
 	bool ok;
 
 	yt_sector_pager_begin(&private_pager);

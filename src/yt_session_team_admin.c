@@ -96,7 +96,7 @@ session_team_transfer(struct yt_session *session, struct yt_error *error)
 			    initial_defense, amount);
 			if (!yt_database_write(&session->door->game.database,
 			    (size_t)session_sector_basic_record(session,
-			    (float)logical_sector),
+			    logical_sector),
 			    &fresh_sector.record, error))
 				return false;
 		}

@@ -328,7 +328,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	if (!yt_record_set_number(&persistence.record, YT_F77,
 	    remaining_ground)
 	    || !yt_database_write(&session->door->game.database,
-	    (size_t)session_planet_basic_record(session, (float)logical_planet),
+	    (size_t)session_planet_basic_record(session, logical_planet),
 	    &persistence.record, error))
 		return false;
 
@@ -341,14 +341,14 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		if (!yt_record_set_number(&persistence.record, YT_F85, 0.0f)
 		    || !yt_database_write(&session->door->game.database,
 		    (size_t)session_planet_basic_record(session,
-		    (float)logical_planet), &persistence.record, error)
+		    logical_planet), &persistence.record, error)
 		    || !session_read_sector(session, sector_number, &unlink, error))
 			return false;
 		unlink.planet = 0.0f;
 		if (!yt_record_set_number(&unlink.record, YT_F93, 0.0f)
 		    || !yt_database_write(&session->door->game.database,
 		    (size_t)session_sector_basic_record(session,
-		    (float)sector_number), &unlink.record, error)
+		    sector_number), &unlink.record, error)
 		    || !session_present_text(session, destroyed_row,
 		    sizeof(destroyed_row) - 1U, SESSION_PRESENT_LINE,
 		    "plasma planet-destroyed row", error)
@@ -470,7 +470,7 @@ yt_session_plasma_sector(struct yt_session *session, int sector_number,
 			}
 			if (!yt_database_write(&session->door->game.database,
 			    (size_t)session_sector_basic_record(session,
-			    (float)sector_number), &sector.record, error))
+			    sector_number), &sector.record, error))
 				return false;
 			if (remaining_fighters == 0.0
 			    && (float)sector_number
@@ -527,7 +527,7 @@ plasma_reload_sector:
 		if (!yt_record_set_number(&sector.record, YT_F129, sector.mines)
 		    || !yt_database_write(&session->door->game.database,
 		    (size_t)session_sector_basic_record(session,
-		    (float)sector_number), &sector.record, error))
+		    sector_number), &sector.record, error))
 			return false;
 		if (*energy < 1.0)
 			return true;
@@ -710,7 +710,7 @@ plasma_reload_sector:
 				    mine_persistence.mines)
 				    || !yt_database_write(&session->door->game.database,
 				    (size_t)session_sector_basic_record(session,
-				    (float)sector_number), &mine_persistence.record, error))
+				    sector_number), &mine_persistence.record, error))
 					return false;
 			}
 

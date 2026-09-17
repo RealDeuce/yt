@@ -128,7 +128,7 @@ float session_sector_offset(const struct yt_session *session);
 float session_port_offset(const struct yt_session *session);
 float session_planet_offset(const struct yt_session *session);
 uint32_t session_port_basic_record(const struct yt_session *session,
-    float logical_port);
+	int logical_port);
 int session_sector_count(const struct yt_session *session);
 bool session_is_disruption_sector(const struct yt_session *session,
     float sector);
@@ -145,9 +145,9 @@ bool yt_session_store_move(struct yt_session *session, float target,
 bool yt_session_command_move(struct yt_session *session, bool *moved,
     struct yt_error *error);
 uint32_t session_planet_basic_record(const struct yt_session *session,
-    float logical_planet);
+	int logical_planet);
 uint32_t session_sector_basic_record(const struct yt_session *session,
-    float logical_sector);
+	int logical_sector);
 bool session_read_sector(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, struct yt_error *error);
 bool session_read_sector_at_fault(struct yt_session *session,

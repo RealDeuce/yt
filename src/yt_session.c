@@ -125,25 +125,25 @@ session_close_game(struct yt_session *session)
 
 uint32_t
 session_sector_basic_record(const struct yt_session *session,
-    float logical_sector)
+    int logical_sector)
 {
 	return (uint32_t)yt_sector_basic_record(&session->door->game.config,
-	    (int)logical_sector);
+	    logical_sector);
 }
 
 uint32_t
-session_port_basic_record(const struct yt_session *session, float logical_port)
+session_port_basic_record(const struct yt_session *session, int logical_port)
 {
 	return (uint32_t)yt_port_basic_record(&session->door->game.config,
-	    (int)logical_port);
+	    logical_port);
 }
 
 uint32_t
 session_planet_basic_record(const struct yt_session *session,
-    float logical_planet)
+    int logical_planet)
 {
 	return (uint32_t)yt_planet_basic_record(&session->door->game.config,
-	    (int)logical_planet);
+	    logical_planet);
 }
 
 bool
@@ -153,7 +153,7 @@ session_read_sector(struct yt_session *session, int logical_sector,
 	struct yt_record record;
 
 	if (!yt_database_read(&session->door->game.database,
-	    (size_t)session_sector_basic_record(session, (float)logical_sector),
+	    (size_t)session_sector_basic_record(session, logical_sector),
 	    &record, error))
 		return false;
 	yt_sector_decode(sector, &record);
@@ -166,7 +166,7 @@ session_write_sector(struct yt_session *session, int logical_sector,
 {
 	yt_sector_encode(sector);
 	return yt_database_write(&session->door->game.database,
-	    (size_t)session_sector_basic_record(session, (float)logical_sector),
+	    (size_t)session_sector_basic_record(session, logical_sector),
 	    &sector->record, error);
 }
 
@@ -177,7 +177,7 @@ session_read_port(struct yt_session *session, int logical_port,
 	struct yt_record record;
 
 	if (!yt_database_read(&session->door->game.database,
-	    (size_t)session_port_basic_record(session, (float)logical_port),
+	    (size_t)session_port_basic_record(session, logical_port),
 	    &record, error))
 		return false;
 	yt_port_decode(port, &record);
@@ -190,7 +190,7 @@ session_write_port(struct yt_session *session, int logical_port,
 {
 	yt_port_encode(port);
 	return yt_database_write(&session->door->game.database,
-	    (size_t)session_port_basic_record(session, (float)logical_port),
+	    (size_t)session_port_basic_record(session, logical_port),
 	    &port->record, error);
 }
 
@@ -201,7 +201,7 @@ session_read_planet(struct yt_session *session, int logical_planet,
 	struct yt_record record;
 
 	if (!yt_database_read(&session->door->game.database,
-	    (size_t)session_planet_basic_record(session, (float)logical_planet),
+	    (size_t)session_planet_basic_record(session, logical_planet),
 	    &record, error))
 		return false;
 	yt_planet_decode(planet, &record);
@@ -214,7 +214,7 @@ session_write_planet(struct yt_session *session, int logical_planet,
 {
 	yt_planet_encode(planet);
 	return yt_database_write(&session->door->game.database,
-	    (size_t)session_planet_basic_record(session, (float)logical_planet),
+	    (size_t)session_planet_basic_record(session, logical_planet),
 	    &planet->record, error);
 }
 
