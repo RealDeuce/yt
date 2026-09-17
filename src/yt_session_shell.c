@@ -1,6 +1,5 @@
 #include "yt_session_internal.h"
 
-#include "qb.h"
 #include "yt_output.h"
 
 #include <stdio.h>
@@ -117,8 +116,6 @@ yt_session_quit(struct yt_session *session, struct yt_error *error)
 	static const uint8_t generating[] = "Generating ScoreBoard";
 	static const uint8_t reminder[] =
 	    "PLEASE HELP YOUR SYSOP REGISTER THIS GAME.";
-	struct yt_normal_exit_registration_result registration;
-	uint8_t registered_raw[4];
 	char returning[sizeof(session->door->identity.system) + 20U];
 	int length;
 
@@ -138,13 +135,7 @@ yt_session_quit(struct yt_session *session, struct yt_error *error)
 	if (!session_display_game_file(session,
 	    session->door->game.config.scoreboard, error))
 		return false;
-	if (qb_mbf32_encode(session->registered ? -1.0f : 0.0f,
-	    registered_raw) != QB_MBF_OK)
-		return false;
-	if (!yt_normal_exit_registration_evaluate(registered_raw,
-	    session->presentation.sound.conversion_mode, &registration, error))
-		return false;
-	if (registration.route == YT_NORMAL_EXIT_REGISTRATION_REMINDER) {
+	if (!session->registered) {
 		if (!session_attention_bytes(session, reminder, sizeof(reminder) - 1U,
 		    "normal-exit registration reminder", error)
 		    || !session_wait(session, 10.0,
@@ -362,4 +353,3 @@ yt_session_command_shell(struct yt_session *session, struct yt_error *error)
 	}
 	return true;
 }
-
