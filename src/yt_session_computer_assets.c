@@ -10,9 +10,11 @@ computer_avoid_cell(char *cell, size_t capacity, int slot, float value)
 	char slot_text[64];
 	char value_text[64];
 
-	return qb_str_single(slot_text, sizeof(slot_text), (float)slot) >= 0
-	    && qb_str_single(value_text, sizeof(value_text), value) >= 0
-	    && snprintf(cell, capacity, "%s%s ]  -=> %s",
+	if (qb_str_single(slot_text, sizeof(slot_text), (float)slot) < 0)
+		return false;
+	if (qb_str_single(value_text, sizeof(value_text), value) < 0)
+		return false;
+	return snprintf(cell, capacity, "%s%s ]  -=> %s",
 	    slot < 10 ? "[ " : "[", slot_text, value_text) >= 0;
 }
 
@@ -36,10 +38,12 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 	int row;
 
 	if (!session_present_paged_line(session, heading_one,
-	    sizeof(heading_one) - 1U, "avoid first heading", error)
-	    || !session_present_paged_line(session, heading_two,
-	    sizeof(heading_two) - 1U, "avoid second heading", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    sizeof(heading_one) - 1U, "avoid first heading", error))
+		return false;
+	if (!session_present_paged_line(session, heading_two,
+	    sizeof(heading_two) - 1U, "avoid second heading", error))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "avoid heading blank", error))
 		return false;
 	for (row = 0; row < 10; ++row) {
@@ -48,26 +52,33 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 		char last[96];
 
 		if (!computer_avoid_cell(first, sizeof(first), row + 1,
-		    session->navigation.avoided_sectors[row])
-		    || !computer_avoid_cell(last, sizeof(last), row + 21,
-		    session->navigation.avoided_sectors[row + 20])
-		    || !session_fixed_width_bytes(session,
+		    session->navigation.avoided_sectors[row]))
+			return false;
+		if (!computer_avoid_cell(last, sizeof(last), row + 21,
+		    session->navigation.avoided_sectors[row + 20]))
+			return false;
+		if (!session_fixed_width_bytes(session,
 		    (const uint8_t *)first, strlen(first), 20.0f,
-		    "avoid first cell", error)
-		    || !computer_avoid_cell(middle, sizeof(middle), row + 11,
-		    session->navigation.avoided_sectors[row + 10])
-		    || !session_fixed_width_bytes(session,
+		    "avoid first cell", error))
+			return false;
+		if (!computer_avoid_cell(middle, sizeof(middle), row + 11,
+		    session->navigation.avoided_sectors[row + 10]))
+			return false;
+		if (!session_fixed_width_bytes(session,
 		    (const uint8_t *)middle, strlen(middle), 20.0f,
-		    "avoid middle cell", error)
-		    || !session_present_paged_fragment(session,
+		    "avoid middle cell", error))
+			return false;
+		if (!session_present_paged_fragment(session,
 		    (const uint8_t *)last, strlen(last)))
 			return false;
 	}
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "avoid slot-prompt blank", error)
-	    || !session_present_timed_paged_row(session, slot_prompt,
-	    sizeof(slot_prompt) - 1U, "avoid slot prompt", error)
-	    || !session_read_number_command(session, response, sizeof(response)))
+	    "avoid slot-prompt blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, slot_prompt,
+	    sizeof(slot_prompt) - 1U, "avoid slot prompt", error))
+		return false;
+	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
 	if (!yt_computer_avoid_select_slot(response,
 	    session->presentation.conversion_mode, &slot_value, &slot,
@@ -80,16 +91,20 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 		char maximum_text[64];
 		char prompt[160];
 
-		if (qb_str_single(maximum_text, sizeof(maximum_text), maximum) < 0
-		    || snprintf(prompt, sizeof(prompt),
+		if (qb_str_single(maximum_text, sizeof(maximum_text), maximum) < 0)
+			return false;
+		if (snprintf(prompt, sizeof(prompt),
 		    "Enter the sector you wish to avoid [1 -%s] (0 to clear): ",
-		    maximum_text) < 0
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "avoid sector-prompt blank", error)
-		    || !session_present_timed_paged_row(session,
+		    maximum_text) < 0)
+			return false;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "avoid sector-prompt blank", error))
+			return false;
+		if (!session_present_timed_paged_row(session,
 		    (const uint8_t *)prompt, strlen(prompt),
-		    "avoid sector prompt", error)
-		    || !session_read_number_command(session, response,
+		    "avoid sector prompt", error))
+			return false;
+		if (!session_read_number_command(session, response,
 		    sizeof(response)))
 			return false;
 	}
@@ -106,10 +121,12 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 		char number[64];
 		char status[128];
 
-		if (qb_str_single(number, sizeof(number), new_value) < 0
-		    || snprintf(status, sizeof(status),
-		    "Sector%s now locked out.", number) < 0
-		    || !session_present_paged_line(session,
+		if (qb_str_single(number, sizeof(number), new_value) < 0)
+			return false;
+		if (snprintf(status, sizeof(status),
+		    "Sector%s now locked out.", number) < 0)
+			return false;
+		if (!session_present_paged_line(session,
 		    (const uint8_t *)status, strlen(status),
 		    "avoid locked status", error))
 			return false;
@@ -118,10 +135,12 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 		char number[64];
 		char status[128];
 
-		if (qb_str_single(number, sizeof(number), old_value) < 0
-		    || snprintf(status, sizeof(status),
-		    "Sector%s now available.", number) < 0
-		    || !session_present_paged_line(session,
+		if (qb_str_single(number, sizeof(number), old_value) < 0)
+			return false;
+		if (snprintf(status, sizeof(status),
+		    "Sector%s now available.", number) < 0)
+			return false;
+		if (!session_present_paged_line(session,
 		    (const uint8_t *)status, strlen(status),
 		    "avoid available status", error))
 			return false;
@@ -147,8 +166,9 @@ yt_session_computer_owned_fighters(struct yt_session *session,
 	if (maximum_sector < 0)
 		return session_computer_error(error, YT_RANGE, "owned-fighter state");
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "owned-fighter opening blank", error)
-	    || !session_present_timed_paged_row(session, searching,
+	    "owned-fighter opening blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, searching,
 	    sizeof(searching) - 1U, "owned-fighter searching row", error))
 		return false;
 	for (sector_number = 1; sector_number <= maximum_sector;
@@ -167,16 +187,20 @@ yt_session_computer_owned_fighters(struct yt_session *session,
 			found = true;
 			if (!session_present_text(session, NULL, 0U,
 			    SESSION_PRESENT_LINE,
-			    "owned-fighter searching ending", error)
-			    || !session_present_text(session, NULL, 0U,
+			    "owned-fighter searching ending", error))
+				return false;
+			if (!session_present_text(session, NULL, 0U,
 			    SESSION_PRESENT_LINE,
-			    "owned-fighter heading blank", error)
-			    || !session_fixed_width_bytes(session, sector_heading,
+			    "owned-fighter heading blank", error))
+				return false;
+			if (!session_fixed_width_bytes(session, sector_heading,
 			    sizeof(sector_heading) - 1U, 10.0f,
-			    "owned-fighter heading sector", error)
-			    || !session_present_paged_fragment(session, amount_heading,
-			    sizeof(amount_heading) - 1U)
-			    || !session_present_paged_fragment(session, rule,
+			    "owned-fighter heading sector", error))
+				return false;
+			if (!session_present_paged_fragment(session, amount_heading,
+			    sizeof(amount_heading) - 1U))
+				return false;
+			if (!session_present_paged_fragment(session, rule,
 			    sizeof(rule) - 1U))
 				return false;
 		}
@@ -224,10 +248,12 @@ yt_session_computer_owned_planets(struct yt_session *session,
 
 	session_set_color(session, 2);
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "owned-planet opening blank", error)
-	    || !session_present_text(session, scanning, sizeof(scanning) - 1U,
-	    SESSION_PRESENT_LINE, "owned-planet scanning row", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "owned-planet opening blank", error))
+		return false;
+	if (!session_present_text(session, scanning, sizeof(scanning) - 1U,
+	    SESSION_PRESENT_LINE, "owned-planet scanning row", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "owned-planet scanning blank", error))
 		return false;
 	session_set_color(session, 3);
