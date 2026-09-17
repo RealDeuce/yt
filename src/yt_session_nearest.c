@@ -36,7 +36,6 @@ enum nearest_output_kind {
 struct nearest_scan {
 	int selector;
 	uint8_t direction;
-	uint8_t conversion_mode;
 	int actor_number;
 	float base_price[3];
 	int cached_roster[4];
@@ -46,11 +45,10 @@ struct nearest_scan {
 	struct yt_player owner;
 	struct yt_nearest_market market;
 	float current_team;
-	float start_sector_raw;
-	float display_sector;
+	int display_sector;
 	float current_day;
 	float timer_seconds;
-	float page_count;
+	int page_count;
 	int current_sector;
 	int distance;
 	bool continuous;
@@ -102,20 +100,6 @@ nearest_div(float left, float right, float *result, struct yt_error *error,
 		return nearest_session_error(error, operation);
 	value = left / right;
 	return nearest_single(value, result, error, operation);
-}
-
-static bool
-nearest_cint(const struct nearest_scan *scan, float value, int *result,
-    struct yt_error *error, const char *operation)
-{
-	bool overflow;
-	int32_t converted = qb_cint_mode((double)value, scan->conversion_mode,
-	    &overflow);
-
-	if (overflow)
-		return nearest_session_error(error, operation);
-	*result = (int)converted;
-	return true;
 }
 
 static bool
@@ -198,7 +182,7 @@ static bool
 nearest_filter(const struct nearest_scan *scan, bool member)
 {
 	float klass = scan->port.commodity_class;
-	float owner = scan->port.owner;
+	int owner = (int)scan->port.owner;
 	bool accepted = false;
 
 	if (scan->selector >= 1 && scan->selector <= 3) {
@@ -209,17 +193,16 @@ nearest_filter(const struct nearest_scan *scan, bool member)
 	} else if (scan->selector == 4) {
 		accepted = true;
 	} else if (scan->selector == 5) {
-		accepted = owner > 0.0f
-		    && owner != (float)scan->actor_number && member;
+		accepted = owner > 0 && owner != scan->actor_number && member;
 	} else if (scan->selector == 6) {
-		accepted = owner == (float)scan->actor_number;
+		accepted = owner == scan->actor_number;
 	} else if (scan->selector == 7) {
-		accepted = owner > 0.0f
-		    && owner != (float)scan->actor_number
+		accepted = owner > 0
+		    && owner != scan->actor_number
 		    && (scan->current_team == 0.0f
 		    || (scan->current_team > 0.0f && !member));
 	} else if (scan->selector == 8) {
-		accepted = owner == 0.0f;
+		accepted = owner == 0;
 	}
 	return accepted && klass != 0.0f;
 }
@@ -292,7 +275,7 @@ nearest_page(struct yt_session *session, struct nearest_scan *scan,
 	uint8_t key;
 
 	*stop = false;
-	scan->page_count = 0.0f;
+	scan->page_count = 0;
 	session_set_foreground(session, 3.0f);
 	if (!nearest_present(session, YT_NEAREST_PAGER_PROMPT,
 	    YT_NEAREST_PRESENT_BOLD_RAW, prompt, sizeof(prompt) - 1U, error))
@@ -332,7 +315,6 @@ nearest_scan_run(struct yt_session *session, int selector,
 	int *next_layer;
 	size_t current_count = 0U;
 	struct yt_record raw;
-	bool first_sector = true;
 	int maximum_sector = session_sector_count(session);
 	size_t index;
 	bool success = false;
@@ -340,13 +322,11 @@ nearest_scan_run(struct yt_session *session, int selector,
 	memset(&scan, 0, sizeof(scan));
 	scan.selector = selector;
 	scan.direction = direction;
-	scan.conversion_mode =
-	    session->presentation.sound.conversion_mode;
 	scan.actor_number = session_record(session);
 	memcpy(scan.base_price, session->market_bases, sizeof(scan.base_price));
 	for (index = 0U; index < YT_ARRAY_LEN(scan.cached_roster); ++index)
 		scan.cached_roster[index] = session->team_cache.roster[index];
-	scan.page_count = 4.0f;
+	scan.page_count = 4;
 	visited = calloc((size_t)maximum_sector + 1U, sizeof(*visited));
 	current_layer = malloc(((size_t)maximum_sector + 1U)
 	    * sizeof(*current_layer));
@@ -378,11 +358,8 @@ nearest_scan_run(struct yt_session *session, int selector,
 	yt_player_decode(&scan.player, &raw);
 	session->player = scan.player;
 	scan.current_team = scan.player.team;
-	scan.start_sector_raw = scan.player.sector;
-	if (!nearest_cint(&scan, scan.start_sector_raw, &scan.current_sector,
-	    error, "nearest start-sector CINT"))
-		goto done;
-	if (scan.start_sector_raw != 0.0f) {
+	scan.current_sector = (int)scan.player.sector;
+	if (scan.current_sector != 0) {
 		visited[scan.current_sector] = true;
 		current_layer[current_count++] = scan.current_sector;
 	}
@@ -395,35 +372,28 @@ nearest_scan_run(struct yt_session *session, int selector,
 		for (layer_index = 0U; layer_index < current_count;
 		    ++layer_index) {
 			int sector_number = current_layer[layer_index];
-			float sector_operand = first_sector
-			    ? scan.start_sector_raw : (float)sector_number;
-			float raw_port;
+			int logical_port;
 			size_t slot;
 
-			first_sector = false;
 			scan.current_sector = sector_number;
-			scan.display_sector = sector_operand;
+			scan.display_sector = sector_number;
 			if (!nearest_read(session,
 			    (int)session_sector_basic_record(session, sector_number),
 			    &raw, error))
 				goto done;
 			yt_sector_decode(&scan.sector, &raw);
 			for (slot = 0U; slot < 6U; ++slot) {
-				int target;
-				float warp = scan.sector.warps[slot];
+				int target = (int)scan.sector.warps[slot];
 
-				if (warp == 0.0f)
+				if (target == 0)
 					continue;
-				if (!nearest_cint(&scan, warp, &target, error,
-				    "nearest warp CINT"))
-					goto done;
 				if (visited[target])
 					continue;
 				visited[target] = true;
 				next_layer[next_count++] = target;
 			}
-			raw_port = scan.sector.port;
-			if (raw_port == 0.0f)
+			logical_port = (int)scan.sector.port;
+			if (logical_port == 0)
 				continue;
 			{
 				int today;
@@ -440,17 +410,18 @@ nearest_scan_run(struct yt_session *session, int selector,
 			if (!nearest_single(scan.current_day, &scan.current_day,
 			    error, "nearest current day")
 			    || !nearest_read(session,
-			    (int)session_port_basic_record(session, (int)raw_port),
+			    (int)session_port_basic_record(session, logical_port),
 			    &raw, error))
 				goto done;
 			yt_port_decode(&scan.port, &raw);
 			{
 				bool member = false;
+				int port_owner = (int)scan.port.owner;
 
 				if (scan.current_team != 0.0f) {
 					for (slot = 0U; slot < 4U; ++slot) {
-						if ((float)scan.cached_roster[slot]
-						    == scan.port.owner)
+						if (scan.cached_roster[slot]
+						    == port_owner)
 							member = true;
 					}
 				}
@@ -483,10 +454,9 @@ nearest_scan_run(struct yt_session *session, int selector,
 				session_set_foreground(session, 1.0f);
 				if (!nearest_present(session, YT_NEAREST_DISTANCE,
 				    YT_NEAREST_PRESENT_BOLD_LINE, heading,
-				    9U + (size_t)length, error)
-				    || !nearest_add(scan.page_count, 1.0f,
-				    &scan.page_count, error, "nearest pager count"))
+				    9U + (size_t)length, error))
 					goto done;
+				++scan.page_count;
 				heading_emitted = true;
 			}
 			{
@@ -504,7 +474,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				bool stop;
 
 				rendered = qb_str_single(number, sizeof(number),
-				    scan.display_sector);
+				    (float)scan.display_sector);
 				if (rendered < 0) {
 					nearest_session_error(error,
 					    "nearest sector formatting");
@@ -544,7 +514,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				if (name_length > YT_TEXT_FIELD_SIZE)
 					name_length = YT_TEXT_FIELD_SIZE;
 				memcpy(name, scan.port.record.bytes, name_length);
-				if (scan.display_sector == 1.0f) {
+				if (scan.display_sector == 1) {
 					name_length = sizeof(earth) - 1U;
 					memcpy(name, earth, name_length);
 					memset(ore, 0, sizeof(ore));
@@ -563,34 +533,32 @@ nearest_scan_run(struct yt_session *session, int selector,
 				    scan.port.commodity_class == 3.0f ? 7.0f : 6.0f);
 				if (!nearest_present(session, YT_NEAREST_ORE,
 				    YT_NEAREST_PRESENT_BOLD_RAW, ore,
-				    scan.display_sector == 1.0f ? 0U : sizeof(ore) - 1U,
+				    scan.display_sector == 1 ? 0U : sizeof(ore) - 1U,
 				    error))
 					goto done;
 				session_set_foreground(session,
 				    scan.port.commodity_class == 2.0f ? 7.0f : 6.0f);
 				if (!nearest_present(session, YT_NEAREST_ORGANICS,
 				    YT_NEAREST_PRESENT_BOLD_RAW, organics,
-				    scan.display_sector == 1.0f
+				    scan.display_sector == 1
 				    ? 0U : sizeof(organics) - 1U, error))
 					goto done;
 				session_set_foreground(session,
 				    scan.port.commodity_class == 1.0f ? 7.0f : 6.0f);
 				if (!nearest_present(session, YT_NEAREST_EQUIPMENT,
 				    YT_NEAREST_PRESENT_BOLD_RAW, equipment,
-				    scan.display_sector == 1.0f
+				    scan.display_sector == 1
 				    ? 0U : sizeof(equipment) - 1U, error))
 					goto done;
 				session_set_foreground(session, 2.0f);
 				if (!nearest_present(session, YT_NEAREST_STOCK,
 				    YT_NEAREST_PRESENT_RAW, stock,
-				    scan.display_sector == 1.0f ? 0U : sizeof(stock),
+				    scan.display_sector == 1 ? 0U : sizeof(stock),
 				    error))
 					goto done;
 				session_set_foreground(session, 3.0f);
-				if (!nearest_cint(&scan, scan.port.owner, &owner_record,
-				    error, "nearest owner CINT"))
-					goto done;
-				if (scan.display_sector != 1.0f && owner_record != 0) {
+				owner_record = (int)scan.port.owner;
+				if (scan.display_sector != 1 && owner_record != 0) {
 					if (!nearest_read(session, owner_record, &raw,
 					    error))
 						goto done;
@@ -602,23 +570,21 @@ nearest_scan_run(struct yt_session *session, int selector,
 					    YT_TEXT_FIELD_SIZE + 2U);
 					if (name_length > 26U)
 						name_length = 26U;
-					if (scan.port.owner
-					    == (float)scan.actor_number)
+					if (owner_record == scan.actor_number)
 						session_set_foreground(session, 5.0f);
 				}
-				if (scan.display_sector == 1.0f) {
+				if (scan.display_sector == 1) {
 					session_set_foreground(session, 3.0f);
 					yt_present_set_blink(&session->presentation, 1.0f);
 				}
 				if (!nearest_present(session, YT_NEAREST_NAME,
 				    YT_NEAREST_PRESENT_BOLD_LINE, name, name_length,
-				    error)
-				    || !nearest_add(scan.page_count, 1.0f,
-				    &scan.page_count, error, "nearest pager count"))
+				    error))
 					goto done;
+				++scan.page_count;
 				if (scan.continuous)
-					scan.page_count = 0.0f;
-				if (scan.page_count > 22.0f) {
+					scan.page_count = 0;
+				if (scan.page_count > 22) {
 					if (!nearest_page(session, &scan, &stop, error))
 						goto done;
 					if (stop) {
