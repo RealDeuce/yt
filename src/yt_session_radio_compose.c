@@ -456,12 +456,7 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 			    SESSION_PRESENT_LINE, "radio menu dispatch blank", error))
 				return false;
 			if (strcmp(choice, "L") == 0) {
-				static const uint8_t list_dirty_zero[4] = {
-					0x00U, 0x00U, 0x80U, 0x00U,
-				};
-
-				session_set_pager_line_count_raw(session,
-				    list_dirty_zero);
+				session_set_pager_line_count(session, 0.0f);
 				for (index = 0; index < line_count; ++index) {
 					char row[96];
 

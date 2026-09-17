@@ -126,7 +126,6 @@ yt_session_port_report(struct yt_session *session, int logical_port,
     const struct yt_port_market_state *market,
     struct yt_port *terminal_port, struct yt_error *error)
 {
-	static const uint8_t pager_dirty_zero[4] = {0x00, 0x00, 0x01, 0x00};
 	static const uint8_t header[] =
 	    " Items         Status      # units    in holds   Cost";
 	static const uint8_t rule[] =
@@ -151,7 +150,7 @@ yt_session_port_report(struct yt_session *session, int logical_port,
 	    session_port_offset(session), (float)logical_port));
 	if (physical_record == 0U)
 		return session_range_error(error, "port report record conversion");
-	session_set_pager_line_count_raw(session, pager_dirty_zero);
+	session_set_pager_line_count(session, 0.0f);
 	if (!port_report_owner(session, market, error)
 	    || !session_reload_player(session, error))
 		return false;

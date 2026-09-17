@@ -748,14 +748,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	session.running = true;
 	/* YT:040A is the ordinary instruction after the handed-off checkpoint. */
 	session.pager.nonstop = 1.0f;
-	if (door->identity.ansi
-	    && !qb_mbf32_truth(door->identity.ansi_raw)) {
-		session.presentation.sound.ansi = 1.0f;
-	}
-	else {
-		session.presentation.sound.ansi =
-		    qb_mbf32_decode(door->identity.ansi_raw);
-	}
+	session.presentation.sound.ansi = door->identity.ansi ? 1.0f : 0.0f;
 	session.presentation.sound.mode = door->identity.local ? 1.0f : 0.0f;
 	session.presentation.sound.user_sound = -1.0f;
 	session.presentation.sound.local_sound =

@@ -66,8 +66,6 @@ identity_from_open_doors(struct yt_identity *identity)
 	copy_text(identity->location, sizeof(identity->location),
 	    od_control.user_location);
 	identity->ansi = od_control.user_ansi != 0;
-	(void)qb_mbf32_encode(identity->ansi ? 1.0f : 0.0f,
-	    identity->ansi_raw);
 	identity->local = od_control.od_force_local || od_control.baud == 0U;
 	qb_title_case(identity->sysop_first);
 	qb_title_case(identity->sysop_last);

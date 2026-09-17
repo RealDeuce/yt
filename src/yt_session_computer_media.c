@@ -34,7 +34,6 @@ yt_session_computer_scoreboard(struct yt_session *session,
 	static const uint8_t prompt[] =
 	    "Enter 'O' to see OLD scoreboard or press [ENTER] for UPDATED one. -=>";
 	static const uint8_t heading[] = "P l a y e r  R a n k i n g s";
-	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x04, 0x00};
 	char response[80];
 	size_t length;
 
@@ -48,7 +47,7 @@ yt_session_computer_scoreboard(struct yt_session *session,
 	length = strlen(response);
 	yt_input_compat_upper_n((uint8_t *)session->io.text_workspace, length);
 	yt_input_compat_upper_n((uint8_t *)response, length);
-	session_set_pager_line_count_raw(session, dirty_zero);
+	session_set_pager_line_count(session, 0.0f);
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "scoreboard selector trailing blank", error))
 		return false;
@@ -91,4 +90,3 @@ yt_session_computer_newspaper(struct yt_session *session,
 	    choice == YT_COMPUTER_NEWSPAPER_TODAY
 	    ? "YTNEWS.DAT" : "YTYNEWS.DAT", error);
 }
-

@@ -315,7 +315,6 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 	while (candidate <= session_sector_offset(session)) {
 		struct qb_val_result parsed;
 		enum yt_yes_no_answer answer;
-		uint8_t target_record_raw[4];
 		float cached_sector;
 		float cached_cloak;
 		bool sector_mismatch;
@@ -341,8 +340,7 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		}
 
 		target_record_cell = candidate;
-		(void)qb_mbf32_encode(candidate, target_record_raw);
-		session->shared_target_record = qb_mbf32_decode(target_record_raw);
+		session->shared_target_record = candidate;
 		if (!session_read_combat_player(session, record,
 		    &candidate_player, error))
 			return false;

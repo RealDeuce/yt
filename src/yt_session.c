@@ -41,13 +41,6 @@ session_planet_offset(const struct yt_session *session)
 }
 
 void
-session_set_pager_line_count_raw(struct yt_session *session,
-    const uint8_t raw[4])
-{
-	session->pager.line_count = qb_mbf32_decode(raw);
-}
-
-void
 session_set_pager_line_count(struct yt_session *session, float value)
 {
 	session->pager.line_count = value;
