@@ -451,28 +451,28 @@ yt_maintenance_xannor_groups_extract(struct yt_game *game,
 }
 
 bool
-yt_maintenance_xannor_regeneration(float top_score, const float size[21],
-    struct yt_maintenance_xannor_regeneration_result *result)
+yt_maintenance_xannor_regeneration(float top_score, float size[21],
+    double *regeneration)
 {
-	struct yt_maintenance_xannor_regeneration_result local = {0};
 	volatile float converted;
 	float regeneration_single;
+	float total = 0.0f;
+	float ceiling;
 	int group;
 
-	if (size == NULL || result == NULL)
+	if (size == NULL || regeneration == NULL)
 		return false;
 	for (group = 1; group <= 20; ++group)
-		local.total_before = qb_single_add(local.total_before, size[group]);
+		total = qb_single_add(total, size[group]);
 	regeneration_single = yt_maintenance_sint(
 	    qb_single_divide(top_score, 500.0f));
-	local.regeneration = (double)regeneration_single;
-	local.ceiling = yt_maintenance_sint(
+	*regeneration = (double)regeneration_single;
+	ceiling = yt_maintenance_sint(
 	    qb_single_divide(top_score, 100.0f));
-	if (local.total_before > local.ceiling)
-		local.regeneration = 0.0;
-	converted = (float)((double)size[1] + local.regeneration);
-	local.group_one_after = converted;
-	*result = local;
+	if (total > ceiling)
+		*regeneration = 0.0;
+	converted = (float)((double)size[1] + *regeneration);
+	size[1] = converted;
 	return true;
 }
 

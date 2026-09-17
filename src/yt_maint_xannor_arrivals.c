@@ -91,7 +91,7 @@ xannor_player_shield_phase(struct yt_random *random, float player_fighters,
 
 static bool
 xannor_reclaim_and_relocate(struct maint_state *state, float location[21],
-    float size[21], float regeneration,
+    float size[21], double regeneration,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error)
 {
@@ -101,7 +101,7 @@ xannor_reclaim_and_relocate(struct maint_state *state, float location[21],
 	    location, size, line_output, line_context, &reclaim, error))
 		return false;
 	return yt_maintenance_xannor_headquarters_relocate(&state->game,
-	    location, reclaim.original_hostile, size[1], (double)regeneration,
+	    location, reclaim.original_hostile, size[1], regeneration,
 	    NULL, 0U,
 	    line_output, line_context, error);
 }
@@ -938,12 +938,11 @@ yt_maintenance_xannor_run(struct maint_state *state,
     struct yt_error *error)
 {
 	struct yt_maintenance_xannor_hunt_result hunt;
-	struct yt_maintenance_xannor_regeneration_result regen_result;
 	struct yt_maintenance_output_result regen_output;
 	struct yt_maintenance_output_result roaming_output;
 	float location[21];
 	float size[21];
-	float regeneration;
+	double regeneration;
 	float score;
 	int top_target;
 	int hunt_player;
@@ -966,10 +965,10 @@ yt_maintenance_xannor_run(struct maint_state *state,
 	    || !yt_maintenance_xannor_groups_extract(&state->game, location,
 	    size, error))
 		return false;
-	if (!yt_maintenance_xannor_regeneration(score, size, &regen_result)
+	if (!yt_maintenance_xannor_regeneration(score, size, &regeneration)
 	    || !yt_maintenance_compose_xannor_regeneration(
 	    NULL, 0U,
-	    regen_result.regeneration, &regen_output)
+	    regeneration, &regen_output)
 	    || !line_output(line_context, regen_output.rows[0].data,
 	    regen_output.rows[0].length, error)
 	    || !line_output(line_context, regen_output.rows[1].data,
@@ -979,8 +978,6 @@ yt_maintenance_xannor_run(struct maint_state *state,
 	    || !line_output(line_context, regen_output.rows[2].data,
 	    regen_output.rows[2].length, error))
 		return false;
-	regeneration = (float)regen_result.regeneration;
-	size[1] = regen_result.group_one_after;
 	location[1] = state->game.config.headquarters;
 	if (!xannor_reclaim_and_relocate(state, location, size,
 	    regeneration, line_output, line_context, error)

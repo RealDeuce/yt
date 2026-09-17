@@ -3829,18 +3829,15 @@ check_maintenance_xannor_regeneration_model(void)
 	static const uint8_t expected[] =
 	    "\rCalculated Dynamic Xannor Regeneration is 200 fighters.\r"
 	    "\r";
-	struct yt_maintenance_xannor_regeneration_result mutation;
 	struct yt_maintenance_output_result output;
 	float size[21] = {0};
+	double regeneration;
 
 	size[1] = 1000.0f;
-	if (!yt_maintenance_xannor_regeneration(100000.0f, size, &mutation)
-	    || mutation.total_before != 1000.0f
-	    || mutation.ceiling != 1000.0f
-	    || mutation.regeneration != 200.0
-	    || mutation.group_one_after != 1200.0f
+	if (!yt_maintenance_xannor_regeneration(100000.0f, size, &regeneration)
+	    || regeneration != 200.0 || size[1] != 1200.0f
 	    || !yt_maintenance_compose_xannor_regeneration(
-	    NULL, 0U, mutation.regeneration, &output)
+	    NULL, 0U, regeneration, &output)
 	    || output.row_count != 3U
 	    || output.output_length != sizeof(expected) - 1U
 	    || memcmp(output.output, expected, sizeof(expected) - 1U) != 0
@@ -3849,13 +3846,11 @@ check_maintenance_xannor_regeneration_model(void)
 	    || output.rows[2].id != YT_MAINT_ROW_XANNOR_REGENERATION_TRAILING_BLANK)
 		return false;
 	size[1] = 1001.0f;
-	if (!yt_maintenance_xannor_regeneration(100000.0f, size, &mutation)
-	    || mutation.total_before != 1001.0f
-	    || mutation.regeneration != 0.0
-	    || mutation.group_one_after != 1001.0f)
+	if (!yt_maintenance_xannor_regeneration(100000.0f, size, &regeneration)
+	    || regeneration != 0.0 || size[1] != 1001.0f)
 		return false;
 	return !yt_maintenance_xannor_regeneration(100000.0f, NULL,
-	    &mutation)
+	    &regeneration)
 	    && !yt_maintenance_xannor_regeneration(100000.0f, size, NULL)
 	    && !yt_maintenance_compose_xannor_regeneration(NULL, 1U, 0.0,
 	    &output)
