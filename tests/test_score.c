@@ -14359,7 +14359,7 @@ projectile_command_counterattack_truth(void *context)
 {
 	struct projectile_command_tape *tape = context;
 
-	return qb_mbf32_truth(tape->counterattack_raw);
+	return tape->counterattack_raw[3] != 0U;
 }
 
 static bool
@@ -14367,7 +14367,7 @@ projectile_command_xannor_truth(void *context)
 {
 	struct projectile_command_tape *tape = context;
 
-	return qb_mbf32_truth(tape->xannor_raw);
+	return tape->xannor_raw[3] != 0U;
 }
 
 static void

@@ -18093,8 +18093,8 @@ main_buy_cycle_purchase(void *context, struct yt_error *error)
 		return false;
 	logical_port = (int)sector.port;
 	relative_port = sector.port;
-	converted_length = qb_cint_mbf32(
-	    terminal_port.record.bytes + YT_F85, 4U, &overflow);
+	converted_length = qb_cint_mode((double)qb_mbf32_decode(
+	    terminal_port.record.bytes + YT_F85), 4U, &overflow);
 	if (overflow || converted_length < 0)
 		return false;
 	old_name_length = (size_t)converted_length;
@@ -18419,7 +18419,7 @@ main_rename_cycle_rename(void *context, struct yt_error *error)
 	fixture->complete = false;
 	fixture->editor_called = false;
 	fixture->cached_name_length = 0U;
-	if (!qb_mbf32_truth(fixture->sector.record.bytes + YT_F65)) {
+	if (fixture->sector.record.bytes[YT_F65 + 3U] == 0U) {
 		fixture->route = MAIN_RENAME_NO_PORT;
 		fixture->complete = true;
 		return main_rename_present(fixture, no_port,
@@ -18438,8 +18438,8 @@ main_rename_cycle_rename(void *context, struct yt_error *error)
 		fixture->complete = true;
 		return main_rename_present(fixture, earth, sizeof(earth) - 1U);
 	}
-	converted = qb_cint_mbf32(fixture->port.record.bytes + YT_F85,
-	    4U, &overflow);
+	converted = qb_cint_mode((double)qb_mbf32_decode(
+	    fixture->port.record.bytes + YT_F85), 4U, &overflow);
 	if (overflow || converted < 0)
 		return false;
 	fixture->cached_name_length = (size_t)converted;

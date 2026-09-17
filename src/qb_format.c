@@ -964,12 +964,6 @@ qb_print_double(char *dest, size_t size, double value)
 	return append_print_space(dest, size, qb_str_double(dest, size, value));
 }
 
-int
-qb_print_number(char *dest, size_t size, double value)
-{
-	return qb_print_double(dest, size, value);
-}
-
 struct val_reader {
 	const uint8_t *data;
 	size_t length;

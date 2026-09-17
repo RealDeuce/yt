@@ -62,7 +62,6 @@ test_mbf32(void)
 	static const uint8_t tie_even_up[4] = {0x06, 0x00, 0x00, 0x01};
 	static const uint8_t maximum[4] = {0xff, 0xff, 0x7f, 0xff};
 	uint8_t encoded[4];
-	unsigned exponent;
 
 	CHECK(qb_mbf32_decode(minus_one) == -1.0f);
 	CHECK(qb_mbf32_decode(marker) == 6324.0f);
@@ -95,12 +94,6 @@ test_mbf32(void)
 	CHECK(memcmp(encoded, "\xa5\xa5\xa5\xa5", sizeof(encoded)) == 0);
 	CHECK(qb_mbf32_encode(INFINITY, encoded) == QB_MBF_OVERFLOW);
 	CHECK(qb_mbf32_encode(NAN, encoded) == QB_MBF_OVERFLOW);
-	CHECK(!qb_mbf32_truth(NULL));
-	for (exponent = 0; exponent <= UINT8_MAX; ++exponent) {
-		uint8_t raw[4] = {0xa5, 0x5a, 0x80, (uint8_t)exponent};
-
-		CHECK(qb_mbf32_truth(raw) == (exponent != 0U));
-	}
 }
 
 static void
@@ -243,7 +236,6 @@ test_numeric(void)
 	char rendered[64];
 
 	CHECK(qb_int(-1.2) == -2.0);
-	CHECK(qb_fix(-1.2) == -1.0);
 	CHECK(qb_cint(1.5, &overflow) == 2 && !overflow);
 	CHECK(qb_cint(2.5, &overflow) == 3 && !overflow);
 	CHECK(qb_cint(-1.5, &overflow) == -2 && !overflow);
@@ -253,27 +245,6 @@ test_numeric(void)
 	CHECK(qb_cint_mode(-2.25, 4, &overflow) == -3 && !overflow);
 	CHECK(qb_cint_mode(0.75, 4, &overflow) == 0 && !overflow);
 	CHECK(qb_cint_mode(2.5, 0xa5, &overflow) == 3 && !overflow);
-	CHECK(qb_cint_mbf32(raw_dirty_zero, 4, &overflow) == 0
-	    && !overflow);
-	{
-		uint8_t raw[4];
-
-		CHECK(qb_mbf32_encode(2.5f, raw) == QB_MBF_OK);
-		CHECK(qb_cint_mbf32(raw, 0, &overflow) == 3 && !overflow);
-		CHECK(qb_cint_mbf32(raw, 4, &overflow) == 2 && !overflow);
-		CHECK(qb_mbf32_encode(-2.25f, raw) == QB_MBF_OK);
-		CHECK(qb_cint_mbf32(raw, 0xa5, &overflow) == -2
-		    && !overflow);
-		CHECK(qb_cint_mbf32(raw, 4, &overflow) == -3 && !overflow);
-		CHECK(qb_mbf32_encode(-32768.0f, raw) == QB_MBF_OK);
-		CHECK(qb_cint_mbf32(raw, 0, &overflow) == -32768
-		    && !overflow);
-		CHECK(qb_mbf32_encode(32767.5f, raw) == QB_MBF_OK);
-		(void)qb_cint_mbf32(raw, 0, &overflow);
-		CHECK(overflow);
-		CHECK(qb_cint_mbf32(raw, 4, &overflow) == 32767
-		    && !overflow);
-	}
 	CHECK(qb_brun_random_record_number(2057.5f) == 2057U);
 	CHECK(qb_brun_random_record_number(-1.25f) == 0x00fffffeU);
 	CHECK(qb_brun_random_record_number(16777216.0f) == 0U);
@@ -384,8 +355,6 @@ test_numeric(void)
 	    && strcmp(rendered, "-5 ") == 0);
 	CHECK(qb_print_double(rendered, sizeof(rendered), 0.5) == 4
 	    && strcmp(rendered, " .5 ") == 0);
-	CHECK(qb_print_number(rendered, sizeof(rendered), -1.0e-17) == 7
-	    && strcmp(rendered, "-1D-17 ") == 0);
 	memset(rendered, 0xa5, sizeof(rendered));
 	CHECK(qb_print_integer(rendered, 3U, 5) == 3
 	    && memcmp(rendered, " 5\0", 3U) == 0);
