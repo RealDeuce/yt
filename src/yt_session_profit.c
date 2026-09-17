@@ -10,9 +10,8 @@
 
 struct profit_report {
 	bool global;
-	uint8_t conversion_mode;
 	float base_price[3];
-	float result_count;
+	size_t result_count;
 	size_t rows;
 };
 
@@ -61,28 +60,6 @@ profit_sub(float left, float right, float *result, struct yt_error *error,
 }
 
 static bool
-profit_cint(const struct profit_report *report, float value, int *result,
-    struct yt_error *error, const char *operation)
-{
-	bool overflow;
-	int32_t converted = qb_cint_mode((double)value,
-	    report->conversion_mode, &overflow);
-
-	if (overflow)
-		return profit_error(error, YT_RANGE, operation);
-	*result = (int)converted;
-	return true;
-}
-
-static bool
-profit_read(struct yt_session *session, int physical_record,
-    struct yt_record *record, struct yt_error *error)
-{
-	return yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, record, error);
-}
-
-static bool
 profit_project(struct yt_session *session, const struct profit_report *report,
     const struct yt_port *port, struct yt_nearest_market *market,
     float prices[4], struct yt_error *error)
@@ -115,18 +92,13 @@ profit_project(struct yt_session *session, const struct profit_report *report,
 	return true;
 }
 
-static bool
-profit_coerce_warps(const struct profit_report *report,
-    const struct yt_sector *sector, int warps[6], struct yt_error *error)
+static void
+profit_warp_targets(const struct yt_sector *sector, int targets[6])
 {
 	size_t slot;
 
-	for (slot = 0U; slot < 6U; ++slot) {
-		if (!profit_cint(report, sector->warps[slot], &warps[slot], error,
-		    "profit warp target CINT"))
-			return false;
-	}
-	return true;
+	for (slot = 0U; slot < 6U; ++slot)
+		targets[slot] = (int)sector->warps[slot];
 }
 
 static void
@@ -187,8 +159,7 @@ profit_right_four(uint8_t result[4], float value, bool integer)
 }
 
 static bool
-profit_compose_row(struct yt_session *session,
-    const struct profit_report *report, float source_number,
+profit_compose_row(struct yt_session *session, float source_number,
     int target_number, const struct yt_port *source_port,
     const struct yt_port *target_port, const float source_price[4],
     const float target_price[4], uint8_t row[36], struct yt_error *error)
@@ -213,7 +184,6 @@ profit_compose_row(struct yt_session *session,
 	int rendered;
 	size_t length = 0U;
 
-	(void)report;
 	if (!profit_sub(source_price[source_index], target_price[source_index],
 	    &source_leg, error, "profit source leg")
 	    || !profit_single(fabsf(source_leg), &source_leg, error,
@@ -299,14 +269,10 @@ profit_emit_pair(struct yt_session *session, struct profit_report *report,
 {
 	static const uint8_t separator[] = {' ', 0xba, ' '};
 	uint8_t row[36];
-	int count;
-
 	*keep_going = true;
-	if (report->global
-	    && !profit_add(report->result_count, 1.0f,
-	    &report->result_count, error, "profit result counter"))
-		return false;
-	if (!profit_compose_row(session, report, source_number, target_number,
+	if (report->global)
+		++report->result_count;
+	if (!profit_compose_row(session, source_number, target_number,
 	    source_port, target_port, source_price, target_price, row, error))
 		return false;
 	if (!report->global) {
@@ -321,10 +287,7 @@ profit_emit_pair(struct yt_session *session, struct profit_report *report,
 		return false;
 	++report->rows;
 	session_set_foreground(session, 6.0f);
-	if (!profit_cint(report, report->result_count, &count, error,
-	    "profit parity CINT"))
-		return false;
-	if ((count & 1) != 0) {
+	if ((report->result_count & 1U) != 0U) {
 		if (!session_present_text(session, separator, sizeof(separator),
 		    SESSION_PRESENT_BOLD_RAW, "global profit separator", error))
 			return false;
@@ -332,10 +295,7 @@ profit_emit_pair(struct yt_session *session, struct profit_report *report,
 	    SESSION_PRESENT_LINE, "global profit row ending", error)) {
 		return false;
 	}
-	if (!profit_cint(report, report->result_count, &count, error,
-	    "profit pager CINT"))
-		return false;
-	if (count % 44 == 0
+	if (report->result_count % 44U == 0U
 	    && !profit_page(session, keep_going, error))
 		return false;
 	return true;
@@ -369,16 +329,17 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 	    SESSION_PRESENT_BOLD_LINE, "adjacent profit title", error)
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "adjacent profit title blank", error)
-	    || !profit_read(session, current_sector_record, &raw, error))
+	    || !yt_database_read(&session->door->game.database,
+	    (size_t)current_sector_record, &raw, error))
 		return false;
 	yt_sector_decode(&sector, &raw);
 	if (sector.port == 0.0f || sector.port == 1.0f)
 		return session_present_text(session, no_port, sizeof(no_port) - 1U,
 		    SESSION_PRESENT_BOLD_LINE, "adjacent profit no-port row",
 		    error);
-	if (!profit_coerce_warps(report, &sector, warps, error)
-	    || !profit_read(session,
-	    (int)session_port_basic_record(session, (int)sector.port),
+	profit_warp_targets(&sector, warps);
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)session_port_basic_record(session, (int)sector.port),
 	    &raw, error))
 		return false;
 	yt_port_decode(&source_port, &raw);
@@ -397,14 +358,16 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 		if (target <= 1)
 			continue;
 		target_record = (int)session_sector_basic_record(session, target);
-		if (!profit_read(session, target_record, &raw, error))
+		if (!yt_database_read(&session->door->game.database,
+		    (size_t)target_record, &raw, error))
 			return false;
 		yt_sector_decode(&target_sector, &raw);
 		if (target_sector.port == 0.0f)
 			continue;
 		target_record = (int)session_port_basic_record(session,
 		    (int)target_sector.port);
-		if (!profit_read(session, target_record, &raw, error))
+		if (!yt_database_read(&session->door->game.database,
+		    (size_t)target_record, &raw, error))
 			return false;
 		yt_port_decode(&target_port, &raw);
 		if (target_port.commodity_class == source_port.commodity_class)
@@ -445,16 +408,17 @@ profit_global(struct yt_session *session, struct profit_report *report,
 		size_t slot;
 
 		physical_record = (int)session_sector_basic_record(session, source);
-		if (!profit_read(session, physical_record, &raw, error))
+		if (!yt_database_read(&session->door->game.database,
+		    (size_t)physical_record, &raw, error))
 			return false;
 		yt_sector_decode(&sector, &raw);
-		if (!profit_coerce_warps(report, &sector, warps, error))
-			return false;
+		profit_warp_targets(&sector, warps);
 		if (sector.port <= 0.0f)
 			continue;
 		physical_record = (int)session_port_basic_record(session,
 		    (int)sector.port);
-		if (!profit_read(session, physical_record, &raw, error))
+		if (!yt_database_read(&session->door->game.database,
+		    (size_t)physical_record, &raw, error))
 			return false;
 		yt_port_decode(&source_port, &raw);
 		if (!profit_project(session, report, &source_port,
@@ -472,14 +436,16 @@ profit_global(struct yt_session *session, struct profit_report *report,
 				continue;
 			physical_record = (int)session_sector_basic_record(session,
 			    target);
-			if (!profit_read(session, physical_record, &raw, error))
+			if (!yt_database_read(&session->door->game.database,
+			    (size_t)physical_record, &raw, error))
 				return false;
 			yt_sector_decode(&target_sector, &raw);
 			if (target_sector.port == 0.0f || target <= source)
 				continue;
 			physical_record = (int)session_port_basic_record(session,
 			    (int)target_sector.port);
-			if (!profit_read(session, physical_record, &raw, error))
+			if (!yt_database_read(&session->door->game.database,
+			    (size_t)physical_record, &raw, error))
 				return false;
 			yt_port_decode(&target_port, &raw);
 			if (target_port.commodity_class
@@ -509,7 +475,6 @@ yt_session_computer_profit(struct yt_session *session, bool global,
 
 	memset(&report, 0, sizeof(report));
 	report.global = global;
-	report.conversion_mode = session->presentation.sound.conversion_mode;
 	memcpy(report.base_price, session->market_bases,
 	    sizeof(report.base_price));
 	return global ? profit_global(session, &report, error)
