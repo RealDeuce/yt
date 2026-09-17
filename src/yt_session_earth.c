@@ -21,7 +21,7 @@ session_port_owner_row_capture(struct yt_session *session,
 
 	if (captured_length != NULL)
 		*captured_length = 0U;
-	kind = yt_port_owner_classify((int)port->owner, session_record(session),
+	kind = yt_port_owner_classify(port->owner, session_record(session),
 	    &owner_record);
 	if (kind == YT_PORT_OWNER_SILENT)
 		return true;
@@ -63,8 +63,8 @@ session_earth_receipt(struct yt_session *session, const struct yt_port *cached_e
 
 	if (!session_mutate_player_credits(session, -cost, NULL, error))
 		return false;
-	if (cached_earth->owner != 0.0f) {
-		float receipt = yt_earth_receipt_amount((int)cached_earth->owner,
+	if (cached_earth->owner != 0) {
+		float receipt = yt_earth_receipt_amount(cached_earth->owner,
 		    session_record(session), cost);
 
 		if (!session_read_port(session, 1, &earth, error))

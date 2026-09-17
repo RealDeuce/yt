@@ -17831,8 +17831,8 @@ main_buy_report(void *context, int logical_port, bool earth,
 	}
 	memset(early_port, 0, sizeof(*early_port));
 	memset(terminal_port, 0, sizeof(*terminal_port));
-	early_port->owner = 7.0f;
-	terminal_port->owner = 99.0f;
+	early_port->owner = 7;
+	terminal_port->owner = 99;
 	terminal_port->name_length = 8U;
 	(void)yt_record_set_number(&terminal_port->record, YT_F85, 8.0f);
 	memcpy(terminal_port->record.bytes, "Old Port", 8U);
@@ -17851,7 +17851,7 @@ main_buy_owner(void *context, const struct yt_port *port, uint8_t *name,
 	struct main_buy_cycle_fixture *fixture = context;
 
 	(void)error;
-	if (port == NULL || port->owner != 7.0f || name == NULL
+	if (port == NULL || port->owner != 7 || name == NULL
 	    || capacity < sizeof(owner_name) - 1U || length == NULL
 	    || !normal_exit_line(&fixture->viewer->join, NULL, 0U)
 	    || !normal_exit_line(&fixture->viewer->join, owner_row,
@@ -18076,7 +18076,7 @@ main_buy_cycle_purchase(void *context, struct yt_error *error)
 	    &accepted, error)
 	    || !accepted
 	    || !main_buy_accept_direct(fixture, logical_port,
-	    (int)early_port.owner, fixture->purchase_price, (float)buyer.sector, trader,
+	    early_port.owner, fixture->purchase_price, (float)buyer.sector, trader,
 	    trader_length, old_name, old_name_length, owner_name,
 	    owner_name_length, error))
 		return false;
@@ -18165,7 +18165,7 @@ main_buy_cycle_fixture_initialize(struct main_buy_cycle_fixture *fixture,
 	memcpy(fixture->port.record.bytes, "Old Port", 8U);
 	fixture->port.name_length = 8U;
 	fixture->port.treasury = 4.0f;
-	fixture->port.owner = 7.0f;
+	fixture->port.owner = 7;
 	(void)yt_record_set_number(&fixture->port.record, YT_F85, 8.0f);
 	(void)yt_record_set_number(&fixture->port.record, YT_F89, 4.0f);
 	(void)yt_record_set_number(&fixture->port.record, YT_F97, 7.0f);
@@ -18269,7 +18269,7 @@ test_main_buy_cycle_presentation(void)
 		    && fixture.written_seller.ports_owned == 2.0f
 		    && fixture.written_buyer.credits == 990.0f
 		    && fixture.written_buyer.ports_owned == 2.0f
-		    && fixture.written_port.owner == 2.0f
+		    && fixture.written_port.owner == 2
 		    && fixture.written_port.treasury == 0.0f
 		    && fixture.written_port.name_length == 4U
 		    && memcmp(fixture.written_port.record.bytes, "Nova", 4U) == 0);
@@ -18370,7 +18370,7 @@ main_rename_cycle_rename(void *context, struct yt_error *error)
 		    sizeof(no_port) - 1U);
 	}
 	fixture->logical_port = fixture->sector.port;
-	if (fixture->port.owner != 2.0f) {
+	if (fixture->port.owner != 2) {
 		fixture->route = MAIN_RENAME_NOT_OWNER;
 		fixture->complete = true;
 		return main_rename_present(fixture, not_owner,
@@ -18418,7 +18418,7 @@ main_rename_cycle_fixture_initialize(struct main_rename_cycle_fixture *fixture,
 	fixture->sector.port = 3;
 	(void)yt_record_set_number(&fixture->sector.record, YT_F65, 3.0f);
 	memcpy(fixture->port.record.bytes, "Old Port", 8U);
-	fixture->port.owner = 2.0f;
+	fixture->port.owner = 2;
 	fixture->port.name_length = 8U;
 	(void)yt_record_set_number(&fixture->port.record, YT_F85, 8.0f);
 	(void)yt_record_set_number(&fixture->port.record, YT_F97, 2.0f);
@@ -18613,7 +18613,7 @@ test_main_rename_refusal_cycles_presentation(void)
 				memset(fixture.sector.record.bytes + YT_F65, 0, 4U);
 			}
 			else if (outcome == 1U)
-				fixture.port.owner = 7.0f;
+				fixture.port.owner = 7;
 			else {
 				fixture.sector.port = 1;
 				(void)yt_record_set_number(&fixture.sector.record,

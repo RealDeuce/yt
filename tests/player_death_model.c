@@ -72,7 +72,7 @@ test_player_death_run(struct test_player_death_state *state,
 			if (!ops->read_port(context, logical, &port, error))
 				return false;
 			route = yt_death_port_overlay(&port,
-			    (float)state->victim_record, state->killer,
+			    state->victim_record, (int)state->killer,
 			    state->last_player_record);
 			if (route == YT_DEATH_PORT_UNMATCHED)
 				continue;

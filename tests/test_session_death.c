@@ -84,14 +84,14 @@ test_distinct_player_death(void)
 
 	memset(&port, 0, sizeof(port));
 	yt_record_blank(&port.record);
-	port.owner = 3.0f;
+	port.owner = 3;
 	port.treasury = 99.0f;
 	yt_port_encode(&port);
 	CHECK(yt_database_write(&door.game.database, 7U, &port.record,
 	    &error));
 	memset(&port, 0, sizeof(port));
 	yt_record_blank(&port.record);
-	port.owner = 4.0f;
+	port.owner = 4;
 	yt_port_encode(&port);
 	CHECK(yt_database_write_durable(&door.game.database, 8U, &port.record,
 	    &error));
@@ -113,11 +113,11 @@ test_distinct_player_death(void)
 	CHECK(sector.fighters == 20.0f && sector.fighter_owner == 4);
 	CHECK(yt_database_read(&door.game.database, 7U, &record, &error));
 	yt_port_decode(&port, &record);
-	CHECK(port.owner == 2.0f && port.last_minute == 2.0f
+	CHECK(port.owner == 2 && port.last_minute == 2.0f
 	    && port.treasury == 99.0f);
 	CHECK(yt_database_read(&door.game.database, 8U, &record, &error));
 	yt_port_decode(&port, &record);
-	CHECK(port.owner == 4.0f);
+	CHECK(port.owner == 4);
 	yt_database_close(&door.game.database);
 
 	file = fopen(news_path, "rb");

@@ -2395,7 +2395,7 @@ test_expired_player_cleanup(struct yt_error *error)
 	planet.owner = 2.0f;
 	planet.ground_forces = 8.0f;
 	planet.bank = 456.0f;
-	port.owner = 2.0f;
+	port.owner = 2;
 	port.treasury = 99.0f;
 	if (!yt_game_write_player(&game, 2, &victim, error)
 	    || !yt_game_write_player(&game, 3, &other, error)
@@ -2457,7 +2457,7 @@ test_expired_player_cleanup(struct yt_error *error)
 	    && defense.fighters == 0.0f && defense.fighter_owner == 0
 	    && planet.owner == 0.0f && planet.ground_forces == 0.0f
 	    && planet.bank == 456.0f
-	    && port.owner == 2.0f && port.treasury == 99.0f
+	    && port.owner == 2 && port.treasury == 99.0f
 	    && other.killed_by == -98.0f && unrelated.killed_by == -1.0f
 	    && radio_length == sizeof(radio)
 	    && yt_radio_get_number((const struct yt_radio_record *)radio_bytes,
@@ -2523,9 +2523,9 @@ test_immediate_death_cleanup(struct yt_error *error)
 	defense.fighter_owner = 2;
 	planet.owner = 2.0f;
 	planet.ground_forces = 8.0f;
-	owned_port.owner = 2.0f;
+	owned_port.owner = 2;
 	owned_port.treasury = 99.0f;
-	other_port.owner = 3.0f;
+	other_port.owner = 3;
 	other_port.treasury = 88.0f;
 	if (!yt_game_write_player(&game, 2, &victim, error)
 	    || !yt_game_write_sector(&game, 10, &team, error)
@@ -2561,8 +2561,8 @@ test_immediate_death_cleanup(struct yt_error *error)
 	    && yt_record_get_number(&team.record, YT_F125) == -1.0f
 	    && defense.fighters == 12.0f && defense.fighter_owner == -2
 	    && planet.owner == 2.0f && planet.ground_forces == 8.0f
-	    && owned_port.owner == 0.0f && owned_port.treasury == 0.0f
-	    && other_port.owner == 3.0f && other_port.treasury == 88.0f;
+	    && owned_port.owner == 0 && owned_port.treasury == 0.0f
+	    && other_port.owner == 3 && other_port.treasury == 88.0f;
 
 done:
 	yt_game_close(&game);

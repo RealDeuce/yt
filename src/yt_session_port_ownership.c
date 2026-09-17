@@ -151,10 +151,10 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 		    (size_t)physical_record, &record, error))
 			return false;
 		yt_port_decode(&port, &record);
-		if (port.owner != (float)session_record(session))
+		if (port.owner != session_record(session))
 			continue;
 		owned = qb_single_add(owned, 1.0f);
-		if (port.owner == 0.0f)
+		if (port.owner == 0)
 			continue;
 		credited = qb_single_add(credited, 1.0f);
 		if (!treasury_add(total, port.record.bytes + YT_F89, error)
@@ -331,7 +331,7 @@ yt_session_command_rename_port(struct yt_session *session,
 	    session_port_basic_record(session, logical_port),
 	    &port, error))
 		return false;
-	if (port.owner != (float)session_record(session))
+	if (port.owner != session_record(session))
 		return session_present_alert(session, not_owner,
 		    sizeof(not_owner) - 1U, "rename ownership row", error);
 	if (logical_port == 1)
@@ -557,7 +557,7 @@ yt_session_command_buy_port(struct yt_session *session,
 	if (!purchase_report(session, logical_port, earth, &early_port,
 	    &terminal_port, production, error))
 		return false;
-	old_owner = (int)early_port.owner;
+	old_owner = early_port.owner;
 	if (earth) {
 		price = 1000000000.0;
 		memcpy(old_name, earth_name, sizeof(earth_name) - 1U);
@@ -603,7 +603,7 @@ yt_session_command_buy_port(struct yt_session *session,
 		    sizeof(unaffordable) - 1U, "buy unaffordable row", error);
 	if (old_owner != 0) {
 		display_port = terminal_port;
-		display_port.owner = (float)old_owner;
+		display_port.owner = old_owner;
 		if (!session_port_owner_row_capture(session, &display_port,
 		    owner_name, sizeof(owner_name), &owner_name_length, error)
 		    || !session_present_text(session, NULL, 0U,

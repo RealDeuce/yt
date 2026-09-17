@@ -90,7 +90,7 @@ static bool
 nearest_filter(const struct nearest_scan *scan, bool member)
 {
 	int klass = scan->port.commodity_class;
-	int owner = (int)scan->port.owner;
+	int owner = scan->port.owner;
 	bool accepted = false;
 
 	if (scan->selector >= 1 && scan->selector <= 3) {
@@ -325,7 +325,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 			yt_port_decode(&scan.port, &raw);
 			{
 				bool member = false;
-				int port_owner = (int)scan.port.owner;
+				int port_owner = scan.port.owner;
 
 				if (scan.current_team != 0.0f) {
 					for (slot = 0U; slot < 4U; ++slot) {
@@ -431,7 +431,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 					memset(equipment, 0, sizeof(equipment));
 					memset(stock, 0, sizeof(stock));
 				}
-				if (scan.port.owner != 0.0f)
+				if (scan.port.owner != 0)
 					yt_present_set_bold(&session->presentation, 1.0f);
 				session_set_foreground(session, 2.0f);
 				if (!session_present_text(session, sector_cell,
@@ -467,7 +467,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				    SESSION_PRESENT_RAW, "nearest-port aggregate cell", error))
 					goto done;
 				session_set_foreground(session, 3.0f);
-				owner_record = (int)scan.port.owner;
+				owner_record = scan.port.owner;
 				if (scan.display_sector != 1 && owner_record != 0) {
 					if (!yt_database_read(&session->door->game.database,
 					    (size_t)owner_record, &raw, error))

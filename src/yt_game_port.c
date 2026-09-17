@@ -356,9 +356,10 @@ yt_port_purchase_title_overlay(struct yt_port *port, int buyer_record)
 {
 	if (port == NULL)
 		return false;
-	port->owner = (float)buyer_record;
+	port->owner = buyer_record;
 	port->treasury = 0.0f;
-	return yt_record_set_number(&port->record, YT_F97, port->owner)
+	return yt_record_set_number(&port->record, YT_F97,
+	    (float)port->owner)
 	    && yt_record_set_number(&port->record, YT_F89, 0.0f);
 }
 

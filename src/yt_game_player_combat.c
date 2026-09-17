@@ -284,23 +284,22 @@ yt_death_sector_overlay(struct yt_sector *sector, int victim)
 }
 
 enum yt_death_port_route
-yt_death_port_overlay(struct yt_port *port, float victim, float killer,
+yt_death_port_overlay(struct yt_port *port, int victim, int killer,
     int last_player)
 {
 	bool valid;
 
 	if (port == NULL || port->owner != victim)
 		return YT_DEATH_PORT_UNMATCHED;
-	valid = (killer != victim) & (killer > 1.0f)
-	    & (killer <= (float)last_player);
+	valid = (killer != victim) & (killer > 1) & (killer <= last_player);
 	if (valid) {
 		port->owner = killer;
-		port->last_minute = killer;
-		(void)yt_record_set_number(&port->record, YT_F97, killer);
-		(void)yt_record_set_number(&port->record, YT_F101, killer);
+		port->last_minute = (float)killer;
+		(void)yt_record_set_number(&port->record, YT_F97, (float)killer);
+		(void)yt_record_set_number(&port->record, YT_F101, (float)killer);
 		return YT_DEATH_PORT_TRANSFERRED;
 	}
-	port->owner = 0.0f;
+	port->owner = 0;
 	port->treasury = 0.0f;
 	(void)yt_record_set_number(&port->record, YT_F97, 0.0f);
 	(void)yt_record_set_number(&port->record, YT_F89, 0.0f);

@@ -291,10 +291,10 @@ yt_session_trade_commodity(struct yt_session *session,
 	    terms.port_sells ? yours : take,
 	    terms.port_sells ? sizeof(yours) - 1U : sizeof(take) - 1U))
 		return false;
-	if (terms.port_sells && market->port.owner != 0.0f) {
+	if (terms.port_sells && market->port.owner != 0) {
 		float receipt = total;
 
-		if (market->port.owner == (float)session_record(session))
+		if (market->port.owner == session_record(session))
 			receipt = floorf(qb_single_multiply(
 			    0.009999999776482582f, total));
 		if (!session_read_port_physical(session, market->port_physical_record,

@@ -240,7 +240,7 @@ test_owned_port_purchase(void)
 	    60.0f);
 	port.treasury = 4.0f;
 	port.sector = 9;
-	port.owner = 7.0f;
+	port.owner = 7;
 	for (index = 0U; index < 3U; ++index) {
 		port.stock[index] = (float)(100U * (index + 1U));
 		port.production[index] = (float)(10U * (index + 1U));
@@ -270,7 +270,7 @@ test_owned_port_purchase(void)
 	CHECK(buyer.ports_owned == 2.0f);
 	CHECK(yt_database_read(&door.game.database, 203U, &persisted, &error));
 	yt_port_decode(&port, &persisted);
-	CHECK(port.owner == 2.0f);
+	CHECK(port.owner == 2);
 	CHECK(port.treasury == 0.0f);
 	CHECK(port.name_length == 4U);
 	CHECK(memcmp(port.record.bytes, "Nova", 4U) == 0);

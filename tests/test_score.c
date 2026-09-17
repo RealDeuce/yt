@@ -1709,7 +1709,7 @@ check_port_name_editor_model(void)
 
 		memset(&purchase_port, 0, sizeof(purchase_port));
 		memset(purchase_port.record.bytes, 0x5a, YT_RECORD_SIZE);
-		purchase_port.owner = 7.0f;
+		purchase_port.owner = 7;
 		purchase_port.treasury = 0.0f;
 		memcpy(purchase_port.record.bytes + YT_F89,
 		    (const uint8_t[]){0x12, 0x34, 0x56, 0x00}, 4U);
@@ -1718,7 +1718,7 @@ check_port_name_editor_model(void)
 		(void)yt_record_set_number(&expected, YT_F89, 0.0f);
 		(void)yt_record_set_number(&expected, YT_F97, 2.0f);
 		if (!yt_port_purchase_title_overlay(&purchase_port, 2)
-		    || purchase_port.owner != 2.0f
+		    || purchase_port.owner != 2
 		    || purchase_port.treasury != 0.0f
 		    || memcmp(purchase_port.record.bytes, expected.bytes,
 		    YT_RECORD_SIZE) != 0
@@ -2650,7 +2650,7 @@ check_player_death_transaction(void)
 	    || memcmp(state.victim_name, "V\0X", 3U) != 0
 	    || tape.sectors[1].fighter_owner != -2
 	    || tape.sectors[1].fighters != 0.0f
-	    || tape.ports[1].owner != 2.0f || tape.ports[1].last_minute != 2.0f
+	    || tape.ports[1].owner != 2 || tape.ports[1].last_minute != 2.0f
 	    || tape.ports[1].treasury != 51.0f
 	    || tape.players[2].ports_owned != 7.0f
 	    || memcmp(tape.players[3].record.bytes + YT_F57, dirty_zero, 4U)
@@ -2697,7 +2697,7 @@ check_player_death_transaction(void)
 	    || tape.news_length[0] != sizeof(self_news) - 1U
 	    || memcmp(tape.news[0], self_news, sizeof(self_news) - 1U) != 0
 	    || !tape.current_set || !tape.flushed || !state.complete
-	    || tape.ports[1].owner != 0.0f || tape.ports[1].treasury != 0.0f
+	    || tape.ports[1].owner != 0 || tape.ports[1].treasury != 0.0f
 	    || tape.ports[1].last_minute != 71.0f)
 		return false;
 	return true;
@@ -2777,12 +2777,12 @@ check_player_death_model(void)
 	(void)yt_record_set_number(&record, YT_F97, 2.0f);
 	(void)yt_record_set_number(&record, YT_F101, 55.0f);
 	yt_port_decode(&port, &record);
-	if (yt_death_port_overlay(&port, 2.0f, 3.0f, 51)
+	if (yt_death_port_overlay(&port, 2, 3, 51)
 	    != YT_DEATH_PORT_TRANSFERRED
-	    || port.owner != 3.0f || port.last_minute != 3.0f
+	    || port.owner != 3 || port.last_minute != 3.0f
 	    || port.treasury != 77.0f)
 		return false;
-	if (yt_death_port_overlay(&port, 2.0f, 3.0f, 51)
+	if (yt_death_port_overlay(&port, 2, 3, 51)
 	    != YT_DEATH_PORT_UNMATCHED)
 		return false;
 	yt_record_blank(&record);
@@ -2790,9 +2790,9 @@ check_player_death_model(void)
 	(void)yt_record_set_number(&record, YT_F97, 2.0f);
 	(void)yt_record_set_number(&record, YT_F101, 55.0f);
 	yt_port_decode(&port, &record);
-	if (yt_death_port_overlay(&port, 2.0f, -1.0f, 51)
+	if (yt_death_port_overlay(&port, 2, -1, 51)
 	    != YT_DEATH_PORT_CLEARED
-	    || port.owner != 0.0f || port.treasury != 0.0f
+	    || port.owner != 0 || port.treasury != 0.0f
 	    || port.last_minute != 55.0f)
 		return false;
 

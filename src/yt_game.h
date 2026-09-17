@@ -74,7 +74,7 @@ struct yt_port {
 	size_t name_length;
 	float treasury;
 	int sector;
-	float owner;
+	int owner;
 	float last_minute;
 };
 
@@ -812,7 +812,7 @@ void yt_deployed_attack_sector_overlay(struct yt_sector *sector,
 void yt_death_player_overlay(struct yt_player *player, float killer);
 bool yt_death_sector_overlay(struct yt_sector *sector, int victim);
 enum yt_death_port_route yt_death_port_overlay(struct yt_port *port,
-    float victim, float killer, int last_player);
+    int victim, int killer, int last_player);
 void yt_death_killer_credit_overlay(struct yt_player *player, float ports);
 bool yt_death_title_row(const uint8_t *victim, size_t victim_length,
     float ports, uint8_t *row, size_t capacity, size_t *length);

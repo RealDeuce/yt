@@ -410,8 +410,8 @@ immediate_death_cleanup_impl(struct maint_state *state, int victim_record,
 
 		if (!yt_game_read_port(&state->game, logical, &port, error))
 			return false;
-		if (port.owner == (float)victim_record) {
-			port.owner = 0.0f;
+		if (port.owner == victim_record) {
+			port.owner = 0;
 			port.treasury = 0.0f;
 			if (!yt_game_write_port(&state->game, logical, &port,
 			    error))
