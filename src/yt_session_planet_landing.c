@@ -35,8 +35,9 @@ yt_session_planet_assault(struct yt_session *session,
 		return false;
 	saved_foreground = session->presentation.foreground;
 	if (!yt_session_update_planet_physical(session, physical_planet, &planet,
-	    NULL, error)
-	    || !read_planet_physical(session, physical_planet, &planet, error))
+	    NULL, error))
+		return false;
+	if (!read_planet_physical(session, physical_planet, &planet, error))
 		return false;
 	planet_name_length = yt_planet_stored_name(&planet, planet_name);
 	if (!session_reload_player(session, error))
@@ -46,19 +47,24 @@ yt_session_planet_assault(struct yt_session *session,
 	    player_name);
 	yt_planet_assault_player_overlay(&session->player, commitment);
 	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session_record(session), &session->player.record, error)
-	    || !yt_database_flush(&session->door->game.database, error)
-	    || !yt_planet_assault_attack_news(player_name, player_name_length,
+	    (size_t)session_record(session), &session->player.record, error))
+		return false;
+	if (!yt_database_flush(&session->door->game.database, error))
+		return false;
+	if (!yt_planet_assault_attack_news(player_name, player_name_length,
 	    planet_name, planet_name_length, commitment, row, sizeof(row),
-	    &row_length)
-	    || !yt_news_append_bytes(row, row_length, error))
+	    &row_length))
+		return false;
+	if (!yt_news_append_bytes(row, row_length, error))
 		return false;
 	session->presentation.blink = true;
 	if (!session_present_text(session, engaging, sizeof(engaging) - 1U,
-	    SESSION_PRESENT_BOLD_LINE, "planet assault engagement row", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "planet assault engagement blank", error)
-	    || !session_sound(session, YT_SOUND_CUE_ATTACK,
+	    SESSION_PRESENT_BOLD_LINE, "planet assault engagement row", error))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet assault engagement blank", error))
+		return false;
+	if (!session_sound(session, YT_SOUND_CUE_ATTACK,
 	    "planet assault engagement sound", error))
 		return false;
 	while (attackers > 0.0f && defenders > 0.0f) {
@@ -76,14 +82,16 @@ yt_session_planet_assault(struct yt_session *session,
 		session_set_foreground(session, attacker_damage ? 3 : 4);
 		if (!yt_planet_assault_status_row(attacker_damage,
 		    attacker_damage ? attackers : defenders, row, sizeof(row),
-		    &row_length)
-		    || !session_present_text(session, row, row_length,
+		    &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "planet assault force-status row", error))
 			return false;
-		if (!attacker_damage
-		    && !session_sound(session, YT_SOUND_CUE_ATTACK,
+		if (!attacker_damage) {
+			if (!session_sound(session, YT_SOUND_CUE_ATTACK,
 			    "planet assault defender sound", error))
-			return false;
+				return false;
+		}
 	}
 	session_set_foreground(session, saved_foreground);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -94,10 +102,12 @@ yt_session_planet_assault(struct yt_session *session,
 
 		if (!session_present_text(session, defenses,
 		    sizeof(defenses) - 1U, SESSION_PRESENT_BOLD_LINE,
-		    "planet assault defenses-destroyed row", error)
-		    || !yt_news_append_bytes(defenses_news,
-		    sizeof(defenses_news) - 1U, error)
-		    || !session_sound(session, YT_SOUND_CUE_REWARD,
+		    "planet assault defenses-destroyed row", error))
+			return false;
+		if (!yt_news_append_bytes(defenses_news,
+		    sizeof(defenses_news) - 1U, error))
+			return false;
+		if (!session_sound(session, YT_SOUND_CUE_REWARD,
 		    "planet defenses destroyed sound", error))
 			return false;
 		if (attackers > 0.0f) {
@@ -108,12 +118,15 @@ yt_session_planet_assault(struct yt_session *session,
 			session->presentation.blink = true;
 			if (!session_present_text(session, captured,
 			    sizeof(captured) - 1U, SESSION_PRESENT_BOLD_LINE,
-			    "planet assault capture row", error)
-			    || !yt_planet_assault_capture_news(player_name,
+			    "planet assault capture row", error))
+				return false;
+			if (!yt_planet_assault_capture_news(player_name,
 			    player_name_length, planet_name, planet_name_length,
-			    row, sizeof(row), &row_length)
-			    || !yt_news_append_bytes(row, row_length, error)
-			    || !session_sound(session, YT_SOUND_CUE_REWARD,
+			    row, sizeof(row), &row_length))
+				return false;
+			if (!yt_news_append_bytes(row, row_length, error))
+				return false;
+			if (!session_sound(session, YT_SOUND_CUE_REWARD,
 			    "planet capture sound", error))
 				return false;
 		}
@@ -134,11 +147,14 @@ yt_session_planet_assault(struct yt_session *session,
 		return false;
 	session->presentation.blink = true;
 	if (!yt_planet_assault_failure_row(defenders, true, row, sizeof(row),
-	    &row_length)
-	    || !yt_news_append_bytes(row, row_length, error)
-	    || !yt_planet_assault_failure_row(defenders, false, row,
-	    sizeof(row), &row_length)
-	    || !session_present_text(session, row, row_length,
+	    &row_length))
+		return false;
+	if (!yt_news_append_bytes(row, row_length, error))
+		return false;
+	if (!yt_planet_assault_failure_row(defenders, false, row,
+	    sizeof(row), &row_length))
+		return false;
+	if (!session_present_text(session, row, row_length,
 	    SESSION_PRESENT_BOLD_LINE, "planet assault failure row", error))
 		return false;
 	*defeated = true;
@@ -179,15 +195,18 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	enum yt_yes_no_answer answer;
 
 	if (!session_present_paged_line(session, no_planet, sizeof(no_planet) - 1U,
-	    "planet creation opening", error)
-	    || !session_present_paged_fragment(session, price, sizeof(price) - 1U))
+	    "planet creation opening", error))
+		return false;
+	if (!session_present_paged_fragment(session, price, sizeof(price) - 1U))
 		return false;
 	cached_trader_length = yt_player_stored_name(&session->player,
 	    cached_trader);
-	if (!session_reload_player(session, error)
-	    || !yt_planet_creation_credit_row((double)session->player.credits,
-	    row, sizeof(row), &row_length)
-	    || !session_present_paged_fragment(session, row, row_length))
+	if (!session_reload_player(session, error))
+		return false;
+	if (!yt_planet_creation_credit_row((double)session->player.credits,
+	    row, sizeof(row), &row_length))
+		return false;
+	if (!session_present_paged_fragment(session, row, row_length))
 		return false;
 	if (25000.0f > session->player.credits)
 		return session_present_alert(session, too_poor,
@@ -211,8 +230,9 @@ create_planet(struct yt_session *session, struct yt_error *error)
 		if (scan >= (uint32_t)session->door->game.config.total_records) {
 			if (!session_present_alert(session, all_taken,
 			    sizeof(all_taken) - 1U,
-			    "planet creation allocation full", error)
-			    || !session_present_paged_fragment(session, destroy_first,
+			    "planet creation allocation full", error))
+				return false;
+			if (!session_present_paged_fragment(session, destroy_first,
 			    sizeof(destroy_first) - 1U))
 				return false;
 			return true;
@@ -242,8 +262,9 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	(void)yt_record_set_number(&sector.record, YT_F93,
 	    (float)selected_logical);
 	if (!yt_database_write(&session->door->game.database,
-	    (size_t)sector_physical, &sector.record, error)
-	    || !session_current_date_serial(session, &today, &adjusted_year,
+	    (size_t)sector_physical, &sector.record, error))
+		return false;
+	if (!session_current_date_serial(session, &today, &adjusted_year,
 	    error))
 		return false;
 	session->door->game.today = today;
@@ -256,18 +277,25 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	if (!session_write_planet_physical(session, selected_physical, &planet,
 	    false, error))
 		return false;
-	if (!session_mutate_player_credits(session, -25000.0f, NULL, error)
-	    || !yt_planet_creation_news(cached_trader, cached_trader_length,
+	if (!session_mutate_player_credits(session, -25000.0f, NULL, error))
+		return false;
+	if (!yt_planet_creation_news(cached_trader, cached_trader_length,
 	    (const uint8_t *)session->planet.name, strlen(session->planet.name),
-	    row, sizeof(row), &row_length)
-	    || !yt_news_append_bytes(row, row_length, error)
-	    || !yt_planet_creation_success_row(
+	    row, sizeof(row), &row_length))
+		return false;
+	if (!yt_news_append_bytes(row, row_length, error))
+		return false;
+	if (!yt_planet_creation_success_row(
 	    (const uint8_t *)session->planet.name, strlen(session->planet.name),
-	    row, sizeof(row), &row_length)
-	    || !session_present_paged_line(session, row, row_length,
-	    "planet creation success row", error)
-	    || !session_sound(session, YT_SOUND_CUE_ACTION, "planet creation sound", error)
-	    || !session_present_paged_line(session, advice, sizeof(advice) - 1U,
+	    row, sizeof(row), &row_length))
+		return false;
+	if (!session_present_paged_line(session, row, row_length,
+	    "planet creation success row", error))
+		return false;
+	if (!session_sound(session, YT_SOUND_CUE_ACTION,
+	    "planet creation sound", error))
+		return false;
+	if (!session_present_paged_line(session, advice, sizeof(advice) - 1U,
 	    "planet creation advice row", error))
 		return false;
 	return true;
@@ -293,8 +321,9 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 	bool permission_denied;
 
 	if (!session_present_paged_line(session, title, sizeof(title) - 1U,
-	    "planet landing title", error)
-	    || !session_reload_player(session, error))
+	    "planet landing title", error))
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	cached_carried = session->player.ground_forces;
 	if (!session_read_sector(session,
@@ -325,10 +354,12 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 		float commitment;
 		bool defeated;
 
-		if (!read_planet_physical(session, physical, &planet, error)
-		    || !yt_planet_landing_sensor_row(planet.ground_forces,
-		    cached_carried, row, sizeof(row), &row_length)
-		    || !session_present_paged_line(session, row, row_length,
+		if (!read_planet_physical(session, physical, &planet, error))
+			return false;
+		if (!yt_planet_landing_sensor_row(planet.ground_forces,
+		    cached_carried, row, sizeof(row), &row_length))
+			return false;
+		if (!session_present_paged_line(session, row, row_length,
 		    "planet landing sensor row", error))
 			return false;
 		if (cached_carried < 1.0f) {
@@ -345,10 +376,12 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 			return true;
 		}
 		if (!yt_planet_landing_amount_prompt(cached_carried, prompt,
-		    sizeof(prompt), &prompt_length)
-		    || !session_present_timed_paged_row(session, prompt, prompt_length,
-		    "planet landing commitment prompt", error)
-		    || !session_read_number_command(session, response, sizeof(response)))
+		    sizeof(prompt), &prompt_length))
+			return false;
+		if (!session_present_timed_paged_row(session, prompt, prompt_length,
+		    "planet landing commitment prompt", error))
+			return false;
+		if (!session_read_number_command(session, response, sizeof(response)))
 			return false;
 		commitment = yt_planet_landing_commitment(response);
 		if (!yt_planet_landing_commitment_valid(commitment,
