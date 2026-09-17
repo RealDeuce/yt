@@ -759,10 +759,7 @@ test_text_output_close(void)
 	    && output.last_output_open.operation_count == 5U
 	    && output.last_output_open.access_attempt_count == 2U);
 	CHECK(yt_text_output_close(&output, &error)
-	    && output.last_close.outcome == YT_TEXT_CLOSE_RETURNED
-	    && output.last_close.operation_count == 4U
-	    && !output.last_close.close_all && !output.last_close.missing
-	    && !output.last_close.registered && !output.last_close.handle_open);
+	    && output.last_close_basic_error == 0U);
 	CHECK(yt_text_read(path, &text, &error));
 	if (text.data != NULL) {
 		CHECK(text.length == 1U && text.data[0] == eof_byte);
@@ -786,14 +783,12 @@ test_text_output_close(void)
 	}
 	yt_text_output_destroy(&output);
 
-	/* Missing explicit CLOSE and empty CLOSE-all retain distinct identities. */
+	/* Both close forms are no-ops when no resource is open. */
 	yt_text_output_init(&output);
 	CHECK(yt_text_output_close(&output, &error)
-	    && output.last_close.missing && !output.last_close.close_all
-	    && output.last_close.operation_count == 0U);
+	    && output.last_close_basic_error == 0U);
 	CHECK(yt_text_output_close_all(&output, &error)
-	    && !output.last_close.missing && output.last_close.close_all
-	    && output.last_close.operation_count == 0U);
+	    && output.last_close_basic_error == 0U);
 	yt_text_output_destroy(&output);
 
 	CHECK(yt_file_delete(path, false, &error));

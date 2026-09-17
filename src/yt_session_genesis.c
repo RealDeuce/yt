@@ -45,10 +45,10 @@ genesis_handoff_close_all(struct yt_session *session,
 	 * appending its DOS EOF, and then closes file 1 before RUN.
 	 */
 	if (!yt_text_output_close_all(output, error)) {
-		if (output->last_close.basic_error != 0U)
+		if (output->last_close_basic_error != 0U)
 			(void)yt_error_attach_basic_fault_number(error,
 			    YT_BASIC_FAULT_GENESIS_CLOSE_ALL,
-			    output->last_close.basic_error);
+			    output->last_close_basic_error);
 		return false;
 	}
 	if (!session->door->game_open)

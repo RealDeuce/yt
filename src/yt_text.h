@@ -79,31 +79,6 @@ enum yt_text_close_operation {
 	YT_TEXT_CLOSE_CLEANUP_HANDLE,
 };
 
-enum yt_text_close_outcome {
-	YT_TEXT_CLOSE_NONE,
-	YT_TEXT_CLOSE_RETURNED,
-	YT_TEXT_CLOSE_SHORT_ERROR,
-	YT_TEXT_CLOSE_DISK_ERROR,
-	YT_TEXT_CLOSE_PROVIDER_ERROR,
-};
-
-struct yt_text_close_result {
-	enum yt_text_close_outcome outcome;
-	enum yt_text_close_operation failed_operation;
-	size_t operation_count;
-	size_t accepted;
-	uint16_t dos_error;
-	uint16_t basic_error;
-	uint16_t cleanup_dos_error;
-	int64_t terminal_position;
-	bool close_all;
-	bool missing;
-	bool device;
-	bool cleanup_close_attempted;
-	bool registered;
-	bool handle_open;
-};
-
 struct yt_text_input {
 	FILE *file;
 	char path[512];
@@ -138,10 +113,11 @@ struct yt_text_output {
 	FILE *file;
 	FILE *orphaned_file;
 	char path[512];
+	bool device;
 	uint8_t pending[YT_TEXT_OUTPUT_BUFFER_SIZE];
 	size_t pending_count;
 	uint16_t last_write_basic_error;
-	struct yt_text_close_result last_close;
+	uint16_t last_close_basic_error;
 	struct yt_text_open_result last_output_open;
 	struct yt_text_open_result last_append_open;
 };
