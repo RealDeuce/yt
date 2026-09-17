@@ -160,31 +160,18 @@ od_clr_scr(void)
 BOOL ODCALL
 od_get_input(tODInputEvent *event, tODMilliSec wait, WORD flags)
 {
-	(void)wait;
 	(void)flags;
-	++input_poll_count;
+	if (wait == 0U)
+		++input_poll_count;
+	else {
+		CHECK(wait == 3000U);
+		++input_wait_count;
+	}
 	if (!input_ready)
 		return FALSE;
 	*event = next_input_event;
 	input_ready = false;
 	return TRUE;
-}
-
-BOOL ODCALL
-od_get_input_until(tODInputEvent *event, DWORD seconds, WORD milliseconds,
-    WORD flags)
-{
-	CHECK(seconds == 3U);
-	CHECK(milliseconds == 0U);
-	++input_wait_count;
-	return od_get_input(event, 0, flags);
-}
-
-void ODCALL
-od_get_time(DWORD *seconds, WORD *milliseconds)
-{
-	*seconds = 0U;
-	*milliseconds = 0U;
 }
 
 static void

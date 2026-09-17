@@ -22,9 +22,9 @@ static bool mock_local;
 static WORD init_maxtime;
 static tODInputEvent next_event;
 static bool event_ready;
-static bool until_called;
-static DWORD until_seconds;
-static WORD until_milliseconds;
+static bool input_called;
+static tODMilliSec input_wait;
+static WORD input_flags;
 static unsigned exit_calls;
 static BOOL exit_noexit;
 static int failures;
@@ -85,30 +85,14 @@ od_exit(INT errorlevel, BOOL terminate_call)
 BOOL ODCALL
 od_get_input(tODInputEvent *event, tODMilliSec wait, WORD flags)
 {
-	(void)wait;
-	(void)flags;
+	input_called = true;
+	input_wait = wait;
+	input_flags = flags;
 	if (!event_ready)
 		return FALSE;
 	*event = next_event;
 	event_ready = false;
 	return TRUE;
-}
-
-BOOL ODCALL
-od_get_input_until(tODInputEvent *event, DWORD seconds, WORD milliseconds,
-    WORD flags)
-{
-	until_called = true;
-	until_seconds = seconds;
-	until_milliseconds = milliseconds;
-	return od_get_input(event, 0, flags);
-}
-
-void ODCALL
-od_get_time(DWORD *seconds, WORD *milliseconds)
-{
-	*seconds = 0U;
-	*milliseconds = 0U;
 }
 
 static void
@@ -218,22 +202,25 @@ test_source_peek_preserves_event(void)
 }
 
 static void
-test_open_doors_deadline_wait(void)
+test_open_doors_relative_pause(void)
 {
 	struct yt_input input;
-	struct yt_input_value selected;
-	bool timed_out = false;
 
 	memset(&test_door, 0, sizeof(test_door));
 	test_door.identity.local = false;
 	od_control.od_force_local = FALSE;
 	yt_input_init(&input);
 	event_ready = false;
-	until_called = false;
-	CHECK(yt_input_wait_until(&input, 12U, 345U, &selected, &timed_out));
-	CHECK(until_called && until_seconds == 12U
-	    && until_milliseconds == 345U);
-	CHECK(timed_out && selected.length == 0U);
+	input_called = false;
+	CHECK(yt_input_pause(&input, 1.25));
+	CHECK(input_called && input_wait == 1250U && input_flags == GETIN_RAW);
+
+	input.pending.bytes[0] = 'P';
+	input.pending.length = 1U;
+	input.pending_valid = true;
+	input_called = false;
+	CHECK(yt_input_pause(&input, 1.25));
+	CHECK(!input_called && !input.pending_valid);
 }
 
 int
@@ -243,7 +230,7 @@ main(void)
 	test_forced_local_stdio_origin();
 	test_remote_origin_stays_remote();
 	test_source_peek_preserves_event();
-	test_open_doors_deadline_wait();
+	test_open_doors_relative_pause();
 	if (failures != 0) {
 		fprintf(stderr, "test_input_adapter: %d failure(s)\n", failures);
 		return 1;

@@ -12,8 +12,6 @@ struct yt_input {
 void yt_input_init(struct yt_input *input);
 bool yt_input_poll(struct yt_input *input, struct yt_input_value *selected);
 bool yt_input_wait(struct yt_input *input, struct yt_input_value *selected);
-bool yt_input_wait_until(struct yt_input *input, uint32_t seconds,
-    uint16_t milliseconds, struct yt_input_value *selected, bool *timed_out);
 bool yt_input_pause(struct yt_input *input, double seconds);
 bool yt_input_poll_source(struct yt_input *input, bool remote,
     struct yt_input_value *selected);
