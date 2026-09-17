@@ -69,21 +69,34 @@ yt_maintenance_compose_entry(bool same_day,
 	maintenance_output_row(result, id, (value).data, (value).length, line)
 #define LITERAL(id, value, line) \
 	maintenance_output_row(result, id, value, sizeof(value) - 1U, line)
-	if (same_day
-	    && (!ROW(YT_MAINT_ROW_ENTRY_SAME_DAY_BLANK, empty, true)
-	    || !LITERAL(YT_MAINT_ROW_ENTRY_SAME_DAY_MESSAGE, same_day_text, true)))
+	if (same_day) {
+		if (!ROW(YT_MAINT_ROW_ENTRY_SAME_DAY_BLANK, empty, true))
+			return false;
+		if (!LITERAL(YT_MAINT_ROW_ENTRY_SAME_DAY_MESSAGE,
+		    same_day_text, true))
+			return false;
+	}
+	if (!ROW(YT_MAINT_ROW_ENTRY_BANNER_BLANK, empty, true))
 		return false;
-	if (!ROW(YT_MAINT_ROW_ENTRY_BANNER_BLANK, empty, true)
-	    || !LITERAL(YT_MAINT_ROW_ENTRY_TITLE, title, true)
-	    || !LITERAL(YT_MAINT_ROW_ENTRY_BYLINE, byline, true)
-	    || !ROW(YT_MAINT_ROW_ENTRY_REVISION_LEADING_BLANK, empty, true)
-	    || !LITERAL(YT_MAINT_ROW_ENTRY_REVISION_INDENT, spacer, false)
-	    || !LITERAL(YT_MAINT_ROW_ENTRY_REVISION, revision, true)
-	    || !ROW(YT_MAINT_ROW_ENTRY_WARNING_BLANK, empty, true)
-	    || !LITERAL(YT_MAINT_ROW_ENTRY_WARNING, warning, true)
-	    || !ROW(YT_MAINT_ROW_ENTRY_PLAYER_PHASE_BLANK, empty, true)
-	    || !LITERAL(YT_MAINT_ROW_ENTRY_PLAYER_PHASE, player_phase, true)
-	    || !ROW(YT_MAINT_ROW_ENTRY_PLAYER_PHASE_TRAILING_BLANK, empty, true))
+	if (!LITERAL(YT_MAINT_ROW_ENTRY_TITLE, title, true))
+		return false;
+	if (!LITERAL(YT_MAINT_ROW_ENTRY_BYLINE, byline, true))
+		return false;
+	if (!ROW(YT_MAINT_ROW_ENTRY_REVISION_LEADING_BLANK, empty, true))
+		return false;
+	if (!LITERAL(YT_MAINT_ROW_ENTRY_REVISION_INDENT, spacer, false))
+		return false;
+	if (!LITERAL(YT_MAINT_ROW_ENTRY_REVISION, revision, true))
+		return false;
+	if (!ROW(YT_MAINT_ROW_ENTRY_WARNING_BLANK, empty, true))
+		return false;
+	if (!LITERAL(YT_MAINT_ROW_ENTRY_WARNING, warning, true))
+		return false;
+	if (!ROW(YT_MAINT_ROW_ENTRY_PLAYER_PHASE_BLANK, empty, true))
+		return false;
+	if (!LITERAL(YT_MAINT_ROW_ENTRY_PLAYER_PHASE, player_phase, true))
+		return false;
+	if (!ROW(YT_MAINT_ROW_ENTRY_PLAYER_PHASE_TRAILING_BLANK, empty, true))
 		return false;
 #undef LITERAL
 #undef ROW
@@ -99,8 +112,9 @@ maintenance_two_rows(enum yt_maintenance_output_row_id first_id,
 	if (result == NULL || (second == NULL && second_length != 0U))
 		return false;
 	memset(result, 0, sizeof(*result));
-	return maintenance_output_row(result, first_id, NULL, 0U, true)
-	    && maintenance_output_row(result, second_id, second,
+	if (!maintenance_output_row(result, first_id, NULL, 0U, true))
+		return false;
+	return maintenance_output_row(result, second_id, second,
 	    second_length, true);
 }
 
@@ -145,8 +159,9 @@ yt_maintenance_compose_port_phase(const uint8_t *blank,
 	memset(result, 0, sizeof(*result));
 	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_PORT_PHASE_BLANK, blank,
-	    blank_length, true)
-	    || !maintenance_output_row(result,
+	    blank_length, true))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_PORT_PHASE_HEADER, phase,
 	    sizeof(phase) - 1U, true))
 		return false;
@@ -154,15 +169,18 @@ yt_maintenance_compose_port_phase(const uint8_t *blank,
 		return true;
 	number_length = qb_str_single(number, sizeof(number),
 	    (float)plagued_count);
-	if (number_length < 0
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    (const uint8_t *)number, (size_t)number_length)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    count_suffix, sizeof(count_suffix) - 1U)
-	    || !maintenance_output_row(result,
-	    YT_MAINT_ROW_PORT_PLAGUE_BLANK, blank,
-	    blank_length, true)
-	    || !maintenance_output_row(result,
+	if (number_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    (const uint8_t *)number, (size_t)number_length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    count_suffix, sizeof(count_suffix) - 1U))
+		return false;
+	if (!maintenance_output_row(result,
+	    YT_MAINT_ROW_PORT_PLAGUE_BLANK, blank, blank_length, true))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_PORT_PLAGUE_REPORT, line, length, true))
 		return false;
 	return true;
@@ -196,59 +214,71 @@ yt_maintenance_compose_mercenary_phase(const uint8_t *blank,
 	memset(result, 0, sizeof(*result));
 	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_MERCENARY_START_BLANK, blank,
-	    blank_length, true)
-	    || !maintenance_output_row(result,
+	    blank_length, true))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_MERCENARY_START_SEPARATOR, NULL, 0U, true))
 		return false;
 	if (tax_pool != 0.0f) {
 		length = 0U;
 		number_length = qb_str_single(number, sizeof(number), tax_pool);
-		if (number_length < 0
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    tax_prefix, sizeof(tax_prefix) - 1U)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    (const uint8_t *)number, (size_t)number_length)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    tax_suffix, sizeof(tax_suffix) - 1U)
-		    || !maintenance_output_row(result,
-		    YT_MAINT_ROW_MERCENARY_TAX_REPORT, line, length,
-		    true))
+		if (number_length < 0)
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    tax_prefix, sizeof(tax_prefix) - 1U))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    (const uint8_t *)number, (size_t)number_length))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    tax_suffix, sizeof(tax_suffix) - 1U))
+			return false;
+		if (!maintenance_output_row(result,
+		    YT_MAINT_ROW_MERCENARY_TAX_REPORT, line, length, true))
 			return false;
 	}
 	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_MERCENARY_PHASE_BLANK, blank,
-	    blank_length, true)
-	    || !maintenance_output_row(result,
+	    blank_length, true))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_MERCENARY_PHASE_HEADER, phase,
-	    sizeof(phase) - 1U, true)
-	    || !maintenance_output_row(result,
-	    YT_MAINT_ROW_MERCENARY_PHASE_SEPARATOR, NULL, 0U, true)
-	    || !maintenance_output_row(result,
+	    sizeof(phase) - 1U, true))
+		return false;
+	if (!maintenance_output_row(result,
+	    YT_MAINT_ROW_MERCENARY_PHASE_SEPARATOR, NULL, 0U, true))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_MERCENARY_BASE_CHECK, checking,
 	    sizeof(checking) - 1U, true))
 		return false;
-	if (rebuilt_base
-	    && (!maintenance_output_row(result,
-	    YT_MAINT_ROW_MERCENARY_REBUILD_BLANK, blank,
-	    blank_length, true)
-	    || !maintenance_output_row(result,
-	    YT_MAINT_ROW_MERCENARY_REBUILT, rebuilt,
-	    sizeof(rebuilt) - 1U, true)))
-		return false;
+	if (rebuilt_base) {
+		if (!maintenance_output_row(result,
+		    YT_MAINT_ROW_MERCENARY_REBUILD_BLANK, blank,
+		    blank_length, true))
+			return false;
+		if (!maintenance_output_row(result,
+		    YT_MAINT_ROW_MERCENARY_REBUILT, rebuilt,
+		    sizeof(rebuilt) - 1U, true))
+			return false;
+	}
 	if (hired_fighters != 0.0f) {
 		length = 0U;
 		number_length = qb_str_single(number, sizeof(number),
 		    hired_fighters);
-		if (number_length < 0
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    hired_prefix, sizeof(hired_prefix) - 1U)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    (const uint8_t *)number, (size_t)number_length)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    hired_suffix, sizeof(hired_suffix) - 1U)
-		    || !maintenance_output_row(result,
-		    YT_MAINT_ROW_MERCENARY_HIRED, line, length,
-		    true))
+		if (number_length < 0)
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    hired_prefix, sizeof(hired_prefix) - 1U))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    (const uint8_t *)number, (size_t)number_length))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    hired_suffix, sizeof(hired_suffix) - 1U))
+			return false;
+		if (!maintenance_output_row(result,
+		    YT_MAINT_ROW_MERCENARY_HIRED, line, length, true))
 			return false;
 	}
 	return true;
@@ -273,14 +303,18 @@ yt_maintenance_compose_mercenary_movement(double moving_fighters,
 	moving_length = qb_print_double(moving, sizeof(moving),
 	    moving_fighters);
 	origin_length = qb_print_single(origin, sizeof(origin), origin_sector);
-	if (moving_length < 0 || origin_length < 0
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    prefix, sizeof(prefix) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    (const uint8_t *)moving, (size_t)moving_length)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    label, sizeof(label) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
+	if (moving_length < 0 || origin_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    prefix, sizeof(prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    (const uint8_t *)moving, (size_t)moving_length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    label, sizeof(label) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
 	    (const uint8_t *)origin, (size_t)origin_length))
 		return false;
 	return maintenance_output_row(result,
@@ -338,8 +372,9 @@ yt_maintenance_compose_planet_phase(const uint8_t *blank,
 	memset(result, 0, sizeof(*result));
 	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_PLANET_PHASE_BLANK, blank,
-	    blank_length, true)
-	    || !maintenance_output_row(result,
+	    blank_length, true))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_PLANET_PHASE_HEADER, phase,
 	    sizeof(phase) - 1U, true))
 		return false;
@@ -362,16 +397,21 @@ yt_maintenance_compose_planet_phase(const uint8_t *blank,
 		return false;
 	length = 0U;
 	if (!maintenance_copy_part(line, sizeof(line), &length,
-	    event_prefix, sizeof(event_prefix) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    event_name, event_name_length)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    event_middle, sizeof(event_middle) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    planet_name->data, planet_name->length)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    event_suffix, sizeof(event_suffix) - 1U)
-	    || !maintenance_output_row(result,
+	    event_prefix, sizeof(event_prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    event_name, event_name_length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    event_middle, sizeof(event_middle) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    planet_name->data, planet_name->length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    event_suffix, sizeof(event_suffix) - 1U))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_PLANET_EVENT_SUMMARY, line, length, true))
 		return false;
 	first_length = qb_str_single(first, sizeof(first),
@@ -379,18 +419,24 @@ yt_maintenance_compose_planet_phase(const uint8_t *blank,
 	second_length = qb_str_single(second, sizeof(second),
 	    mutation->new_event_total);
 	length = 0U;
-	if (first_length < 0 || second_length < 0
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    production_prefix, sizeof(production_prefix) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    (const uint8_t *)first, (size_t)first_length)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    production_middle, sizeof(production_middle) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    (const uint8_t *)second, (size_t)second_length)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    units_suffix, sizeof(units_suffix) - 1U)
-	    || !maintenance_output_row(result,
+	if (first_length < 0 || second_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    production_prefix, sizeof(production_prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    (const uint8_t *)first, (size_t)first_length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    production_middle, sizeof(production_middle) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    (const uint8_t *)second, (size_t)second_length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    units_suffix, sizeof(units_suffix) - 1U))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_PLANET_EVENT_PRODUCTION, line, length, true))
 		return false;
 	if (mutation->emit_ground_line) {
@@ -399,18 +445,24 @@ yt_maintenance_compose_planet_phase(const uint8_t *blank,
 		second_length = qb_str_single(second, sizeof(second),
 		    floorf(mutation->new_event_ground));
 		length = 0U;
-		if (first_length < 0 || second_length < 0
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    ground_prefix, sizeof(ground_prefix) - 1U)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    (const uint8_t *)first, (size_t)first_length)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    ground_middle, sizeof(ground_middle) - 1U)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    (const uint8_t *)second, (size_t)second_length)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    units_suffix, sizeof(units_suffix) - 1U)
-		    || !maintenance_output_row(result,
+		if (first_length < 0 || second_length < 0)
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    ground_prefix, sizeof(ground_prefix) - 1U))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    (const uint8_t *)first, (size_t)first_length))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    ground_middle, sizeof(ground_middle) - 1U))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    (const uint8_t *)second, (size_t)second_length))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    units_suffix, sizeof(units_suffix) - 1U))
+			return false;
+		if (!maintenance_output_row(result,
 		    YT_MAINT_ROW_PLANET_EVENT_GROUND, line, length,
 		    true))
 			return false;
@@ -420,14 +472,18 @@ yt_maintenance_compose_planet_phase(const uint8_t *blank,
 		first_length = qb_str_double(first, sizeof(first),
 		    (double)mutation->civil_war_expense);
 		length = 0U;
-		if (first_length < 0
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    expense_prefix, sizeof(expense_prefix) - 1U)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    (const uint8_t *)first, (size_t)first_length)
-		    || !maintenance_copy_part(line, sizeof(line), &length,
-		    expense_suffix, sizeof(expense_suffix) - 1U)
-		    || !maintenance_output_row(result,
+		if (first_length < 0)
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    expense_prefix, sizeof(expense_prefix) - 1U))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    (const uint8_t *)first, (size_t)first_length))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &length,
+		    expense_suffix, sizeof(expense_suffix) - 1U))
+			return false;
+		if (!maintenance_output_row(result,
 		    YT_MAINT_ROW_PLANET_EVENT_EXPENSE, line, length,
 		    true))
 			return false;
@@ -453,23 +509,27 @@ yt_maintenance_compose_wanderer_phase(const uint8_t *blank,
 	memset(result, 0, sizeof(*result));
 	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_WANDERER_PHASE_BLANK, blank,
-	    blank_length, true)
-	    || !maintenance_output_row(result,
+	    blank_length, true))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_WANDERER_PHASE_HEADER, phase,
 	    sizeof(phase) - 1U, true))
 		return false;
-	if (rebuilt
-	    && (!maintenance_output_row(result,
-	    YT_MAINT_ROW_WANDERER_MISSING, missing,
-	    sizeof(missing) - 1U, true)
-	    || !maintenance_output_row(result,
-	    YT_MAINT_ROW_WANDERER_REGENERATED, regenerated,
-	    sizeof(regenerated) - 1U, true)))
+	if (rebuilt) {
+		if (!maintenance_output_row(result,
+		    YT_MAINT_ROW_WANDERER_MISSING, missing,
+		    sizeof(missing) - 1U, true))
+			return false;
+		if (!maintenance_output_row(result,
+		    YT_MAINT_ROW_WANDERER_REGENERATED, regenerated,
+		    sizeof(regenerated) - 1U, true))
+			return false;
+	}
+	if (!maintenance_output_row(result,
+	    YT_MAINT_ROW_WANDERER_RESULT_BLANK, blank,
+	    blank_length, true))
 		return false;
 	return maintenance_output_row(result,
-	    YT_MAINT_ROW_WANDERER_RESULT_BLANK, blank,
-	    blank_length, true)
-	    && maintenance_output_row(result,
 	    YT_MAINT_ROW_WANDERER_WARPED, warped,
 	    sizeof(warped) - 1U, true);
 }
@@ -492,20 +552,23 @@ yt_maintenance_compose_xannor_home(const uint8_t *blank,
 	memset(result, 0, sizeof(*result));
 	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_HOME_PHASE_BLANK, blank,
-	    blank_length, true)
-	    || !maintenance_output_row(result,
+	    blank_length, true))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_HOME_PHASE_HEADER, phase,
 	    sizeof(phase) - 1U, true))
 		return false;
 	if (!rebuilt)
 		return true;
-	return maintenance_output_row(result,
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_HOME_REBUILD_BLANK, blank,
-	    blank_length, true)
-	    && maintenance_output_row(result,
+	    blank_length, true))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_HOME_CREATED, created,
-	    sizeof(created) - 1U, true)
-	    && maintenance_output_row(result,
+	    sizeof(created) - 1U, true))
+		return false;
+	return maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_HOME_LINKED, linked,
 	    sizeof(linked) - 1U, true);
 }
@@ -529,27 +592,32 @@ yt_maintenance_compose_xannor_hunt(const uint8_t *blank,
 	memset(result, 0, sizeof(*result));
 	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_HUNT_PHASE_BLANK, blank,
-	    blank_length, true)
-	    || !maintenance_output_row(result,
+	    blank_length, true))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_HUNT_PROCESSING, processing,
-	    sizeof(processing) - 1U, true)
-	    || !maintenance_output_row(result,
-	    YT_MAINT_ROW_XANNOR_HUNT_SEPARATOR, NULL, 0U, true)
-	    || !maintenance_output_row(result,
+	    sizeof(processing) - 1U, true))
+		return false;
+	if (!maintenance_output_row(result,
+	    YT_MAINT_ROW_XANNOR_HUNT_SEPARATOR, NULL, 0U, true))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_HUNT_LOCATING, locating,
 	    sizeof(locating) - 1U, true))
 		return false;
 	if (hunt_name == NULL)
 		return true;
 	if (!maintenance_copy_part(line, sizeof(line), &length,
-	    hunt_prefix, sizeof(hunt_prefix) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
+	    hunt_prefix, sizeof(hunt_prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
 	    hunt_name->data, hunt_name->length))
 		return false;
-	return maintenance_output_row(result,
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_HUNT_TARGET_BLANK, blank,
-	    blank_length, true)
-	    && maintenance_output_row(result,
+	    blank_length, true))
+		return false;
+	return maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_HUNT_TARGET, line, length, true);
 }
 
@@ -570,21 +638,26 @@ yt_maintenance_compose_xannor_regeneration(const uint8_t *blank,
 	    && blank_length != 0U))
 		return false;
 	number_length = qb_str_double(number, sizeof(number), regeneration);
-	if (number_length < 0
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    prefix, sizeof(prefix) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    (const uint8_t *)number, (size_t)number_length)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
+	if (number_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    prefix, sizeof(prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    (const uint8_t *)number, (size_t)number_length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
 	    suffix, sizeof(suffix) - 1U))
 		return false;
 	memset(result, 0, sizeof(*result));
-	return maintenance_output_row(result,
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_REGENERATION_BLANK, blank,
-	    blank_length, true)
-	    && maintenance_output_row(result,
-	    YT_MAINT_ROW_XANNOR_REGENERATION_REPORT, line, length, true)
-	    && maintenance_output_row(result,
+	    blank_length, true))
+		return false;
+	if (!maintenance_output_row(result,
+	    YT_MAINT_ROW_XANNOR_REGENERATION_REPORT, line, length, true))
+		return false;
+	return maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_REGENERATION_TRAILING_BLANK, blank,
 	    blank_length, true);
 }
@@ -600,12 +673,15 @@ yt_maintenance_compose_xannor_reclaim_attempt(
 	uint8_t line[YT_MAINTENANCE_OUTPUT_ROW_SIZE];
 	size_t length = 0U;
 
-	if (result == NULL || !maintenance_text_valid(opponent)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    prefix, sizeof(prefix) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    opponent->data, opponent->length)
-	    || !maintenance_copy_part(line, sizeof(line), &length,
+	if (result == NULL || !maintenance_text_valid(opponent))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    prefix, sizeof(prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    opponent->data, opponent->length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
 	    suffix, sizeof(suffix) - 1U))
 		return false;
 	memset(result, 0, sizeof(*result));
@@ -640,10 +716,11 @@ yt_maintenance_compose_xannor_relocation(const uint8_t *blank,
 	    && blank_length != 0U))
 		return false;
 	memset(result, 0, sizeof(*result));
-	return maintenance_output_row(result,
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_RELOCATION_MESSAGE, line,
-	    sizeof(line) - 1U, true)
-	    && maintenance_output_row(result,
+	    sizeof(line) - 1U, true))
+		return false;
+	return maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_RELOCATION_BLANK, blank,
 	    blank_length, true);
 }
@@ -658,13 +735,15 @@ yt_maintenance_compose_xannor_revenge(const uint8_t *blank,
 	    && blank_length != 0U))
 		return false;
 	memset(result, 0, sizeof(*result));
-	return maintenance_output_row(result,
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_REVENGE_BLANK, blank,
-	    blank_length, true)
-	    && maintenance_output_row(result,
+	    blank_length, true))
+		return false;
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_REVENGE_MESSAGE, line,
-	    sizeof(line) - 1U, true)
-	    && maintenance_output_row(result,
+	    sizeof(line) - 1U, true))
+		return false;
+	return maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_REVENGE_TRAILING_BLANK, blank,
 	    blank_length, true);
 }
@@ -679,10 +758,11 @@ yt_maintenance_compose_xannor_roaming(const uint8_t *blank,
 	    && blank_length != 0U))
 		return false;
 	memset(result, 0, sizeof(*result));
-	return maintenance_output_row(result,
+	if (!maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_ROAMING_MESSAGE, line,
-	    sizeof(line) - 1U, true)
-	    && maintenance_output_row(result,
+	    sizeof(line) - 1U, true))
+		return false;
+	return maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_ROAMING_BLANK, blank,
 	    blank_length, true);
 }
@@ -709,9 +789,12 @@ yt_maintenance_compose_xannor_group(int group_number, float group_size,
 		return false;
 	number_length = qb_print_single(number, sizeof(number),
 	    (float)group_number);
-	if (number_length < 0 || !maintenance_copy_part(line, sizeof(line),
-	    &length, (const uint8_t *)number, (size_t)number_length)
-	    || !maintenance_copy_part(line, sizeof(line), &length, gap,
+	if (number_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    (const uint8_t *)number, (size_t)number_length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length, gap,
 	    sizeof(gap) - 1U))
 		return false;
 	column = length % 80U;
@@ -724,8 +807,10 @@ yt_maintenance_compose_xannor_group(int group_number, float group_size,
 	    sizeof(size_prefix) - 1U))
 		return false;
 	number_length = qb_print_single(number, sizeof(number), group_size);
-	if (number_length < 0 || !maintenance_copy_part(line, sizeof(line),
-	    &length, (const uint8_t *)number, (size_t)number_length))
+	if (number_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    (const uint8_t *)number, (size_t)number_length))
 		return false;
 	return maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_GROUP_REPORT, line, length, true);
@@ -750,14 +835,19 @@ yt_maintenance_compose_xannor_path_error(float source, float target,
 	    sizeof(prefix) - 1U))
 		return false;
 	number_length = qb_str_single(number, sizeof(number), source);
-	if (number_length < 0 || !maintenance_copy_part(line, sizeof(line),
-	    &length, (const uint8_t *)number, (size_t)number_length)
-	    || !maintenance_copy_part(line, sizeof(line), &length, infix,
+	if (number_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    (const uint8_t *)number, (size_t)number_length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length, infix,
 	    sizeof(infix) - 1U))
 		return false;
 	number_length = qb_str_single(number, sizeof(number), target);
-	if (number_length < 0 || !maintenance_copy_part(line, sizeof(line),
-	    &length, (const uint8_t *)number, (size_t)number_length))
+	if (number_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &length,
+	    (const uint8_t *)number, (size_t)number_length))
 		return false;
 	return maintenance_output_row(result,
 	    YT_MAINT_ROW_XANNOR_PATH_ERROR, line, length, true);
@@ -801,39 +891,50 @@ yt_maintenance_compose_player_aging(
 	memset(result, 0, sizeof(*result));
 	if (cloak_expired) {
 		if (!maintenance_copy_part(line, sizeof(line), &line_length,
-		    expiry_prefix, sizeof(expiry_prefix) - 1U)
-		    || !maintenance_copy_part(line, sizeof(line), &line_length,
-		    name->data, name->length)
-		    || !maintenance_copy_part(line, sizeof(line), &line_length,
-		    suffix, sizeof(suffix) - 1U)
-		    || !maintenance_output_row(&result->screen,
+		    expiry_prefix, sizeof(expiry_prefix) - 1U))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &line_length,
+		    name->data, name->length))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &line_length,
+		    suffix, sizeof(suffix) - 1U))
+			return false;
+		if (!maintenance_output_row(&result->screen,
 		    YT_MAINT_ROW_PLAYER_CLOAK_EXPIRED, line,
-		    line_length, true)
-		    || !maintenance_copy_part(result->radio_message,
+		    line_length, true))
+			return false;
+		if (!maintenance_copy_part(result->radio_message,
 		    sizeof(result->radio_message), &result->radio_length,
-		    radio_prefix, sizeof(radio_prefix) - 1U)
-		    || !maintenance_copy_part(result->radio_message,
+		    radio_prefix, sizeof(radio_prefix) - 1U))
+			return false;
+		if (!maintenance_copy_part(result->radio_message,
 		    sizeof(result->radio_message), &result->radio_length,
-		    time_text->data, time_text->length)
-		    || !maintenance_copy_part(result->radio_message,
+		    time_text->data, time_text->length))
+			return false;
+		if (!maintenance_copy_part(result->radio_message,
 		    sizeof(result->radio_message), &result->radio_length,
-		    radio_middle, sizeof(radio_middle) - 1U)
-		    || !maintenance_copy_part(result->radio_message,
+		    radio_middle, sizeof(radio_middle) - 1U))
+			return false;
+		if (!maintenance_copy_part(result->radio_message,
 		    sizeof(result->radio_message), &result->radio_length,
-		    date_text->data, date_text->length)
-		    || !maintenance_copy_part(result->radio_message,
+		    date_text->data, date_text->length))
+			return false;
+		if (!maintenance_copy_part(result->radio_message,
 		    sizeof(result->radio_message), &result->radio_length,
 		    suffix, sizeof(suffix) - 1U))
 			return false;
 	}
 	else if (delete_player) {
 		if (!maintenance_copy_part(line, sizeof(line), &line_length,
-		    deletion_prefix, sizeof(deletion_prefix) - 1U)
-		    || !maintenance_copy_part(line, sizeof(line), &line_length,
-		    name->data, name->length)
-		    || !maintenance_copy_part(line, sizeof(line), &line_length,
-		    deletion_suffix, sizeof(deletion_suffix) - 1U)
-		    || !maintenance_output_row(&result->screen,
+		    deletion_prefix, sizeof(deletion_prefix) - 1U))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &line_length,
+		    name->data, name->length))
+			return false;
+		if (!maintenance_copy_part(line, sizeof(line), &line_length,
+		    deletion_suffix, sizeof(deletion_suffix) - 1U))
+			return false;
+		if (!maintenance_output_row(&result->screen,
 		    YT_MAINT_ROW_PLAYER_DELETED, line,
 		    line_length, true))
 			return false;
