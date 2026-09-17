@@ -90,7 +90,7 @@ test_destination_danger(void)
 	CHECK(!dangerous);
 	CHECK(session.player_reference.friendly);
 	CHECK(session.presentation.foreground == 7.0f);
-	CHECK(yt_present_background(&session.presentation) == 0.0f);
+	CHECK(session.presentation.background == 0.0f);
 	CHECK(session.player.team == 7);
 
 	write_player(&door.game, 3, "SOLO", 0, &error);

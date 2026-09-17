@@ -14,7 +14,7 @@ struct yt_info_panel_state {
 	float anti_cloak;
 	float foreground;
 	float background;
-	float bold;
+	bool bold;
 	uint8_t time_text[64];
 	size_t time_text_length;
 	struct yt_player player;

@@ -242,15 +242,15 @@ info_panel_commodity(struct yt_session *session,
 	    || !info_panel_fixed(session, right, right_length, 17.0f, error))
 		return false;
 	if (right_value != 0.0f) {
-		yt_present_set_bold(&session->presentation, 1.0f);
+		session->presentation.bold = true;
 		session_set_foreground(session, 7.0f);
-		yt_present_set_background(&session->presentation, 4.0f);
+		session->presentation.background = 4.0f;
 	}
 	if (!info_panel_fixed(session, (const uint8_t *)number,
 	    (size_t)number_length, 6.0f, error))
 		return false;
 	session_set_foreground(session, 2.0f);
-	yt_present_set_background(&session->presentation, 0.0f);
+	session->presentation.background = 0.0f;
 	return info_line(session, &bar, 1U, error);
 }
 

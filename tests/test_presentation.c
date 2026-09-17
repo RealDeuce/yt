@@ -210,8 +210,8 @@ test_xannor_file_playback(void)
 		    && capture.local_colors == (pass == 0U ? 0U : 5U));
 		CHECK(capture.presentation.foreground == 7.0f
 		    && capture.presentation.background == 0.0f
-		    && capture.presentation.bold == 0.0f
-		    && capture.presentation.blink == 0.0f);
+		    && capture.presentation.bold == false
+		    && capture.presentation.blink == false);
 	}
 }
 
@@ -313,8 +313,7 @@ test_paged_output(void)
 	    && result.events[1].operation == YT_PRESENT_REMOTE_SEMI
 	    && result.events[2].operation == YT_PRESENT_LOCAL_SEMI
 	    && result.events[3].operation == YT_PRESENT_REMOTE_SEMI);
-	CHECK(current.color_initialized == 1.0f
-	    && current.cached_foreground == 2.0f
+	CHECK(current.cached_foreground == 2.0f
 	    && current.cached_background == 0.0f);
 
 	current = state(true);
@@ -499,8 +498,8 @@ test_projectile_parent_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, invalid, sizeof(invalid) - 1U,
 	    &capture);
 	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
@@ -740,8 +739,8 @@ test_projectile_refusal_presentation(void)
 	memset(&capture, 0, sizeof(capture));
 	pager_capture_line(&capture, &current, NULL, 0U);
 	pager_capture_line(&capture, &current, NULL, 0U);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager.newline_flag = false;
 	pager_fixture_b05d(&pager, &current, no_ammo,
 	    sizeof(no_ammo) - 1U, &capture);
@@ -814,26 +813,26 @@ test_projectile_early_terminal_presentation(void)
 	pager_capture_line(&capture, &current, NULL, 0U);
 	memcpy(row, route, sizeof(route) - 1U);
 	row_length = sizeof(route) - 1U;
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_bold_line(row, row_length, &current, &result)
 	    == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	pager_capture_line(&capture, &current, NULL, 0U);
 	memcpy(row, self_destruct, sizeof(self_destruct) - 1U);
 	row_length = sizeof(self_destruct) - 1U;
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_bold_line(row, row_length, &current, &result)
 	    == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	CHECK(capture.remote_length == sizeof(route_expected) - 1U
 	    && memcmp(capture.remote, route_expected,
 	    sizeof(route_expected) - 1U) == 0);
-	CHECK(current.bold == 1.0f && current.blink == 1.0f);
+	CHECK(current.bold == true && current.blink == true);
 
 	current = state(false);
 	memset(&capture, 0, sizeof(capture));
 	pager_capture_line(&capture, &current, NULL, 0U);
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_bold_line(self_destruct,
 	    sizeof(self_destruct) - 1U, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
@@ -859,19 +858,19 @@ test_projectile_early_terminal_presentation(void)
 	memset(&capture, 0, sizeof(capture));
 	pager_capture_line(&capture, &current, NULL, 0U);
 	pager_capture_line(&capture, &current, NULL, 0U);
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_bold_line(route, sizeof(route) - 1U, &current,
 	    &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	pager_capture_line(&capture, &current, NULL, 0U);
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_bold_line(self_destruct,
 	    sizeof(self_destruct) - 1U, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	CHECK(capture.remote_length == sizeof(route_ansi_expected) - 1U
 	    && memcmp(capture.remote, route_ansi_expected,
 	    sizeof(route_ansi_expected) - 1U) == 0);
-	CHECK(current.bold == 0.0f && current.blink == 0.0f);
+	CHECK(current.bold == false && current.blink == false);
 }
 
 static struct pager_capture
@@ -948,7 +947,7 @@ test_pager_transactions(void)
 	    && memcmp(capture.remote, expected, length) == 0);
 	CHECK(pager.line_count == 0.0f && pager.nonstop == false
 	    && pager.key[0] == '\0' && pager.foreground == 6
-	    && present.foreground == 6.0f && present.bold == 1.0f);
+	    && present.foreground == 6.0f && present.bold == true);
 	CHECK(capture.last_local_foreground == 7
 	    && capture.last_local_background == 0);
 
@@ -986,7 +985,7 @@ test_pager_transactions(void)
 	length += 2U;
 	CHECK(capture.remote_length == length
 	    && memcmp(capture.remote, expected, length) == 0);
-	CHECK(present.bold == 0.0f && present.foreground == 6.0f);
+	CHECK(present.bold == false && present.foreground == 6.0f);
 	CHECK(capture.last_local_foreground == 6
 	    && capture.last_local_background == 0);
 
@@ -1018,7 +1017,7 @@ test_pager_gates(void)
 	CHECK(yt_pager_advance(&pager, &present, &saved));
 	CHECK(saved == 5 && pager.line_count == 0.0f
 	    && pager.foreground == 3 && present.foreground == 3.0f
-	    && present.bold == 1.0f && pager.newline_flag == true);
+	    && present.bold == true && pager.newline_flag == true);
 
 	snprintf(response, sizeof(response), "never");
 	CHECK(!yt_pager_accept_response(&pager, response, sizeof(response)));
@@ -2091,7 +2090,7 @@ test_newspaper_physical_viewer_join(void)
 		    && viewer.join.presentation.cached_foreground
 		    == cases[pass].final_cached_foreground
 		    && viewer.join.presentation.bold == cases[pass].final_bold
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.pager.foreground == 1
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.pager.nonstop == false
@@ -2345,8 +2344,8 @@ test_scoreboard_physical_viewer_join(void)
 		CHECK(viewer.join.presentation.foreground == 1.0f
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 1.0f : 0.0f)
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.pager.foreground == 1
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.pager.nonstop == false
@@ -2438,7 +2437,7 @@ test_normal_exit_scoreboard_viewer_join(void)
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 1.0f : 0.0f)
 		    && viewer.join.presentation.bold == cases[pass].final_bold
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.pager.foreground == 1
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.pager.nonstop == true
@@ -2657,8 +2656,8 @@ test_radio_reader_presentation(void)
 	size_t length = 0;
 
 	memset(&capture, 0, sizeof(capture));
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(automatic_heading,
@@ -2672,7 +2671,7 @@ test_radio_reader_presentation(void)
 	    && memcmp(capture.remote, empty_expected,
 	    sizeof(empty_expected) - 1U) == 0);
 	CHECK(current.foreground == 2.0f && current.background == 0.0f
-	    && current.bold == 1.0f && current.blink == 1.0f);
+	    && current.bold == true && current.blink == true);
 
 	memset(&capture, 0, sizeof(capture));
 	current = state(false);
@@ -2753,7 +2752,7 @@ test_editor_aux_notices(void)
 	present = state(true);
 	present.foreground = 3.0f;
 	CHECK(prime_color(&present, &result) == YT_PRESENT_OK);
-	present.bold = 1.0f;
+	present.bold = true;
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 3;
 	memset(&capture, 0, sizeof(capture));
@@ -2774,7 +2773,7 @@ test_editor_aux_notices(void)
 	length += 2U;
 	CHECK(capture.remote_length == length
 	    && memcmp(capture.remote, expected, length) == 0);
-	CHECK(pager.line_count == 1.0f && present.bold == 0.0f);
+	CHECK(pager.line_count == 1.0f && present.bold == false);
 }
 
 static struct pager_capture
@@ -2877,8 +2876,8 @@ test_common_fatal_notice(void)
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, &present, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	present.bold = 1.0f;
-	present.blink = 1.0f;
+	present.bold = true;
+	present.blink = true;
 	pager.newline_flag = false;
 	pager_fixture_b05d(&pager, &present, notice, sizeof(notice) - 1U,
 	    &capture);
@@ -2891,7 +2890,7 @@ test_common_fatal_notice(void)
 	length += 2U;
 	CHECK(capture.remote_length == length
 	    && memcmp(capture.remote, expected, length) == 0);
-	CHECK(present.bold == 1.0f && present.blink == 1.0f);
+	CHECK(present.bold == true && present.blink == true);
 	CHECK(pager.line_count == 1.0f && pager.newline_flag == false);
 	CHECK(capture.last_local_foreground == 7
 	    && capture.last_local_background == 0);
@@ -2903,8 +2902,8 @@ test_common_fatal_notice(void)
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, &present, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	present.bold = 1.0f;
-	present.blink = 1.0f;
+	present.bold = true;
+	present.blink = true;
 	pager.newline_flag = false;
 	pager_fixture_b05d(&pager, &present, notice, sizeof(notice) - 1U,
 	    &capture);
@@ -2922,7 +2921,7 @@ test_common_fatal_notice(void)
 	length += 2U;
 	CHECK(capture.remote_length == length
 	    && memcmp(capture.remote, expected, length) == 0);
-	CHECK(present.bold == 0.0f && present.blink == 0.0f);
+	CHECK(present.bold == false && present.blink == false);
 	CHECK(pager.line_count == 1.0f && pager.newline_flag == false);
 	CHECK(capture.last_local_foreground == 7
 	    && capture.last_local_background == 0);
@@ -2936,8 +2935,8 @@ test_common_fatal_notice(void)
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, &present, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	present.bold = 1.0f;
-	present.blink = 1.0f;
+	present.bold = true;
+	present.blink = true;
 	pager_fixture_b05d(&pager, &present, notice, sizeof(notice) - 1U,
 	    &capture);
 	CHECK(yt_present_sound(YT_SOUND_CUE_DESTRUCTION, &present, &result) == YT_PRESENT_OK);
@@ -3005,17 +3004,12 @@ test_formatting_wrappers(void)
 		    && memcmp(result.remote, "ab", 2U) == 0);
 	}
 
-	current.bold = 0.0f;
+	current.bold = false;
 	CHECK(yt_present_bold_line((const uint8_t *)"x", 1,
 	    &current, &result) == YT_PRESENT_OK);
-	CHECK(current.bold == 1.0f);
+	CHECK(current.bold == true);
 	CHECK(result.remote_length == 3
 	    && memcmp(result.remote, "x\r\n", 3) == 0);
-	current.bold = 7.0f;
-	CHECK(yt_present_bold_character((const uint8_t *)"y", 1,
-	    &current, &result) == YT_PRESENT_OK);
-	CHECK(current.bold == 7.0f);
-
 	CHECK(yt_present_centered_line((const uint8_t *)"A", 1,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 42);
@@ -3094,7 +3088,7 @@ test_attention(void)
 	CHECK(result.events[10].length == sizeof(cue) - 1U);
 	CHECK(yt_present_pc_attribute(30, 4) == 0xce);
 	CHECK(current.foreground == 3.0f && current.background == 0.0f);
-	CHECK(current.bold == 0.0f && current.blink == 0.0f);
+	CHECK(current.bold == false && current.blink == false);
 
 	current = state(false);
 	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5,
@@ -3105,7 +3099,7 @@ test_attention(void)
 	CHECK(result.events[6].operation == YT_PRESENT_LOCAL_PLAY);
 	CHECK(result.events[6].length == 11);
 	CHECK(current.foreground == 3.0f && current.background == 0.0f
-	    && current.bold == 0.0f && current.blink == 1.0f);
+	    && current.bold == false && current.blink == true);
 
 	current = state(true);
 	current.sound.local_mode = true;
@@ -3126,34 +3120,32 @@ test_attention(void)
 	CHECK(result.events[4].operation == YT_PRESENT_LOCAL_PLAY
 	    && result.events[4].length == sizeof(cue) - 1U);
 	CHECK(current.foreground == 3.0f && current.background == 0.0f
-	    && current.bold == 0.0f && current.blink == 0.0f);
+	    && current.bold == false && current.blink == false);
 
 	current = state(true);
-	CHECK(yt_present_background(&current) == 0.0f
-	    && yt_present_bold(&current) == 0.0f
-	    && yt_present_blink(&current) == 0.0f);
+	CHECK(current.background == 0.0f
+	    && current.bold == false
+	    && current.blink == false);
 	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
-	CHECK(current.background == 0.0f && current.bold == 0.0f
-	    && current.blink == 0.0f);
+	CHECK(current.background == 0.0f && current.bold == false
+	    && current.blink == false);
 	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5U,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(current.background == 0.0f
-	    && yt_present_background(&current) == 0.0f
-	    && current.bold == 0.0f && current.blink == 0.0f);
+	    && current.bold == false && current.blink == false);
 
 	memset(over_capacity, 'Q', sizeof(over_capacity));
 	current = state(true);
 	CHECK(yt_present_attention(over_capacity, sizeof(over_capacity),
 	    &current, &result) == YT_PRESENT_CAPACITY);
 	CHECK(current.background == 1.0f
-	    && yt_present_background(&current) == 1.0f
-	    && current.bold == 0.0f && current.blink == 0.0f);
+	    && current.bold == false && current.blink == false);
 
 	current = state(false);
 	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5U,
 	    &current, &result) == YT_PRESENT_OK);
-	CHECK(current.background == 0.0f && current.bold == 0.0f
-	    && current.blink == 1.0f);
+	CHECK(current.background == 0.0f && current.bold == false
+	    && current.blink == true);
 
 }
 
@@ -3170,7 +3162,6 @@ test_sound_toggle(void)
 	struct yt_present_state current = state(true);
 	struct yt_present_result result;
 
-	current.color_initialized = 1.0f;
 	current.cached_foreground = current.foreground;
 	current.cached_background = current.background;
 	current.sound.user_sound = false;
@@ -3211,7 +3202,6 @@ test_sound_toggle(void)
 	CHECK(result.events[4].operation == YT_PRESENT_LOCAL_PLAY);
 
 	current = state(true);
-	current.color_initialized = 1.0f;
 	current.cached_foreground = current.foreground;
 	current.cached_background = current.background;
 	current.sound.user_sound = true;
@@ -3921,7 +3911,7 @@ test_time_helpers(void)
 	CHECK(result.events[8].operation == YT_PRESENT_LOCAL_LINE
 	    && result.events[8].length == 17
 	    && memcmp(result.events[8].data, "Time Left: 5:59  ", 17) == 0);
-	CHECK(current.bold == 0.0f && current.blink == 0.0f);
+	CHECK(current.bold == false && current.blink == false);
 	CHECK(yt_present_low_time((const uint8_t *)" 5:59  ", 7,
 	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
 	CHECK(!warned && result.event_count == 0);
@@ -3933,7 +3923,7 @@ test_time_helpers(void)
 	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
 	CHECK(warned && result.event_count == 4);
 	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_BEEP);
-	CHECK(current.bold == 1.0f && current.blink == 1.0f);
+	CHECK(current.bold == true && current.blink == true);
 
 	current = state(false);
 	current.sound.local_output = false;
@@ -3965,7 +3955,7 @@ test_time_helpers(void)
 	CHECK(yt_present_low_time(long_time, sizeof(long_time), &remembered,
 	    &current, &result, &warned) == YT_PRESENT_CAPACITY);
 	CHECK(!warned && remembered == 5.0f && current.foreground == 5.0f
-	    && current.blink == 1.0f && current.bold == 0.0f
+	    && current.blink == true && current.bold == false
 	    && result.event_count == 3U && result.remote_length == 3U
 	    && memcmp(result.remote, "\r\n\a", 3U) == 0);
 
@@ -3974,7 +3964,7 @@ test_time_helpers(void)
 	CHECK(yt_present_low_time((const uint8_t *)"2E38", 4, &remembered,
 	    &current, &result, &warned) == YT_PRESENT_OVERFLOW);
 	CHECK(!warned && remembered == 6.0f && current.foreground == 2.0f
-	    && current.blink == 0.0f && result.event_count == 0U
+	    && current.blink == false && result.event_count == 0U
 	    && result.remote_length == 0U);
 
 }
@@ -4101,15 +4091,15 @@ test_gameplay_reentry_hostile_warning(void)
 	pager.foreground = 3;
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager.newline_flag = false;
 	pager_fixture_b05d(&pager, &current, warning, sizeof(warning) - 1U,
 	    &capture);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
 	CHECK(pager.line_count == 1.0f && pager.newline_flag == false
-	    && current.bold == 1.0f && current.blink == 1.0f);
+	    && current.bold == true && current.blink == true);
 }
 
 static void
@@ -4182,7 +4172,7 @@ test_hostile_menu_presentation(void)
 	    sizeof(attack_expected) - 1U) == 0);
 	CHECK(capture.remote_length == 73U);
 	CHECK(current.foreground == 3.0f && current.background == 0.0f
-	    && current.bold == 0.0f && current.blink == 0.0f);
+	    && current.bold == false && current.blink == false);
 	CHECK(capture.last_local_foreground == 6
 	    && capture.last_local_background == 0);
 
@@ -4208,8 +4198,8 @@ test_hostile_menu_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current,
 	    (const uint8_t *)"Invalid command.", strlen("Invalid command."),
 	    &capture);
@@ -4219,7 +4209,7 @@ test_hostile_menu_presentation(void)
 	    && memcmp(capture.remote, invalid_expected,
 	    sizeof(invalid_expected) - 1U) == 0);
 	CHECK(capture.remote_length == 119U && pager.line_count == 1.0f
-	    && current.bold == 0.0f && current.blink == 0.0f);
+	    && current.bold == false && current.blink == false);
 
 	current = state(true);
 	current.foreground = 3.0f;
@@ -4343,18 +4333,18 @@ test_direct_emergency_warp_presentation(void)
 		CHECK(yt_present_line(NULL, 0, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		current.bold = 1.0f;
+		current.bold = true;
 		current.foreground = 7.0f;
 		pager.foreground = 7;
 		pager_fixture_b05d(&pager, &current, warning_one,
 		    sizeof(warning_one) - 1U, &capture);
-		current.bold = 1.0f;
+		current.bold = true;
 		pager_fixture_b05d(&pager, &current, warning_two,
 		    sizeof(warning_two) - 1U, &capture);
 		CHECK(yt_present_line(NULL, 0, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		current.bold = 1.0f;
+		current.bold = true;
 		CHECK(yt_present_character(prompt, sizeof(prompt) - 1U,
 		    &current, &result) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
@@ -4393,8 +4383,8 @@ test_direct_emergency_warp_presentation(void)
 		CHECK(yt_present_line(NULL, 0, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		current.bold = 1.0f;
-		current.blink = 1.0f;
+		current.bold = true;
+		current.blink = true;
 		pager_fixture_b05d(&pager, &current, no_turns,
 		    sizeof(no_turns) - 1U, &capture);
 		if (pass == 0)
@@ -4513,8 +4503,8 @@ test_team_create_presentation(void)
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, entering,
 	    sizeof(entering) - 1U, &capture);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
@@ -4542,16 +4532,16 @@ test_team_create_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, reminder,
 	    sizeof(reminder) - 1U, &capture);
 	current.foreground = 3.0f;
 	pager.foreground = 3;
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, success,
 	    sizeof(success) - 1U, &capture);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
@@ -4620,8 +4610,8 @@ test_team_join_presentation(void)
 	pager.foreground = 3;
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, success,
 	    sizeof(success) - 1U, &capture);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
@@ -4805,8 +4795,8 @@ test_team_resource_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, success,
 	    sizeof(success) - 1U, &capture);
 	CHECK(capture.remote_length == sizeof(transfer_expected) - 1U
@@ -4822,8 +4812,8 @@ test_team_resource_presentation(void)
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, no_defense,
 	    sizeof(no_defense) - 1U, &capture);
 	CHECK(capture.remote_length == sizeof(no_defense_expected) - 1U
@@ -4892,8 +4882,8 @@ test_team_banish_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, success,
 	    sizeof(success) - 1U, &capture);
 	CHECK(capture.remote_length == sizeof(accept_expected) - 1U
@@ -4943,8 +4933,8 @@ test_port_docking_controller_presentation(void)
 		CHECK(yt_present_line(NULL, 0, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		current.bold = 1.0f;
-		current.blink = 1.0f;
+		current.bold = true;
+		current.blink = true;
 		pager_fixture_b05d(&pager, &current, no_port,
 		    sizeof(no_port) - 1U, &capture);
 		if (ansi == 0)
@@ -4984,8 +4974,8 @@ test_port_docking_controller_presentation(void)
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, refusal,
 	    sizeof(refusal) - 1U, &capture);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
@@ -5024,8 +5014,8 @@ test_action_finalizer_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, turn, sizeof(turn) - 1U,
 	    &capture);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
@@ -5085,8 +5075,8 @@ commodity_trade_join_02db(struct commodity_trade_join *join,
     const uint8_t *text, size_t length)
 {
 	commodity_trade_join_line(join);
-	join->current.bold = 1.0f;
-	join->current.blink = 1.0f;
+	join->current.bold = true;
+	join->current.blink = true;
 	commodity_trade_join_b05d(join, text, length, false);
 }
 
@@ -5753,7 +5743,7 @@ test_port_report_b05d_adapter_cuts(void)
 	cut.sampled.bytes[0] = 0x18U;
 	CHECK(yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
 	    header, sizeof(header) - 1U, &commodity_b05d_cut_ops, &cut));
-	join.current.bold = 1.0f;
+	join.current.bold = true;
 	cut.sampled.bytes[0] = 'B';
 	CHECK(yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
 	    rule, sizeof(rule) - 1U, &commodity_b05d_cut_ops, &cut));
@@ -6178,8 +6168,8 @@ test_main_shell_branch_presentation(void)
 		CHECK(yt_present_line(NULL, 0, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		current.bold = 1.0f;
-		current.blink = 1.0f;
+		current.bold = true;
+		current.blink = true;
 		pager_fixture_b05d(&pager, &current, invalid,
 		    sizeof(invalid) - 1U, &capture);
 		pager.line_count = 0.0f;
@@ -6402,8 +6392,8 @@ planet_menu_front_cycle_fixture(bool help,
 		CHECK(yt_present_line(NULL, 0, current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
-		current->bold = 1.0f;
-		current->blink = 1.0f;
+		current->bold = true;
+		current->blink = true;
 		pager_fixture_b05d(pager, current, invalid,
 		    sizeof(invalid) - 1U, capture);
 	}
@@ -6613,8 +6603,8 @@ test_planet_take_one_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, stock, sizeof(stock) - 1U,
 	    &capture);
 	CHECK(sizeof(rejected) - 1U == 82U);
@@ -6711,8 +6701,8 @@ planet_transfer_fixture(const uint8_t *selector, size_t selector_length,
 		CHECK(yt_present_line(NULL, 0, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		current.bold = 1.0f;
-		current.blink = 1.0f;
+		current.bold = true;
+		current.blink = true;
 		pager_fixture_b05d(&pager, &current, no_cargo,
 		    sizeof(no_cargo) - 1U, &capture);
 		goto done;
@@ -6745,7 +6735,7 @@ planet_transfer_fixture(const uint8_t *selector, size_t selector_length,
 	}
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.blink = 1.0f;
+	current.blink = true;
 	if (outcome == PLANET_TRANSFER_PLASMA)
 		pager_fixture_b05d(&pager, &current, plasma_success,
 		    sizeof(plasma_success) - 1U, &capture);
@@ -6897,8 +6887,8 @@ planet_bank_fixture(const uint8_t *response, size_t response_length,
 		CHECK(yt_present_line(NULL, 0, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		current.bold = 1.0f;
-		current.blink = 1.0f;
+		current.bold = true;
+		current.blink = true;
 		pager_fixture_b05d(&pager, &current, error_text, error_length,
 		    &capture);
 		goto done;
@@ -7381,7 +7371,7 @@ test_earth_purchase_presentation(void)
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
+	current.bold = true;
 	pager_fixture_b05d(&pager, &current,
 	    (const uint8_t *)"Danger Scanner installed in your ship!",
 	    strlen("Danger Scanner installed in your ship!"), &capture);
@@ -7508,7 +7498,7 @@ test_earth_spy_purchase_presentation(void)
 	    "Start spy # 1 in what sector?", "-1");
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
+	current.bold = true;
 	pager_fixture_b05d(&pager, &current,
 	    (const uint8_t *)"Spy # 1 will hunt in sector-1.",
 	    strlen("Spy # 1 will hunt in sector-1."), &capture);
@@ -7561,14 +7551,14 @@ test_earth_lottery_loss_presentation(void)
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	current.foreground = 1.0f;
-	current.bold = 1.0f;
+	current.bold = true;
 	pager_fixture_b05d(&pager, &current,
 	    (const uint8_t *)"Welcome to the Intergalactic Pick-6 Lottery!",
 	    strlen("Welcome to the Intergalactic Pick-6 Lottery!"), &capture);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	current.foreground = 2.0f;
-	current.bold = 1.0f;
+	current.bold = true;
 	earth_purchase_prompt(&capture, &pager, &current,
 	    "Enter a 6 digit number for the lottery computer -+>", "999999");
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
@@ -8148,8 +8138,8 @@ test_planet_rename_presentation(void)
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, protected,
 	    sizeof(protected) - 1U, &capture);
 	CHECK(sizeof(protected_expected) - 1U == 48U);
@@ -8177,8 +8167,8 @@ test_planet_rename_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, reserved,
 	    sizeof(reserved) - 1U, &capture);
 	CHECK(sizeof(reserved_expected) - 1U == 92U);
@@ -9473,15 +9463,15 @@ test_computer_port_report_ab36_state_joins(void)
 	queue_position = 0U;
 	queue_length = 2U;
 	current.foreground = 1.0f;
-	current.bold = 0.0f;
-	current.blink = 0.0f;
+	current.bold = false;
+	current.blink = false;
 	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
 	CHECK(pager.line_count == 0.0f && pager.nonstop == false
 	    && pager.newline_flag == false && pager.key[0] == '\0'
 	    && accumulator[0] == '\0' && queue_position == 0U
 	    && queue_length == 2U && memcmp(queue, "2\r", 2U) == 0
-	    && current.foreground == 1.0f && current.bold == 0.0f
-	    && current.blink == 0.0f);
+	    && current.foreground == 1.0f && current.bold == false
+	    && current.blink == false);
 	CHECK(yt_input_queue_pop(queue, sizeof(queue), &queue_position,
 	    &queue_length, &selected)
 	    && selected.length == 1U && selected.bytes[0] == '2'
@@ -9501,8 +9491,8 @@ test_computer_port_report_ab36_state_joins(void)
 	    && strcmp(response, "2005") == 0
 	    && queue_position == 0U && queue_length == 3U
 	    && memcmp(queue, "99\r", 3U) == 0);
-	current.bold = 0.0f;
-	current.blink = 0.0f;
+	current.bold = false;
+	current.blink = false;
 	CHECK(yt_input_queue_clear(queue, sizeof(queue), &queue_position,
 	    &queue_length));
 	pager.line_count = 2.0f;
@@ -9515,7 +9505,7 @@ test_computer_port_report_ab36_state_joins(void)
 	    && pager.newline_flag == false && pager.key[0] == '\0'
 	    && accumulator[0] == '\0' && queue[0] == '\0'
 	    && queue_position == 0U && queue_length == 0U
-	    && current.bold == 0.0f && current.blink == 0.0f);
+	    && current.bold == false && current.blink == false);
 	CHECK(yt_input_queue_pop(queue, sizeof(queue), &queue_position,
 	    &queue_length, &selected) && selected.length == 0U);
 
@@ -9551,7 +9541,7 @@ test_computer_port_report_ab36_state_joins(void)
 	    && queue_position == 0U && queue_length == 2U
 	    && memcmp(queue, "7\r", 2U) == 0
 	    && current.foreground == 1.0f
-	    && current.bold == 0.0f && current.blink == 0.0f);
+	    && current.bold == false && current.blink == false);
 	CHECK(yt_input_queue_pop(queue, sizeof(queue), &queue_position,
 	    &queue_length, &selected)
 	    && selected.length == 1U && selected.bytes[0] == '7'
@@ -9960,7 +9950,7 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 		pager_capture_result(&capture, &result);
 		pager_fixture_b05d(&pager, &current, header,
 		    sizeof(header) - 1U, &capture);
-		current.bold = 1.0f;
+		current.bold = true;
 		pager_fixture_b05d(&pager, &current, rule,
 		    sizeof(rule) - 1U, &capture);
 		for (index = 0U; index < 3U; ++index) {
@@ -10130,7 +10120,7 @@ test_computer_port_report_low_time_cycle_presentation(void)
 		pager_capture_result(&capture, &result);
 		pager_fixture_b05d(&pager, &current, header,
 		    sizeof(header) - 1U, &capture);
-		current.bold = 1.0f;
+		current.bold = true;
 		pager_fixture_b05d(&pager, &current, rule,
 		    sizeof(rule) - 1U, &capture);
 		for (index = 0U; index < 3U; ++index) {
@@ -10216,7 +10206,7 @@ computer_port_report_render_ordinary_fixture(
 	pager_capture_result(capture, &result);
 	pager_fixture_b05d(pager, current, header, sizeof(header) - 1U,
 	    capture);
-	current->bold = 1.0f;
+	current->bold = true;
 	pager_fixture_b05d(pager, current, rule, sizeof(rule) - 1U, capture);
 	for (index = 0U; index < 3U; ++index) {
 		current->foreground = index == 1U ? 2.0f : 3.0f;
@@ -10335,8 +10325,8 @@ test_computer_port_report_low_time_retry_cycle_presentation(void)
 		CHECK(yt_present_line(NULL, 0U, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		current.bold = 1.0f;
-		current.blink = 1.0f;
+		current.bold = true;
+		current.blink = true;
 		pager_fixture_b05d(&pager, &current, invalid,
 		    sizeof(invalid) - 1U, &capture);
 
@@ -10420,8 +10410,8 @@ test_computer_planet_report_front_presentation(void)
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, no_turns,
 	    sizeof(no_turns) - 1U, &capture);
 	CHECK(capture.remote_length == sizeof(no_turns_expected) - 1U
@@ -10445,8 +10435,8 @@ test_computer_planet_report_front_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, range, sizeof(range) - 1U,
 	    &capture);
 	pager.newline_flag = true;
@@ -10667,7 +10657,7 @@ computer_nearest_cycle_fixture(bool ansi,
 	    == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	current->foreground = 3.0f;
-	yt_present_set_blink(current, 1.0f);
+	current->blink = true;
 	CHECK(yt_present_bold_line(earth, sizeof(earth) - 1U,
 	    current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
@@ -10708,7 +10698,7 @@ test_computer_nearest_cycle_presentation(void)
 		CHECK(pager.line_count == 1.0f && pager.newline_flag == false
 	    && current.foreground == 1.0f
 	    && current.cached_foreground == 1.0f
-	    && current.bold == 0.0f && current.blink == 0.0f);
+	    && current.bold == false && current.blink == false);
 
 	computer_nearest_cycle_fixture(false, &capture, &current, &pager);
 	CHECK(capture.remote_length == 374U
@@ -10717,7 +10707,7 @@ test_computer_nearest_cycle_presentation(void)
 		CHECK(pager.line_count == 1.0f && pager.newline_flag == false
 	    && current.foreground == 1.0f
 	    && current.cached_foreground == 0.0f
-	    && current.bold == 1.0f && current.blink == 1.0f);
+	    && current.bold == true && current.blink == true);
 }
 
 static void
@@ -11228,7 +11218,7 @@ test_computer_treasury_presentation(void)
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	memset(&capture, 0, sizeof(capture));
 	pager_capture_result(&capture, &result);
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_bold_line(no_ports, sizeof(no_ports) - 1U,
 	    &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
@@ -11376,11 +11366,11 @@ genesis_body_fixture(bool ansi, struct pager_capture *capture)
 	pager_capture_result(capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
-	current.bold = 1.0f;
+	current.bold = true;
 	pager.newline_flag = false;
 	pager_fixture_b05d(&pager, &current, success_one,
 	    sizeof(success_one) - 1U, capture);
-	current.bold = 1.0f;
+	current.bold = true;
 	pager.newline_flag = false;
 	pager_fixture_b05d(&pager, &current, success_two,
 	    sizeof(success_two) - 1U, capture);
@@ -11451,8 +11441,8 @@ test_planet_garrison_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager.newline_flag = false;
 	pager_fixture_b05d(&pager, &current, success, success_length, &capture);
 	CHECK(sizeof(expected) - 1U == 111U);
@@ -11515,7 +11505,7 @@ test_planet_landing_presentation(void)
 	CHECK(yt_present_character(permission, sizeof(permission) - 1U,
 	    &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.blink = 1.0f;
+	current.blink = true;
 	current.foreground = 3.0f;
 	pager.foreground = 3;
 	CHECK(yt_present_bold_line(denied, sizeof(denied) - 1U, &current,
@@ -11540,7 +11530,7 @@ test_planet_landing_presentation(void)
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
 	CHECK(pager.line_count == 0.0f);
 	CHECK(current.foreground == 6.0f
-	    && current.bold == 1.0f && current.blink == 1.0f);
+	    && current.bold == true && current.blink == true);
 }
 
 static void
@@ -11578,7 +11568,7 @@ test_planet_assault_presentation(void)
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_bold_line(engaging, sizeof(engaging) - 1U, &current,
 	    &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
@@ -11604,7 +11594,7 @@ test_planet_assault_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_bold_line(captured, sizeof(captured) - 1U, &current,
 	    &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
@@ -11619,7 +11609,7 @@ test_planet_assault_presentation(void)
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_bold_line(engaging, sizeof(engaging) - 1U, &current,
 	    &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
@@ -11636,7 +11626,7 @@ test_planet_assault_presentation(void)
 	current.foreground = 6.0f;
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_planet_assault_failure_row(5.0f, false, row, sizeof(row),
 	    &row_length));
 	CHECK(yt_present_bold_line(row, row_length, &current, &result)
@@ -11831,8 +11821,8 @@ test_planet_move_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	pager_fixture_b05d(&pager, &current, engaged,
@@ -11908,7 +11898,7 @@ test_sector_mine_presentation(void)
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_line(warning, sizeof(warning) - 1U, &current,
 	    &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
@@ -11917,7 +11907,7 @@ test_sector_mine_presentation(void)
 
 	current.foreground = 3.0f;
 	current.background = 0.0f;
-	current.blink = 0.0f;
+	current.blink = false;
 	CHECK(yt_sector_mine_explosion_row(3.0f, 1.0f, row,
 	    sizeof(row), &row_length));
 	CHECK(yt_present_bold_character(row, row_length, &current, &result)
@@ -11931,7 +11921,7 @@ test_sector_mine_presentation(void)
 	    == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	current.foreground = 7.0f;
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_bold_line(scanner_destroyed,
 	    sizeof(scanner_destroyed) - 1U, &current, &result)
 	    == YT_PRESENT_OK);
@@ -11942,7 +11932,7 @@ test_sector_mine_presentation(void)
 
 	current.foreground = 3.0f;
 	current.background = 0.0f;
-	current.blink = 0.0f;
+	current.blink = false;
 	CHECK(yt_sector_mine_explosion_row(2.0f, 1.0f, row,
 	    sizeof(row), &row_length));
 	CHECK(yt_present_bold_character(row, row_length, &current, &result)
@@ -11952,7 +11942,7 @@ test_sector_mine_presentation(void)
 	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	current.foreground = 7.0f;
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_bold_line(shields_destroyed,
 	    sizeof(shields_destroyed) - 1U, &current, &result)
 	    == YT_PRESENT_OK);
@@ -11963,7 +11953,7 @@ test_sector_mine_presentation(void)
 
 	current.foreground = 3.0f;
 	current.background = 0.0f;
-	current.blink = 0.0f;
+	current.blink = false;
 	CHECK(yt_sector_mine_explosion_row(1.0f, 1.0f, row,
 	    sizeof(row), &row_length));
 	CHECK(yt_present_bold_character(row, row_length, &current, &result)
@@ -12007,8 +11997,8 @@ test_direct_fighter_kill_warning_presentation(void)
 	    row, sizeof(row), &row_length));
 	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager.newline_flag = false;
 	pager_fixture_b05d(&pager, &current, row, row_length, &capture);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
@@ -12034,7 +12024,6 @@ direct_fighter_kill_composition_run(bool ansi, struct pager_capture *capture,
 		return false;
 	*current = state(ansi);
 	current->foreground = 6.0f;
-	current->color_initialized = ansi ? 1.0f : 0.0f;
 	current->cached_foreground = ansi ? 6.0f : 0.0f;
 	memset(pager, 0, sizeof(*pager));
 	pager->foreground = 6;
@@ -12067,14 +12056,14 @@ direct_fighter_kill_composition_run(bool ansi, struct pager_capture *capture,
 	    row, sizeof(row), &row_length))
 		return false;
 	pager_capture_line(capture, current, NULL, 0U);
-	current->bold = 1.0f;
-	current->blink = 1.0f;
+	current->bold = true;
+	current->blink = true;
 	pager->newline_flag = false;
 	pager_fixture_b05d(pager, current, row, row_length, capture);
 	ends[3] = capture->remote_length;
 
 	pager_capture_line(capture, current, NULL, 0U);
-	current->blink = 1.0f;
+	current->blink = true;
 	pager_capture_line(capture, current, mined, sizeof(mined) - 1U);
 	if (yt_present_sound(YT_SOUND_CUE_DAMAGE, current, &result) != YT_PRESENT_OK)
 		return false;
@@ -12082,7 +12071,7 @@ direct_fighter_kill_composition_run(bool ansi, struct pager_capture *capture,
 	for (batch = 0U; batch < 3U; ++batch) {
 		current->foreground = 3.0f;
 		current->background = 0.0f;
-		current->blink = 0.0f;
+		current->blink = false;
 		if (!yt_sector_mine_explosion_row(3.0f - (float)batch,
 		    1.0f, row, sizeof(row), &row_length)
 		    || yt_present_bold_character(row, row_length, current,
@@ -12171,7 +12160,7 @@ test_direct_fighter_kill_composition_presentation(void)
 		CHECK(current.foreground == 3.0f
 		    && current.background == 1.0f
 		    && current.bold == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && current.blink == 0.0f
+		    && current.blink == false
 		    && current.cached_foreground == 0.0f
 		    && current.cached_background == 0.0f
 		    && pager.foreground == 6 && pager.line_count == 1.0f
@@ -12203,7 +12192,6 @@ black_hole_fixture(bool ansi, bool meltdown)
 	size_t row_length;
 
 	current.foreground = 1.0f;
-	current.color_initialized = ansi ? 1.0f : 0.0f;
 	current.cached_foreground = ansi ? 1.0f : 0.0f;
 	current.cached_background = 0.0f;
 	current.sound.user_sound = false;
@@ -12244,7 +12232,7 @@ black_hole_fixture(bool ansi, bool meltdown)
 		current.foreground = tick < 10U ? 2.0f
 		    : tick < 20U ? 3.0f : 1.0f;
 		if (tick >= 20U)
-			current.blink = 1.0f;
+			current.blink = true;
 		CHECK(yt_present_bold_character((const uint8_t *)"*", 1U,
 		    &current, &result) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
@@ -12459,10 +12447,10 @@ test_info_panel_presentation(void)
 	    ansi.capture.remote_length) == UINT64_C(0xb8f87d3dc030ed22));
 	CHECK(plain.current.foreground == 6.0f
 	    && plain.current.background == 0.0f
-	    && plain.current.bold == 1.0f);
+	    && plain.current.bold == true);
 	CHECK(ansi.current.foreground == 6.0f
 	    && ansi.current.background == 0.0f
-	    && ansi.current.bold == 0.0f
+	    && ansi.current.bold == false
 	    && ansi.current.cached_foreground == 2.0f
 	    && ansi.current.cached_background == 0.0f);
 }
@@ -12949,7 +12937,7 @@ test_computer_newspaper_full_cycle_presentation(void)
 		    && viewer.join.presentation.foreground == 1.0f
 		    && viewer.join.presentation.background == 0.0f
 		    && viewer.join.presentation.bold == cases[pass].final_bold
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 1.0f : 0.0f)
 		    && viewer.join.pager.foreground == 1
@@ -13552,12 +13540,12 @@ test_computer_scoreboard_full_cycle_presentation(void)
 		bool updated;
 		size_t remote_length;
 		uint64_t remote_fnv;
-		float bold;
+		bool bold;
 	} cases[] = {
-		{true, false, 817U, UINT64_C(0x6bcba3c76cdb887d), 0.0f},
-		{false, false, 787U, UINT64_C(0x3081c7913d682905), 0.0f},
-		{true, true, 850U, UINT64_C(0x264fdc7e79d2bd67), 0.0f},
-		{false, true, 820U, UINT64_C(0xc7fe339c3f4d74f5), 0.0f},
+		{true, false, 817U, UINT64_C(0x6bcba3c76cdb887d), false},
+		{false, false, 787U, UINT64_C(0x3081c7913d682905), false},
+		{true, true, 850U, UINT64_C(0x264fdc7e79d2bd67), false},
+		{false, true, 820U, UINT64_C(0xc7fe339c3f4d74f5), false},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -13577,7 +13565,7 @@ test_computer_scoreboard_full_cycle_presentation(void)
 		    && viewer.join.presentation.foreground == 1.0f
 		    && viewer.join.presentation.background == 0.0f
 		    && viewer.join.presentation.bold == cases[pass].bold
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 1.0f : 0.0f)
 		    && viewer.join.pager.foreground == 1
@@ -13859,8 +13847,8 @@ direct_fighter_fatal_cycle_run(struct physical_viewer_join *viewer,
 	    sizeof(victim) - 1U, row, sizeof(row), &row_length)
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
-	join->presentation.blink = 1.0f;
+	join->presentation.bold = true;
+	join->presentation.blink = true;
 	join->accumulator[0] = '\0';
 	join->queue[0] = '\0';
 	join->queue_position = 0U;
@@ -13868,7 +13856,7 @@ direct_fighter_fatal_cycle_run(struct physical_viewer_join *viewer,
 	if (!normal_exit_b05d(join, row, row_length, 0.0f)
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.blink = 1.0f;
+	join->presentation.blink = true;
 	if (!normal_exit_line(join, mined, sizeof(mined) - 1U)
 	    || yt_present_sound(YT_SOUND_CUE_DAMAGE, &join->presentation, &result)
 	    != YT_PRESENT_OK)
@@ -13876,7 +13864,7 @@ direct_fighter_fatal_cycle_run(struct physical_viewer_join *viewer,
 	viewer_pager_capture_result(join, &result);
 	join->presentation.foreground = 3.0f;
 	join->presentation.background = 0.0f;
-	join->presentation.blink = 0.0f;
+	join->presentation.blink = false;
 	if (!yt_sector_mine_explosion_row(3.0f, 1.0f, row,
 	    sizeof(row), &row_length)
 	    || yt_present_bold_character(row, row_length,
@@ -13901,8 +13889,8 @@ direct_fighter_fatal_cycle_run(struct physical_viewer_join *viewer,
 	join->pager.foreground = 3;
 	if (!normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
-	join->presentation.blink = 1.0f;
+	join->presentation.bold = true;
+	join->presentation.blink = true;
 	join->accumulator[0] = '\0';
 	join->queue[0] = '\0';
 	join->queue_position = 0U;
@@ -14097,7 +14085,7 @@ test_computer_info_cycle_presentation(void)
 		    && viewer.join.presentation.foreground == 1.0f
 		    && viewer.join.presentation.background == 0.0f
 		    && viewer.join.presentation.bold == cases[pass].final_bold
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 1.0f : 0.0f)
 		    && viewer.join.pager.foreground == 1
@@ -14253,7 +14241,7 @@ test_planet_info_cycle_presentation(void)
 		    && viewer.join.presentation.foreground == 6.0f
 		    && viewer.join.presentation.background == 0.0f
 		    && viewer.join.presentation.bold == cases[pass].final_bold
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 6.0f : 0.0f)
 		    && viewer.join.pager.foreground == 6
@@ -14365,7 +14353,7 @@ test_planet_info_promotion_cycle_presentation(void)
 		    && viewer.join.presentation.foreground == 6.0f
 		    && viewer.join.presentation.background == 0.0f
 		    && viewer.join.presentation.bold == cases[pass].final_bold
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 6.0f : 0.0f)
 		    && viewer.join.pager.foreground == 6
@@ -14499,7 +14487,7 @@ test_planet_info_captain_route_cycles_presentation(void)
 		    && viewer.join.presentation.background == 0.0f
 		    && viewer.join.presentation.bold
 		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 6.0f : 0.0f)
 		    && viewer.join.pager.foreground == 6
@@ -14862,8 +14850,8 @@ planet_garrison_positive_cycle_run(struct physical_viewer_join *viewer,
 	if (!normal_exit_line(join, NULL, 0U)
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
-	join->presentation.blink = 1.0f;
+	join->presentation.bold = true;
+	join->presentation.blink = true;
 	if (!normal_exit_b05d(join, success, success_length, 0.0f)
 	    || yt_present_sound(YT_SOUND_CUE_ACTION, &join->presentation, &result)
 	    != YT_PRESENT_OK)
@@ -15053,8 +15041,8 @@ test_planet_bank_cancel_cycle_presentation(void)
 		    : UINT64_C(0x17798e683d05096d))
 		    && viewer.join.presentation.foreground == 6.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (ansi ? 6.0f : 0.0f)
 		    && viewer.join.pager.foreground == 6
@@ -15179,8 +15167,8 @@ test_planet_productivity_blank_cycle_presentation(void)
 		    : UINT64_C(0xc68cf2d74ffb7ffa))
 		    && viewer.join.presentation.foreground == 6.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (ansi ? 6.0f : 0.0f)
 		    && viewer.join.pager.foreground == 6
@@ -15393,8 +15381,8 @@ planet_transfer_cycle_run(struct physical_viewer_join *viewer, bool ansi,
 		join->queue_position = 0U;
 		join->queue_length = 0U;
 		join->queue[0] = '\0';
-		join->presentation.bold = 1.0f;
-		join->presentation.blink = 1.0f;
+		join->presentation.bold = true;
+		join->presentation.blink = true;
 		if (!normal_exit_b05d(join, no_cargo_message,
 		    sizeof(no_cargo_message) - 1U, 0.0f))
 			return false;
@@ -15422,7 +15410,7 @@ planet_transfer_cycle_run(struct physical_viewer_join *viewer, bool ansi,
 		if (fighter_accepted) {
 			if (!normal_exit_line(join, NULL, 0U))
 				return false;
-			join->presentation.blink = 1.0f;
+			join->presentation.blink = true;
 			if (!normal_exit_b05d(join, fighter_message,
 			    sizeof(fighter_message) - 1U, 0.0f))
 				return false;
@@ -15430,7 +15418,7 @@ planet_transfer_cycle_run(struct physical_viewer_join *viewer, bool ansi,
 	} else if (direct) {
 		if (!normal_exit_line(join, NULL, 0U))
 			return false;
-		join->presentation.blink = 1.0f;
+		join->presentation.blink = true;
 		if (!normal_exit_b05d(join, direct_message,
 		    direct_message_length, 0.0f))
 			return false;
@@ -15485,8 +15473,8 @@ test_planet_transfer_cancel_cycle_presentation(void)
 		    : UINT64_C(0x5218ab7752360135))
 		    && viewer.join.presentation.foreground == 6.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (ansi ? 6.0f : 0.0f)
 		    && viewer.join.pager.foreground == 6
@@ -15631,8 +15619,8 @@ test_planet_transfer_cargo_cycle_presentation(void)
 		    : UINT64_C(0xe4fcd46e10198702))
 		    && viewer.join.presentation.foreground == 6.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (ansi ? 6.0f : 0.0f)
 		    && viewer.join.pager.foreground == 6
@@ -15714,7 +15702,7 @@ test_planet_transfer_fighter_cycle_presentation(void)
 		    : UINT64_C(0x4692bc1a44da0ecd))
 		    && viewer.join.presentation.foreground == 6.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
+		    && viewer.join.presentation.bold == false
 		    && viewer.join.presentation.blink
 		    == (ansi_mode ? 0.0f : 1.0f)
 		    && viewer.join.presentation.cached_foreground
@@ -15875,7 +15863,7 @@ test_planet_transfer_direct_cycles_presentation(void)
 			    : UINT64_C(0xe4fcd46e10198702))
 			    && viewer.join.presentation.foreground == 6.0f
 			    && viewer.join.presentation.background == 0.0f
-			    && viewer.join.presentation.bold == 0.0f
+			    && viewer.join.presentation.bold == false
 			    && viewer.join.presentation.blink
 			    == (ansi_mode ? 0.0f : 1.0f)
 			    && viewer.join.presentation.cached_foreground
@@ -16014,8 +16002,8 @@ test_planet_transfer_remaining_cycles_presentation(void)
 			    : UINT64_C(0xe4fcd46e10198702)))
 			    && viewer.join.presentation.foreground == 6.0f
 			    && viewer.join.presentation.background == 0.0f
-			    && viewer.join.presentation.bold == 0.0f
-			    && viewer.join.presentation.blink == 0.0f
+			    && viewer.join.presentation.bold == false
+			    && viewer.join.presentation.blink == false
 			    && viewer.join.presentation.cached_foreground
 			    == (ansi ? 6.0f : 0.0f)
 			    && viewer.join.pager.foreground == 6
@@ -16078,8 +16066,8 @@ planet_rename_protected_cycle_run(struct physical_viewer_join *viewer,
 	*editor_end = join->remote_length;
 	if (!normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
-	join->presentation.blink = 1.0f;
+	join->presentation.bold = true;
+	join->presentation.blink = true;
 	if (!normal_exit_b05d(join, protected, sizeof(protected) - 1U, 0.0f))
 		return false;
 	*body_end = join->remote_length;
@@ -16334,8 +16322,8 @@ test_planet_take_one_accepted_cycle_presentation(void)
 			    : UINT64_C(0x17798e683d05096d))
 			    && viewer.join.presentation.foreground == 6.0f
 			    && viewer.join.presentation.background == 0.0f
-			    && viewer.join.presentation.bold == 0.0f
-			    && viewer.join.presentation.blink == 0.0f
+			    && viewer.join.presentation.bold == false
+			    && viewer.join.presentation.blink == false
 			    && viewer.join.presentation.cached_foreground
 			    == (ansi ? 6.0f : 0.0f)
 			    && viewer.join.pager.foreground == 6
@@ -16396,8 +16384,8 @@ test_planet_take_one_blank_default_cycle_presentation(void)
 		    : UINT64_C(0x17798e683d05096d))
 		    && viewer.join.presentation.foreground == 6.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (ansi ? 6.0f : 0.0f)
 		    && viewer.join.pager.foreground == 6
@@ -16458,8 +16446,8 @@ test_planet_take_one_e_default_cycle_presentation(void)
 		    : UINT64_C(0x17798e683d05096d))
 		    && viewer.join.presentation.foreground == 6.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (ansi ? 6.0f : 0.0f)
 		    && viewer.join.pager.foreground == 6
@@ -16520,8 +16508,8 @@ test_planet_take_one_zero_cycle_presentation(void)
 		    : UINT64_C(0x17798e683d05096d))
 		    && viewer.join.presentation.foreground == 6.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (ansi ? 6.0f : 0.0f)
 		    && viewer.join.pager.foreground == 6
@@ -16604,8 +16592,8 @@ planet_take_one_error_cycle_run(struct physical_viewer_join *viewer,
 	join->queue_position = 0U;
 	join->queue_length = 0U;
 	join->queue[0] = '\0';
-	join->presentation.bold = 1.0f;
-	join->presentation.blink = 1.0f;
+	join->presentation.bold = true;
+	join->presentation.blink = true;
 	if (!normal_exit_b05d(join, message, message_length, 0.0f))
 		return false;
 	*body_end = join->remote_length;
@@ -16962,8 +16950,8 @@ test_planet_leave_cycle_presentation(void)
 		    : UINT64_C(0x2207a27a6260aaca))
 		    && viewer.join.presentation.foreground == 2.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (ansi_mode ? 2.0f : 0.0f)
 		    && viewer.join.pager.foreground == 2
@@ -17122,8 +17110,8 @@ planet_thrusters_accepted_cycle_run(struct physical_viewer_join *viewer,
 	viewer_pager_capture_result(join, &result);
 	if (!normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
-	join->presentation.blink = 1.0f;
+	join->presentation.bold = true;
+	join->presentation.blink = true;
 	if (!normal_exit_line(join, NULL, 0U)
 	    || !normal_exit_b05d(join, engaged, sizeof(engaged) - 1U, 0.0f))
 		return false;
@@ -17482,8 +17470,8 @@ main_buy_accept_present(void *context, const uint8_t *text, size_t length,
 	case MAIN_BUY_ACCEPT_TRANSFER_BLANK:
 		return normal_exit_line(join, NULL, 0U);
 	case MAIN_BUY_ACCEPT_SOLD_ROW:
-		join->presentation.bold = 1.0f;
-		join->presentation.blink = 1.0f;
+		join->presentation.bold = true;
+		join->presentation.blink = true;
 		return normal_exit_b05d(join, text, length, 0.0f);
 	case MAIN_BUY_ACCEPT_TRANSFER_ROW:
 	case MAIN_BUY_ACCEPT_SUCCESS_TAIL:
@@ -17666,7 +17654,7 @@ main_buy_report(void *context, int logical_port, bool earth,
 	    || !normal_exit_line(join, NULL, 0U)
 	    || !normal_exit_b05d(join, header, sizeof(header) - 1U, 0.0f))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	if (!normal_exit_b05d(join, rule, sizeof(rule) - 1U, 0.0f))
 		return false;
 	for (index = 0U; index < 3U; ++index) {
@@ -17724,7 +17712,7 @@ main_buy_present(void *context, const uint8_t *text, size_t length,
 	case MAIN_BUY_OFFER_TRAILING_BLANK:
 		return normal_exit_line(join, NULL, 0U);
 	case MAIN_BUY_OFFER_ROW:
-		join->presentation.bold = 1.0f;
+		join->presentation.bold = true;
 		return normal_exit_b05d(join, text, length, 0.0f);
 	case MAIN_BUY_NO_PORT:
 	case MAIN_BUY_ALREADY_OWNER:
@@ -17956,7 +17944,6 @@ main_buy_cycle_run(struct main_buy_cycle_fixture *fixture, bool ansi,
 
 	join->presentation = state(ansi);
 	join->presentation.foreground = 6.0f;
-	join->presentation.color_initialized = 1.0f;
 	join->presentation.cached_foreground = 6.0f;
 	join->pager.foreground = 6;
 	join->pager.line_count = 8.0f;
@@ -18084,7 +18071,7 @@ test_main_buy_cycle_presentation(void)
 		    UINT64_C(0xf0c270f67f9d7c5a)},
 		{true, ansi, sizeof(ansi) - 1U,
 		    {59U, 1002U, 1043U, 1091U}, 61U,
-		    UINT64_C(0xee8aca2f6b1fb48a)},
+		    UINT64_C(0xf4c42138f59cbf5c)},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -18173,8 +18160,8 @@ main_rename_present(struct main_rename_cycle_fixture *fixture,
 
 	if (!normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
-	join->presentation.blink = 1.0f;
+	join->presentation.bold = true;
+	join->presentation.blink = true;
 	join->queue[0] = '\0';
 	join->queue_position = 0U;
 	join->queue_length = 0U;
@@ -18280,7 +18267,6 @@ main_rename_cycle_run(struct main_rename_cycle_fixture *fixture, bool ansi,
 
 	join->presentation = state(ansi);
 	join->presentation.foreground = 6.0f;
-	join->presentation.color_initialized = 1.0f;
 	join->presentation.cached_foreground = 6.0f;
 	join->pager.foreground = 6;
 	join->pager.line_count = 8.0f;
@@ -18338,7 +18324,7 @@ test_main_rename_cycle_presentation(void)
 		    UINT64_C(0x17798e683d05096d)},
 		{true, ansi, sizeof(ansi) - 1U,
 		    {59U, 59U, 210U, 251U, 299U}, 26U,
-		    UINT64_C(0x6c9fcce24acbbd3d)},
+		    UINT64_C(0xddd57e048799ae8b)},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -18369,8 +18355,8 @@ test_main_rename_cycle_presentation(void)
 		    fixture.port.record.bytes, YT_RECORD_SIZE) == 0);
 		CHECK(viewer.join.presentation.foreground == 2.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 2.0f : 6.0f)
 		    && viewer.join.pager.foreground == 2
@@ -18962,7 +18948,7 @@ hostile_mine_hazard_set_current(void *context,
 
 static void
 hostile_mine_hazard_style(void *context, float foreground, float background,
-    float blink, int pager_foreground)
+    bool blink, int pager_foreground)
 {
 	struct hostile_mines_hazard_fixture *fixture = context;
 	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
@@ -19011,16 +18997,16 @@ direct_emergency_warp_invalid_retry_continue(
 	if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	join->presentation.foreground = 7.0f;
 	join->pager.foreground = 7;
 	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	if (!normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U, 0.0f)
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	if (yt_present_character(prompt, sizeof(prompt) - 1U,
 	    &join->presentation, &result) != YT_PRESENT_OK)
 		return false;
@@ -19042,7 +19028,7 @@ direct_emergency_warp_invalid_retry_continue(
 	    sizeof(output), &answer) || answer != YT_YES_NO_INVALID
 	    || strcmp(output, "X") != 0)
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	if (!yt_input_queue_clear(join->queue, sizeof(join->queue),
 	    &join->queue_position, &join->queue_length)
 	    || yt_present_character(prompt, sizeof(prompt) - 1U,
@@ -19149,7 +19135,7 @@ test_direct_emergency_warp_invalid_retry_presentation(void)
 		    && viewer.join.presentation.foreground == 7.0f
 		    && viewer.join.presentation.background == 0.0f
 		    && viewer.join.presentation.bold == cases[pass].final_bold
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == cases[pass].cached_foreground
 		    && viewer.join.pager.foreground == 7
@@ -19180,16 +19166,16 @@ direct_emergency_warp_mode_decline_run(
 	if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	join->presentation.foreground = 7.0f;
 	join->pager.foreground = 7;
 	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	if (!normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U, 0.0f)
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	if (yt_present_character(prompt, sizeof(prompt) - 1U,
 	    &join->presentation, &result) != YT_PRESENT_OK)
 		return false;
@@ -19241,8 +19227,8 @@ test_direct_emergency_warp_modes(void)
 	    && viewer.join.presentation.sound.local_mode
 	    && viewer.join.presentation.foreground == 7.0f
 	    && viewer.join.presentation.background == 0.0f
-	    && viewer.join.presentation.bold == 0.0f
-	    && viewer.join.presentation.blink == 0.0f
+	    && viewer.join.presentation.bold == false
+	    && viewer.join.presentation.blink == false
 	    && viewer.join.presentation.cached_foreground == 0.0f
 	    && viewer.join.pager.foreground == 7
 	    && viewer.join.pager.line_count == 0.0f
@@ -19327,8 +19313,8 @@ test_direct_emergency_warp_accepted_modes(void)
 		    && viewer.join.presentation.sound.local_mode == cases[pass].local_mode
 		    && viewer.join.presentation.foreground == 2.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground == 2.0f
 		    && viewer.join.pager.foreground == 2
 		    && viewer.join.pager.line_count == 0.0f
@@ -19352,13 +19338,13 @@ test_direct_emergency_warp_inherited_pager(void)
 		uint64_t expected_hash;
 		size_t colors;
 		uint64_t color_hash;
-		float bold;
+		bool bold;
 		float cached_foreground;
 	} cases[] = {
 		{false, 220U, UINT64_C(0xaffeee5b1c83c30b), 3U,
-		    UINT64_C(0x2207a27a6260aaca), 1.0f, 2.0f},
+		    UINT64_C(0x2207a27a6260aaca), true, 2.0f},
 		{true, 298U, UINT64_C(0x8ec09f8837ee672a), 11U,
-		    UINT64_C(0x90ec8725947d5de7), 0.0f, 7.0f},
+		    UINT64_C(0x90ec8725947d5de7), false, 7.0f},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -19391,7 +19377,7 @@ test_direct_emergency_warp_inherited_pager(void)
 		    && viewer.join.presentation.foreground == 7.0f
 		    && viewer.join.presentation.background == 0.0f
 		    && viewer.join.presentation.bold == cases[pass].bold
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == cases[pass].cached_foreground
 		    && viewer.join.pager.line_count == 0.0f
@@ -19437,18 +19423,18 @@ direct_emergency_warp_invalid_boundary_continue(
 	if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	join->presentation.foreground = 7.0f;
 	join->pager.foreground = 7;
 	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	if (!normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U, 0.0f)
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
 	memcpy(boundary->prompt_scratch, prompt, sizeof(prompt) - 1U);
 	boundary->prompt_length = sizeof(prompt) - 1U;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	if (yt_present_character(prompt, sizeof(prompt) - 1U,
 	    &join->presentation, &result) != YT_PRESENT_OK)
 		return false;
@@ -19469,7 +19455,7 @@ direct_emergency_warp_invalid_boundary_continue(
 	boundary->output_length = 1U;
 	memcpy(join->source, output, 2U);
 	join->source_length = 1U;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	if (!yt_input_queue_clear(join->queue, sizeof(join->queue),
 	    &join->queue_position, &join->queue_length))
 		return false;
@@ -19507,18 +19493,18 @@ test_direct_emergency_warp_invalid_boundaries(void)
 		uint64_t row_hash;
 		size_t colors;
 		uint64_t color_hash;
-		float bold;
+		bool bold;
 		float cached_foreground;
 		size_t events;
 	} cases[] = {
 		{false, 167U,
 		    UINT64_C(0x83bb08430714c2ac), invalid, sizeof(invalid) - 1U,
 		    5U, UINT64_C(0x2beabdb4c35912a6), 2U,
-		    UINT64_C(0x6d3fa4669b3587bd), 1.0f, 2.0f, 10U},
+		    UINT64_C(0x6d3fa4669b3587bd), true, 2.0f, 10U},
 		{true, 223U,
 		    UINT64_C(0x0084a4372833a813), invalid, sizeof(invalid) - 1U,
 		    5U, UINT64_C(0x2beabdb4c35912a6), 8U,
-		    UINT64_C(0x844da71c138d59e8), 1.0f, 7.0f, 10U},
+		    UINT64_C(0x844da71c138d59e8), true, 7.0f, 10U},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -19560,7 +19546,7 @@ test_direct_emergency_warp_invalid_boundaries(void)
 		    && viewer.join.presentation.foreground == 7.0f
 		    && viewer.join.presentation.background == 0.0f
 		    && viewer.join.presentation.bold == cases[pass].bold
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == cases[pass].cached_foreground
 		    && viewer.join.pager.foreground == 7
@@ -19617,7 +19603,7 @@ direct_emergency_warp_parent_copy_failure_continue(
 	}
 	memcpy(copy->output_scratch, warning_one, sizeof(warning_one) - 1U);
 	copy->output_length = sizeof(warning_one) - 1U;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	join->presentation.foreground = 7.0f;
 	join->pager.foreground = 7;
 	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
@@ -19628,7 +19614,7 @@ direct_emergency_warp_parent_copy_failure_continue(
 	}
 	memcpy(copy->output_scratch, warning_two, sizeof(warning_two) - 1U);
 	copy->output_length = sizeof(warning_two) - 1U;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	if (!normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U, 0.0f)
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
@@ -19792,7 +19778,6 @@ direct_emergency_warp_main_command_prefix(
 	if (end == NULL)
 		return false;
 	join->presentation = state(ansi);
-	join->presentation.color_initialized = 1.0f;
 	join->presentation.cached_foreground = 2.0f;
 	join->pager.foreground = 2;
 	if (!normal_exit_line(join, NULL, 0U)
@@ -20080,7 +20065,7 @@ test_direct_emergency_warp_hostile_parent_copy_failures(void)
 		    == (!cases[pass].ansi
 		    && cases[pass].failure != DIRECT_WARP_FAIL_WARNING_ONE
 		    ? 1.0f : 0.0f)
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (!cases[pass].ansi ? 3.0f
 		    : cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE ? 3.0f
@@ -20118,7 +20103,7 @@ direct_emergency_warp_warning_carrier_continue(
 	if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	join->presentation.foreground = 7.0f;
 	join->pager.foreground = 7;
 	if (normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
@@ -20190,8 +20175,8 @@ test_direct_emergency_warp_warning_carrier(void)
 		    : UINT64_C(0xcbf29ce484222325))
 		    && viewer.join.presentation.foreground == 7.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 1.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == true
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground == 2.0f
 		    && viewer.join.pager.foreground == 7
 		    && viewer.join.pager.line_count == 0.0f
@@ -20342,8 +20327,8 @@ test_direct_emergency_warp_hostile_warning_carrier(void)
 		    && viewer.join.event_count == 11U
 		    && viewer.join.presentation.foreground == 7.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 1.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == true
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground == 3.0f
 		    && viewer.join.pager.foreground == 7
 		    && viewer.join.pager.line_count == 0.0f);
@@ -20366,14 +20351,14 @@ direct_emergency_warp_warning_two_carrier_continue(
 	    || prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	join->presentation.foreground = 7.0f;
 	join->pager.foreground = 7;
 	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
 		return false;
 	memcpy(carrier->output_scratch, warning_two, sizeof(warning_two) - 1U);
 	carrier->output_length = sizeof(warning_two) - 1U;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	join->fail_at = join->event_count + 1U;
 	if (normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U, 0.0f))
 		return false;
@@ -20482,16 +20467,16 @@ direct_emergency_warp_accepted_answer_run(
 	if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	join->presentation.foreground = 7.0f;
 	join->pager.foreground = 7;
 	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	if (!normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U, 0.0f)
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	if (yt_present_character(prompt, sizeof(prompt) - 1U,
 	    &join->presentation, &result) != YT_PRESENT_OK)
 		return false;
@@ -21169,8 +21154,8 @@ direct_emergency_warp_hostile_reentry(
 	join->pager.foreground = 3;
 	if (!normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
-	join->presentation.blink = 1.0f;
+	join->presentation.bold = true;
+	join->presentation.blink = true;
 	if (fixture->reentry_warning_carrier_failure
 	    || fixture->reentry_warning_second_carrier_failure) {
 		join->fail_at = join->event_count
@@ -21735,8 +21720,8 @@ direct_warp_attack_surrender_present(void *context, const uint8_t *text,
 	case YT_HOSTILE_SURRENDER_WISH_ROW:
 		if (!normal_exit_line(viewer, NULL, 0U))
 			return false;
-		viewer->presentation.bold = 1.0f;
-		viewer->presentation.blink = 1.0f;
+		viewer->presentation.bold = true;
+		viewer->presentation.blink = true;
 		viewer->queue_length = 0U;
 		viewer->queue_position = 0U;
 		return normal_exit_b05d(viewer, text, length, 0.0f);
@@ -21859,8 +21844,8 @@ direct_warp_attack_combat_present(void *context, const uint8_t *text,
 		}
 		if (!normal_exit_line(viewer, NULL, 0U))
 			return false;
-		viewer->presentation.bold = 1.0f;
-		viewer->presentation.blink = 1.0f;
+		viewer->presentation.bold = true;
+		viewer->presentation.blink = true;
 		viewer->queue_length = 0U;
 		viewer->queue_position = 0U;
 		return normal_exit_b05d(viewer, text, length, 0.0f);
@@ -22158,7 +22143,7 @@ direct_warp_attack_tail_present(void *context,
 		}
 		memcpy(join->reward, text, length);
 		join->reward_length = length;
-		viewer->presentation.bold = 1.0f;
+		viewer->presentation.bold = true;
 	} else if (kind == YT_HOSTILE_ATTACK_TAIL_DEFEATED_ROW) {
 		if (length > sizeof(join->defeated)
 		    || join->defeated_length != 0U) {
@@ -22542,8 +22527,8 @@ direct_warp_bribe_attack_present(void *context, const uint8_t *text,
 	case YT_HOSTILE_BRIBE_REJECTED_ROW:
 		if (!normal_exit_line(viewer, NULL, 0U))
 			return false;
-		viewer->presentation.bold = 1.0f;
-		viewer->presentation.blink = 1.0f;
+		viewer->presentation.bold = true;
+		viewer->presentation.blink = true;
 		viewer->queue_length = 0U;
 		viewer->queue_position = 0U;
 		return normal_exit_b05d(viewer, text, length, 0.0f);
@@ -22899,8 +22884,8 @@ hostile_bribe_fatal_present(void *context, const uint8_t *text,
 	join->fatal_start = viewer->remote_length;
 	if (!normal_exit_line(viewer, NULL, 0U))
 		return false;
-	viewer->presentation.bold = 1.0f;
-	viewer->presentation.blink = 1.0f;
+	viewer->presentation.bold = true;
+	viewer->presentation.blink = true;
 	viewer->queue_length = 0U;
 	viewer->queue_position = 0U;
 	return normal_exit_b05d(viewer, text, length, 0.0f);
@@ -23199,7 +23184,6 @@ direct_emergency_warp_main_ordinary_return_run(
 		return false;
 	memset(cycle, 0, sizeof(*cycle));
 	join->presentation = state(ansi);
-	join->presentation.color_initialized = 1.0f;
 	join->presentation.cached_foreground = 2.0f;
 	join->pager.foreground = 2;
 	if (!normal_exit_line(join, NULL, 0U)
@@ -23223,8 +23207,8 @@ direct_emergency_warp_main_ordinary_return_run(
 		if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 		    || !normal_exit_line(join, NULL, 0U))
 			return false;
-		join->presentation.bold = 1.0f;
-		join->presentation.blink = 1.0f;
+		join->presentation.bold = true;
+		join->presentation.blink = true;
 		join->presentation.foreground = 2.0f;
 		join->pager.foreground = 2;
 		if (!normal_exit_b05d(join, no_turns_row,
@@ -23267,7 +23251,7 @@ test_direct_emergency_warp_main_ordinary_returns(void)
 		    {UINT64_C(0x84059a449d6d0449),
 		    UINT64_C(0xd88b168c7e5713bd),
 		    UINT64_C(0xcfbd820388632abb)}, 21U,
-		    UINT64_C(0xaac80fbf233a6b48)},
+		    UINT64_C(0x34e2f3e36a91833a)},
 		{false, true, 152U, UINT64_C(0x30a86693589f1fad),
 		    {41U, 78U, 152U},
 		    {UINT64_C(0x84059a449d6d0449),
@@ -23279,7 +23263,7 @@ test_direct_emergency_warp_main_ordinary_returns(void)
 		    {UINT64_C(0x84059a449d6d0449),
 		    UINT64_C(0x2110890d972b5530),
 		    UINT64_C(0xcfbd820388632abb)}, 16U,
-		    UINT64_C(0x7e8908272914a3a2)},
+		    UINT64_C(0x0dc554fc71365720)},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -23380,7 +23364,6 @@ direct_emergency_warp_main_cycle_run(
 	memset(cycle, 0, sizeof(*cycle));
 	cycle->target_cloak = 0.5f;
 	join->presentation = state(ansi);
-	join->presentation.color_initialized = 1.0f;
 	join->presentation.cached_foreground = 2.0f;
 	join->pager.foreground = 2;
 	if (!normal_exit_line(join, NULL, 0U)
@@ -23430,7 +23413,6 @@ direct_emergency_warp_main_reentry_failure_run(
 	cycle->reentry_error_number = error_number;
 	cycle->reentry_saved_ip = saved_ip;
 	join->presentation = state(ansi);
-	join->presentation.color_initialized = 1.0f;
 	join->presentation.cached_foreground = 2.0f;
 	join->pager.foreground = 2;
 	if (!normal_exit_line(join, NULL, 0U)
@@ -23485,7 +23467,7 @@ test_direct_emergency_warp_main_cycle(void)
 		    {UINT64_C(0x84059a449d6d0449),
 		    UINT64_C(0x6d90d947714a5f0d),
 		    UINT64_C(0xec4785dcb79a048d)}, 39U,
-		    UINT64_C(0x7c7cece430ac5932)},
+		    UINT64_C(0x0e77ae8cd0395188)},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -23604,7 +23586,6 @@ direct_emergency_warp_main_scanner_get_failure_run(
 	cycle->target_cloak = 0.5f;
 	cycle->physical_current_sector = 784.0f;
 	join->presentation = state(ansi);
-	join->presentation.color_initialized = 1.0f;
 	join->presentation.cached_foreground = 2.0f;
 	join->pager.foreground = 2;
 	if (!normal_exit_line(join, NULL, 0U)
@@ -23650,7 +23631,7 @@ test_direct_emergency_warp_main_scanner_get_failure(void)
 		    UINT64_C(0x2207a27a6260aaca)},
 		{true, 726U, UINT64_C(0x14120ac94fb54d91),
 		    {41U, 726U, 726U}, 27U,
-		    UINT64_C(0x8981c6868e6750c9)},
+		    UINT64_C(0x8be4bceee6fbbf03)},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -23765,7 +23746,6 @@ direct_emergency_warp_main_hostile_handoff_run(
 	memset(cycle, 0, sizeof(*cycle));
 	cycle->target_cloak = 0.5f;
 	join->presentation = state(ansi);
-	join->presentation.color_initialized = 1.0f;
 	join->presentation.cached_foreground = 2.0f;
 	join->pager.foreground = 2;
 	if (!normal_exit_line(join, NULL, 0U)
@@ -23810,7 +23790,7 @@ test_direct_emergency_warp_main_hostile_handoff(void)
 		    4U, UINT64_C(0x01b4fd96ce8921d5), 2.0f},
 		{true, 1073U, UINT64_C(0xc0d4f07cbd2d7aa8),
 		    {41U, 726U, 1073U}, UINT64_C(0xae04cf25f066c3f4),
-		    41U, UINT64_C(0x311bbb5d17ff0902), 0.0f},
+		    41U, UINT64_C(0xcc07cccdebaf8058), 0.0f},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -24319,7 +24299,7 @@ test_direct_emergency_warp_hostile_invalid_retry_cycle(void)
 		    && viewer.join.presentation.background == 0.0f
 		    && viewer.join.presentation.bold
 		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 2.0f : 3.0f)
 		    && viewer.join.pager.foreground == 2
@@ -24379,8 +24359,8 @@ direct_emergency_warp_hostile_ordinary_return_run(
 		if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 		    || !normal_exit_line(join, NULL, 0U))
 			return false;
-		join->presentation.bold = 1.0f;
-		join->presentation.blink = 1.0f;
+		join->presentation.bold = true;
+		join->presentation.blink = true;
 		join->presentation.foreground = 3.0f;
 		join->pager.foreground = 3;
 		if (!normal_exit_b05d(join, no_turns_row,
@@ -25079,9 +25059,9 @@ test_direct_emergency_warp_reentry_failures(void)
 		    {UINT64_C(0x76f7e95e992b676a),
 		    UINT64_C(0x2865442802a2c09e),
 		    UINT64_C(0x29b895b1b93b9843)}, {27U, 31U, 36U},
-		    {UINT64_C(0x8981c6868e6750c9),
-		    UINT64_C(0x2382a166994efb59),
-		    UINT64_C(0x9609458a8c369245)}},
+		    {UINT64_C(0x8be4bceee6fbbf03),
+		    UINT64_C(0x1bcb23e57bfdf073),
+		    UINT64_C(0x5918ed3b52c7eaaf)}},
 		{false, false, (const uint8_t *)"W", 1U, {63U, 576U},
 		    {UINT64_C(0x0b6904cbde91e151),
 		    UINT64_C(0x325d153b7ea2f4c3)}, {20U, 24U, 26U},
@@ -25299,7 +25279,7 @@ test_direct_emergency_warp_owner_get_failures(void)
 		    UINT64_C(0x6d90d947714a5f0d),
 		    UINT64_C(0x6e11d4019e19cefa)}, 26U,
 		    UINT64_C(0xc148d7dfed8ed7dc), 38U,
-		    UINT64_C(0xa3b771ea7242e4fd)},
+		    UINT64_C(0x6e46eff2e49245f7)},
 		{false, false, (const uint8_t *)"W", 1U,
 		    {63U, 576U, 764U}, {UINT64_C(0x0b6904cbde91e151),
 		    UINT64_C(0x325d153b7ea2f4c3),
@@ -25469,7 +25449,7 @@ test_direct_emergency_warp_reentry_warning_carrier(void)
 		    UINT64_C(0x6d90d947714a5f0d),
 		    UINT64_C(0xae398140f1ec72cc)}, 27U,
 		    UINT64_C(0xad6ba5a06500a63c), 39U,
-		    UINT64_C(0x1c66086367b73d33)},
+		    UINT64_C(0x89b79db8db53e699)},
 		{false, false, (const uint8_t *)"W", 1U,
 		    {63U, 576U, 766U}, {UINT64_C(0x0b6904cbde91e151),
 		    UINT64_C(0x325d153b7ea2f4c3),
@@ -25589,8 +25569,8 @@ test_direct_emergency_warp_reentry_warning_carrier(void)
 		    && viewer.join.event_count == (callers[caller].main ? 16U : 21U)
 		    && viewer.join.presentation.foreground == 3.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 1.0f
-		    && viewer.join.presentation.blink == 1.0f
+		    && viewer.join.presentation.bold == true
+		    && viewer.join.presentation.blink == true
 		    && viewer.join.presentation.cached_foreground
 		    == (callers[caller].ansi ? 3.0f : 2.0f)
 		    && viewer.join.pager.foreground == 3
@@ -25633,7 +25613,7 @@ test_direct_emergency_warp_reentry_warning_second_carrier(void)
 		    UINT64_C(0x6d90d947714a5f0d),
 		    UINT64_C(0x33915dac4cbfca81)}, 27U,
 		    UINT64_C(0xad6ba5a06500a63c), 40U,
-		    UINT64_C(0xd0753a5191f1b335)},
+		    UINT64_C(0x3c23adbe52e7a09f)},
 		{false, false, (const uint8_t *)"W", 1U,
 		    {63U, 576U, 831U}, {UINT64_C(0x0b6904cbde91e151),
 		    UINT64_C(0x325d153b7ea2f4c3),
@@ -25803,7 +25783,7 @@ test_direct_emergency_warp_hostile_menu_join(void)
 		    UINT64_C(0xae04cf25f066c3f4),
 		    UINT64_C(0x764133c92bd4bdb8)}, 31U,
 		    UINT64_C(0xd00d0de98dbe176f), 47U,
-		    UINT64_C(0x47fdba389f001f62)},
+		    UINT64_C(0xdd029f2b040b40b8)},
 		{false, false, (const uint8_t *)"W", 1U,
 		    {63U, 576U, 833U, 896U},
 		    {UINT64_C(0x0b6904cbde91e151),
@@ -27974,7 +27954,7 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 		{true, true, (const uint8_t *)"W", 1U, 1184U, 1621U,
 		 UINT64_C(0x42dafd72c74a1f97), 86U,
 		 UINT64_C(0x646426a6deae9e98), 156U,
-		 UINT64_C(0xb8a9d51bc9b3d672)},
+		 UINT64_C(0xa3453c460d0c1fb4)},
 		{false, false, (const uint8_t *)"W", 1U, 934U, 1477U,
 		 UINT64_C(0xea0d1d2d7ccdceeb), 87U,
 		 UINT64_C(0x9fdde4eff2202cbd), 35U,
@@ -28771,7 +28751,6 @@ direct_emergency_warp_queue_cycle_run(
 			return false;
 	}
 	else {
-		join->presentation.color_initialized = 1.0f;
 		join->presentation.cached_foreground = 2.0f;
 		join->pager.foreground = 2;
 		if (!normal_exit_line(join, NULL, 0U)
@@ -28828,7 +28807,7 @@ test_direct_emergency_warp_queue_cycles(void)
 		    UINT64_C(0x7f0eec0a279c246d),
 		    UINT64_C(0xec4785dcb79a048d)}, 26U,
 		    UINT64_C(0xe3d870b85e728f46), 39U,
-		    UINT64_C(0x7c7cece430ac5932), 20U},
+		    UINT64_C(0x0e77ae8cd0395188), 20U},
 		{false, true, 763U, UINT64_C(0x06cd4070ac09d2f3),
 		    {71U, 584U, 763U},
 		    {UINT64_C(0x15336ab8b3a441fd),
@@ -28963,7 +28942,6 @@ direct_emergency_warp_main_mine_cycle_run(
 	memset(cycle, 0, sizeof(*cycle));
 	cycle->target_cloak = 0.5f;
 	join->presentation = state(ansi);
-	join->presentation.color_initialized = 1.0f;
 	join->presentation.cached_foreground = 2.0f;
 	join->pager.foreground = 2;
 	if (!normal_exit_line(join, NULL, 0U)
@@ -29040,7 +29018,7 @@ test_direct_emergency_warp_main_mine_cycle(void)
 		    UINT64_C(0x6ec4bf47da2fdce8),
 		    UINT64_C(0x1c52a12e66a748a1),
 		    UINT64_C(0x233520809fc94712)}, 52U,
-		    UINT64_C(0xcd73157a8268d62a)},
+		    UINT64_C(0x0e86b8ff60b85760)},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -29157,7 +29135,7 @@ test_direct_emergency_warp_main_mine_cycle(void)
 		    == (cases[pass].ansi ? 0.0f : 1.0f)
 		    && viewer.join.presentation.bold
 		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground == 2.0f
 		    && viewer.join.pager.foreground == 2
 		    && viewer.join.pager.line_count == 0.0f
@@ -29375,7 +29353,7 @@ test_direct_emergency_warp_hostile_mine_cycle(void)
 		    == (cases[pass].ansi ? 0.0f : 1.0f)
 		    && viewer.join.presentation.bold
 		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground == 2.0f
 		    && viewer.join.pager.foreground == 2
 		    && viewer.join.pager.line_count == 0.0f);
@@ -29610,7 +29588,7 @@ test_direct_emergency_warp_mine_warp_cycles(void)
 		    UINT64_C(0x1fc8b4f8e55e68f8)},
 		    UINT64_C(0x42881e0b057f927c), 46U,
 		    UINT64_C(0x5d836417d563f4c8), 67U,
-		    UINT64_C(0x4d99e59062c33899), 20U},
+		    UINT64_C(0xe2c2e15f68e86473), 20U},
 		{true, false, (const uint8_t *)"W", 1U,
 		    {63U, 576U, 753U, 843U, 1189U, 1264U},
 		    {UINT64_C(0x0b6904cbde91e151),
@@ -29805,8 +29783,8 @@ test_direct_emergency_warp_mine_warp_failures(void)
 		    {UINT64_C(0xd6cd8b6f8409961b),
 		    UINT64_C(0x2590e0f51f7b3036)},
 		    {56U, 58U},
-		    {UINT64_C(0xb03703e1ff4d8496),
-		    UINT64_C(0x639f70b4b2ee8e26)}, 15U},
+		    {UINT64_C(0xc1f856f5a68b14bc),
+		    UINT64_C(0xae215d249752814c)}, 15U},
 		{true, false, (const uint8_t *)"W", 1U, 843U,
 		    {1050U, 1189U},
 		    {UINT64_C(0xd8f7dd20e9f7f157),
@@ -30020,9 +29998,9 @@ test_direct_emergency_warp_mine_dependency_failures(void)
 		    UINT64_C(0x077d96db540c9031),
 		    UINT64_C(0x847e770e32be771f)},
 		    {40U, 42U, 43U},
-		    {UINT64_C(0x83085d7458719873),
-		    UINT64_C(0x6e36d080142e6b47),
-		    UINT64_C(0xa34338c53b22f07d)}, 15U},
+		    {UINT64_C(0x259c71822483b8c9),
+		    UINT64_C(0x18b2c717856f808d),
+		    UINT64_C(0xf817fef53ed5c4c7)}, 15U},
 		{true, false, (const uint8_t *)"W", 1U, 753U,
 		    {UINT64_C(0xf9965f1b0e71ee97),
 		    UINT64_C(0xcb9cffcca9a9997a),
@@ -30254,7 +30232,6 @@ direct_emergency_warp_main_black_hole_cycle_run(
 	memset(cycle, 0, sizeof(*cycle));
 	cycle->target_cloak = 0.5f;
 	join->presentation = state(ansi);
-	join->presentation.color_initialized = 1.0f;
 	join->presentation.cached_foreground = 2.0f;
 	join->pager.foreground = 2;
 	if (!normal_exit_line(join, NULL, 0U)
@@ -30331,7 +30308,7 @@ test_direct_emergency_warp_main_black_hole_cycle(void)
 		    UINT64_C(0xffc3953ca76da3f3),
 		    UINT64_C(0x0cf315717b20f868),
 		    UINT64_C(0xc705b2f87ad21f42)}, 60U,
-		    UINT64_C(0x95add52586fcf72c), 1.0f},
+		    UINT64_C(0xddd5c4c6d5238536), 1.0f},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -30727,8 +30704,8 @@ test_direct_emergency_warp_black_hole_failures(void)
 		    {UINT64_C(0xe65c05d8228605ec),
 		    UINT64_C(0x3a6f119985e0d063)},
 		    {52U, 54U},
-		    {UINT64_C(0xd854649ddd91b53c),
-		    UINT64_C(0xb1a7441eda7169cc)}, 15U},
+		    {UINT64_C(0x1b6d1f2dcef0cc66),
+		    UINT64_C(0x7a3d688ef536faf6)}, 15U},
 		{true, false, (const uint8_t *)"W", 1U,
 		    {63U, 576U, 717U}, 748U, {955U, 1094U},
 		    {UINT64_C(0xa42aa47c5358c0de),
@@ -30953,15 +30930,15 @@ main_genesis_present(void *context, const uint8_t *text, size_t length,
 	case MAIN_GENESIS_DISABLED:
 		if (!normal_exit_line(join, NULL, 0U))
 			return false;
-		join->presentation.bold = 1.0f;
-		join->presentation.blink = 1.0f;
+		join->presentation.bold = true;
+		join->presentation.blink = true;
 		join->queue[0] = '\0';
 		join->queue_position = 0U;
 		join->queue_length = 0U;
 		return normal_exit_b05d(join, text, length, 0.0f);
 	case MAIN_GENESIS_SUCCESS_FIRST:
 	case MAIN_GENESIS_SUCCESS_SECOND:
-		join->presentation.bold = 1.0f;
+		join->presentation.bold = true;
 		return normal_exit_b05d(join, text, length, 0.0f);
 	default:
 		return false;
@@ -31033,7 +31010,6 @@ main_genesis_cycle_run(struct main_genesis_cycle_fixture *fixture, bool ansi,
 
 	join->presentation = state(ansi);
 	join->presentation.foreground = 2.0f;
-	join->presentation.color_initialized = 1.0f;
 	join->presentation.cached_foreground = 2.0f;
 	join->pager.foreground = 2;
 	join->pager.line_count = 8.0f;
@@ -31163,8 +31139,8 @@ test_main_genesis_decline_cycle_presentation(void)
 		    && !fixture.handoff_called);
 		CHECK(viewer.join.presentation.foreground == 2.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground == 2.0f
 		    && viewer.join.pager.foreground == 2
 		    && viewer.join.pager.line_count == 0.0f
@@ -31180,7 +31156,7 @@ test_main_genesis_decline_cycle_presentation(void)
 		    && viewer.join.local_color_count == (pass == 0U ? 5U : 18U)
 		    && viewer_colors_fnv1a64(&viewer.join)
 		    == (pass == 0U ? UINT64_C(0xc6f69f5cf097a0a2)
-		    : UINT64_C(0xae89c4fc38bd168a)));
+		    : UINT64_C(0xde5decf21d17c3e8)));
 	}
 	CHECK(sizeof(expected) - 1U == 320U);
 }
@@ -31227,7 +31203,7 @@ test_main_genesis_alternate_cycles_presentation(void)
 		    sizeof(disabled_ansi_tail) - 1U, 367U,
 		    MAIN_GENESIS_DISABLED_ROUTE, 12U,
 		    UINT64_C(0x59c48b28fd5fbfd2), 21U,
-		    UINT64_C(0xa3b23a9e42d2a82d)},
+		    UINT64_C(0x7f82d78aa81b960f)},
 		{false, false, insufficient_tail,
 		    sizeof(insufficient_tail) - 1U, 408U,
 		    MAIN_GENESIS_INSUFFICIENT_ROUTE, 11U,
@@ -31237,7 +31213,7 @@ test_main_genesis_alternate_cycles_presentation(void)
 		    sizeof(insufficient_tail) - 1U, 408U,
 		    MAIN_GENESIS_INSUFFICIENT_ROUTE, 11U,
 		    UINT64_C(0xbe08d08cd7e850d0), 20U,
-		    UINT64_C(0x4ea7870caf4939ed)},
+		    UINT64_C(0x8e129f5d88dce57d)},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -31376,10 +31352,10 @@ test_main_genesis_handoff_cycle_presentation(void)
 		    && viewer.join.local_color_count == (pass == 0U ? 5U : 17U)
 		    && viewer_colors_fnv1a64(&viewer.join)
 		    == (pass == 0U ? UINT64_C(0xc6f69f5cf097a0a2)
-		    : UINT64_C(0x8e42467da08d5992))
+		    : UINT64_C(0xb47bb95f67a60f72))
 		    && viewer.join.presentation.bold
 		    == (pass == 0U ? 1.0f : 0.0f)
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (pass == 0U ? 2.0f : 0.0f));
 	}
@@ -31528,8 +31504,8 @@ test_main_movement_accepted_cycle_presentation(void)
 		    cases[pass].expected_length) == 0
 		    && viewer.join.presentation.foreground == 2.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 2.0f : 0.0f)
 		    && viewer.join.pager.foreground == 2
@@ -31576,7 +31552,6 @@ main_attack_survivor_cycle_run(struct physical_viewer_join *viewer,
 		return false;
 	join->presentation = state(ansi);
 	join->presentation.foreground = 6.0f;
-	join->presentation.color_initialized = 1.0f;
 	join->presentation.cached_foreground = 6.0f;
 	join->pager.foreground = 6;
 	join->pager.line_count = 8.0f;
@@ -31720,8 +31695,8 @@ test_main_attack_survivor_cycle_presentation(void)
 		    cases[pass].expected_length) == 0);
 		CHECK(viewer.join.presentation.foreground == 2.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 2.0f : 6.0f));
 		CHECK(viewer.join.pager.foreground == 2
@@ -31770,7 +31745,6 @@ main_attack_black_hole_cycle_run(bool ansi, struct pager_capture *capture,
 		return false;
 	*current = state(ansi);
 	current->foreground = 6.0f;
-	current->color_initialized = 1.0f;
 	current->cached_foreground = 6.0f;
 	current->sound.user_sound = false;
 	memset(pager, 0, sizeof(*pager));
@@ -31792,8 +31766,8 @@ main_attack_black_hole_cycle_run(bool ansi, struct pager_capture *capture,
 	pager_capture_line(capture, current, NULL, 0U);
 	pager_fixture_b05d(pager, current, title, sizeof(title) - 1U, capture);
 	pager_capture_line(capture, current, NULL, 0U);
-	current->bold = 1.0f;
-	current->blink = 1.0f;
+	current->bold = true;
+	current->blink = true;
 	pager_fixture_b05d(pager, current, none, sizeof(none) - 1U, capture);
 
 	current->foreground = 1.0f;
@@ -32041,7 +32015,6 @@ main_attack_mine_cycle_run(bool ansi, bool emergency_warp,
 		return false;
 	*current = state(ansi);
 	current->foreground = 6.0f;
-	current->color_initialized = 1.0f;
 	current->cached_foreground = 6.0f;
 	current->sound.user_sound = false;
 	memset(pager, 0, sizeof(*pager));
@@ -32063,8 +32036,8 @@ main_attack_mine_cycle_run(bool ansi, bool emergency_warp,
 	pager_capture_line(capture, current, NULL, 0U);
 	pager_fixture_b05d(pager, current, title, sizeof(title) - 1U, capture);
 	pager_capture_line(capture, current, NULL, 0U);
-	current->bold = 1.0f;
-	current->blink = 1.0f;
+	current->bold = true;
+	current->blink = true;
 	pager_fixture_b05d(pager, current, none, sizeof(none) - 1U, capture);
 
 	current->foreground = 1.0f;
@@ -32079,14 +32052,14 @@ main_attack_mine_cycle_run(bool ansi, bool emergency_warp,
 	ends[0] = capture->remote_length;
 
 	pager_capture_line(capture, current, NULL, 0U);
-	current->blink = 1.0f;
+	current->blink = true;
 	pager_capture_line(capture, current, mined, sizeof(mined) - 1U);
 	if (yt_present_sound(YT_SOUND_CUE_DAMAGE, current, &result) != YT_PRESENT_OK)
 		return false;
 	pager_capture_result(capture, &result);
 	current->foreground = 3.0f;
 	current->background = 0.0f;
-	current->blink = 0.0f;
+	current->blink = false;
 	if (!yt_sector_mine_explosion_row(1.0f, 1.0f, row,
 	    sizeof(row), &row_length)
 	    || yt_present_bold_character(row, row_length, current, &result)
@@ -32193,7 +32166,7 @@ test_main_attack_mine_cycle_presentation(void)
 		CHECK(current.foreground == 2.0f
 		    && current.background == (cases[pass].ansi ? 0.0f : 1.0f)
 		    && current.bold == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && current.blink == 0.0f
+		    && current.blink == false
 		    && current.cached_foreground
 		    == (cases[pass].ansi ? 2.0f : 6.0f)
 		    && pager.foreground == 2 && pager.line_count == 0.0f
@@ -32432,8 +32405,8 @@ test_planet_movement_accepted_cycle_presentation(void)
 		    cases[pass].expected_length) == 0
 		    && viewer.join.presentation.foreground == 2.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 2.0f : 0.0f)
 		    && viewer.join.pager.foreground == 2
@@ -32514,8 +32487,8 @@ planet_port_no_port_cycle_run(struct physical_viewer_join *viewer,
 	join->pager.foreground = 3;
 	if (!normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
-	join->presentation.blink = 1.0f;
+	join->presentation.bold = true;
+	join->presentation.blink = true;
 	join->queue[0] = '\0';
 	join->queue_position = 0U;
 	join->queue_length = 0U;
@@ -32712,7 +32685,7 @@ planet_port_refusal_cycle_run(struct physical_viewer_join *viewer,
 	    || !normal_exit_line(join, NULL, 0U)
 	    || !normal_exit_b05d(join, header, sizeof(header) - 1U, 0.0f))
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	if (!normal_exit_b05d(join, rule, sizeof(rule) - 1U, 0.0f))
 		return false;
 	for (index = 0U; index < 3U; ++index) {
@@ -32739,8 +32712,8 @@ planet_port_refusal_cycle_run(struct physical_viewer_join *viewer,
 	join->pager.foreground = 6;
 	if (!normal_exit_line(join, NULL, 0U))
 		return false;
-	join->presentation.bold = 1.0f;
-	join->presentation.blink = 1.0f;
+	join->presentation.bold = true;
+	join->presentation.blink = true;
 	join->queue[0] = '\0';
 	join->queue_position = 0U;
 	join->queue_length = 0U;
@@ -33071,8 +33044,8 @@ test_docking_earth_leave_cycle_presentation(void)
 		    cases[pass].expected_length) == 0);
 		CHECK(viewer.join.presentation.foreground == 2.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 2.0f : 0.0f)
 		    && viewer.join.pager.foreground == 2
@@ -33213,8 +33186,8 @@ test_computer_quit_accept_presentation(void)
 		    == cases[pass].prefix_fnv
 		    && viewer.join.presentation.foreground == 7.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 7.0f : 0.0f)
 		    && viewer.join.pager.foreground == 7
@@ -33411,8 +33384,8 @@ test_planet_quit_accept_presentation(void)
 		    == cases[pass].prefix_fnv
 		    && viewer.join.presentation.foreground == 7.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 7.0f : 0.0f)
 		    && viewer.join.pager.foreground == 7
@@ -33627,8 +33600,8 @@ test_hostile_quit_accept_presentation(void)
 		    == cases[pass].prefix_fnv
 		    && viewer.join.presentation.foreground == 7.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 7.0f : 0.0f)
 		    && viewer.join.pager.foreground == 7
@@ -33797,8 +33770,8 @@ test_main_quit_accept_handoff_presentation(void)
 		    == cases[pass].color_7);
 		CHECK(viewer.join.presentation.foreground == 7.0f
 		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 7.0f : 0.0f)
 		    && viewer.join.pager.foreground == 7
@@ -33894,7 +33867,7 @@ quit_invalid_retry_typeahead_prefix(struct physical_viewer_join *viewer,
 	    || !yt_input_yes_no_candidate(join->accumulator, output,
 	    sizeof(output), &answer) || answer != YT_YES_NO_INVALID)
 		return false;
-	join->presentation.bold = 1.0f;
+	join->presentation.bold = true;
 	join->queue[0] = '\0';
 	join->queue_position = 0U;
 	join->queue_length = 0U;
@@ -33972,7 +33945,7 @@ test_quit_invalid_retry_typeahead_presentation(void)
 		CHECK(viewer.join.presentation.foreground == 7.0f
 		    && viewer.join.presentation.background == 0.0f
 		    && viewer.join.presentation.bold == cases[pass].final_bold
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 7.0f : 0.0f)
 		    && viewer.join.pager.foreground == 7
@@ -34214,8 +34187,8 @@ test_quit_valid_typeahead_presentation(void)
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi
 		    ? (cases[pass].confirmed ? 7.0f : 1.0f) : 0.0f)
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.pager.nonstop == false
 		    && viewer.join.pager.key[0] == '\0');
 		CHECK(viewer.join.sample_calls
@@ -34372,8 +34345,8 @@ test_quit_heading_sample_typeahead_presentation(void)
 		    && viewer.join.presentation.foreground == 1.0f
 		    && viewer.join.presentation.cached_foreground
 		    == (cases[pass].ansi ? 1.0f : 0.0f)
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.bold == false
+		    && viewer.join.presentation.blink == false
 		    && viewer.join.pager.foreground == 1
 		    && viewer.join.pager.line_count == 1.0f
 		    && viewer.join.pager.nonstop == false
@@ -34536,14 +34509,14 @@ test_danger_scan_presentation_primitives(void)
 		struct pager_capture capture = {0};
 
 		current.foreground = 3.0f;
-		yt_present_set_background(&current, 4.0f);
+		current.background = 4.0f;
 		CHECK(yt_present_sound(YT_SOUND_CUE_DANGER, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		CHECK(yt_present_line(NULL, 0U, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		yt_present_set_blink(&current, 1.0f);
+		current.blink = true;
 		CHECK(yt_present_bold_character(warning, sizeof(warning) - 1U,
 		    &current, &result) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
@@ -34565,7 +34538,7 @@ test_danger_scan_presentation_primitives(void)
 		CHECK(yt_present_line(NULL, 0U, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		yt_present_set_blink(&current, 1.0f);
+		current.blink = true;
 		CHECK(yt_present_bold_line(deactivated,
 		    sizeof(deactivated) - 1U, &current, &result)
 		    == YT_PRESENT_OK);
@@ -34574,12 +34547,12 @@ test_danger_scan_presentation_primitives(void)
 		    && memcmp(capture.remote, expected[ansi_mode],
 		    expected_length[ansi_mode]) == 0);
 		current.foreground = 7.0f;
-		yt_present_set_background(&current, 0.0f);
+		current.background = 0.0f;
 		CHECK(current.foreground == 7.0f && current.background == 0.0f);
 		if (ansi_mode)
-			CHECK(current.bold == 0.0f && current.blink == 0.0f);
+			CHECK(current.bold == false && current.blink == false);
 		else
-			CHECK(current.bold == 1.0f && current.blink == 1.0f);
+			CHECK(current.bold == true && current.blink == true);
 		if (ansi_mode)
 			break;
 	}
@@ -34688,15 +34661,15 @@ spy_cycle_fixture(bool ansi, int active_count, struct pager_capture *capture,
 	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	if (active_count == 0) {
-		current->bold = 1.0f;
-		current->blink = 1.0f;
+		current->bold = true;
+		current->blink = true;
 		pager->newline_flag = false;
 		pager_fixture_b05d(pager, current, none, sizeof(none) - 1U,
 		    capture);
 	}
 	else {
 		for (index = 0; index < active_count; ++index) {
-			current->bold = 1.0f;
+			current->bold = true;
 			pager->newline_flag = false;
 			pager_fixture_b05d(pager, current, rows[index],
 			    strlen((const char *)rows[index]), capture);
@@ -35054,8 +35027,8 @@ test_computer_autopilot_alternate_presentation(void)
 	    accumulator, sizeof(accumulator));
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager.newline_flag = false;
 	pager_fixture_b05d(&pager, &current, insufficient,
 	    sizeof(insufficient) - 1U, &capture);
@@ -35064,7 +35037,7 @@ test_computer_autopilot_alternate_presentation(void)
 	    && memcmp(capture.remote, insufficient_ansi,
 	    sizeof(insufficient_ansi) - 1U) == 0
 	    && pager.line_count == 2.0f && pager.newline_flag == false
-	    && current.bold == 0.0f && current.blink == 0.0f);
+	    && current.bold == false && current.blink == false);
 }
 
 static void
@@ -35366,8 +35339,8 @@ test_radio_body_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, success, sizeof(success) - 1U,
 	    &capture);
 	CHECK(sizeof(send_expected) - 1U == 99U);
@@ -35744,8 +35717,8 @@ test_hostile_attack_admission_presentation(void)
 	    &capture);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, none, sizeof(none) - 1U,
 	    &capture);
 	CHECK(capture.remote_length == sizeof(no_fighters_expected) - 1U
@@ -35773,8 +35746,8 @@ test_hostile_attack_admission_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, too_many,
 	    sizeof(too_many) - 1U, &capture);
 	CHECK(capture.remote_length == sizeof(too_many_expected) - 1U
@@ -35898,7 +35871,6 @@ test_deployed_fighter_surrender_presentation(void)
 		use_ansi = pass != 0;
 		current = state(use_ansi);
 		current.foreground = 6.0f;
-		current.color_initialized = 1.0f;
 		current.cached_foreground = 6.0f;
 		current.cached_background = 0.0f;
 		memset(&pager, 0, sizeof(pager));
@@ -35930,8 +35902,8 @@ test_deployed_fighter_surrender_presentation(void)
 		    sizeof(captain) - 1U, &capture);
 
 		pager_capture_line(&capture, &current, NULL, 0U);
-		current.bold = 1.0f;
-		current.blink = 1.0f;
+		current.bold = true;
+		current.blink = true;
 		pager_fixture_b05d(&pager, &current, wish,
 		    sizeof(wish) - 1U, &capture);
 		pager_capture_line(&capture, &current, NULL, 0U);
@@ -36020,7 +35992,6 @@ test_deployed_fighter_faction_presentation(void)
 		for (faction = 0; faction < 2; ++faction) {
 			current = state(pass != 0);
 			current.foreground = 6.0f;
-			current.color_initialized = 1.0f;
 			current.cached_foreground = 6.0f;
 			current.cached_background = 0.0f;
 			memset(&pager, 0, sizeof(pager));
@@ -36052,10 +36023,9 @@ test_deployed_fighter_faction_presentation(void)
 
 		current = state(pass != 0);
 		current.foreground = 6.0f;
-		current.color_initialized = 1.0f;
 		current.cached_foreground = 6.0f;
 		current.cached_background = 0.0f;
-		current.bold = 1.0f;
+		current.bold = true;
 		memset(&pager, 0, sizeof(pager));
 		pager.foreground = 6;
 		memset(&capture, 0, sizeof(capture));
@@ -36084,7 +36054,7 @@ test_shield_spill_presentation(void)
 
 	memset(&capture, 0, sizeof(capture));
 	current.foreground = 6.0f;
-	current.bold = 1.0f;
+	current.bold = true;
 	CHECK(yt_present_line(fighters, sizeof(fighters) - 1U,
 	    &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
@@ -36093,7 +36063,7 @@ test_shield_spill_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
-	CHECK(line_count == 21.0f && current.bold == 0.0f
+	CHECK(line_count == 21.0f && current.bold == false
 	    && capture.last_local_foreground == 3
 	    && capture.last_local_background == 0);
 }
@@ -36138,8 +36108,8 @@ hostile_bribe_offer_fixture(bool ansi, const uint8_t *response,
 		CHECK(yt_present_line(NULL, 0, current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		current->bold = 1.0f;
-		current->blink = 1.0f;
+		current->bold = true;
+		current->blink = true;
 		pager_fixture_b05d(pager, current, agreement,
 		    sizeof(agreement) - 1U, &capture);
 		CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, current, &result)
@@ -36166,8 +36136,8 @@ hostile_bribe_refusal_fixture(bool ansi, const uint8_t *row,
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current->bold = 1.0f;
-	current->blink = 1.0f;
+	current->bold = true;
+	current->blink = true;
 	pager_fixture_b05d(pager, current, row, row_length, &capture);
 	return capture;
 }
@@ -36228,8 +36198,8 @@ test_hostile_bribe_presentation(void)
 	    && memcmp(capture.remote, accepted_plain,
 	    sizeof(accepted_plain) - 1U) == 0);
 	CHECK(capture.remote_length == 132U && pager.line_count == 1.0f
-	    && current.foreground == 3.0f && current.bold == 1.0f
-	    && current.blink == 1.0f);
+	    && current.foreground == 3.0f && current.bold == true
+	    && current.blink == true);
 
 	capture = hostile_bribe_offer_fixture(true, offer,
 	    sizeof(offer) - 1U, true, &current, &pager);
@@ -36239,7 +36209,7 @@ test_hostile_bribe_presentation(void)
 	CHECK(capture.remote_length == 188U);
 	CHECK(pager.line_count == 1.0f);
 	CHECK(current.foreground == 3.0f && current.background == 0.0f);
-	CHECK(current.bold == 0.0f && current.blink == 0.0f);
+	CHECK(current.bold == false && current.blink == false);
 	CHECK(capture.last_local_foreground == 7
 	    && capture.last_local_background == 0);
 
@@ -36298,8 +36268,8 @@ test_hostile_bribe_presentation(void)
 	    sizeof(rejected_offer) - 1U, false, &current, &pager);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, insult, sizeof(insult) - 1U,
 	    &capture);
 	CHECK(capture.remote_length == sizeof(rejected_plain) - 1U
@@ -36311,8 +36281,8 @@ test_hostile_bribe_presentation(void)
 	    sizeof(rejected_offer) - 1U, false, &current, &pager);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current, insult, sizeof(insult) - 1U,
 	    &capture);
 	CHECK(capture.remote_length == sizeof(rejected_ansi) - 1U
@@ -36384,8 +36354,8 @@ test_hostile_sector_mine_presentation(void)
 		CHECK(yt_present_line(NULL, 0, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		current.bold = 1.0f;
-		current.blink = 1.0f;
+		current.bold = true;
+		current.blink = true;
 		pager_fixture_b05d(&pager, &current, success,
 		    sizeof(success) - 1U, &capture);
 		CHECK(yt_present_sound(YT_SOUND_CUE_ACTION, &current, &result)
@@ -36406,9 +36376,9 @@ test_hostile_sector_mine_presentation(void)
 		CHECK(pager.line_count == 1.0f
 		    && current.foreground == 6.0f);
 		if (ansi)
-			CHECK(current.bold == 0.0f && current.blink == 0.0f);
+			CHECK(current.bold == false && current.blink == false);
 		else
-			CHECK(current.bold == 1.0f && current.blink == 1.0f);
+			CHECK(current.bold == true && current.blink == true);
 	}
 
 	current = state(true);
@@ -36620,7 +36590,7 @@ test_new_alias_success_presentation(void)
 	pager.foreground = 3;
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
+	current.bold = true;
 	pager_fixture_b05d(&pager, &current,
 	    (const uint8_t *)"John Doe a.k.a. Star Lord",
 	    strlen("John Doe a.k.a. Star Lord"), &capture);
@@ -36645,8 +36615,8 @@ test_new_alias_success_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current,
 	    (const uint8_t *)"Your Alias has been recorded. Have fun!",
 	    strlen("Your Alias has been recorded. Have fun!"), &capture);
@@ -36657,8 +36627,8 @@ test_new_alias_success_presentation(void)
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
 	CHECK(pager.line_count == 1.0f && pager.nonstop == false
 	    && pager.newline_flag == false && pager.foreground == 6);
-	CHECK(current.foreground == 6.0f && current.bold == 0.0f
-	    && current.blink == 0.0f);
+	CHECK(current.foreground == 6.0f && current.bold == false
+	    && current.blink == false);
 }
 
 static void
@@ -36756,7 +36726,7 @@ test_new_player_admission_presentation(void)
 	}
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
+	current.bold = true;
 	CHECK(yt_present_character(
 	    (const uint8_t *)"Do you want instructions (Y/N) [N]? ",
 	    strlen("Do you want instructions (Y/N) [N]? "), &current,
@@ -36791,8 +36761,8 @@ test_new_player_admission_presentation(void)
 	    strlen("Entering a new player..."), &capture);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.bold = 1.0f;
-	current.blink = 1.0f;
+	current.bold = true;
+	current.blink = true;
 	pager_fixture_b05d(&pager, &current,
 	    (const uint8_t *)
 	    "I'm sorry but the game is full. Try again tomorrow.",
@@ -36847,7 +36817,7 @@ test_returning_player_presentation(void)
 	pager_capture_result(&capture, &result);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_bold_line(
 	    (const uint8_t *)"You have been killed by The Xannor!",
 	    strlen("You have been killed by The Xannor!"), &current,
@@ -36865,7 +36835,7 @@ test_returning_player_presentation(void)
 
 	current = state(true);
 	current.foreground = 2.0f;
-	current.blink = 1.0f;
+	current.blink = true;
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_bold_line(
 	    (const uint8_t *)" destroyed your ship!",
@@ -36898,7 +36868,7 @@ test_returning_player_presentation(void)
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	current.foreground = 7.0f;
-	current.blink = 1.0f;
+	current.blink = true;
 	CHECK(yt_present_bold_line(
 	    (const uint8_t *)"You will be allowed to play again tomorrow!",
 	    strlen("You will be allowed to play again tomorrow!"),

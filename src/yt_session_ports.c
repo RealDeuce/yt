@@ -160,7 +160,7 @@ yt_session_port_report(struct yt_session *session, int logical_port,
 	    "port report header blank", error)
 	    || !session_present_paged_row(session, header, sizeof(header) - 1U))
 		return false;
-	yt_present_set_bold(&session->presentation, 1.0f);
+	session->presentation.bold = true;
 	if (!session_present_paged_row(session, rule, sizeof(rule) - 1U))
 		return false;
 	for (index = 0U; index < 3U; ++index) {

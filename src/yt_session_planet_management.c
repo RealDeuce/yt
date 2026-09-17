@@ -70,8 +70,8 @@ yt_session_planet_garrison(struct yt_session *session, int logical_planet,
 		    || !yt_planet_garrison_success_row(desired, success,
 		    sizeof(success), &success_length))
 			return false;
-		yt_present_set_bold(&session->presentation, 1.0f);
-		yt_present_set_blink(&session->presentation, 1.0f);
+		session->presentation.bold = true;
+		session->presentation.blink = true;
 		if (!session_present_paged_fragment(session, success, success_length))
 			return false;
 		planet.owner = session_record(session);
@@ -381,7 +381,7 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 		    SESSION_PRESENT_LINE, "planet Transfer fighter success blank",
 		    error))
 			return false;
-		yt_present_set_blink(&session->presentation, 1.0f);
+		session->presentation.blink = true;
 		{
 			static const uint8_t success[] = "Fighters Transferred!";
 
@@ -416,7 +416,7 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 		    SESSION_PRESENT_LINE, "planet Transfer weapon success blank",
 		    error))
 			return false;
-		yt_present_set_blink(&session->presentation, 1.0f);
+		session->presentation.blink = true;
 		if (item == 9) {
 			static const uint8_t text[] = "Plasma Bolts Transferred!";
 

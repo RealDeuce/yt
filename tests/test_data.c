@@ -1448,7 +1448,7 @@ test_file_viewer_physical_stream(void)
 	struct yt_file_viewer_state state;
 	struct yt_error error;
 	float foreground = 5.0f;
-	float bold = 0.0f;
+	bool bold = false;
 	float line_count = 19.0f;
 	int pager_foreground = 5;
 	char key[2] = "";
@@ -1485,7 +1485,7 @@ test_file_viewer_physical_stream(void)
 	    && viewer.lengths[2] == 8U
 	    && memcmp(viewer.rows[2], "  - item", 8U) == 0
 	    && foreground == 5.0f && pager_foreground == 5
-	    && bold == 1.0f && line_count == 0.0f);
+	    && bold && line_count == 0.0f);
 	CHECK(yt_file_delete(actual, false, &error));
 #ifdef _WIN32
 	_rmdir(directory);

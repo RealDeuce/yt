@@ -421,7 +421,7 @@ yt_session_plasma_sector(struct yt_session *session, int sector_number,
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_LINE, "plasma defense report", error))
 			return false;
-		session->presentation.bold = 1.0f;
+		session->presentation.bold = true;
 		if (!session_sound(session, YT_SOUND_CUE_ATTACK, "plasma fighter-defense sound",
 		    error))
 			return false;
@@ -674,7 +674,7 @@ plasma_reload_sector:
 			    (size_t)basic, &victim.record, error))
 				return false;
 
-			yt_present_set_blink(&session->presentation, 1.0f);
+			session->presentation.blink = true;
 			if (self_hit) {
 				if (!session_present_text(session, self_row,
 				    sizeof(self_row) - 1U, SESSION_PRESENT_BOLD_LINE,
@@ -697,7 +697,7 @@ plasma_reload_sector:
 					    &warning_length))
 						return false;
 				}
-				yt_present_set_blink(&session->presentation, 1.0f);
+				session->presentation.blink = true;
 				if (!session_present_text(session, warning_row,
 				    warning_length, SESSION_PRESENT_BOLD_LINE,
 				    "plasma carried-mine warning", error)

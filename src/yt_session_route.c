@@ -109,7 +109,7 @@ yt_session_build_route(struct yt_session *session, float start_value,
 		    || !session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "route failure second blank", error))
 			return false;
-		yt_present_set_blink(&session->presentation, 1.0f);
+		session->presentation.blink = true;
 		return session_present_text(session, failure,
 		    sizeof(failure) - 1U, SESSION_PRESENT_BOLD_LINE,
 		    "route failure row", error);

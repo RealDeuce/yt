@@ -17,7 +17,7 @@ yt_pager_advance(struct yt_pager_state *pager,
 	pager->line_count = 0.0f;
 	pager->foreground = 3;
 	presentation->foreground = 3.0f;
-	presentation->bold = 1.0f;
+	presentation->bold = true;
 	pager->newline_flag = true;
 	return true;
 }

@@ -45,7 +45,7 @@ danger_first_warning(struct yt_session *session, float target, bool finding,
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "danger leading blank", error))
 		return false;
-	yt_present_set_blink(&session->presentation, 1.0f);
+	session->presentation.blink = true;
 	if (!session_present_text(session, warning, sizeof(warning) - 1U,
 	    SESSION_PRESENT_BOLD_RAW, "danger warning header", error))
 		return false;
@@ -92,7 +92,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 		return true;
 	saved_foreground = session->presentation.foreground;
 	session_set_foreground(session, 3.0f);
-	yt_present_set_background(&session->presentation, 4.0f);
+	session->presentation.background = 4.0f;
 	if (!session_read_sector(session, (int)target, &sector, error))
 		return false;
 	if (target == (float)session->disruption_sectors[0]
@@ -219,14 +219,14 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 		if (!session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "danger final blank", error))
 			return false;
-		yt_present_set_blink(&session->presentation, 1.0f);
+		session->presentation.blink = true;
 		if (!session_present_text(session, deactivated,
 		    sizeof(deactivated) - 1U, SESSION_PRESENT_BOLD_LINE,
 		    "danger deactivation row", error))
 			return false;
 	}
 	session_set_foreground(session, saved_foreground);
-	yt_present_set_background(&session->presentation, 0.0f);
+	session->presentation.background = 0.0f;
 	*dangerous = finding;
 	return true;
 }

@@ -52,7 +52,7 @@ mine_damage_shields(struct yt_session *session, struct yt_player *player,
 	*touched |= YT_SECTOR_MINE_DAMAGE_SHIELDS;
 	if (player->shields == 0.0f) {
 		session_set_foreground(session, 7.0f);
-		yt_present_set_blink(&session->presentation, 1.0f);
+		session->presentation.blink = true;
 		if (!session_present_text(session, shields_destroyed,
 		    sizeof(shields_destroyed) - 1U, SESSION_PRESENT_BOLD_LINE,
 		    "sector mine output", error))
@@ -72,7 +72,7 @@ mine_damage_shields(struct yt_session *session, struct yt_player *player,
 	player->danger_scanner = 0;
 	*touched |= YT_SECTOR_MINE_DAMAGE_SCANNER;
 	session_set_foreground(session, 7.0f);
-	yt_present_set_blink(&session->presentation, 1.0f);
+	session->presentation.blink = true;
 	if (!session_present_text(session, scanner_destroyed,
 	    sizeof(scanner_destroyed) - 1U, SESSION_PRESENT_BOLD_LINE,
 	    "sector mine output", error))
@@ -131,7 +131,7 @@ mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
 		player->danger_scanner = 0;
 		*touched |= YT_SECTOR_MINE_DAMAGE_SCANNER;
 		session_set_foreground(session, 7.0f);
-		yt_present_set_blink(&session->presentation, 1.0f);
+		session->presentation.blink = true;
 		if (!session_present_text(session, scanner_destroyed,
 		    sizeof(scanner_destroyed) - 1U, SESSION_PRESENT_BOLD_LINE,
 		    "sector mine output", error))
@@ -303,8 +303,8 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "sector mine success blank", error))
 		return false;
-	yt_present_set_bold(&session->presentation, 1.0f);
-	yt_present_set_blink(&session->presentation, 1.0f);
+	session->presentation.bold = true;
+	session->presentation.blink = true;
 	return session_present_paged_fragment(session, row, row_length)
 	    && session_sound(session, YT_SOUND_CUE_ACTION, "sector mine sound", error);
 }
@@ -327,7 +327,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "sector mine output", error))
 		return false;
-	yt_present_set_blink(&session->presentation, 1.0f);
+	session->presentation.blink = true;
 	if (!session_present_text(session, warning, sizeof(warning) - 1U,
 	    SESSION_PRESENT_LINE, "sector mine output", error)
 	    || !session_sound(session, YT_SOUND_CUE_DAMAGE, "sector mine sound", error)
@@ -362,14 +362,14 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 
 		saved_foreground = session->presentation.foreground;
 		session_set_foreground(session, 3.0f);
-		yt_present_set_background(&session->presentation, 0.0f);
-		yt_present_set_blink(&session->presentation, 0.0f);
+		session->presentation.background = 0.0f;
+		session->presentation.blink = false;
 		if (!yt_sector_mine_explosion_row(mines_before, batch, row,
 		    sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_RAW, "sector mine output", error))
 			return false;
-		yt_present_set_background(&session->presentation, 1.0f);
+		session->presentation.background = 1.0f;
 		if (!session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "sector mine output", error)
 		    || !session_reload_player(session, error))

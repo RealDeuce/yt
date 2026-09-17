@@ -277,7 +277,7 @@ yt_session_computer_owned_planets(struct yt_session *session,
 	}
 
 	if (!found) {
-		yt_present_set_blink(&session->presentation, 1.0f);
+		session->presentation.blink = true;
 		return session_present_text(session, none, sizeof(none) - 1U,
 		    SESSION_PRESENT_BOLD_LINE, "owned-planet none row", error);
 	}

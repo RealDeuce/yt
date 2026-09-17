@@ -313,7 +313,7 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 			return false;
 		if (friendly)
 			goto missile_mines;
-		yt_present_set_bold(&session->presentation, 1.0f);
+		session->presentation.bold = true;
 		if (!session_sound(session, YT_SOUND_CUE_ATTACK,
 		    "cruise missile fighter-defense sound", error))
 			return false;
@@ -555,13 +555,13 @@ missile_mines:
 			    || !yt_database_write(&session->door->game.database,
 			    (size_t)basic, &target.record, error))
 				return false;
-			yt_present_set_blink(&session->presentation, 1.0f);
+			session->presentation.blink = true;
 			if (!session_present_text(session, destroyed_row,
 			    destroyed_length, SESSION_PRESENT_BOLD_LINE,
 			    "cruise missile destroyed-player row", error))
 				return false;
 			if (mines != 0.0f) {
-				yt_present_set_blink(&session->presentation, 1.0f);
+				session->presentation.blink = true;
 				if (!session_present_text(session, warning_row,
 				    warning_length,
 				    SESSION_PRESENT_BOLD_LINE,

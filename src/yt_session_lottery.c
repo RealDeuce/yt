@@ -94,7 +94,7 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 	if (!yt_session_clearance(session, true, error))
 		return false;
 	session_set_color(session, 1);
-	yt_present_set_bold(&session->presentation, 1.0f);
+	session->presentation.bold = true;
 	if (!session_present_paged_row(session,
 	    (const uint8_t *)"Welcome to the Intergalactic Pick-6 Lottery!",
 	    strlen("Welcome to the Intergalactic Pick-6 Lottery!")))
@@ -106,7 +106,7 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 		    SESSION_PRESENT_LINE, "lottery ticket leading blank", error))
 			return false;
 		session_set_color(session, 2);
-		yt_present_set_bold(&session->presentation, 1.0f);
+		session->presentation.bold = true;
 		if (!session_present_timed_paged_row(session,
 		    (const uint8_t *)
 		    "Enter a 6 digit number for the lottery computer -+>",

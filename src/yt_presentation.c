@@ -6,115 +6,6 @@
 #include <math.h>
 #include <string.h>
 
-float
-yt_present_background(const struct yt_present_state *state)
-{
-	if (state == NULL)
-		return 0.0f;
-	return state->background;
-}
-
-void
-yt_present_set_background(struct yt_present_state *state, float value)
-{
-	if (state == NULL)
-		return;
-	state->background = value;
-}
-
-float
-yt_present_bold(const struct yt_present_state *state)
-{
-	if (state == NULL)
-		return 0.0f;
-	return state->bold;
-}
-
-void
-yt_present_set_bold(struct yt_present_state *state, float value)
-{
-	if (state == NULL)
-		return;
-	state->bold = value;
-}
-
-float
-yt_present_blink(const struct yt_present_state *state)
-{
-	if (state == NULL)
-		return 0.0f;
-	return state->blink;
-}
-
-void
-yt_present_set_blink(struct yt_present_state *state, float value)
-{
-	if (state == NULL)
-		return;
-	state->blink = value;
-}
-
-float
-yt_present_color_initialized(const struct yt_present_state *state)
-{
-	if (state == NULL)
-		return 0.0f;
-	return state->color_initialized;
-}
-
-void
-yt_present_set_color_initialized(struct yt_present_state *state, float value)
-{
-	if (state == NULL)
-		return;
-	state->color_initialized = value;
-}
-
-float
-yt_present_color_memory(const struct yt_present_state *state, size_t index)
-{
-	if (state == NULL || index >= 8U)
-		return 0.0f;
-	return state->color_memory[index];
-}
-
-static bool
-color_memory_index(const struct yt_present_state *state, int index,
-    float *value)
-{
-	if (state == NULL || value == NULL)
-		return false;
-	if (index < 0 || index >= 8)
-		return false;
-	*value = yt_present_color_memory(state, (size_t)index);
-	return true;
-}
-
-void
-yt_present_set_color_memory(struct yt_present_state *state, size_t index,
-    float value)
-{
-	if (state == NULL || index >= 8U)
-		return;
-	state->color_memory[index] = value;
-}
-
-float
-yt_present_cached_foreground(const struct yt_present_state *state)
-{
-	if (state == NULL)
-		return 0.0f;
-	return state->cached_foreground;
-}
-
-float
-yt_present_cached_background(const struct yt_present_state *state)
-{
-	if (state == NULL)
-		return 0.0f;
-	return state->cached_background;
-}
-
 static enum yt_present_status
 append_event(struct yt_present_result *result,
     enum yt_present_operation operation, const void *data, size_t length,
@@ -234,57 +125,37 @@ static enum yt_present_status
 build_color(struct yt_present_state *state,
     struct yt_present_result *result)
 {
-	static const float standard[8] = {0, 4, 2, 6, 1, 5, 3, 7};
+	static const int standard[8] = {0, 4, 2, 6, 1, 5, 3, 7};
 	uint8_t sequence[32];
 	size_t length = 0;
-	float bright = 0.0f;
-	float background = yt_present_background(state);
-	float bold = yt_present_bold(state);
-	float blink = yt_present_blink(state);
-	float cached_foreground = yt_present_cached_foreground(state);
-	float cached_background = yt_present_cached_background(state);
+	float background = state->background;
+	bool bold = state->bold;
+	bool blink = state->blink;
+	float cached_foreground = state->cached_foreground;
+	float cached_background = state->cached_background;
 	int foreground_index;
 	int background_index;
 	int local_foreground;
 	int local_background;
-	float mapped_foreground;
-	float mapped_background;
-	int forced_bold;
-	int forced_blink;
 	enum yt_present_status status;
-	size_t index;
 
-	if (yt_present_color_initialized(state) == 0.0f) {
-		yt_present_set_color_initialized(state, 1.0f);
-		for (index = 0U; index < 8U; ++index)
-			yt_present_set_color_memory(state, index, standard[index]);
-	}
 	if (state->foreground == background) {
 		state->foreground = 3.0f;
-		yt_present_set_background(state, 0.0f);
+		state->background = 0.0f;
 		background = 0.0f;
 	}
-	if (bold == 1.0f)
-		bright = 8.0f;
-	if (blink == 1.0f)
-		bright += 16.0f;
 	status = convert(state, state->foreground, &foreground_index);
 	if (status != YT_PRESENT_OK)
 		return status;
 	status = convert(state, background, &background_index);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (!color_memory_index(state, foreground_index, &mapped_foreground)
-	    || !color_memory_index(state, background_index,
-	    &mapped_background))
+	if (foreground_index < 0 || foreground_index >= 8
+	    || background_index < 0 || background_index >= 8)
 		return YT_PRESENT_RANGE;
-	status = convert(state, (double)(float)(mapped_foreground + bright),
-	    &local_foreground);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = convert(state, mapped_background, &local_background);
-	if (status != YT_PRESENT_OK)
-		return status;
+	local_foreground = standard[foreground_index]
+	    + (bold ? 8 : 0) + (blink ? 16 : 0);
+	local_background = standard[background_index];
 	status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0,
 	    local_foreground, local_background);
 	if (status != YT_PRESENT_OK)
@@ -300,22 +171,16 @@ build_color(struct yt_present_state *state,
 		status = color_digit(background, &sequence[length++]);
 		if (status != YT_PRESENT_OK)
 			return status;
-		if (blink == 1.0f) {
+		if (blink) {
 			memcpy(sequence + length, ";5", 2);
 			length += 2;
 		}
-		if (bold == 1.0f) {
+		if (bold) {
 			memcpy(sequence + length, ";1", 2);
 			length += 2;
 		}
 		sequence[length++] = 'm';
-		status = convert(state, bold, &forced_bold);
-		if (status != YT_PRESENT_OK)
-			return status;
-		status = convert(state, blink, &forced_blink);
-		if (status != YT_PRESENT_OK)
-			return status;
-		if ((forced_bold | forced_blink) != 0) {
+		if (bold || blink) {
 			status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
 			    sequence, length);
 			if (status != YT_PRESENT_OK)
@@ -338,8 +203,8 @@ build_color(struct yt_present_state *state,
 		else
 			status = YT_PRESENT_OK;
 	}
-	yt_present_set_bold(state, 0.0f);
-	yt_present_set_blink(state, 0.0f);
+	state->bold = false;
+	state->blink = false;
 	return YT_PRESENT_OK;
 }
 
@@ -419,7 +284,7 @@ yt_present_bold_line(const uint8_t *text, size_t length,
     struct yt_present_state *state, struct yt_present_result *result)
 {
 	memset(result, 0, sizeof(*result));
-	yt_present_set_bold(state, 1.0f);
+	state->bold = true;
 	return emit_line(text, length, state, result);
 }
 
@@ -429,7 +294,7 @@ yt_present_bold_character(const uint8_t *text, size_t length,
 {
 	memset(result, 0, sizeof(*result));
 	if (state->sound.ansi)
-		yt_present_set_bold(state, 1.0f);
+		state->bold = true;
 	return emit_character(text, length, state, result);
 }
 
@@ -627,14 +492,14 @@ yt_present_attention(const uint8_t *text, size_t length,
 
 	memset(result, 0, sizeof(*result));
 	state->foreground = 3.0f;
-	yt_present_set_background(state, 1.0f);
-	yt_present_set_blink(state, 1.0f);
+	state->background = 1.0f;
+	state->blink = true;
 	if (state->sound.ansi)
-		yt_present_set_bold(state, 1.0f);
+		state->bold = true;
 	status = emit_character(text, length, state, result);
 	if (status != YT_PRESENT_OK)
 		return status;
-	yt_present_set_background(state, 0.0f);
+	state->background = 0.0f;
 	status = emit_line(NULL, 0, state, result);
 	if (status != YT_PRESENT_OK)
 		return status;
@@ -963,7 +828,7 @@ low_time_warning(const uint8_t *text, size_t length, float remembered,
 	if (status != YT_PRESENT_OK)
 		return status;
 	state->foreground = 5.0f;
-	yt_present_set_blink(state, 1.0f);
+	state->blink = true;
 	if (state->sound.local_mode)
 		status = append_beep(result);
 	else
@@ -975,7 +840,7 @@ low_time_warning(const uint8_t *text, size_t length, float remembered,
 	memcpy(warning, label, sizeof(label) - 1U);
 	if (length != 0)
 		memcpy(warning + sizeof(label) - 1U, text, length);
-	yt_present_set_bold(state, 1.0f);
+	state->bold = true;
 	status = emit_line(warning, sizeof(label) - 1U + length, state,
 	    result);
 	if (status != YT_PRESENT_OK)

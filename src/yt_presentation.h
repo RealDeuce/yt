@@ -54,10 +54,8 @@ struct yt_present_state {
 	uint8_t conversion_mode;
 	float foreground;
 	float background;
-	float bold;
-	float blink;
-	float color_initialized;
-	float color_memory[8];
+	bool bold;
+	bool blink;
 	float cached_foreground;
 	float cached_background;
 };
@@ -69,21 +67,6 @@ struct yt_present_result {
 	size_t event_count;
 };
 
-float yt_present_background(const struct yt_present_state *state);
-void yt_present_set_background(struct yt_present_state *state, float value);
-float yt_present_bold(const struct yt_present_state *state);
-void yt_present_set_bold(struct yt_present_state *state, float value);
-float yt_present_blink(const struct yt_present_state *state);
-void yt_present_set_blink(struct yt_present_state *state, float value);
-float yt_present_color_initialized(const struct yt_present_state *state);
-void yt_present_set_color_initialized(struct yt_present_state *state,
-    float value);
-float yt_present_color_memory(const struct yt_present_state *state,
-    size_t index);
-void yt_present_set_color_memory(struct yt_present_state *state,
-    size_t index, float value);
-float yt_present_cached_foreground(const struct yt_present_state *state);
-float yt_present_cached_background(const struct yt_present_state *state);
 enum yt_present_status yt_present_line(const uint8_t *text, size_t length,
     struct yt_present_state *state, struct yt_present_result *result);
 enum yt_present_status yt_present_character(const uint8_t *text,

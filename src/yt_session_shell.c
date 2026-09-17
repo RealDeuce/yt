@@ -35,7 +35,7 @@ session_quit_confirm(struct yt_session *session, bool *confirmed,
 		}
 		if (answer == YT_YES_NO_NO || answer == YT_YES_NO_EMPTY)
 			return true;
-		yt_present_set_bold(&session->presentation, 1.0f);
+		session->presentation.bold = true;
 		session_clear_queue(session);
 	}
 }

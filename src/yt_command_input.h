@@ -89,7 +89,7 @@ bool yt_input_confirmation(const char *command_accumulator,
 	char *output_source, size_t output_source_capacity,
 	uint8_t *prompt, size_t prompt_capacity, size_t *prompt_length,
 	char *queue, size_t queue_capacity, size_t *queue_position,
-	size_t *queue_length, float *bold, enum yt_yes_no_answer *answer,
+	size_t *queue_length, bool *bold, enum yt_yes_no_answer *answer,
 	enum yt_confirmation_outcome *outcome);
 bool yt_input_drain_begin(struct yt_input_drain_state *state,
     const struct yt_input_value *initial_residue);

@@ -186,7 +186,7 @@ yt_session_planet_permission(struct yt_session *session,
 	    sizeof(permission) - 1U, SESSION_PRESENT_RAW,
 	    "planet permission prefix", error))
 		return false;
-	yt_present_set_blink(&session->presentation, 1.0f);
+	session->presentation.blink = true;
 	session_set_foreground(session, 3.0f);
 	if (!session_present_text(session, denial, sizeof(denial) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "planet permission denial", error))

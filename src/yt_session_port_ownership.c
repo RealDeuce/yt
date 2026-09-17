@@ -126,7 +126,7 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 		return false;
 	yt_player_decode(&player, &record);
 	if (player.ports_owned < 1) {
-		yt_present_set_blink(&session->presentation, 1.0f);
+		session->presentation.blink = true;
 		return session_present_text(session, no_ports,
 		    sizeof(no_ports) - 1U, SESSION_PRESENT_BOLD_LINE,
 		    "treasury no-owned notice", error);
@@ -383,8 +383,8 @@ purchase_present_sold(struct yt_session *session, struct yt_error *error)
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "buy sold leading blank", error))
 		return false;
-	yt_present_set_bold(&session->presentation, 1.0f);
-	yt_present_set_blink(&session->presentation, 1.0f);
+	session->presentation.bold = true;
+	session->presentation.blink = true;
 	return session_present_paged_fragment(session, sold, sizeof(sold) - 1U);
 }
 

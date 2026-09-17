@@ -97,7 +97,7 @@ commodity(struct yt_info_panel_state *state,
 	    YT_INFO_PANEL_FIXED, 17.0f, error))
 		return false;
 	if (right_value != 0.0f) {
-		state->bold = 1.0f;
+		state->bold = true;
 		state->foreground = 7.0f;
 		state->background = 4.0f;
 	}

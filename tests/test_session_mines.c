@@ -89,8 +89,8 @@ test_shielded_encounter(void)
 	CHECK(random.calls == 3U && TEST_DRAWS(door.game.random) == 3U);
 	CHECK(session.player.shields == 100.0f);
 	CHECK(session.presentation.foreground == 3.0f);
-	CHECK(yt_present_background(&session.presentation) == 1.0f);
-	CHECK(yt_present_blink(&session.presentation) == 0.0f);
+	CHECK(session.presentation.background == 1.0f);
+	CHECK(session.presentation.blink == false);
 	CHECK(yt_database_read(&door.game.database, 93U, &record, &error));
 	yt_sector_decode(&sector, &record);
 	CHECK(sector.mines == 0.0f);

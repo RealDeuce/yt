@@ -103,7 +103,7 @@ missile_route_failure_suffix(struct yt_session *session,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "cruise missile self-destruct blank", error))
 		return false;
-	yt_present_set_blink(&session->presentation, 1.0f);
+	session->presentation.blink = true;
 	return session_present_text(session, row, sizeof(row) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "cruise missile self-destruct row", error);
 }

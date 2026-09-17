@@ -535,8 +535,8 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 				return false;
 		}
 	}
-	yt_present_set_bold(&session->presentation, 1.0f);
-	yt_present_set_blink(&session->presentation, 1.0f);
+	session->presentation.bold = true;
+	session->presentation.blink = true;
 	return session_present_paged_fragment(session,
 	    (const uint8_t *)"Transmission successful!",
 	    strlen("Transmission successful!"));

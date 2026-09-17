@@ -185,7 +185,7 @@ nearest_page(struct yt_session *session, struct nearest_scan *scan,
 	*stop = false;
 	scan->page_count = 0;
 	session_set_foreground(session, 3.0f);
-	yt_present_set_bold(&session->presentation, 1.0f);
+	session->presentation.bold = true;
 	if (!session_present_text(session, prompt, sizeof(prompt) - 1U,
 	    SESSION_PRESENT_BOLD_RAW, "nearest-port pager prompt", error))
 		return false;
@@ -432,7 +432,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 					memset(stock, 0, sizeof(stock));
 				}
 				if (scan.port.owner != 0)
-					yt_present_set_bold(&session->presentation, 1.0f);
+					session->presentation.bold = true;
 				session_set_foreground(session, 2.0f);
 				if (!session_present_text(session, sector_cell,
 				    sizeof(sector_cell), SESSION_PRESENT_RAW,
@@ -440,14 +440,14 @@ nearest_scan_run(struct yt_session *session, int selector,
 					goto done;
 				session_set_foreground(session,
 				    scan.port.commodity_class == 3 ? 7.0f : 6.0f);
-				yt_present_set_bold(&session->presentation, 1.0f);
+				session->presentation.bold = true;
 				if (!session_present_text(session, ore,
 				    scan.display_sector == 1 ? 0U : sizeof(ore) - 1U,
 				    SESSION_PRESENT_BOLD_RAW, "nearest-port ore cell", error))
 					goto done;
 				session_set_foreground(session,
 				    scan.port.commodity_class == 2 ? 7.0f : 6.0f);
-				yt_present_set_bold(&session->presentation, 1.0f);
+				session->presentation.bold = true;
 				if (!session_present_text(session, organics,
 				    scan.display_sector == 1 ? 0U : sizeof(organics) - 1U,
 				    SESSION_PRESENT_BOLD_RAW, "nearest-port organics cell",
@@ -455,7 +455,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 					goto done;
 				session_set_foreground(session,
 				    scan.port.commodity_class == 1 ? 7.0f : 6.0f);
-				yt_present_set_bold(&session->presentation, 1.0f);
+				session->presentation.bold = true;
 				if (!session_present_text(session, equipment,
 				    scan.display_sector == 1 ? 0U : sizeof(equipment) - 1U,
 				    SESSION_PRESENT_BOLD_RAW, "nearest-port equipment cell",
@@ -485,7 +485,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				}
 				if (scan.display_sector == 1) {
 					session_set_foreground(session, 3.0f);
-					yt_present_set_blink(&session->presentation, 1.0f);
+					session->presentation.blink = true;
 				}
 				if (!session_present_text(session, name, name_length,
 				    SESSION_PRESENT_BOLD_LINE, "nearest-port name row", error))

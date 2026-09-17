@@ -186,7 +186,7 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 			yt_names_free(&names);
 			return false;
 		}
-		yt_present_set_bold(&session->presentation, 1.0f);
+		session->presentation.bold = true;
 		{
 			char identity[560];
 
@@ -323,7 +323,7 @@ yt_session_instruction_offer(struct yt_session *session,
 			return true;
 		if (answer == YT_YES_NO_YES)
 			return session_display_game_file(session, "YTINSTR.DOC", error);
-		yt_present_set_bold(&session->presentation, 1.0f);
+		session->presentation.bold = true;
 		session_clear_queue(session);
 	}
 }
@@ -421,7 +421,7 @@ returning_self_denial(struct yt_session *session, struct yt_error *error)
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "returning self-denial blank", error))
 		return false;
-	yt_present_set_blink(&session->presentation, 1.0f);
+	session->presentation.blink = true;
 	session_set_foreground(session, 7.0f);
 	if (!session_present_text(session, row, sizeof(row) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "returning self-denial row", error))
@@ -567,7 +567,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			    SESSION_PRESENT_LINE, "returning death blank", error))
 				return false;
 			if (!self_kill)
-				yt_present_set_blink(&session->presentation, 1.0f);
+				session->presentation.blink = true;
 			if (killer == -1) {
 				if (!session_present_text(session,
 				    (const uint8_t *)

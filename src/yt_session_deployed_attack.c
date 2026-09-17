@@ -307,7 +307,7 @@ hostile_attack_tail_run(struct yt_session *session,
 			    state->defender_loss, display, sizeof(display),
 			    &display_length, news, sizeof(news), &news_length))
 				return false;
-			yt_present_set_bold(&session->presentation, 1.0f);
+			session->presentation.bold = true;
 			if (!session_present_paged_fragment(session, display,
 			    display_length))
 				return false;

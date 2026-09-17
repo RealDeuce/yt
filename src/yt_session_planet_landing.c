@@ -53,7 +53,7 @@ yt_session_planet_assault(struct yt_session *session,
 	    &row_length)
 	    || !yt_news_append_bytes(row, row_length, error))
 		return false;
-	yt_present_set_blink(&session->presentation, 1.0f);
+	session->presentation.blink = true;
 	if (!session_present_text(session, engaging, sizeof(engaging) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "planet assault engagement row", error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -105,7 +105,7 @@ yt_session_planet_assault(struct yt_session *session,
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE, "planet assault capture blank", error))
 				return false;
-			yt_present_set_blink(&session->presentation, 1.0f);
+			session->presentation.blink = true;
 			if (!session_present_text(session, captured,
 			    sizeof(captured) - 1U, SESSION_PRESENT_BOLD_LINE,
 			    "planet assault capture row", error)
@@ -132,7 +132,7 @@ yt_session_planet_assault(struct yt_session *session,
 	if (!session_write_planet_physical(session, physical_planet, &planet,
 	    false, error))
 		return false;
-	yt_present_set_blink(&session->presentation, 1.0f);
+	session->presentation.blink = true;
 	if (!yt_planet_assault_failure_row(defenders, true, row, sizeof(row),
 	    &row_length)
 	    || !yt_news_append_bytes(row, row_length, error)

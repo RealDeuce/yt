@@ -172,7 +172,7 @@ yt_session_xannor_victory(struct yt_session *session, struct yt_error *error)
 	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "Xannor victory post-wait blank", error))
 		return false;
-	yt_present_set_blink(&session->presentation, 1.0f);
+	session->presentation.blink = true;
 	if (!session_present_text(session, bonus, sizeof(bonus) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "Xannor victory bonus", error))
 		return false;

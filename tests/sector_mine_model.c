@@ -85,7 +85,7 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 	if (!ops->present(context, NULL, 0U, TEST_SECTOR_MINE_OUTPUT_LINE,
 	    error))
 		return false;
-	state->blink = 1.0f;
+	state->blink = true;
 	test_sector_mine_apply_style(state, ops, context);
 	if (!ops->present(context, warning, sizeof(warning) - 1U,
 	    TEST_SECTOR_MINE_OUTPUT_LINE, error)
@@ -131,7 +131,7 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 		saved_foreground = state->foreground;
 		state->foreground = 3.0f;
 		state->background = 0.0f;
-		state->blink = 0.0f;
+		state->blink = false;
 		state->pager_foreground = 3;
 		test_sector_mine_apply_style(state, ops, context);
 		if (!yt_sector_mine_explosion_row(state->mines_before,
@@ -154,7 +154,7 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 			state->touched |= YT_SECTOR_MINE_DAMAGE_SHIELDS;
 			if (working.shields == 0.0f) {
 				state->foreground = 7.0f;
-				state->blink = 1.0f;
+				state->blink = true;
 				state->pager_foreground = 7;
 				test_sector_mine_apply_style(state, ops, context);
 				if (!ops->present(context, shields_destroyed,
@@ -177,7 +177,7 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 					state->touched |=
 					    YT_SECTOR_MINE_DAMAGE_SCANNER;
 					state->foreground = 7.0f;
-					state->blink = 1.0f;
+					state->blink = true;
 					state->pager_foreground = 7;
 					test_sector_mine_apply_style(state, ops, context);
 					if (!ops->present(context, scanner_destroyed,
@@ -236,7 +236,7 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 				working.danger_scanner = 0;
 				state->touched |= YT_SECTOR_MINE_DAMAGE_SCANNER;
 				state->foreground = 7.0f;
-				state->blink = 1.0f;
+				state->blink = true;
 				state->pager_foreground = 7;
 				test_sector_mine_apply_style(state, ops, context);
 				if (!ops->present(context, scanner_destroyed,

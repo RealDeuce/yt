@@ -37,7 +37,7 @@ yt_session_list_spies(struct yt_session *session, struct yt_error *error)
 		    counter, target_length, target);
 		if (row_length < 0 || (size_t)row_length >= sizeof(row))
 			return false;
-		yt_present_set_bold(&session->presentation, 1.0f);
+		session->presentation.bold = true;
 		if (!session_present_paged_fragment(session, row,
 		    (size_t)row_length))
 			return false;
@@ -237,7 +237,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 					    || !yt_sector_player_row(&player, row,
 					    sizeof(row), &length))
 						return false;
-					yt_present_set_bold(&session->presentation, 1.0f);
+					session->presentation.bold = true;
 					if (!session_present_text(session, row, length,
 					    SESSION_PRESENT_LINE, "spy direct output", error))
 						return false;
@@ -268,7 +268,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				    sizeof(fighter_heading) - 1U,
 				    SESSION_PRESENT_BOLD_RAW, "spy direct output", error))
 					return false;
-				yt_present_set_bold(&session->presentation, 1.0f);
+				session->presentation.bold = true;
 				displayed = refreshed;
 				displayed.fighter_owner = owner;
 				if (owner != -1 && owner != -2) {

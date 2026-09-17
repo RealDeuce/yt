@@ -164,7 +164,7 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 	if (!result.emit_notice)
 		return true;
 	if (result.bold_committed)
-		yt_present_set_bold(&session->presentation, 1.0f);
+		session->presentation.bold = true;
 	return session_command_notice(session, session->io.text_workspace);
 }
 
@@ -305,7 +305,7 @@ session_set_color(struct yt_session *session, int logical)
 	static const int pc_color[8] = {0, 4, 2, 6, 1, 5, 3, 7};
 
 	session_set_foreground(session, (float)logical);
-	yt_present_set_background(&session->presentation, 0.0f);
+	session->presentation.background = 0.0f;
 	if (logical >= 0 && logical < 8)
 		od_set_color(pc_color[logical], 0);
 }
@@ -418,8 +418,8 @@ session_present_alert(struct yt_session *session, const uint8_t *text, size_t le
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    operation, error))
 		return false;
-	yt_present_set_bold(&session->presentation, 1.0f);
-	yt_present_set_blink(&session->presentation, 1.0f);
+	session->presentation.bold = true;
+	session->presentation.blink = true;
 	session_clear_queue(session);
 	return session_present_paged_fragment(session, text, length);
 }
@@ -657,7 +657,7 @@ session_display_game_file(struct yt_session *session, const char *path,
 		session->presentation.foreground = (float)foreground;
 		session->pager.foreground = foreground;
 		if (foreground != 2)
-			session->presentation.bold = 1.0f;
+			session->presentation.bold = true;
 		session_set_foreground(session,
 		    session->presentation.foreground);
 		if (!session_present_paged_row(session, line, length))

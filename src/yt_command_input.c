@@ -330,7 +330,7 @@ yt_input_confirmation(const char *command_accumulator,
     char *output_source, size_t output_source_capacity,
     uint8_t *prompt, size_t prompt_capacity, size_t *prompt_length,
     char *queue, size_t queue_capacity, size_t *queue_position,
-    size_t *queue_length, float *bold, enum yt_yes_no_answer *answer,
+    size_t *queue_length, bool *bold, enum yt_yes_no_answer *answer,
     enum yt_confirmation_outcome *outcome)
 {
 	size_t length;
@@ -362,7 +362,7 @@ yt_input_confirmation(const char *command_accumulator,
 	else
 		*answer = YT_YES_NO_INVALID;
 	if (*answer == YT_YES_NO_INVALID) {
-		*bold = 1.0f;
+		*bold = true;
 		if (!yt_input_queue_clear(queue, queue_capacity,
 		    queue_position, queue_length))
 			return false;
@@ -386,7 +386,7 @@ yt_input_yes_no_candidate(const char *command_accumulator,
 	char queue[1] = "";
 	size_t queue_position = 0U;
 	size_t queue_length = 0U;
-	float bold = 0.0f;
+	bool bold = false;
 
 	if (answer == NULL || !yt_input_confirmation(command_accumulator,
 	    output_source, output_source_capacity, prompt, sizeof(prompt),

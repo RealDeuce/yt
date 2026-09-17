@@ -188,7 +188,7 @@ earth_purchase_scanner(struct yt_session *session,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "Earth Scanner leading blank", error))
 		return false;
-	yt_present_set_bold(&session->presentation, 1.0f);
+	session->presentation.bold = true;
 	if (!session_present_paged_row(session,
 	    (const uint8_t *)"Danger Scanner installed in your ship!",
 	    strlen("Danger Scanner installed in your ship!"))
@@ -225,7 +225,7 @@ earth_purchase_spies(struct yt_session *session,
 			    "You have%s spies active already.", active_text) < 0)
 				return session_range_error(error,
 				    "Earth Spies active row");
-			yt_present_set_bold(&session->presentation, 1.0f);
+			session->presentation.bold = true;
 			if (!session_present_paged_fragment(session, (const uint8_t *)active_row,
 			    strlen(active_row)))
 				return false;

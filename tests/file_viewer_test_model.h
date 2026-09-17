@@ -10,7 +10,7 @@
 struct yt_file_viewer_state {
 	float *foreground;
 	int *pager_foreground;
-	float *bold;
+	bool *bold;
 	float *line_count;
 	char *pager_key;
 	float saved_foreground;
@@ -85,7 +85,7 @@ yt_file_viewer_display(const char *path, struct yt_file_viewer_state *state,
 		*state->foreground = (float)foreground;
 		*state->pager_foreground = foreground;
 		if (foreground != 2)
-			*state->bold = 1.0f;
+			*state->bold = true;
 		if (!present(context, line, length, true, error))
 			goto done;
 	}

@@ -15,7 +15,7 @@ struct test_sector_mine_state {
 	uint8_t conversion_mode;
 	float foreground;
 	float background;
-	float blink;
+	bool blink;
 	int pager_foreground;
 	bool *destroyed;
 	struct yt_player player;
@@ -50,7 +50,7 @@ struct test_sector_mine_ops {
 	bool (*emergency_warp)(void *context, struct yt_error *error);
 	void (*set_current)(void *context, const struct yt_player *player);
 	void (*style)(void *context, float foreground, float background,
-	    float blink, int pager_foreground);
+	    bool blink, int pager_foreground);
 };
 
 bool test_sector_mine_run(struct test_sector_mine_state *state,

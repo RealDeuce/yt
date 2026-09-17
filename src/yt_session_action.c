@@ -102,8 +102,8 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 	snprintf(row, sizeof(row), "One Turn Deducted,%s left.", number);
 	if (session->player.turns < 51.0f) {
 		session_set_foreground(session, 3.0f);
-		yt_present_set_bold(&session->presentation, 1.0f);
-		yt_present_set_blink(&session->presentation, 1.0f);
+		session->presentation.bold = true;
+		session->presentation.blink = true;
 	}
 	if (!session_present_paged_fragment(session, (const uint8_t *)row, strlen(row)))
 		return false;
@@ -198,7 +198,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 		}
 		else {
 			session_set_foreground(session, 1.0f);
-			yt_present_set_blink(&session->presentation, 1.0f);
+			session->presentation.blink = true;
 		}
 		if (!session_present_text(session, gauge_tick,
 		    sizeof(gauge_tick) - 1U, SESSION_PRESENT_BOLD_RAW,
@@ -300,16 +300,16 @@ yt_session_direct_emergency_warp(struct yt_session *session,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "emergency warp leading blank", error))
 		return false;
-	yt_present_set_bold(&session->presentation, 1.0f);
+	session->presentation.bold = true;
 	session_set_foreground(session, 7.0f);
 	if (!session_present_paged_fragment(session, warning_one, sizeof(warning_one) - 1U))
 		return false;
-	yt_present_set_bold(&session->presentation, 1.0f);
+	session->presentation.bold = true;
 	if (!session_present_paged_fragment(session, warning_two, sizeof(warning_two) - 1U)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "emergency warp confirmation blank", error))
 		return false;
-	yt_present_set_bold(&session->presentation, 1.0f);
+	session->presentation.bold = true;
 	if (!session_confirm(session, prompt, sizeof(prompt) - 1U, &answer, error))
 		return false;
 	if (answer == YT_YES_NO_YES)

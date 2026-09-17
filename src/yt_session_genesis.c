@@ -180,11 +180,11 @@ yt_session_command_genesis(struct yt_session *session, struct yt_error *error)
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "Genesis success leading blank", error))
 		return false;
-	yt_present_set_bold(&session->presentation, 1.0f);
+	session->presentation.bold = true;
 	if (!session_present_paged_fragment(session, success_first,
 	    sizeof(success_first) - 1U))
 		return false;
-	yt_present_set_bold(&session->presentation, 1.0f);
+	session->presentation.bold = true;
 	return session_present_paged_fragment(session, success_second,
 	    sizeof(success_second) - 1U)
 	    && genesis_handoff(session, error);
