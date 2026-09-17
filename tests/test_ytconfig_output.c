@@ -29,7 +29,7 @@ contains_bytes(const uint8_t *haystack, size_t haystack_length,
 static bool
 test_startup_working_values(void)
 {
-	static const uint8_t raw_path[] = {'A', 0x00U, 0x80U, 'Z'};
+	static const char configured_path[] = "YTSCORE.ASC";
 	struct yt_config config;
 	struct yt_config_menu_working working;
 	uint8_t path[41];
@@ -46,15 +46,14 @@ test_startup_working_values(void)
 	CHECK(working.lottery_plays == 1.0f);
 	CHECK(working.maximum_holds == 200.0f);
 
-	memcpy(config.record.bytes, raw_path, sizeof(raw_path));
-	config.scoreboard_length = 0U;
-	CHECK(yt_record_set_number(&config.record, YT_F41, 3.6f));
+	memcpy(config.scoreboard, configured_path, sizeof(configured_path) - 1U);
+	config.scoreboard_length = sizeof(configured_path) - 1U;
 	config.local_screen = -1.0f;
 	config.lottery_plays = 2.0f;
 	config.maximum_holds = 1001.0f;
 	CHECK(yt_config_prepare_menu_working(&config, path, &working));
-	CHECK(working.scoreboard_path_length == sizeof(raw_path));
-	CHECK(memcmp(path, raw_path, sizeof(raw_path)) == 0);
+	CHECK(working.scoreboard_path_length == sizeof(configured_path) - 1U);
+	CHECK(memcmp(path, configured_path, sizeof(configured_path) - 1U) == 0);
 	CHECK(working.local_screen == -1.0f);
 	CHECK(working.lottery_plays == 2.0f);
 	CHECK(working.maximum_holds == 1000.0f);

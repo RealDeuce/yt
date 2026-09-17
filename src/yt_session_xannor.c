@@ -137,7 +137,7 @@ yt_session_launch_xannor_retaliation(struct yt_session *session,
 	if (!yt_game_read_player(&session->door->game, saved_record,
 	    &session->player, error))
 		goto done;
-	if (qb_mbf32_truth(session->player.record.bytes + YT_F45))
+	if (session->player.killed_by != 0.0f)
 		session->destroyed = true;
 	if (!session_wait(session, 4.0, "Xannor retaliation wait", error))
 		goto done;

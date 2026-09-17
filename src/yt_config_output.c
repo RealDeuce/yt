@@ -97,14 +97,12 @@ bool
 yt_config_prepare_menu_working(const struct yt_config *config,
     uint8_t scoreboard_path[41], struct yt_config_menu_working *working)
 {
-	bool overflow;
-	int path_length;
+	size_t path_length;
 
 	if (config == NULL || scoreboard_path == NULL || working == NULL)
 		return false;
-	path_length = (int)qb_cint_mbf32(config->record.bytes + YT_F41, 0U,
-	    &overflow);
-	if (overflow || path_length < 0 || path_length > 41)
+	path_length = config->scoreboard_length;
+	if (path_length > 41U)
 		return false;
 	working->local_screen = config->local_screen;
 	working->lottery_plays = config->lottery_plays;
@@ -113,12 +111,12 @@ yt_config_prepare_menu_working(const struct yt_config *config,
 		working->maximum_holds = 200.0f;
 	if (path_length == 0) {
 		memcpy(scoreboard_path, "NUL", 3U);
-		path_length = 3;
+		path_length = 3U;
 	}
 	else
-		memcpy(scoreboard_path, config->record.bytes, (size_t)path_length);
+		memcpy(scoreboard_path, config->scoreboard, path_length);
 	working->scoreboard_path = scoreboard_path;
-	working->scoreboard_path_length = (size_t)path_length;
+	working->scoreboard_path_length = path_length;
 	if (working->local_screen < -1.0f || working->local_screen > 0.0f)
 		working->local_screen = -1.0f;
 	if (working->lottery_plays < 1.0f)

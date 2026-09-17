@@ -513,7 +513,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	    &attacker, error))
 		return false;
 	available = attacker.missiles;
-	if (qb_mbf32_truth(attacker.record.bytes + YT_F45)
+	if (attacker.killed_by != 0.0f
 	    || available < 1.0f) {
 		*counterattacker = 0;
 		return true;
@@ -586,7 +586,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	if (!yt_game_read_player(&session->door->game, saved_record,
 	    &final_player, error))
 		return false;
-	if (qb_mbf32_truth(final_player.record.bytes + YT_F45))
+	if (final_player.killed_by != 0.0f)
 		session->destroyed = true;
 	return session_wait(session, 4.0, "player counterattack wait", error);
 }
