@@ -70,11 +70,11 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 		set_error(error, YT_INVALID, "Super Lottery", "YTDATA.DAT");
 		return false;
 	}
-	if (!line_output(line_context, blank,
-	    blank_length, error)
-	    || !line_output(line_context, phase,
-	    sizeof(phase) - 1U, error)
-	    || !yt_random_next(&game->random, &gate, error))
+	if (!line_output(line_context, blank, blank_length, error))
+		return false;
+	if (!line_output(line_context, phase, sizeof(phase) - 1U, error))
+		return false;
+	if (!yt_random_next(&game->random, &gate, error))
 		return false;
 	if (gate < 0.5f)
 		return lottery_fail(line_output, line_context, error);
@@ -92,14 +92,16 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	memcpy(working_name + player_name_length, name_suffix,
 	    sizeof(name_suffix) - 1U);
 	if (!yt_random_integer(&game->random, planet_count, &planet_number,
-	    error)
-	    || !yt_game_read_planet(game, planet_number, &planet, error))
+	    error))
+		return false;
+	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
 	if (planet.name_length != 0U)
 		return lottery_fail(line_output, line_context, error);
 	if (!yt_random_integer(&game->random, sector_count, &sector_number,
-	    error)
-	    || !yt_game_read_sector(game, sector_number, &sector, error))
+	    error))
+		return false;
+	if (!yt_game_read_sector(game, sector_number, &sector, error))
 		return false;
 	if (sector.planet > 0)
 		return lottery_fail(line_output, line_context, error);
@@ -117,62 +119,80 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 		float second;
 		float production;
 
-		if (!yt_random_next(&game->random, &first, error)
-		    || !yt_random_next(&game->random, &second, error))
+		if (!yt_random_next(&game->random, &first, error))
+			return false;
+		if (!yt_random_next(&game->random, &second, error))
 			return false;
 		production = qb_single_multiply(qb_single_multiply(first, second), 3000.0f);
 		if (!yt_record_set_number(&planet.record,
-		    YT_F45 + (size_t)index * 4U, production)
-		    || !yt_record_set_raw_number(&planet.record,
+		    YT_F45 + (size_t)index * 4U, production))
+			return false;
+		if (!yt_record_set_raw_number(&planet.record,
 		    YT_F57 + (size_t)index * 4U, dirty_zero))
 			return false;
 	}
-	if (!yt_record_set_raw_number(&planet.record, YT_F69, dirty_zero)
-	    || !yt_record_set_number(&planet.record, YT_F73,
-	    (float)player_record)
-	    || !yt_random_next(&game->random, &gate, error)
-	    || !yt_record_set_number(&planet.record, YT_F77,
+	if (!yt_record_set_raw_number(&planet.record, YT_F69, dirty_zero))
+		return false;
+	if (!yt_record_set_number(&planet.record, YT_F73,
+	    (float)player_record))
+		return false;
+	if (!yt_random_next(&game->random, &gate, error))
+		return false;
+	if (!yt_record_set_number(&planet.record, YT_F77,
 	    yt_maintenance_sint(qb_single_add(
-	    qb_single_multiply(gate, 100.0f), 1.0f)))
-	    || !yt_random_next(&game->random, &gate, error)
-	    || !yt_record_set_number(&planet.record, YT_F117,
-	    qb_single_multiply(gate, 16000000.0f))
-	    || !yt_record_set_raw_number(&planet.record, YT_F125,
+	    qb_single_multiply(gate, 100.0f), 1.0f))))
+		return false;
+	if (!yt_random_next(&game->random, &gate, error))
+		return false;
+	if (!yt_record_set_number(&planet.record, YT_F117,
+	    qb_single_multiply(gate, 16000000.0f)))
+		return false;
+	if (!yt_record_set_raw_number(&planet.record, YT_F125,
 	    canonical_zero))
 		return false;
 	if (!yt_database_write(&game->database,
 	    (size_t)yt_planet_basic_record(&game->config, planet_number),
-	    &planet.record, error)
-	    || !yt_game_read_sector(game, sector_number, &sector, error))
+	    &planet.record, error))
+		return false;
+	if (!yt_game_read_sector(game, sector_number, &sector, error))
 		return false;
 	sector.planet = planet_number;
 	if (!yt_record_set_number(&sector.record, YT_F93,
-	    (float)sector.planet)
-	    || !yt_database_write(&game->database,
+	    (float)sector.planet))
+		return false;
+	if (!yt_database_write(&game->database,
 	    (size_t)yt_sector_basic_record(&game->config, sector_number),
 	    &sector.record, error))
 		return false;
 	line_length = 0U;
 	if (!maintenance_copy_part(line, sizeof(line), &line_length,
-	    winner_prefix, sizeof(winner_prefix) - 1U)
-	    || !maintenance_copy_part(line, sizeof(line), &line_length,
-	    player.record.bytes, player_name_length)
-	    || !maintenance_copy_part(line, sizeof(line), &line_length,
-	    winner_suffix, sizeof(winner_suffix) - 1U)
-	    || !line_output(line_context, line, line_length, error)
-	    || !yt_news_append_bytes(line, line_length, error))
+	    winner_prefix, sizeof(winner_prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &line_length,
+	    player.record.bytes, player_name_length))
+		return false;
+	if (!maintenance_copy_part(line, sizeof(line), &line_length,
+	    winner_suffix, sizeof(winner_suffix) - 1U))
+		return false;
+	if (!line_output(line_context, line, line_length, error))
+		return false;
+	if (!yt_news_append_bytes(line, line_length, error))
 		return false;
 	sector_length = qb_str_single(sector_text, sizeof(sector_text),
 	    (float)sector_number);
 	radio_length = 0U;
-	if (sector_length < 0
-	    || !maintenance_copy_part(radio, sizeof(radio), &radio_length,
-	    radio_prefix, sizeof(radio_prefix) - 1U)
-	    || !maintenance_copy_part(radio, sizeof(radio), &radio_length,
-	    (const uint8_t *)sector_text, (size_t)sector_length)
-	    || !maintenance_copy_part(radio, sizeof(radio), &radio_length,
-	    (const uint8_t *)"!\a", 2U)
-	    || !yt_radio_append_maintenance_bytes(radio, radio_length, -2.0f,
+	if (sector_length < 0)
+		return false;
+	if (!maintenance_copy_part(radio, sizeof(radio), &radio_length,
+	    radio_prefix, sizeof(radio_prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(radio, sizeof(radio), &radio_length,
+	    (const uint8_t *)sector_text, (size_t)sector_length))
+		return false;
+	if (!maintenance_copy_part(radio, sizeof(radio), &radio_length,
+	    (const uint8_t *)"!\a", 2U))
+		return false;
+	if (!yt_radio_append_maintenance_bytes(radio, radio_length, -2.0f,
 	    (float)player_record, error))
 		return false;
 	return true;
