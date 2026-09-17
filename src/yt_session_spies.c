@@ -86,19 +86,26 @@ spy_first_finding(struct yt_session *session, size_t spy, int sector,
 		return false;
 	spy_number[0] = '#';
 	if (qb_str_single(sector_number, sizeof(sector_number),
-	    (float)sector) < 0
-	    || !append_bytes(row, sizeof(row), &length,
-	    prefix, sizeof(prefix) - 1U)
-	    || !append_bytes(row, sizeof(row), &length,
-	    spy_number, (size_t)amount)
-	    || !append_bytes(row, sizeof(row), &length,
-	    middle, sizeof(middle) - 1U)
-	    || !append_bytes(row, sizeof(row), &length,
-	    sector_number, strlen(sector_number))
-	    || !append_bytes(row, sizeof(row), &length, ":", 1U)
-	    || !session_present_text(session, row, length,
-	    SESSION_PRESENT_BOLD_LINE, "spy direct output", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    (float)sector) < 0)
+		return false;
+	if (!append_bytes(row, sizeof(row), &length,
+	    prefix, sizeof(prefix) - 1U))
+		return false;
+	if (!append_bytes(row, sizeof(row), &length,
+	    spy_number, (size_t)amount))
+		return false;
+	if (!append_bytes(row, sizeof(row), &length,
+	    middle, sizeof(middle) - 1U))
+		return false;
+	if (!append_bytes(row, sizeof(row), &length,
+	    sector_number, strlen(sector_number)))
+		return false;
+	if (!append_bytes(row, sizeof(row), &length, ":", 1U))
+		return false;
+	if (!session_present_text(session, row, length,
+	    SESSION_PRESENT_BOLD_LINE, "spy direct output", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "spy direct output", error))
 		return false;
 	return true;
@@ -147,8 +154,10 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				return false;
 			if (sector_number == disruption_sectors[0]
 			    || sector_number == disruption_sectors[1]) {
-				if (!spy_first_finding(session, spy, sector_number, error)
-				    || !session_attention_bytes(session, disruption,
+				if (!spy_first_finding(session, spy, sector_number,
+				    error))
+					return false;
+				if (!session_attention_bytes(session, disruption,
 				    sizeof(disruption) - 1U, "spy attention row", error))
 					return false;
 			}
@@ -156,10 +165,13 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				uint8_t row[128];
 				size_t length;
 
-				if (!spy_first_finding(session, spy, sector_number, error)
-				    || !yt_sector_mine_warning_row(sector.mines, row,
-				    sizeof(row), &length)
-				    || !session_attention_bytes(session, row, length,
+				if (!spy_first_finding(session, spy, sector_number,
+				    error))
+					return false;
+				if (!yt_sector_mine_warning_row(sector.mines, row,
+				    sizeof(row), &length))
+					return false;
+				if (!session_attention_bytes(session, row, length,
 				    "spy attention row", error))
 					return false;
 			}
@@ -172,14 +184,21 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				    sector.planet);
 
 				if (!yt_session_update_planet_physical(session, physical,
-				    &updated_planet, NULL, error)
-				    || !read_planet_physical(session, physical, &planet, error)
-				    || !spy_first_finding(session, spy, sector_number, error)
-				    || !yt_sector_planet_row(&planet, row, sizeof(row),
-				    &length)
-				    || !session_present_text(session, row, length,
-				    SESSION_PRESENT_BOLD_LINE, "spy direct output", error)
-				    || !session_read_sector(session, sector_number, &sector,
+				    &updated_planet, NULL, error))
+					return false;
+				if (!read_planet_physical(session, physical, &planet,
+				    error))
+					return false;
+				if (!spy_first_finding(session, spy, sector_number,
+				    error))
+					return false;
+				if (!yt_sector_planet_row(&planet, row, sizeof(row),
+				    &length))
+					return false;
+				if (!session_present_text(session, row, length,
+				    SESSION_PRESENT_BOLD_LINE, "spy direct output", error))
+					return false;
+				if (!session_read_sector(session, sector_number, &sector,
 				    error))
 					return false;
 			}
@@ -202,8 +221,9 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				detected = yt_sector_cloak_revealed(draw, cloak);
 				if (detected) {
 					if (!spy_first_finding(session, spy,
-					    sector_number, error)
-					    || !session_present_text(session, cloak_notice,
+					    sector_number, error))
+						return false;
+					if (!session_present_text(session, cloak_notice,
 					    sizeof(cloak_notice) - 1U,
 					    SESSION_PRESENT_BOLD_LINE, "spy direct output",
 					    error))
@@ -233,8 +253,9 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 					size_t length;
 
 					if (!yt_game_read_player(&session->door->game,
-					    candidate, &player, error)
-					    || !yt_sector_player_row(&player, row,
+					    candidate, &player, error))
+						return false;
+					if (!yt_sector_player_row(&player, row,
 					    sizeof(row), &length))
 						return false;
 					session->presentation.bold = true;
@@ -262,9 +283,12 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				int owner = sector.fighter_owner;
 
 				if (!session_read_sector(session, sector_number, &refreshed,
-				    error)
-				    || !spy_first_finding(session, spy, sector_number, error)
-				    || !session_present_text(session, fighter_heading,
+				    error))
+					return false;
+				if (!spy_first_finding(session, spy, sector_number,
+				    error))
+					return false;
+				if (!session_present_text(session, fighter_heading,
 				    sizeof(fighter_heading) - 1U,
 				    SESSION_PRESENT_BOLD_RAW, "spy direct output", error))
 					return false;
@@ -286,16 +310,18 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				if (!yt_sector_fighter_row(&displayed,
 				    current_player_record, owner_pointer, team_pointer,
 				    row, sizeof(row), &length, scratch, sizeof(scratch),
-				    &scratch_length, &scratch_changed)
-				    || !session_present_text(session, row, length,
+				    &scratch_length, &scratch_changed))
+					return false;
+				if (!session_present_text(session, row, length,
 				    SESSION_PRESENT_LINE, "spy direct output", error))
 					return false;
 			}
 		}
 		if (session->spies.found) {
 			if (!session_present_text(session, NULL, 0U,
-			    SESSION_PRESENT_LINE, "spy direct output", error)
-			    || !session_press_any_key(session, true, error))
+			    SESSION_PRESENT_LINE, "spy direct output", error))
+				return false;
+			if (!session_press_any_key(session, true, error))
 				return false;
 		}
 		if (!session_read_sector(session, sector_number, &sector, error))
