@@ -300,16 +300,9 @@ struct yt_planet_economy {
 	float contribution[10];
 };
 
-struct yt_planet_update {
-	float production[10];
-};
-
-bool yt_planet_update_prepare(const struct yt_record *record,
-    struct yt_planet_update *update, struct yt_error *error);
 bool yt_planet_update_record(struct yt_record *record,
-    const struct yt_planet_update *update, float current_day,
-    float timer_seconds, struct yt_planet_economy *economy,
-    struct yt_error *error);
+    float current_day, float timer_seconds,
+    struct yt_planet_economy *economy, struct yt_error *error);
 
 bool yt_game_open(struct yt_game *game, enum yt_open_mode mode,
     const struct yt_clock *clock, struct yt_error *error);

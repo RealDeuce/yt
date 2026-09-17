@@ -73,11 +73,8 @@ update_record(struct yt_record *record, float current_day,
     float timer_seconds, struct yt_planet_economy *economy,
     struct yt_error *error)
 {
-	struct yt_planet_update update;
-
-	return yt_planet_update_prepare(record, &update, error)
-	    && yt_planet_update_record(record, &update, current_day,
-	    timer_seconds, economy, error);
+	return yt_planet_update_record(record, current_day, timer_seconds,
+	    economy, error);
 }
 
 static void

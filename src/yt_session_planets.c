@@ -40,7 +40,6 @@ yt_session_update_planet_physical(struct yt_session *session,
     struct yt_planet_economy *economy, struct yt_error *error)
 {
 	struct yt_planet_economy updated_economy;
-	struct yt_planet_update update;
 	struct yt_record record;
 	int today;
 	int adjusted_year;
@@ -55,10 +54,8 @@ yt_session_update_planet_physical(struct yt_session *session,
 	if (!yt_database_read(&session->door->game.database,
 	    (size_t)physical_record, &record, error))
 		return false;
-	if (!yt_planet_update_prepare(&record, &update, error))
-		return false;
 	timer_seconds = (float)yt_clock_timer(&session->door->game.clock);
-	if (!yt_planet_update_record(&record, &update, (float)today,
+	if (!yt_planet_update_record(&record, (float)today,
 	    timer_seconds, &updated_economy, error)
 	    || !yt_database_write(&session->door->game.database,
 	    (size_t)physical_record, &record, error)

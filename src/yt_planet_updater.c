@@ -191,64 +191,60 @@ updater_subtract_single(const uint8_t left[4], const uint8_t right[4],
 	    "planet updater base subtraction");
 }
 
-bool
-yt_planet_update_prepare(const struct yt_record *record,
-    struct yt_planet_update *update, struct yt_error *error)
+static bool
+updater_prepare_production(const struct yt_record *record,
+    float production[10], struct yt_error *error)
 {
 	uint8_t raw[4];
 	float sum;
 	size_t index;
 
-	if (record == NULL || update == NULL)
-		return updater_error(error, YT_INVALID,
-		    "planet updater prepare arguments");
-	memset(update, 0, sizeof(*update));
+	memset(production, 0, sizeof(float) * 10U);
 	for (index = 1U; index <= 3U; ++index)
-		update->production[index] = yt_record_get_number(record,
+		production[index] = yt_record_get_number(record,
 		    YT_F45 + (index - 1U) * 4U);
 
-	sum = qb_single_add(qb_single_add(update->production[1],
-	    update->production[2]), update->production[3]);
-	update->production[4] = floorf(sum);
-	if (!updater_encode_single(update->production[4], raw, error,
+	sum = qb_single_add(qb_single_add(production[1],
+	    production[2]), production[3]);
+	production[4] = floorf(sum);
+	if (!updater_encode_single(production[4], raw, error,
 	    "planet updater P4"))
 		return false;
-	update->production[4] = qb_mbf32_decode(raw);
+	production[4] = qb_mbf32_decode(raw);
 
-	sum = qb_single_add(qb_single_add(update->production[1],
-	    update->production[2]), update->production[3]);
-	update->production[5] = floorf(qb_single_divide(sum,
+	sum = qb_single_add(qb_single_add(production[1],
+	    production[2]), production[3]);
+	production[5] = floorf(qb_single_divide(sum,
 	    qb_mbf32_decode(updater_missile_divisor_s)));
-	if (!updater_encode_single(update->production[5], raw, error,
+	if (!updater_encode_single(production[5], raw, error,
 	    "planet updater P5"))
 		return false;
-	update->production[5] = qb_mbf32_decode(raw);
+	production[5] = qb_mbf32_decode(raw);
 
-	sum = qb_single_add(qb_single_add(update->production[1],
-	    update->production[2]), update->production[3]);
-	update->production[6] = floorf(qb_single_divide(sum,
+	sum = qb_single_add(qb_single_add(production[1],
+	    production[2]), production[3]);
+	production[6] = floorf(qb_single_divide(sum,
 	    qb_mbf32_decode(updater_mine_divisor_s)));
-	if (!updater_encode_single(update->production[6], raw, error,
+	if (!updater_encode_single(production[6], raw, error,
 	    "planet updater P6"))
 		return false;
-	update->production[6] = qb_mbf32_decode(raw);
+	production[6] = qb_mbf32_decode(raw);
 
-	sum = qb_single_add(qb_single_add(update->production[1],
-	    update->production[2]), update->production[3]);
-	update->production[9] = floorf(qb_single_multiply(sum,
+	sum = qb_single_add(qb_single_add(production[1],
+	    production[2]), production[3]);
+	production[9] = floorf(qb_single_multiply(sum,
 	    qb_mbf32_decode(updater_plasma_rate_s)));
-	if (!updater_encode_single(update->production[9], raw, error,
+	if (!updater_encode_single(production[9], raw, error,
 	    "planet updater P9"))
 		return false;
-	update->production[9] = qb_mbf32_decode(raw);
+	production[9] = qb_mbf32_decode(raw);
 	return true;
 }
 
 bool
 yt_planet_update_record(struct yt_record *record,
-    const struct yt_planet_update *update, float current_day,
-    float timer_seconds, struct yt_planet_economy *economy,
-    struct yt_error *error)
+    float current_day, float timer_seconds,
+    struct yt_planet_economy *economy, struct yt_error *error)
 {
 	static const size_t quantity_offsets[9] = {
 		YT_F57, YT_F61, YT_F65, YT_F129, YT_F69, YT_F125, YT_F117,
@@ -281,9 +277,11 @@ yt_planet_update_record(struct yt_record *record,
 	float one_percent = qb_mbf32_decode(updater_one_percent_s);
 	size_t index;
 
-	if (record == NULL || update == NULL || economy == NULL)
+	if (record == NULL || economy == NULL)
 		return updater_error(error, YT_INVALID,
 		    "planet updater arguments");
+	if (!updater_prepare_production(record, production, error))
+		return false;
 	if (!updater_encode_single(current_day, work.current_day, error,
 	    "planet updater current day MBF32"))
 		return false;
@@ -294,9 +292,6 @@ yt_planet_update_record(struct yt_record *record,
 	field = *record;
 	memset(economy, 0, sizeof(*economy));
 
-	for (index = 1U; index <= 6U; ++index)
-		production[index] = update->production[index];
-	production[9] = update->production[9];
 	for (index = 1U; index <= 6U; ++index) {
 		if (!updater_encode_single(production[index],
 		    production_raw[index], error,
