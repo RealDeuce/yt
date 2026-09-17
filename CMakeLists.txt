@@ -86,6 +86,7 @@ set(YT_GAME_SOURCES
     src/yt_game_market.c
     src/yt_game_nearest.c
     src/yt_game_planet.c
+    src/yt_game_planet_move.c
     src/yt_game_planet_inventory.c
     src/yt_game_player_combat.c
     src/yt_game_port.c
