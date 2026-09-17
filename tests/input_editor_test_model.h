@@ -1,7 +1,7 @@
 #ifndef INPUT_EDITOR_TEST_MODEL_H
 #define INPUT_EDITOR_TEST_MODEL_H
 
-#include "yt_input_model.h"
+#include "yt_command_input.h"
 
 #include <string.h>
 

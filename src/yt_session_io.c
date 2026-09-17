@@ -171,17 +171,17 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 static bool
 session_line(struct yt_session *session, char *text, size_t size)
 {
-	struct yt_command_save_transform save;
+	bool notice_ready;
 
 	if (!read_keyboard_line(session, text, size))
 		return false;
-	if (!yt_input_command_save_staged(text, size, session->io.typeahead,
+	if (!yt_input_save_command(text, size, session->io.typeahead,
 	    sizeof(session->io.typeahead), &session->io.typeahead_position,
 	    &session->io.typeahead_length, session->io.saved_command,
 	    sizeof(session->io.saved_command), session->io.text_workspace,
-	    sizeof(session->io.text_workspace), YT_BASIC_FAULT_SITE_COUNT, &save))
+	    sizeof(session->io.text_workspace), &notice_ready))
 		return false;
-	if (save.notice_ready) {
+	if (notice_ready) {
 		if (!session_command_notice(session, session->io.text_workspace))
 			return false;
 	}
@@ -715,24 +715,22 @@ session_confirm(struct yt_session *session, const uint8_t *prompt,
 		memcpy(prompt_scratch, prompt, prompt_length);
 	for (;;) {
 		char response[YT_COMMAND_SIZE];
-		struct yt_confirmation_transform transform;
+		enum yt_confirmation_outcome outcome;
 
 		if (!session_present_text(session, prompt_scratch,
 		    prompt_scratch_length,
 		    SESSION_PRESENT_RAW, "yes/no prompt", error)
 		    || !session_read_upper_command(session, response, sizeof(response))
-		    || !yt_input_confirmation_staged(response, session->io.text_workspace,
+		    || !yt_input_confirmation(response, session->io.text_workspace,
 		    sizeof(session->io.text_workspace), prompt_scratch,
 		    sizeof(prompt_scratch), &prompt_scratch_length, session->io.typeahead,
 		    sizeof(session->io.typeahead), &session->io.typeahead_position,
 		    &session->io.typeahead_length, &session->presentation.bold,
-		    YT_CONFIRMATION_FAULT_NONE, 0U, &transform)
-		    || !transform.answer_valid)
+		    answer, &outcome))
 			return false;
-		*answer = transform.answer;
-		if (transform.outcome == YT_CONFIRMATION_RETURNED)
+		if (outcome == YT_CONFIRMATION_RETURNED)
 			return true;
-		if (transform.outcome != YT_CONFIRMATION_RETRY)
+		if (outcome != YT_CONFIRMATION_RETRY)
 			return false;
 	}
 }

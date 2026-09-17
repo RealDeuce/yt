@@ -7,7 +7,7 @@
 #include "player_death_model.h"
 #include "projectile_command_model.h"
 #include "projectile_plasma_route_model.h"
-#include "yt_input_model.h"
+#include "yt_command_input.h"
 #include "yt_main_error.h"
 #include "yt_maint.h"
 #include "yt_maint_internal.h"

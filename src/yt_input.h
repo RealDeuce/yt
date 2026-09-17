@@ -2,7 +2,7 @@
 #define YT_INPUT_H
 
 #include "yt_common.h"
-#include "yt_input_model.h"
+#include "yt_command_input.h"
 
 struct yt_input {
 	struct yt_input_value pending;

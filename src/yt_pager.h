@@ -1,7 +1,7 @@
 #ifndef YT_PAGER_H
 #define YT_PAGER_H
 
-#include "yt_input_model.h"
+#include "yt_command_input.h"
 #include "yt_presentation.h"
 
 #define YT_PAGER_KEY_SIZE 80U

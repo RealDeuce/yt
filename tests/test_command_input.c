@@ -1,4 +1,4 @@
-#include "yt_input_model.h"
+#include "yt_input.h"
 #include "input_editor_test_model.h"
 #include "qb.h"
 #include "yt_pager.h"
@@ -395,74 +395,13 @@ test_command_save_stages(void)
 {
 	static const char notice[] =
 	    "Command Saved -+- Ctrl-R to Re-use -+- Ctrl-X to cancel.";
-	static const struct {
-		enum yt_basic_fault_site site;
-		const char *text;
-		const char *queue;
-		size_t queue_position;
-		size_t queue_length;
-		const char *saved;
-		const char *output;
-		bool requested;
-		bool ready;
-	} cases[] = {
-		{YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE,
-		    "A/", "XYZ", 1U, 3U, "OLD", "OUT", false, false},
-		{YT_BASIC_FAULT_ADE0_SAVE_STRIP_LEFT_SPACE,
-		    "A/", "XYZ", 1U, 3U, "OLD", "OUT", true, false},
-		{YT_BASIC_FAULT_ADE0_SAVE_COMMAND_CLONE_SPACE,
-		    "A", "", 0U, 0U, "OLD", "OUT", true, false},
-		{YT_BASIC_FAULT_ADE0_SAVE_NOTICE_CLONE_SPACE,
-		    "A", "", 0U, 0U, "A", "OUT", true, false},
-		{YT_BASIC_FAULT_ADE0_SAVE_NOTICE_GOSUB_STACK,
-		    "A", "", 0U, 0U, "A", notice, true, true},
-	};
-	struct yt_command_save_transform result;
 	char text[16];
 	char queue[16];
 	char saved[64];
 	char output[128];
 	size_t position;
 	size_t length;
-	size_t index;
-
-	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
-		memcpy(text, "A/", 3U);
-		memcpy(queue, "XYZ", 4U);
-		memcpy(saved, "OLD", 4U);
-		memcpy(output, "OUT", 4U);
-		position = 1U;
-		length = 3U;
-		CHECK(!yt_input_command_save_staged(text, sizeof(text), queue,
-		    sizeof(queue), &position, &length, saved, sizeof(saved),
-		    output, sizeof(output), cases[index].site, &result));
-		CHECK(result.fault_valid && result.fault_site == cases[index].site
-		    && result.save_requested == cases[index].requested
-		    && result.notice_ready == cases[index].ready
-		    && strcmp(text, cases[index].text) == 0
-		    && strcmp(queue, cases[index].queue) == 0
-		    && position == cases[index].queue_position
-		    && length == cases[index].queue_length
-		    && strcmp(saved, cases[index].saved) == 0
-		    && strcmp(output, cases[index].output) == 0);
-	}
-
-	memcpy(text, "A", 2U);
-	memcpy(queue, "XYZ", 4U);
-	memcpy(saved, "OLD", 4U);
-	memcpy(output, "OUT", 4U);
-	position = 1U;
-	length = 3U;
-	CHECK(!yt_input_command_save_staged(text, sizeof(text), queue,
-	    sizeof(queue), &position, &length, saved, sizeof(saved),
-	    output, sizeof(output),
-	    YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE
-	    && !result.save_requested && !result.notice_ready
-	    && strcmp(text, "A") == 0 && strcmp(queue, "XYZ") == 0
-	    && position == 1U && length == 3U
-	    && strcmp(saved, "OLD") == 0 && strcmp(output, "OUT") == 0);
+	bool notice_ready;
 
 	memcpy(text, "A/", 3U);
 	memcpy(queue, "XYZ", 4U);
@@ -470,10 +409,10 @@ test_command_save_stages(void)
 	memcpy(output, "OUT", 4U);
 	position = 1U;
 	length = 3U;
-	CHECK(yt_input_command_save_staged(text, sizeof(text), queue,
+	CHECK(yt_input_save_command(text, sizeof(text), queue,
 	    sizeof(queue), &position, &length, saved, sizeof(saved), output,
-	    sizeof(output), YT_BASIC_FAULT_SITE_COUNT, &result));
-	CHECK(!result.fault_valid && result.save_requested && result.notice_ready
+	    sizeof(output), &notice_ready));
+	CHECK(notice_ready
 	    && strcmp(text, "A") == 0 && queue[0] == '\0'
 	    && position == 0U && length == 0U && strcmp(saved, "A") == 0
 	    && strcmp(output, notice) == 0);
@@ -484,41 +423,12 @@ test_command_save_stages(void)
 	memcpy(output, "OUT", 4U);
 	position = 1U;
 	length = 3U;
-	CHECK(yt_input_command_save_staged(text, sizeof(text), queue,
+	CHECK(yt_input_save_command(text, sizeof(text), queue,
 	    sizeof(queue), &position, &length, saved, sizeof(saved), output,
-	    sizeof(output), YT_BASIC_FAULT_SITE_COUNT, &result));
-	CHECK(!result.fault_valid && !result.save_requested
-	    && !result.notice_ready && strcmp(text, "ABC") == 0
+	    sizeof(output), &notice_ready));
+	CHECK(!notice_ready && strcmp(text, "ABC") == 0
 	    && strcmp(queue, "XYZ") == 0 && position == 1U && length == 3U
 	    && strcmp(saved, "OLD") == 0 && strcmp(output, "OUT") == 0);
-
-	memcpy(text, "/", 2U);
-	memcpy(queue, "XYZ", 4U);
-	memcpy(saved, "OLD", 4U);
-	memcpy(output, "OUT", 4U);
-	position = 1U;
-	length = 3U;
-	CHECK(!yt_input_command_save_staged(text, sizeof(text), queue,
-	    sizeof(queue), &position, &length, saved, sizeof(saved), output,
-	    sizeof(output), YT_BASIC_FAULT_ADE0_SAVE_STRIP_LEFT_SPACE,
-	    &result));
-	CHECK(!result.fault_valid && strcmp(text, "/") == 0
-	    && strcmp(queue, "XYZ") == 0 && strcmp(saved, "OLD") == 0
-	    && strcmp(output, "OUT") == 0);
-
-	memcpy(text, "A/", 3U);
-	memcpy(queue, "XYZ", 4U);
-	memcpy(saved, "OLD", 4U);
-	memcpy(output, "OUT", 4U);
-	position = 1U;
-	length = 3U;
-	CHECK(!yt_input_command_save_staged(text, sizeof(text), queue,
-	    sizeof(queue), &position, &length, saved, sizeof(saved), output, 4U,
-	    YT_BASIC_FAULT_SITE_COUNT, &result));
-	CHECK(!result.fault_valid && result.save_requested
-	    && !result.notice_ready && strcmp(text, "A") == 0
-	    && queue[0] == '\0' && strcmp(saved, "A") == 0
-	    && strcmp(output, "OUT") == 0);
 }
 
 static void
@@ -576,356 +486,6 @@ test_b05d_keys(void)
 	CHECK(yt_pager_apply_key(&value, &state));
 	CHECK(accumulator[0] == '\0' && queue[0] == '\0');
 	CHECK(position == 0 && length == 0 && strcmp(pager, "Q") == 0);
-}
-
-static void
-test_upper_fault_stages(void)
-{
-	static const enum yt_basic_fault_site body_sites[] = {
-		YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE,
-		YT_BASIC_FAULT_UPPER_MID_VALUE_STRING_SPACE,
-		YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE,
-	};
-	struct yt_upper_transform result;
-	char text[8];
-	size_t index;
-
-	memcpy(text, "a!b", 4U);
-	CHECK(!yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
-	    YT_BASIC_FAULT_UPPER_FRAME_STACK, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_UPPER_FRAME_STACK
-	    && !result.scratch_initialized && !result.extracted_valid
-	    && !result.mapped_valid && strcmp(text, "a!b") == 0);
-
-	for (index = 0U; index < YT_ARRAY_LEN(body_sites); ++index) {
-		memcpy(text, "a!b", 4U);
-		CHECK(!yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
-		    body_sites[index], 3U, &result));
-		CHECK(result.fault_valid && result.fault_site == body_sites[index]
-		    && result.scratch_initialized && result.length == 3U
-		    && result.index == 3U && strcmp(text, "A!b") == 0);
-		if (body_sites[index] == YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE) {
-			CHECK(result.extracted_valid && result.extracted == (uint8_t)'b'
-			    && result.mapped_valid && result.mapped == (uint8_t)'B');
-		}
-		else {
-			CHECK(!result.extracted_valid && !result.mapped_valid);
-		}
-	}
-
-	memcpy(text, "a!b", 4U);
-	CHECK(yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
-	    YT_BASIC_FAULT_SITE_COUNT, 1U, &result));
-	CHECK(!result.fault_valid && result.scratch_initialized
-	    && result.fault_site == YT_BASIC_FAULT_SITE_COUNT
-	    && result.length == 3U && result.index == 4U
-	    && !result.extracted_valid && !result.mapped_valid
-	    && strcmp(text, "A!B") == 0);
-
-	memcpy(text, "a!b", 4U);
-	CHECK(!yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
-	    YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE, 4U, &result));
-	CHECK(!result.fault_valid && strcmp(text, "a!b") == 0);
-	memcpy(text, "a!b", 4U);
-	CHECK(!yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
-	    YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE, 2U, &result));
-	CHECK(!result.fault_valid && strcmp(text, "a!b") == 0);
-}
-
-static void
-test_repeat_prefix_stages(void)
-{
-	struct yt_repeat_prefix_transform result;
-	uint8_t scratch[32];
-	uint8_t expected_raw[4];
-
-	memcpy(scratch, "OLD", 4U);
-	CHECK(!yt_input_repeat_prefix_staged((const uint8_t *)"a/R2", 4U,
-	    scratch, sizeof(scratch),
-	    YT_BASIC_FAULT_ADE0_UPPER_SCRATCH_CLONE_SPACE, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site
-	    == YT_BASIC_FAULT_ADE0_UPPER_SCRATCH_CLONE_SPACE
-	    && strcmp((const char *)scratch, "OLD") == 0);
-
-	memcpy(scratch, "OLD", 4U);
-	CHECK(!yt_input_repeat_prefix_staged((const uint8_t *)"a/R2", 4U,
-	    scratch, sizeof(scratch), YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE,
-	    1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE
-	    && result.upper.fault_valid && result.upper.index == 1U
-	    && result.upper.extracted_valid
-	    && result.upper.extracted == (uint8_t)'a'
-	    && result.upper.mapped_valid && result.upper.mapped == (uint8_t)'A'
-	    && strcmp((const char *)scratch, "a/R2") == 0);
-
-	memcpy(scratch, "OLD", 4U);
-	CHECK(!yt_input_repeat_prefix_staged((const uint8_t *)"a/R2", 4U,
-	    scratch, sizeof(scratch),
-	    YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE, 3U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site
-	    == YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE
-	    && result.upper.index == 3U
-	    && strcmp((const char *)scratch, "A/R2") == 0);
-
-	memcpy(scratch, "OLD", 4U);
-	CHECK(yt_input_repeat_prefix_staged((const uint8_t *)"a/r2", 4U,
-	    scratch, sizeof(scratch), YT_BASIC_FAULT_SITE_COUNT, 1U, &result));
-	CHECK(!result.fault_valid && !result.upper.fault_valid
-	    && result.repeat_position == 2U
-	    && strcmp((const char *)scratch, "A/R2") == 0
-	    && qb_mbf32_encode(2.0f, expected_raw) == QB_MBF_OK
-	    && memcmp(result.work_raw, expected_raw, sizeof(expected_raw)) == 0);
-
-	CHECK(yt_input_repeat_prefix_staged((const uint8_t *)"abc", 3U,
-	    scratch, sizeof(scratch), YT_BASIC_FAULT_SITE_COUNT, 1U, &result));
-	CHECK(!result.fault_valid && result.repeat_position == 0U
-	    && strcmp((const char *)scratch, "ABC") == 0
-	    && qb_mbf32_encode(0.0f, expected_raw) == QB_MBF_OK
-	    && memcmp(result.work_raw, expected_raw, sizeof(expected_raw)) == 0);
-
-	memcpy(scratch, "OLD", 4U);
-	CHECK(!yt_input_repeat_prefix_staged((const uint8_t *)"", 0U,
-	    scratch, sizeof(scratch),
-	    YT_BASIC_FAULT_ADE0_UPPER_SCRATCH_CLONE_SPACE, 1U, &result));
-	CHECK(!result.fault_valid && strcmp((const char *)scratch, "OLD") == 0);
-}
-
-static void
-test_repeat_parse_stages(void)
-{
-	struct yt_repeat_parse_transform result;
-	char text[64];
-	uint8_t upper[64];
-	uint8_t expected_raw[8];
-	struct qb_val_result parsed;
-
-	memcpy(text, "Ab/R3", 6U);
-	memcpy(upper, "AB/R3", 6U);
-	CHECK(!yt_input_repeat_parse_staged(text, sizeof(text), upper,
-	    sizeof(upper), 3U, YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_LEFT_SPACE,
-	    &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_LEFT_SPACE
-	    && result.repeat_reached
-	    && result.pending_role == YT_REPEAT_PENDING_NONE
-	    && strcmp(text, "Ab/R3") == 0
-	    && strcmp((const char *)upper, "AB/R3") == 0);
-
-	memcpy(text, "Ab/R3", 6U);
-	memcpy(upper, "AB/R3", 6U);
-	CHECK(!yt_input_repeat_parse_staged(text, sizeof(text), upper,
-	    sizeof(upper), 3U,
-	    YT_BASIC_FAULT_ADE0_REPEAT_SEMICOLON_CONCAT_SPACE, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site
-	    == YT_BASIC_FAULT_ADE0_REPEAT_SEMICOLON_CONCAT_SPACE
-	    && result.pending_role == YT_REPEAT_PENDING_PREFIX
-	    && result.pending_length == 2U
-	    && strcmp(result.pending_string, "Ab") == 0
-	    && strcmp(text, "Ab/R3") == 0
-	    && strcmp((const char *)upper, "AB/R3") == 0);
-
-	memcpy(text, "Ab/R3", 6U);
-	memcpy(upper, "AB/R3", 6U);
-	CHECK(!yt_input_repeat_parse_staged(text, sizeof(text), upper,
-	    sizeof(upper), 3U,
-	    YT_BASIC_FAULT_ADE0_REPEAT_SUFFIX_RIGHT_SPACE, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_SUFFIX_RIGHT_SPACE
-	    && result.pending_role == YT_REPEAT_PENDING_NONE
-	    && strcmp(text, "Ab;") == 0
-	    && strcmp((const char *)upper, "AB/R3") == 0);
-
-	memcpy(text, "A/R1E999", 10U);
-	memcpy(upper, "A/R1E999", 10U);
-	CHECK(!yt_input_repeat_parse_staged(text, sizeof(text), upper,
-	    sizeof(upper), 2U, YT_BASIC_FAULT_SITE_COUNT, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW
-	    && result.failure == YT_REPEAT_FAILURE_VAL_OVERFLOW
-	    && result.pending_role == YT_REPEAT_PENDING_SUFFIX
-	    && result.pending_length == 5U
-	    && strcmp(result.pending_string, "1E999") == 0
-	    && strcmp(text, "A;") == 0
-	    && strcmp((const char *)upper, "A/R1E999") == 0);
-
-	memcpy(text, "A/R1.7014118E38", 16U);
-	memcpy(upper, "A/R1.7014118E38", 16U);
-	CHECK(!yt_input_repeat_parse_staged(text, sizeof(text), upper,
-	    sizeof(upper), 2U, YT_BASIC_FAULT_SITE_COUNT, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW
-	    && result.failure == YT_REPEAT_FAILURE_SINGLE_OVERFLOW
-	    && result.pending_role == YT_REPEAT_PENDING_INTEGER
-	    && result.pending_double_valid && result.pending_length == 0U
-	    && strcmp(text, "A;") == 0
-	    && strcmp((const char *)upper, "A/R1.7014118E38") == 0);
-	parsed = qb_val("1.7014118E38");
-	CHECK(parsed.valid && !parsed.overflow
-	    && qb_mbf64_encode(qb_int(parsed.value), expected_raw) == QB_MBF_OK
-	    && memcmp(result.pending_double_raw, expected_raw,
-	    sizeof(expected_raw)) == 0);
-
-	memcpy(text, "Ab/R3", 6U);
-	memcpy(upper, "AB/R3", 6U);
-	CHECK(yt_input_repeat_parse_staged(text, sizeof(text), upper,
-	    sizeof(upper), 3U, YT_BASIC_FAULT_SITE_COUNT, &result));
-	CHECK(!result.fault_valid && result.repeat_reached
-	    && result.failure == YT_REPEAT_FAILURE_NONE && result.count == 3.0f
-	    && result.pending_role == YT_REPEAT_PENDING_NONE
-	    && !result.pending_double_valid && strcmp(text, "Ab;") == 0
-	    && upper[0] == '\0'
-	    && qb_mbf32_encode(3.0f, expected_raw) == QB_MBF_OK
-	    && memcmp(result.count_raw, expected_raw, 4U) == 0);
-
-	memcpy(text, "A/R11", 6U);
-	memcpy(upper, "A/R11", 6U);
-	CHECK(yt_input_repeat_parse_staged(text, sizeof(text), upper,
-	    sizeof(upper), 2U, YT_BASIC_FAULT_SITE_COUNT, &result));
-	CHECK(result.count == 20.0f
-	    && qb_mbf32_encode(20.0f, expected_raw) == QB_MBF_OK
-	    && memcmp(result.count_raw, expected_raw, 4U) == 0);
-
-	memcpy(text, "/R", 3U);
-	memcpy(upper, "/R", 3U);
-	CHECK(yt_input_repeat_parse_staged(text, sizeof(text), upper,
-	    sizeof(upper), 1U, YT_BASIC_FAULT_SITE_COUNT, &result));
-	CHECK(result.repeat_reached && result.count == 0.0f
-	    && strcmp(text, ";") == 0 && upper[0] == '\0');
-}
-
-static void
-test_repeat_build_stages(void)
-{
-	static const char notice[] =
-	    "Command Repeated 3 times -+- Ctrl-R to Re-use -+- "
-	    "Ctrl-X to cancel.";
-	struct yt_repeat_build_transform result;
-	char text[64];
-	uint8_t scratch[64];
-	char saved[64];
-	char output[128];
-
-	memcpy(text, "A;", 3U);
-	scratch[0] = '\0';
-	memcpy(saved, "old", 4U);
-	memcpy(output, "old-output", 11U);
-	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
-	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_BUILD_CONCAT_SPACE, 2U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_BUILD_CONCAT_SPACE
-	    && result.completed_iterations == 1U
-	    && result.pending_role == YT_REPEAT_PENDING_NONE
-	    && strcmp(text, "A;") == 0
-	    && strcmp((const char *)scratch, "A;") == 0
-	    && strcmp(saved, "old") == 0 && strcmp(output, "old-output") == 0
-	    && !result.bold_committed && !result.notice_ready);
-
-	memcpy(text, "A;", 3U);
-	scratch[0] = '\0';
-	memcpy(saved, "old", 4U);
-	memcpy(output, "old-output", 11U);
-	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
-	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_FINAL_LEFT_SPACE, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_FINAL_LEFT_SPACE
-	    && result.completed_iterations == 3U
-	    && result.pending_role == YT_REPEAT_PENDING_EXPANDED
-	    && result.pending_length == 5U
-	    && strcmp(result.pending_string, "A;A;A") == 0
-	    && strcmp(text, "A;") == 0
-	    && strcmp((const char *)scratch, "A;A;A;") == 0
-	    && strcmp(saved, "old") == 0 && strcmp(output, "old-output") == 0
-	    && !result.bold_committed && !result.notice_ready);
-
-	memcpy(text, "A;", 3U);
-	scratch[0] = '\0';
-	memcpy(saved, "old", 4U);
-	memcpy(output, "old-output", 11U);
-	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
-	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_SAVE_CLONE_SPACE, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_SAVE_CLONE_SPACE
-	    && strcmp(text, "A;A;A") == 0 && scratch[0] == '\0'
-	    && strcmp(saved, "old") == 0 && strcmp(output, "old-output") == 0
-	    && result.pending_role == YT_REPEAT_PENDING_NONE
-	    && !result.bold_committed && !result.notice_ready);
-
-	memcpy(text, "A;", 3U);
-	scratch[0] = '\0';
-	memcpy(saved, "old", 4U);
-	memcpy(output, "old-output", 11U);
-	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
-	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_COUNT_STR_SPACE, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_COUNT_STR_SPACE
-	    && strcmp(text, "A;A;A") == 0 && scratch[0] == '\0'
-	    && strcmp(saved, "A;A;A") == 0
-	    && strcmp(output, "old-output") == 0
-	    && result.pending_role == YT_REPEAT_PENDING_NONE
-	    && result.bold_committed && !result.notice_ready);
-
-	memcpy(text, "A;", 3U);
-	scratch[0] = '\0';
-	memcpy(saved, "old", 4U);
-	memcpy(output, "old-output", 11U);
-	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
-	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_CONCAT_SPACE, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_CONCAT_SPACE
-	    && result.pending_role == YT_REPEAT_PENDING_COUNT_TEXT
-	    && result.pending_length == 2U
-	    && strcmp(result.pending_string, " 3") == 0
-	    && strcmp(output, "old-output") == 0
-	    && result.bold_committed && !result.notice_ready);
-
-	memcpy(text, "A;", 3U);
-	scratch[0] = '\0';
-	memcpy(saved, "old", 4U);
-	memcpy(output, "old-output", 11U);
-	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
-	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_CONCAT_SPACE, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_CONCAT_SPACE
-	    && result.pending_role == YT_REPEAT_PENDING_NOTICE_PREFIX
-	    && strcmp(result.pending_string, "Command Repeated 3") == 0
-	    && strcmp(output, "old-output") == 0
-	    && result.bold_committed && !result.notice_ready);
-
-	memcpy(text, "A;", 3U);
-	scratch[0] = '\0';
-	memcpy(saved, "old", 4U);
-	memcpy(output, "old-output", 11U);
-	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
-	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_GOSUB_STACK, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_GOSUB_STACK
-	    && result.pending_role == YT_REPEAT_PENDING_NONE
-	    && strcmp(output, notice) == 0
-	    && result.bold_committed && result.notice_ready);
-
-	memcpy(text, "A;", 3U);
-	scratch[0] = '\0';
-	memcpy(saved, "old", 4U);
-	memcpy(output, "old-output", 11U);
-	CHECK(yt_input_repeat_build_staged(text, sizeof(text), scratch,
-	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_SITE_COUNT, 1U, &result));
-	CHECK(!result.fault_valid && result.fault_site == YT_BASIC_FAULT_SITE_COUNT
-	    && strcmp(text, "A;A;A") == 0 && scratch[0] == '\0'
-	    && strcmp(saved, "A;A;A") == 0 && strcmp(output, notice) == 0
-	    && result.bold_committed && result.notice_ready);
 }
 
 static void
@@ -1033,125 +593,6 @@ test_repeat_transform(void)
 		CHECK(result.emit_notice && result.count == 3.0f);
 		CHECK(strcmp(text, "A;A;A") == 0);
 	}
-}
-
-static void
-test_semicolon_stages(void)
-{
-	struct yt_semicolon_transform result;
-	char text[32];
-	char queue[32];
-	size_t position;
-	size_t length;
-
-	memcpy(text, "A;B;C", 6U);
-	memcpy(queue, "XY", 3U);
-	position = 1U;
-	length = 2U;
-	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
-	    sizeof(queue), &position, &length,
-	    YT_BASIC_FAULT_ADE0_SEMICOLON_TAIL_MID_SPACE, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_ADE0_SEMICOLON_TAIL_MID_SPACE
-	    && result.semicolon_position == 2U
-	    && result.pending_role == YT_SEMICOLON_PENDING_NONE
-	    && strcmp(text, "A;B;C") == 0 && strcmp(queue, "XY") == 0
-	    && position == 1U && length == 2U);
-
-	memcpy(text, "A;B;C", 6U);
-	memcpy(queue, "XY", 3U);
-	position = 1U;
-	length = 2U;
-	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
-	    sizeof(queue), &position, &length,
-	    YT_BASIC_FAULT_ADE0_SEMICOLON_QUEUE_CONCAT_SPACE, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site
-	    == YT_BASIC_FAULT_ADE0_SEMICOLON_QUEUE_CONCAT_SPACE
-	    && result.pending_role == YT_SEMICOLON_PENDING_TAIL
-	    && result.pending_length == 3U
-	    && strcmp(result.pending_string, "B;C") == 0
-	    && strcmp(text, "A;B;C") == 0 && strcmp(queue, "XY") == 0
-	    && position == 1U && length == 2U);
-
-	memcpy(text, "A;B;C", 6U);
-	memcpy(queue, "XY", 3U);
-	position = 1U;
-	length = 2U;
-	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
-	    sizeof(queue), &position, &length,
-	    YT_BASIC_FAULT_ADE0_SEMICOLON_PREFIX_LEFT_SPACE, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site
-	    == YT_BASIC_FAULT_ADE0_SEMICOLON_PREFIX_LEFT_SPACE
-	    && result.pending_role == YT_SEMICOLON_PENDING_NONE
-	    && strcmp(text, "A;B;C") == 0 && strcmp(queue, "B;CY") == 0
-	    && position == 0U && length == 4U);
-
-	memcpy(text, "A;B;C", 6U);
-	memcpy(queue, "XY", 3U);
-	position = 1U;
-	length = 2U;
-	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
-	    sizeof(queue), &position, &length,
-	    YT_BASIC_FAULT_ADE0_SEMICOLON_REPLACEMENT_CHR_SPACE, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site
-	    == YT_BASIC_FAULT_ADE0_SEMICOLON_REPLACEMENT_CHR_SPACE
-	    && result.replacements == 0U && strcmp(text, "A") == 0
-	    && strcmp(queue, "B;CY") == 0 && position == 0U && length == 4U);
-
-	memcpy(text, "A;B;C;D", 8U);
-	queue[0] = '\0';
-	position = 0U;
-	length = 0U;
-	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
-	    sizeof(queue), &position, &length,
-	    YT_BASIC_FAULT_ADE0_SEMICOLON_REPLACEMENT_CHR_SPACE, 2U, &result));
-	CHECK(result.fault_valid && result.replacements == 1U
-	    && strcmp(text, "A") == 0 && memcmp(queue, "B\rC;D", 6U) == 0
-	    && length == 5U);
-
-	memcpy(text, "A;B;C", 6U);
-	memcpy(queue, "XY", 3U);
-	position = 1U;
-	length = 2U;
-	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
-	    sizeof(queue), &position, &length,
-	    YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CR_SPACE, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site == YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CR_SPACE
-	    && result.replacements == 1U && strcmp(text, "A") == 0
-	    && memcmp(queue, "B\rCY", 5U) == 0 && length == 4U
-	    && result.pending_role == YT_SEMICOLON_PENDING_NONE);
-
-	memcpy(text, "A;B;C", 6U);
-	memcpy(queue, "XY", 3U);
-	position = 1U;
-	length = 2U;
-	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
-	    sizeof(queue), &position, &length,
-	    YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CONCAT_SPACE, 1U, &result));
-	CHECK(result.fault_valid
-	    && result.fault_site
-	    == YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CONCAT_SPACE
-	    && result.replacements == 1U && strcmp(text, "A") == 0
-	    && memcmp(queue, "B\rCY", 5U) == 0 && length == 4U
-	    && result.pending_role == YT_SEMICOLON_PENDING_FINAL_CR
-	    && result.pending_length == 1U && result.pending_string[0] == '\r');
-
-	memcpy(text, "A;B;C", 6U);
-	memcpy(queue, "XY", 3U);
-	position = 1U;
-	length = 2U;
-	CHECK(yt_input_split_semicolon_staged(text, sizeof(text), queue,
-	    sizeof(queue), &position, &length, YT_BASIC_FAULT_SITE_COUNT, 1U,
-	    &result));
-	CHECK(!result.fault_valid && result.fault_site == YT_BASIC_FAULT_SITE_COUNT
-	    && result.replacements == 1U && strcmp(text, "A") == 0
-	    && memcmp(queue, "B\rCY\r", 6U) == 0
-	    && position == 0U && length == 5U
-	    && result.pending_role == YT_SEMICOLON_PENDING_NONE);
 }
 
 static void
@@ -1347,137 +788,6 @@ test_yes_no_candidate(void)
 	    &answer));
 }
 
-static bool
-a8d2_case(const char *response, enum yt_confirmation_fault_site target,
-    uint16_t error_number, struct yt_confirmation_transform *result,
-	char output[32], char prompt[32], char queue[32],
-	size_t *queue_position, size_t *queue_length, float *bold)
-{
-	size_t prompt_length;
-
-	snprintf(output, 32U, "%s", "old output");
-	snprintf(prompt, 32U, "%s", "[y/N] -=> ");
-	snprintf(queue, 32U, "%s", "Q\r");
-	*queue_position = 0U;
-	*queue_length = 2U;
-	*bold = 0.0f;
-	prompt_length = strlen(prompt);
-	return yt_input_confirmation_staged(response, output, 32U,
-	    (uint8_t *)prompt, 32U, &prompt_length, queue, 32U,
-	    queue_position, queue_length, bold, target,
-	    error_number, result);
-}
-
-static void
-test_a8d2_fault_stages(void)
-{
-	static const struct {
-		enum yt_confirmation_fault_site site;
-		uint16_t instruction;
-		uint16_t saved_ip;
-		uint16_t statement;
-		uint16_t destination;
-		size_t errors;
-	} identities[] = {
-		{YT_CONFIRMATION_FAULT_LEFT_ONE, 0xA8EFU, 0xA8F2U, 0xA8E7U,
-		    0x4C9AU, 3U},
-		{YT_CONFIRMATION_FAULT_FIRST_COPY, 0xA8F4U, 0xA8F7U, 0xA8E7U,
-		    0x4C9AU, 1U},
-		{YT_CONFIRMATION_FAULT_INVALID_QUEUE_CLEAR, 0xA938U, 0xA93BU,
-		    0xA932U, 0x4BE0U, 1U},
-		{YT_CONFIRMATION_FAULT_PROMPT_CLEAR, 0xA943U, 0xA946U, 0xA93DU,
-		    0x4D3AU, 1U},
-	};
-	struct yt_confirmation_transform result;
-	char output[32];
-	char prompt[32];
-	char queue[32];
-	size_t queue_position;
-	size_t queue_length;
-	float bold;
-	size_t index;
-
-	for (index = 0U; index < YT_ARRAY_LEN(identities); ++index) {
-		const struct yt_confirmation_fault_identity *identity =
-		    yt_input_confirmation_fault_identity(identities[index].site);
-
-		CHECK(identity != NULL
-		    && identity->instruction == identities[index].instruction
-		    && identity->saved_ip == identities[index].saved_ip
-		    && identity->statement == identities[index].statement
-		    && identity->source_line == 40001
-		    && identity->destination == identities[index].destination
-		    && identity->error_count == identities[index].errors);
-	}
-	CHECK(yt_input_confirmation_fault_identity(YT_CONFIRMATION_FAULT_NONE) == NULL
-	    && yt_input_confirmation_fault_identity(YT_CONFIRMATION_FAULT_SITE_COUNT) == NULL);
-
-	CHECK(a8d2_case("ab", YT_CONFIRMATION_FAULT_LEFT_ONE, 14U, &result,
-	    output, prompt, queue, &queue_position, &queue_length, &bold));
-	CHECK(result.outcome == YT_CONFIRMATION_BASIC_ERROR
-	    && result.fault_site == YT_CONFIRMATION_FAULT_LEFT_ONE
-	    && result.error_number == 14U && result.uppercase_complete
-	    && !result.left_complete && !result.answer_valid
-	    && strcmp(output, "AB") == 0
-	    && strcmp(prompt, "[y/N] -=> ") == 0
-	    && strcmp(queue, "Q\r") == 0 && queue_length == 2U
-	    && bold == 0.0f);
-	CHECK(a8d2_case("ab", YT_CONFIRMATION_FAULT_LEFT_ONE, 16U, &result,
-	    output, prompt, queue, &queue_position, &queue_length, &bold)
-	    && result.outcome == YT_CONFIRMATION_BASIC_ERROR
-	    && result.error_number == 16U && strcmp(output, "AB") == 0);
-	CHECK(a8d2_case("ab", YT_CONFIRMATION_FAULT_LEFT_ONE, 0x0AC9U, &result,
-	    output, prompt, queue, &queue_position, &queue_length, &bold)
-	    && result.outcome == YT_CONFIRMATION_INTERNAL_FATAL
-	    && result.error_number == 0x0AC9U && strcmp(output, "AB") == 0);
-
-	CHECK(a8d2_case("ab", YT_CONFIRMATION_FAULT_FIRST_COPY, 0x0ACCU,
-	    &result, output, prompt, queue, &queue_position, &queue_length,
-	    &bold));
-	CHECK(result.outcome == YT_CONFIRMATION_INTERNAL_FATAL
-	    && result.left_complete && !result.first_copy_complete
-	    && !result.answer_valid && strcmp(output, "AB") == 0
-	    && strcmp(prompt, "[y/N] -=> ") == 0
-	    && queue_length == 2U && bold == 0.0f);
-	CHECK(a8d2_case("x", YT_CONFIRMATION_FAULT_INVALID_QUEUE_CLEAR, 0x0ACCU,
-	    &result, output, prompt, queue, &queue_position, &queue_length,
-	    &bold));
-	CHECK(result.outcome == YT_CONFIRMATION_INTERNAL_FATAL
-	    && result.answer_valid && result.answer == YT_YES_NO_INVALID
-	    && result.first_copy_complete && result.bold_committed
-	    && !result.queue_cleared && strcmp(output, "X") == 0
-	    && strcmp(queue, "Q\r") == 0 && queue_length == 2U
-	    && strcmp(prompt, "[y/N] -=> ") == 0 && bold == 1.0f);
-	CHECK(a8d2_case("n", YT_CONFIRMATION_FAULT_PROMPT_CLEAR, 0x0ACCU,
-	    &result, output, prompt, queue, &queue_position, &queue_length,
-	    &bold));
-	CHECK(result.outcome == YT_CONFIRMATION_INTERNAL_FATAL
-	    && result.answer_valid && result.answer == YT_YES_NO_NO
-	    && !result.prompt_cleared && strcmp(output, "N") == 0
-	    && strcmp(prompt, "[y/N] -=> ") == 0
-	    && strcmp(queue, "Q\r") == 0 && queue_length == 2U
-	    && bold == 0.0f);
-	CHECK(a8d2_case("x", YT_CONFIRMATION_FAULT_NONE, 0U, &result,
-	    output, prompt, queue, &queue_position, &queue_length, &bold)
-	    && result.outcome == YT_CONFIRMATION_RETRY && result.queue_cleared
-	    && queue_length == 0U && queue[0] == '\0' && bold == 1.0f
-	    && strcmp(prompt, "[y/N] -=> ") == 0);
-	CHECK(a8d2_case("n", YT_CONFIRMATION_FAULT_NONE, 0U, &result,
-	    output, prompt, queue, &queue_position, &queue_length, &bold)
-	    && result.outcome == YT_CONFIRMATION_RETURNED && result.prompt_cleared
-	    && prompt[0] == '\0' && strcmp(queue, "Q\r") == 0
-	    && queue_length == 2U && strcmp(output, "N") == 0);
-
-	CHECK(!a8d2_case("", YT_CONFIRMATION_FAULT_LEFT_ONE, 14U, &result,
-	    output, prompt, queue, &queue_position, &queue_length, &bold)
-	    && !a8d2_case("n", YT_CONFIRMATION_FAULT_INVALID_QUEUE_CLEAR, 0x0ACCU,
-	    &result, output, prompt, queue, &queue_position, &queue_length,
-	    &bold)
-	    && !a8d2_case("x", YT_CONFIRMATION_FAULT_PROMPT_CLEAR, 0x0ACCU,
-	    &result, output, prompt, queue, &queue_position, &queue_length,
-	    &bold));
-}
-
 static void
 test_startup_helpers(void)
 {
@@ -1621,23 +931,17 @@ main(void)
 	test_ab36_printable_transaction();
 	test_command_save_stages();
 	test_b05d_keys();
-	test_upper_fault_stages();
-	test_repeat_prefix_stages();
-	test_repeat_parse_stages();
-	test_repeat_build_stages();
 	test_repeat_transform();
-	test_semicolon_stages();
 	test_semicolon_queue();
 	test_queue_program_prepend();
 	test_input_drain();
 	test_yes_no_candidate();
-	test_a8d2_fault_stages();
 	test_startup_helpers();
 	test_platform_rmt_serial();
 	if (failures != 0) {
-		fprintf(stderr, "%u input-model test(s) failed\n", failures);
+		fprintf(stderr, "%u command-input test(s) failed\n", failures);
 		return 1;
 	}
-	puts("input-model tests passed");
+	puts("command-input tests passed");
 	return 0;
 }
