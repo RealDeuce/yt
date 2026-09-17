@@ -167,7 +167,7 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 			char name[42];
 			bool accepted;
 
-			if (!session_team_pick_name(session, (float)team.id, name,
+			if (!session_team_pick_name(session, team.id, name,
 			    &accepted, error))
 				return false;
 			(void)accepted;

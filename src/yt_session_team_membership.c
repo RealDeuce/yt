@@ -7,7 +7,7 @@
 #include <string.h>
 
 bool
-session_team_pick_name(struct yt_session *session, float team_id, char name[42],
+session_team_pick_name(struct yt_session *session, int team_id, char name[42],
     bool *accepted, struct yt_error *error)
 {
 	static const uint8_t prompt[] =
@@ -30,17 +30,8 @@ session_team_pick_name(struct yt_session *session, float team_id, char name[42],
 	if (!yt_team_prepare_name(response, &name_length))
 		return session_present_alert(session, invalid, sizeof(invalid) - 1U,
 		    "team name invalid length", error);
-	if (team_id != floorf(team_id) || team_id < 0.0f
-	    || team_id > (float)YT_DEFAULT_PLAYER_COUNT) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "team name record number");
-		}
-		return false;
-	}
 	(void)snprintf(name, 42, "%s", response);
-	if (!session_team_read_overlay(session, (int)team_id, &team, error))
+	if (!session_team_read_overlay(session, team_id, &team, error))
 		return false;
 	(void)snprintf(team.name, sizeof(team.name), "%s", response);
 	yt_team_name_overlay(&team.overlay.record,
@@ -107,7 +98,7 @@ session_team_create(struct yt_session *session, struct yt_error *error)
 	char news[300];
 	char success[300];
 	int id;
-	float selected;
+	int selected;
 	bool name_accepted;
 
 	(void)snprintf(actor_name, sizeof(actor_name), "%s",
@@ -115,12 +106,12 @@ session_team_create(struct yt_session *session, struct yt_error *error)
 	if (!session_present_alert(session, entering, sizeof(entering) - 1U,
 	    "team create heading", error))
 		return false;
-	selected = session->player.team;
+	selected = (int)session->player.team;
 	for (id = 1; id <= YT_DEFAULT_PLAYER_COUNT; ++id) {
 		if (!session_load_team(session, id, &team, error))
 			return false;
 		if (!team.live) {
-			selected = (float)id;
+			selected = id;
 			break;
 		}
 	}
@@ -129,7 +120,7 @@ session_team_create(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (!name_accepted)
 		return true;
-	id = (int)selected;
+	id = selected;
 	if (!yt_game_read_player(&session->door->game, session_record(session),
 	    &session->player, error))
 		return false;
@@ -152,7 +143,7 @@ session_team_create(struct yt_session *session, struct yt_error *error)
 	    || !session_team_create_password(session, id, password, error))
 		return false;
 	session_set_foreground(session, 3.0f);
-	if (qb_str_single(number, sizeof(number), selected) < 0
+	if (qb_str_single(number, sizeof(number), (float)selected) < 0
 	    || snprintf(news, sizeof(news), "%s Created Team%s -=- %s",
 	    actor_name, number, name) < 0
 	    || !yt_news_append(news, error)
@@ -298,7 +289,7 @@ session_team_quit(struct yt_session *session, struct yt_team *team,
 	enum yt_yes_no_answer answer;
 	struct yt_player persisted;
 	struct yt_sector explicit_overlay;
-	float old_team;
+	int old_team;
 	size_t index;
 	bool live = false;
 
@@ -310,33 +301,24 @@ session_team_quit(struct yt_session *session, struct yt_team *team,
 	if (!yt_game_read_player(&session->door->game, session_record(session),
 	    &session->player, error))
 		return false;
-	old_team = session->player.team;
+	old_team = (int)session->player.team;
 	yt_team_membership_apply_player(&session->player, 0);
 	persisted = session->player;
 	if (!yt_game_write_player(&session->door->game, session_record(session),
 	    &persisted, error))
 		return false;
-	if (old_team != floorf(old_team) || old_team < 1.0f
-	    || old_team > (float)YT_DEFAULT_PLAYER_COUNT) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "team quit record number");
-		}
-		return false;
-	}
-	if (!session_read_sector(session, (int)old_team,
+	if (!session_read_sector(session, old_team,
 	    &explicit_overlay, error))
 		return false;
 	(void)explicit_overlay;
-	if (!session_load_team(session, (int)old_team, team, error))
+	if (!session_load_team(session, old_team, team, error))
 		return false;
 	for (index = 0; index < 4; ++index) {
 		if (team->roster[index] == session_record(session))
 			team->roster[index] = 0;
 	}
 	if (!session_team_store_roster(session, team, error)
-	    || !session_load_team(session, (int)old_team, team, error))
+	    || !session_load_team(session, old_team, team, error))
 		return false;
 	for (index = 0; index < 4; ++index)
 		if (team->roster[index] != 0)
@@ -352,7 +334,7 @@ session_team_quit(struct yt_session *session, struct yt_team *team,
 	session_set_foreground(session, 6.0f);
 	if (!session_present_paged_line(session, success, sizeof(success) - 1U,
 	    "team quit success row", error)
-	    || !session_team_audit(session, (int)old_team, YT_TEAM_AUDIT_QUIT, "",
+	    || !session_team_audit(session, old_team, YT_TEAM_AUDIT_QUIT, "",
 	    error))
 		return false;
 	return true;

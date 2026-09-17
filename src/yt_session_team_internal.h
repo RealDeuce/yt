@@ -12,7 +12,7 @@ bool session_team_store_roster(struct yt_session *session,
 bool session_team_audit(struct yt_session *session, int team_id,
     enum yt_team_audit_event event, const char *attempt,
     struct yt_error *error);
-bool session_team_pick_name(struct yt_session *session, float team_id,
+bool session_team_pick_name(struct yt_session *session, int team_id,
     char name[42], bool *accepted, struct yt_error *error);
 bool session_team_create_password(struct yt_session *session, int team_id,
     char password[5], struct yt_error *error);
