@@ -23,15 +23,15 @@ set_error(struct yt_error *error, enum yt_status status,
 }
 
 bool
-yt_maintenance_mercenary_stays(float planet_link, float draw)
+yt_maintenance_mercenary_stays(int planet_link, float draw)
 {
-	return planet_link > 0.0f && draw < 0.6600000262260437f;
+	return planet_link > 0 && draw < 0.6600000262260437f;
 }
 
 bool
-yt_maintenance_mercenary_attacks(float defense_owner, float draw)
+yt_maintenance_mercenary_attacks(int defense_owner, float draw)
 {
-	return defense_owner < 0.0f
+	return defense_owner < 0
 	    || draw > 0.949999988079071f;
 }
 

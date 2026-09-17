@@ -3158,16 +3158,16 @@ check_maintenance_mercenary_output(void)
 	    false, 0.0f, &output)
 	    && !yt_maintenance_compose_mercenary_phase(NULL, 0U, 0.0f,
 	    false, 0.0f, NULL)
-	    && yt_maintenance_mercenary_stays(1.0f,
+	    && yt_maintenance_mercenary_stays(1,
 	    0.6600000262260437f - 0.000001f)
-	    && !yt_maintenance_mercenary_stays(1.0f,
+	    && !yt_maintenance_mercenary_stays(1,
 	    0.6600000262260437f)
-	    && !yt_maintenance_mercenary_stays(0.0f, 0.0f)
-	    && !yt_maintenance_mercenary_stays(-1.0f, 0.0f)
-	    && yt_maintenance_mercenary_attacks(-1.0f, 0.0f)
-	    && yt_maintenance_mercenary_attacks(-3.0f, 0.0f)
-	    && yt_maintenance_mercenary_attacks(2.0f, 0.950001f)
-	    && !yt_maintenance_mercenary_attacks(2.0f,
+	    && !yt_maintenance_mercenary_stays(0, 0.0f)
+	    && !yt_maintenance_mercenary_stays(-1, 0.0f)
+	    && yt_maintenance_mercenary_attacks(-1, 0.0f)
+	    && yt_maintenance_mercenary_attacks(-3, 0.0f)
+	    && yt_maintenance_mercenary_attacks(2, 0.950001f)
+	    && !yt_maintenance_mercenary_attacks(2,
 	    0.949999988079071f);
 }
 
