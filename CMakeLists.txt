@@ -95,6 +95,7 @@ set(YT_GAME_SOURCES
     src/yt_game_player_combat.c
     src/yt_game_port.c
     src/yt_game_projectile.c
+    src/yt_game_projectile_damage.c
     src/yt_game_projectile_impact.c
     src/yt_game_radio.c
     src/yt_game_records.c
