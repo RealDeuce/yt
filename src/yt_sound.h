@@ -21,18 +21,15 @@ enum yt_sound_cue {
 
 enum yt_sound_status {
 	YT_SOUND_OK,
-	YT_SOUND_INVALID_CUE,
-	YT_SOUND_USER_OVERFLOW,
-	YT_SOUND_LOCAL_OVERFLOW
+	YT_SOUND_INVALID_CUE
 };
 
 struct yt_sound_state {
-	uint8_t conversion_mode;
-	float ansi;
-	float mode;
-	float user_sound;
-	bool snoop;
-	float local_sound;
+	bool ansi;
+	bool local_mode;
+	bool user_sound;
+	bool local_output;
+	bool local_sound;
 };
 
 struct yt_sound_result {

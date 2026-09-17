@@ -701,7 +701,7 @@ test_input_drain(void)
 	CHECK(reason == YT_INPUT_DRAIN_LOCAL_COMPLETE
 	    && drain.residue_length == 1
 	    && drain.residue[0] == 'Z');
-	CHECK(yt_input_drain_serial(&drain, 2.0f, &value)
+	CHECK(yt_input_drain_serial(&drain, true, &value)
 	    == YT_INPUT_DRAIN_COMPLETE);
 
 	CHECK(yt_input_drain_begin(&drain, &initial));
@@ -729,14 +729,14 @@ test_input_drain(void)
 	value.bytes[0] = 'x';
 	value.length = 1;
 	value.remote = true;
-	CHECK(yt_input_drain_serial(&drain, 0.0f, &value)
+	CHECK(yt_input_drain_serial(&drain, false, &value)
 	    == YT_INPUT_DRAIN_CONTINUE);
 	value.bytes[0] = 'y';
-	CHECK(yt_input_drain_serial(&drain, 0.0f, &value)
+	CHECK(yt_input_drain_serial(&drain, false, &value)
 	    == YT_INPUT_DRAIN_CONTINUE);
 	value.length = 0;
 	value.remote = false;
-	CHECK(yt_input_drain_serial(&drain, 0.0f, &value)
+	CHECK(yt_input_drain_serial(&drain, false, &value)
 	    == YT_INPUT_DRAIN_COMPLETE);
 	CHECK(drain.residue_length == 1 && drain.residue[0] == 'y');
 }

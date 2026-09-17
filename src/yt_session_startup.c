@@ -28,7 +28,8 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 	yt_random_init(&game->random);
 	ok = yt_game_load_startup_configuration(game, "YTDATA.DAT",
 	    session->door->identity.local, &session->player_cache,
-	    session->disruption_sectors, &session->presentation.sound.snoop,
+	    session->disruption_sectors,
+	    &session->presentation.sound.local_output,
 	    error);
 	session->door->game_open = game->database.file != NULL;
 	return ok;
@@ -43,10 +44,10 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 
 	if (!yt_session_build_route(session, 1.0f, 2.0f, false, &route, error))
 		return false;
-	if (session->presentation.sound.ansi != 0.0f) {
+	if (session->presentation.sound.ansi) {
 		if (!yt_out_opening_file("YTOPEN.ANS",
-		    session->presentation.sound.mode,
-		    session->presentation.sound.snoop,
+		    session->presentation.sound.local_mode,
+		    session->presentation.sound.local_output,
 		    &session->io.input,
 		    &opening_basic_error, error)) {
 			if (opening_basic_error != 0U) {
@@ -731,11 +732,10 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	session.running = true;
 	/* YT:040A is the ordinary instruction after the handed-off checkpoint. */
 	session.pager.nonstop = true;
-	session.presentation.sound.ansi = door->identity.ansi ? 1.0f : 0.0f;
-	session.presentation.sound.mode = door->identity.local ? 1.0f : 0.0f;
-	session.presentation.sound.user_sound = -1.0f;
-	session.presentation.sound.local_sound =
-	    door->identity.local ? -1.0f : 0.0f;
+	session.presentation.sound.ansi = door->identity.ansi;
+	session.presentation.sound.local_mode = door->identity.local;
+	session.presentation.sound.user_sound = true;
+	session.presentation.sound.local_sound = door->identity.local;
 	session_set_foreground(&session, 7.0f);
 	yt_random_init(&launch_random);
 	if (!yt_random_market_bases(&launch_random, session.market_bases, error))

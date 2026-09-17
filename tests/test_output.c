@@ -244,7 +244,7 @@ test_ansi_opening_routes(void)
 	od_control.od_force_local = TRUE;
 	od_control.baud = 19200U;
 	yt_error_clear(&error);
-	CHECK(yt_out_opening_file(path, 1.0f, 1.0f, &input, NULL, &error)
+	CHECK(yt_out_opening_file(path, true, true, &input, NULL, &error)
 	    && input_wait_count == 1U && output_call_count == 0U
 	    && emulated_call_count == 3U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
@@ -259,7 +259,7 @@ test_ansi_opening_routes(void)
 	od_control.od_force_local = FALSE;
 	od_control.baud = 38400U;
 	yt_error_clear(&error);
-	CHECK(yt_out_opening_file(path, 0.0f, 1.0f, &input, NULL, &error)
+	CHECK(yt_out_opening_file(path, false, true, &input, NULL, &error)
 	    && input_wait_count == 1U && output_call_count == 0U
 	    && emulated_call_count == 4U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
@@ -276,7 +276,7 @@ test_ansi_opening_routes(void)
 	od_control.od_force_local = TRUE;
 	queue_input('L', FALSE);
 	yt_error_clear(&error);
-	CHECK(yt_out_opening_file(path, 1.0f, 1.0f, &input, NULL, &error)
+	CHECK(yt_out_opening_file(path, true, true, &input, NULL, &error)
 	    && input_poll_count == 1U && input_wait_count == 0U
 	    && emulated_call_count == 3U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
@@ -288,7 +288,7 @@ test_ansi_opening_routes(void)
 	od_control.od_force_local = FALSE;
 	queue_input('R', TRUE);
 	yt_error_clear(&error);
-	CHECK(yt_out_opening_file(path, 0.0f, 1.0f, &input, NULL, &error)
+	CHECK(yt_out_opening_file(path, false, true, &input, NULL, &error)
 	    && input_poll_count == 1U && input_wait_count == 0U
 	    && input.pending_valid && input.pending.bytes[0] == 'R'
 	    && input.pending.remote && emulated_call_count == 4U
@@ -297,19 +297,11 @@ test_ansi_opening_routes(void)
 	    && strcmp(emulated_calls[2].text, "\x1b") == 0
 	    && strcmp(emulated_calls[3].text, "[0m") == 0);
 
-	reset_calls();
-	yt_input_init(&input);
-	yt_error_clear(&error);
-	CHECK(yt_out_opening_file(path, 2.0f, 0.0f, &input, NULL, &error)
-	    && input_poll_count == 3U && input_wait_count == 1U
-	    && emulated_call_count == 2U
-	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
-	    && strcmp(emulated_calls[1].text, "\n\r") == 0);
 	CHECK(remove(path) == 0);
 
 	yt_input_init(&input);
 	yt_error_clear(&error);
-	CHECK(!yt_out_opening_file(missing_path, 0.0f, 1.0f, &input,
+	CHECK(!yt_out_opening_file(missing_path, false, true, &input,
 	    &open_basic_error, &error)
 	    && open_basic_error == 53U && error.status == YT_NOT_FOUND);
 }
@@ -428,10 +420,10 @@ test_sound_adapter(void)
 	struct yt_present_result result;
 
 	memset(&current, 0, sizeof(current));
-	current.sound.ansi = 1.0f;
-	current.sound.user_sound = -1.0f;
-	current.sound.snoop = true;
-	current.sound.local_sound = -1.0f;
+	current.sound.ansi = true;
+	current.sound.user_sound = true;
+	current.sound.local_output = true;
+	current.sound.local_sound = true;
 	CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, &current, &result) == YT_PRESENT_OK);
 	reset_calls();
 	od_control.od_force_local = FALSE;
@@ -443,9 +435,9 @@ test_sound_adapter(void)
 	    (const char *)selector_one) == 0);
 
 	memset(&current, 0, sizeof(current));
-	current.sound.user_sound = -1.0f;
-	current.sound.snoop = true;
-	current.sound.local_sound = -1.0f;
+	current.sound.user_sound = true;
+	current.sound.local_output = true;
+	current.sound.local_sound = true;
 	CHECK(yt_present_sound(YT_SOUND_CUE_DANGER, &current, &result) == YT_PRESENT_OK);
 	reset_calls();
 	od_control.od_force_local = FALSE;
@@ -457,11 +449,11 @@ test_sound_adapter(void)
 	    && emulated_calls[0].remote_echo);
 
 	memset(&current, 0, sizeof(current));
-	current.sound.ansi = 1.0f;
-	current.sound.mode = 1.0f;
-	current.sound.user_sound = -1.0f;
-	current.sound.snoop = true;
-	current.sound.local_sound = -1.0f;
+	current.sound.ansi = true;
+	current.sound.local_mode = true;
+	current.sound.user_sound = true;
+	current.sound.local_output = true;
+	current.sound.local_sound = true;
 	CHECK(yt_present_sound(YT_SOUND_CUE_REWARD, &current, &result) == YT_PRESENT_OK
 	    && result.remote_length == 0U && result.event_count == 1U
 	    && result.events[0].operation == YT_PRESENT_LOCAL_PLAY);

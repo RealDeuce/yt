@@ -433,13 +433,13 @@ yt_input_drain_local(struct yt_input_drain_state *state,
 }
 
 enum yt_input_drain_reason
-yt_input_drain_serial(struct yt_input_drain_state *state, float mode,
+yt_input_drain_serial(struct yt_input_drain_state *state, bool local_mode,
     const struct yt_input_value *selected)
 {
 	if (state == NULL || selected == NULL || selected->length > 2U
 	    || state->expect_paired_local)
 		return YT_INPUT_DRAIN_ERROR;
-	if (mode != 0.0f)
+	if (local_mode)
 		return YT_INPUT_DRAIN_COMPLETE;
 	if (selected->length == 0)
 		return YT_INPUT_DRAIN_COMPLETE;

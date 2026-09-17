@@ -70,7 +70,7 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 	    || !session_read_number_command(session, response, sizeof(response)))
 		return false;
 	if (!yt_computer_avoid_select_slot(response,
-	    session->presentation.sound.conversion_mode, &slot_value, &slot,
+	    session->presentation.conversion_mode, &slot_value, &slot,
 	    &route, error))
 		return false;
 	if (route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED)

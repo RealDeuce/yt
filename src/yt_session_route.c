@@ -35,7 +35,7 @@ yt_session_build_route(struct yt_session *session, float start_value,
     struct yt_error *error)
 {
 	const float *avoid = session->navigation.avoided_sectors;
-	uint8_t conversion_mode = session->presentation.sound.conversion_mode;
+	uint8_t conversion_mode = session->presentation.conversion_mode;
 	int predecessor[YT_ROUTE_CAPACITY];
 	int head = 1;
 	int tail = 1;

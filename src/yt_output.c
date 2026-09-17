@@ -239,7 +239,7 @@ out_opening_wait(struct yt_input *input, struct yt_error *error)
 }
 
 bool
-yt_out_opening_file(const char *path, float mode, bool snoop,
+yt_out_opening_file(const char *path, bool local_mode, bool local_output,
     struct yt_input *session_input, uint16_t *basic_error,
     struct yt_error *error)
 {
@@ -314,7 +314,7 @@ yt_out_opening_file(const char *path, float mode, bool snoop,
 			    "ANSI LINE INPUT after EOF check", path);
 			goto done;
 		}
-		if (snoop) {
+		if (local_output) {
 			yt_error_clear(active_error);
 			if (local_session()) {
 				out_emulated_bytes(line, length);
@@ -326,7 +326,7 @@ yt_out_opening_file(const char *path, float mode, bool snoop,
 		    active_error));
 		if (ready)
 			break;
-		if (mode != 1.0f) {
+		if (!local_mode) {
 			yt_error_clear(active_error);
 			out_emulated_bytes(line, length);
 			out_emulated_bytes(remote_newline,
@@ -337,12 +337,12 @@ yt_out_opening_file(const char *path, float mode, bool snoop,
 				break;
 		}
 	}
-	if (mode == 0.0f) {
+	if (!local_mode) {
 		yt_error_clear(active_error);
 		out_emulated_bytes(escape, sizeof(escape) - 1U);
 		out_emulated_bytes(reset_suffix, sizeof(reset_suffix) - 1U);
 	}
-	if (snoop) {
+	if (local_output) {
 		yt_error_clear(active_error);
 		if (local_session())
 			out_emulated_bytes(reset, sizeof(reset) - 1U);

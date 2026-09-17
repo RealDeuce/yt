@@ -18,10 +18,10 @@ state(bool ansi)
 	struct yt_sound_state value;
 
 	memset(&value, 0, sizeof(value));
-	value.ansi = ansi ? 1.0f : 0.0f;
-	value.user_sound = -1.0f;
-	value.snoop = true;
-	value.local_sound = -1.0f;
+	value.ansi = ansi;
+	value.user_sound = true;
+	value.local_output = true;
+	value.local_sound = true;
 	return value;
 }
 
@@ -75,105 +75,52 @@ test_branches_and_gates(void)
 	CHECK(memcmp(result.play, "T255L63o4be", 11) == 0);
 
 	current = state(false);
-	current.mode = 1.0f;
+	current.local_mode = true;
 	CHECK(yt_sound_dispatch(YT_SOUND_CUE_DANGER, &current, &result) == YT_SOUND_OK);
 	CHECK(result.remote_length == 0 && result.play_length == 11);
-	current.snoop = false;
-	current.local_sound = 1.0f;
-	current.mode = 0.0f;
+	current.local_output = false;
+	current.local_sound = true;
+	current.local_mode = false;
 	CHECK(yt_sound_dispatch(YT_SOUND_CUE_DANGER, &current, &result) == YT_SOUND_OK);
 	CHECK(result.remote_length == 1 && result.play_length == 0);
 }
 
 static void
-test_failures(void)
+test_invalid_cue(void)
 {
 	struct yt_sound_state current = state(true);
 	struct yt_sound_result result;
 
-	current.user_sound = 40000.0f;
-	CHECK(yt_sound_dispatch(YT_SOUND_CUE_REWARD, &current, &result)
-	    == YT_SOUND_USER_OVERFLOW);
-	CHECK(result.remote_length == 0);
-	current = state(true);
-	current.local_sound = 40000.0f;
-	CHECK(yt_sound_dispatch(YT_SOUND_CUE_REWARD, &current, &result)
-	    == YT_SOUND_LOCAL_OVERFLOW);
-	CHECK(result.remote_length > 0);
-	current = state(false);
-	current.mode = 1.0f;
-	current.user_sound = 40000.0f;
-	CHECK(yt_sound_dispatch(YT_SOUND_CUE_REWARD, &current, &result) == YT_SOUND_OK);
-	CHECK(result.remote_length == 0);
+	CHECK(yt_sound_dispatch((enum yt_sound_cue)0, &current, &result)
+	    == YT_SOUND_INVALID_CUE);
+	CHECK(result.remote_length == 0U && result.play_length == 0U);
 }
 
 static void
 test_toggle(void)
 {
-	static const struct {
-		float prior;
-		float toggled;
-		const char *line;
-	} nearest[] = {
-		{0.0f, -1.0f, "Sound ON"},
-		{-0.5f, 0.0f, "Sound OFF"},
-		{-1.0f, 0.0f, "Sound OFF"},
-		{1.0f, -2.0f, "Sound ON"},
-		{-2.0f, 1.0f, "Sound ON"},
-		{2.5f, -4.0f, "Sound ON"},
-		{-2.5f, 2.0f, "Sound ON"},
-		{1.5f, -3.0f, "Sound ON"},
-		{-1.5f, 1.0f, "Sound ON"},
-		{-0.5001f, 0.0f, "Sound OFF"},
-		{-1.4999f, 0.0f, "Sound OFF"},
-		{32767.0f, -32768.0f, "Sound ON"},
-		{-32768.0f, 32767.0f, "Sound ON"}
-	};
-	size_t index;
+	struct yt_sound_state current = state(true);
+	struct yt_sound_result result;
 
-	for (index = 0; index < sizeof(nearest) / sizeof(nearest[0]); ++index) {
-		struct yt_sound_state current = state(true);
-		struct yt_sound_result result;
-		size_t line_length = strlen(nearest[index].line);
+	CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_OK);
+	CHECK(!current.user_sound && current.local_sound);
+	CHECK(result.line_length == 9U
+	    && memcmp(result.line, "Sound OFF", 9U) == 0);
+	CHECK(result.remote_length == 0U && result.play_length == 0U);
+	CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_OK);
+	CHECK(current.user_sound && current.local_sound);
+	CHECK(result.line_length == 8U
+	    && memcmp(result.line, "Sound ON", 8U) == 0);
+	CHECK(result.remote_length == 43U && result.play_length == 40U);
 
-		current.user_sound = nearest[index].prior;
-		CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_OK);
-		CHECK(current.user_sound == nearest[index].toggled);
-		CHECK(current.local_sound == -1.0f);
-		CHECK(result.line_length == line_length);
-		CHECK(memcmp(result.line, nearest[index].line,
-		    line_length) == 0);
-		CHECK(result.remote_length ==
-		    (nearest[index].toggled != 0.0f ? 43U : 0U));
-	}
-	{
-		struct yt_sound_state current = state(false);
-		struct yt_sound_result result;
-
-		current.conversion_mode = 4;
-		current.user_sound = 2.5f;
-		CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_OK);
-		CHECK(current.user_sound == -3.0f);
-		current.mode = 1.0f;
-		current.user_sound = 0.0f;
-		current.local_sound = 77.0f;
-		CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_OK);
-		CHECK(current.user_sound == -1.0f);
-		CHECK(current.local_sound == -1.0f);
-		CHECK(result.remote_length == 0 && result.play_length == 11);
-		current.user_sound = -1.0f;
-		CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_OK);
-		CHECK(current.user_sound == 0.0f);
-		CHECK(current.local_sound == 0.0f);
-		CHECK(result.remote_length == 0 && result.play_length == 0);
-		current.user_sound = 40000.0f;
-		current.local_sound = 77.0f;
-		CHECK(yt_sound_toggle(&current, &result)
-		    == YT_SOUND_USER_OVERFLOW);
-		CHECK(current.user_sound == 40000.0f);
-		CHECK(current.local_sound == 77.0f);
-		CHECK(result.line_length == 0);
-	}
+	current = state(false);
+	current.local_mode = true;
+	CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_OK);
+	CHECK(!current.user_sound && !current.local_sound);
+	CHECK(result.remote_length == 0U && result.play_length == 0U);
+	CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_OK);
+	CHECK(current.user_sound && current.local_sound);
+	CHECK(result.remote_length == 0U && result.play_length == 11U);
 }
 
 int
@@ -181,7 +128,7 @@ main(void)
 {
 	test_known_cues();
 	test_branches_and_gates();
-	test_failures();
+	test_invalid_cue();
 	test_toggle();
 	if (failures != 0) {
 		fprintf(stderr, "%u test(s) failed\n", failures);

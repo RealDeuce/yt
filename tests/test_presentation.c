@@ -53,10 +53,10 @@ state(bool ansi)
 	struct yt_present_state value;
 
 	memset(&value, 0, sizeof(value));
-	value.sound.ansi = ansi ? -1.0f : 0.0f;
-	value.sound.user_sound = -1.0f;
-	value.sound.snoop = true;
-	value.sound.local_sound = -1.0f;
+	value.sound.ansi = ansi;
+	value.sound.user_sound = true;
+	value.sound.local_output = true;
+	value.sound.local_sound = true;
 	value.foreground = 2.0f;
 	return value;
 }
@@ -66,11 +66,11 @@ prime_color(struct yt_present_state *state, struct yt_present_result *result)
 {
 	struct yt_present_result emitted;
 	enum yt_present_status status;
-	float ansi;
+	bool ansi;
 	size_t source;
 
 	ansi = state->sound.ansi;
-	state->sound.ansi = -1.0f;
+	state->sound.ansi = true;
 	status = yt_present_character(NULL, 0U, state, &emitted);
 	state->sound.ansi = ansi;
 	if (status != YT_PRESENT_OK)
@@ -229,12 +229,12 @@ test_direct_output(void)
 	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LINE);
 	CHECK(result.events[1].operation == YT_PRESENT_REMOTE_LINE);
 	CHECK(result.events[2].operation == YT_PRESENT_REMOTE_SEMI);
-	current.sound.mode = 1.0f;
+	current.sound.local_mode = true;
 	CHECK(yt_present_character((const uint8_t *)"x", 1,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 1);
 	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_SEMI);
-	current.sound.snoop = false;
+	current.sound.local_output = false;
 	CHECK(yt_present_line((const uint8_t *)"hidden", 6,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 0);
@@ -274,7 +274,7 @@ test_paged_output(void)
 	    && result.events[2].foreground == 7
 	    && result.events[2].background == 0);
 
-	current.sound.mode = 2.0f;
+	current.sound.local_mode = true;
 	CHECK(yt_present_paged_text((const uint8_t *)"local", 5,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 1);
@@ -288,12 +288,12 @@ test_paged_output(void)
 	    == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 1);
 	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
-	current.sound.snoop = false;
+	current.sound.local_output = false;
 	CHECK(yt_present_paged_finish(false, &current, &result)
 	    == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0U && result.event_count == 1U
 	    && result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
-	current.sound.mode = 0.0f;
+	current.sound.local_mode = false;
 	CHECK(yt_present_paged_finish(false, &current, &result)
 	    == YT_PRESENT_OK);
 	CHECK(result.remote_length == 2U
@@ -318,15 +318,8 @@ test_paged_output(void)
 	    && current.cached_background == 0.0f);
 
 	current = state(true);
-	current.sound.mode = 2.0f;
-	current.sound.snoop = false;
-	CHECK(yt_present_paged_text((const uint8_t *)"hidden", 6,
-	    &current, &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == 0U && result.event_count == 1U
-	    && result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
-
 	current = state(false);
-	current.sound.snoop = false;
+	current.sound.local_output = false;
 	CHECK(yt_present_paged_text((const uint8_t *)"remote", 6,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 6U
@@ -354,7 +347,7 @@ test_editor_echo(void)
 	    && memcmp(result.events[0].data, local_erase,
 	    sizeof(local_erase)) == 0);
 	CHECK(result.events[1].operation == YT_PRESENT_REMOTE_SEMI);
-	current.sound.mode = 2.0f;
+	current.sound.local_mode = true;
 	CHECK(yt_present_editor_echo((const uint8_t *)"x", 1,
 	    (const uint8_t *)"x", 1, &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 1);
@@ -363,7 +356,7 @@ test_editor_echo(void)
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 1);
 	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LINE);
-	current.sound.snoop = false;
+	current.sound.local_output = false;
 	CHECK(yt_present_local_line((const uint8_t *)"hidden", 6,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 0);
@@ -882,7 +875,7 @@ test_projectile_early_terminal_presentation(void)
 }
 
 static struct pager_capture
-pager_fixture(const char *answer, bool ansi, float mode,
+pager_fixture(const char *answer, bool ansi, bool local_mode,
     struct yt_pager_state *pager, struct yt_present_state *present)
 {
 	static const uint8_t prompt[] =
@@ -898,7 +891,7 @@ pager_fixture(const char *answer, bool ansi, float mode,
 
 	memset(&capture, 0, sizeof(capture));
 	*present = state(ansi);
-	present->sound.mode = mode;
+	present->sound.local_mode = local_mode;
 	present->foreground = 6.0f;
 	memset(pager, 0, sizeof(*pager));
 	pager->line_count = 22.0f;
@@ -946,7 +939,7 @@ test_pager_transactions(void)
 	uint8_t expected[256];
 	size_t length;
 
-	capture = pager_fixture("", false, 0.0f, &pager, &present);
+	capture = pager_fixture("", false, false, &pager, &present);
 	length = sizeof(prompt) - 1U;
 	memcpy(expected, prompt, length);
 	memcpy(expected + length, "\r\n", 2);
@@ -959,7 +952,7 @@ test_pager_transactions(void)
 	CHECK(capture.last_local_foreground == 7
 	    && capture.last_local_background == 0);
 
-	capture = pager_fixture("E", false, 0.0f, &pager, &present);
+	capture = pager_fixture("E", false, false, &pager, &present);
 	length = sizeof(prompt) - 1U;
 	memcpy(expected, prompt, length);
 	expected[length++] = 'E';
@@ -969,7 +962,7 @@ test_pager_transactions(void)
 	    && memcmp(capture.remote, expected, length) == 0);
 	CHECK(strcmp(pager.key, "Q") == 0 && pager.nonstop == false);
 
-	capture = pager_fixture("NS", false, 0.0f, &pager, &present);
+	capture = pager_fixture("NS", false, false, &pager, &present);
 	length = sizeof(prompt) - 1U;
 	memcpy(expected, prompt, length);
 	memcpy(expected + length, "NS\r\nCtrl-X to Stop\n\r", 20);
@@ -981,7 +974,7 @@ test_pager_transactions(void)
 	CHECK(capture.last_local_foreground == 7
 	    && capture.last_local_background == 0);
 
-	capture = pager_fixture("", true, 0.0f, &pager, &present);
+	capture = pager_fixture("", true, false, &pager, &present);
 	length = 0;
 	memcpy(expected + length, ansi_prompt, sizeof(ansi_prompt) - 1U);
 	length += sizeof(ansi_prompt) - 1U;
@@ -997,9 +990,6 @@ test_pager_transactions(void)
 	CHECK(capture.last_local_foreground == 6
 	    && capture.last_local_background == 0);
 
-	capture = pager_fixture("E", false, 2.0f, &pager, &present);
-	CHECK(capture.remote_length == 2
-	    && memcmp(capture.remote, "\r\n", 2) == 0);
 }
 
 static void
@@ -1539,14 +1529,14 @@ startup_ascii_expected(uint8_t *output, size_t capacity, bool ansi,
 
 static void
 startup_ascii_initialize(struct physical_viewer_join *startup,
-    struct viewer_file_fixture *stream, bool ansi, float mode,
-    bool snoop, size_t ctrl_x_row)
+    struct viewer_file_fixture *stream, bool ansi, bool local_mode,
+    bool local_output, size_t ctrl_x_row)
 {
 	viewer_pager_initialize(&startup->join, stream, 0.0f, "",
 	    ctrl_x_row);
 	startup->join.presentation = state(ansi);
-	startup->join.presentation.sound.mode = mode;
-	startup->join.presentation.sound.snoop = snoop;
+	startup->join.presentation.sound.local_mode = local_mode;
+	startup->join.presentation.sound.local_output = local_output;
 	startup->join.presentation.foreground = 6.0f;
 	startup->join.presentation.cached_foreground = ansi ? 6.0f : 0.0f;
 	startup->join.pager.foreground = 6;
@@ -1655,7 +1645,7 @@ test_startup_ascii_physical_join(void)
 	size_t expected_length;
 
 	memset(&startup, 0, sizeof(startup));
-	startup_ascii_initialize(&startup, &stream, true, 0.0f, true, 0U);
+	startup_ascii_initialize(&startup, &stream, true, false, true, 0U);
 	yt_error_clear(&error);
 	CHECK(physical_viewer_run(&startup, &stream, &error));
 	expected_length = startup_ascii_expected(expected, sizeof(expected),
@@ -1668,7 +1658,7 @@ test_startup_ascii_physical_join(void)
 	    YT_ARRAY_LEN(startup_ascii_lines));
 
 	memset(&startup, 0, sizeof(startup));
-	startup_ascii_initialize(&startup, &stream, false, 0.0f, true, 0U);
+	startup_ascii_initialize(&startup, &stream, false, false, true, 0U);
 	CHECK(physical_viewer_run(&startup, &stream, NULL));
 	expected_length = startup_ascii_expected(expected, sizeof(expected),
 	    false, YT_ARRAY_LEN(startup_ascii_lines));
@@ -1683,7 +1673,7 @@ test_startup_ascii_physical_join(void)
 	    YT_ARRAY_LEN(startup_ascii_lines));
 
 	memset(&startup, 0, sizeof(startup));
-	startup_ascii_initialize(&startup, &stream, true, 1.0f, true, 0U);
+	startup_ascii_initialize(&startup, &stream, true, true, true, 0U);
 	CHECK(physical_viewer_run(&startup, &stream, NULL));
 	CHECK(startup.join.capture.remote_length == 0U
 	    && startup.join.sample_calls == 18U
@@ -1692,17 +1682,7 @@ test_startup_ascii_physical_join(void)
 	    YT_ARRAY_LEN(startup_ascii_lines));
 
 	memset(&startup, 0, sizeof(startup));
-	startup_ascii_initialize(&startup, &stream, true, 2.0f, false, 0U);
-	CHECK(physical_viewer_run(&startup, &stream, NULL));
-	CHECK(startup.join.capture.remote_length == 6U
-	    && memcmp(startup.join.capture.remote,
-	    "\r\n\r\n\r\n", 6U) == 0
-	    && startup.join.local_row_count == 0U
-	    && startup.join.sample_calls == 18U
-	    && stream.read_count == 17U);
-
-	memset(&startup, 0, sizeof(startup));
-	startup_ascii_initialize(&startup, &stream, true, 0.0f, true, 2U);
+	startup_ascii_initialize(&startup, &stream, true, false, true, 2U);
 	(void)snprintf(startup.join.accumulator,
 	    sizeof(startup.join.accumulator), "%s", "typed");
 	(void)snprintf(startup.join.queue, sizeof(startup.join.queue), "%s",
@@ -2137,8 +2117,6 @@ test_newspaper_physical_viewer_join(void)
 static void
 test_newspaper_endpoint_modes(void)
 {
-	static const uint8_t corrupt[] =
-	    "\r\n\r\n\r\n\r\n\r\n";
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
 	uint8_t remote[32];
@@ -2147,18 +2125,9 @@ test_newspaper_endpoint_modes(void)
 	fixture_viewer_initialize(&viewer, &stream,
 	    retained_current_news, sizeof(retained_current_news) - 1U,
 	    "YTNEWS.DAT", true, remote, sizeof(remote));
-	viewer.join.presentation.sound.mode = 1.0f;
+	viewer.join.presentation.sound.local_mode = true;
 	CHECK(newspaper_viewer_run(&viewer, &stream, 'T')
 	    && viewer.join.remote_length == 0U);
-
-	memset(&viewer, 0, sizeof(viewer));
-	fixture_viewer_initialize(&viewer, &stream,
-	    retained_current_news, sizeof(retained_current_news) - 1U,
-	    "YTNEWS.DAT", true, remote, sizeof(remote));
-	viewer.join.presentation.sound.mode = 2.0f;
-	CHECK(newspaper_viewer_run(&viewer, &stream, 'T')
-	    && viewer.join.remote_length == sizeof(corrupt) - 1U
-	    && memcmp(remote, corrupt, sizeof(corrupt) - 1U) == 0);
 }
 
 static void
@@ -2402,11 +2371,6 @@ test_scoreboard_physical_viewer_join(void)
 static void
 test_scoreboard_endpoint_modes(void)
 {
-	static const uint8_t old[] = "O";
-	static const uint8_t corrupt_old[] =
-	    "\r\n\r\n\r\n\r\n\r\n\r\n";
-	static const uint8_t corrupt_updated[] =
-	    "\r\n\r\n\r\n....\r\n\r\n\r\n\r\n";
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
 	uint8_t remote[64];
@@ -2415,29 +2379,9 @@ test_scoreboard_endpoint_modes(void)
 	fixture_viewer_initialize(&viewer, &stream,
 	    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 	    "YTSCORE.ASC", true, remote, sizeof(remote));
-	viewer.join.presentation.sound.mode = 1.0f;
+	viewer.join.presentation.sound.local_mode = true;
 	CHECK(scoreboard_viewer_run(&viewer, &stream, NULL, 0U, true)
 	    && viewer.join.remote_length == 0U);
-
-	memset(&viewer, 0, sizeof(viewer));
-	fixture_viewer_initialize(&viewer, &stream,
-	    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-	    "YTSCORE.ASC", true, remote, sizeof(remote));
-	viewer.join.presentation.sound.mode = 2.0f;
-	CHECK(scoreboard_viewer_run(&viewer, &stream, old,
-	    sizeof(old) - 1U, false)
-	    && viewer.join.remote_length == sizeof(corrupt_old) - 1U
-	    && memcmp(remote, corrupt_old, sizeof(corrupt_old) - 1U) == 0);
-
-	memset(&viewer, 0, sizeof(viewer));
-	fixture_viewer_initialize(&viewer, &stream,
-	    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-	    "YTSCORE.ASC", true, remote, sizeof(remote));
-	viewer.join.presentation.sound.mode = 2.0f;
-	CHECK(scoreboard_viewer_run(&viewer, &stream, NULL, 0U, true)
-	    && viewer.join.remote_length == sizeof(corrupt_updated) - 1U
-	    && memcmp(remote, corrupt_updated,
-	    sizeof(corrupt_updated) - 1U) == 0);
 }
 
 static void
@@ -3019,7 +2963,7 @@ test_formatting_wrappers(void)
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 3
 	    && memcmp(result.remote, "bcd", 3) == 0);
-	current.sound.conversion_mode = 4;
+	current.conversion_mode = 4;
 	CHECK(yt_present_right_aligned((const uint8_t *)"abcd", 4, 2.5f,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 2
@@ -3032,7 +2976,7 @@ test_formatting_wrappers(void)
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0U);
 
-	current.sound.conversion_mode = 0;
+	current.conversion_mode = 0;
 	CHECK(yt_present_fixed_width(mutable, &mutable_length,
 	    sizeof(mutable), 4.0f, &current, &result) == YT_PRESENT_OK);
 	CHECK(mutable_length == 4 && memcmp(mutable, "ab  ", 4) == 0);
@@ -3051,7 +2995,7 @@ test_formatting_wrappers(void)
 		    && memcmp(result.remote, "abc", 3U) == 0);
 		memcpy(truncated, "abcd", 4U);
 		truncated_length = 4U;
-		current.sound.conversion_mode = 4;
+		current.conversion_mode = 4;
 		CHECK(yt_present_fixed_width(truncated, &truncated_length,
 		    sizeof(truncated), 2.5f, &current, &result)
 		    == YT_PRESENT_OK);
@@ -3164,7 +3108,7 @@ test_attention(void)
 	    && current.bold == 0.0f && current.blink == 1.0f);
 
 	current = state(true);
-	current.sound.mode = 1.0f;
+	current.sound.local_mode = true;
 	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0U && result.event_count == 5U);
@@ -3183,21 +3127,6 @@ test_attention(void)
 	    && result.events[4].length == sizeof(cue) - 1U);
 	CHECK(current.foreground == 3.0f && current.background == 0.0f
 	    && current.bold == 0.0f && current.blink == 0.0f);
-
-	current = state(false);
-	current.sound.user_sound = 40000.0f;
-	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5,
-	    &current, &result) == YT_PRESENT_SOUND_ERROR);
-	CHECK(result.remote_length == 7U
-	    && memcmp(result.remote, "ALERT\r\n", 7U) == 0);
-	CHECK(result.event_count == 5U
-	    && result.events[0].operation == YT_PRESENT_LOCAL_SEMI
-	    && result.events[1].operation == YT_PRESENT_REMOTE_SEMI
-	    && result.events[2].operation == YT_PRESENT_LOCAL_LINE
-	    && result.events[3].operation == YT_PRESENT_REMOTE_LINE
-	    && result.events[4].operation == YT_PRESENT_REMOTE_SEMI);
-	CHECK(current.foreground == 3.0f && current.background == 0.0f
-	    && current.bold == 0.0f && current.blink == 1.0f);
 
 	current = state(true);
 	CHECK(yt_present_background(&current) == 0.0f
@@ -3244,10 +3173,10 @@ test_sound_toggle(void)
 	current.color_initialized = 1.0f;
 	current.cached_foreground = current.foreground;
 	current.cached_background = current.background;
-	current.sound.user_sound = 0.0f;
+	current.sound.user_sound = false;
 	CHECK(yt_present_sound_toggle(&current, &result) == YT_PRESENT_OK);
-	CHECK(current.sound.user_sound == -1.0f);
-	CHECK(current.sound.local_sound == -1.0f);
+	CHECK(current.sound.user_sound == true);
+	CHECK(current.sound.local_sound == true);
 	CHECK(result.remote_length == sizeof(ansi_on) - 1U);
 	CHECK(memcmp(result.remote, ansi_on, sizeof(ansi_on) - 1U) == 0);
 	CHECK(result.event_count == 6);
@@ -3265,11 +3194,11 @@ test_sound_toggle(void)
 	    sizeof(ansi_cue) - 1U) == 0);
 
 	current = state(false);
-	current.sound.user_sound = 0.0f;
-	current.sound.local_sound = 77.0f;
+	current.sound.user_sound = false;
+	current.sound.local_sound = true;
 	CHECK(yt_present_sound_toggle(&current, &result) == YT_PRESENT_OK);
-	CHECK(current.sound.user_sound == -1.0f);
-	CHECK(current.sound.local_sound == 77.0f);
+	CHECK(current.sound.user_sound == true);
+	CHECK(current.sound.local_sound == true);
 	CHECK(result.remote_length == sizeof(plain_on) - 1U
 	    && memcmp(result.remote, plain_on, sizeof(plain_on) - 1U) == 0);
 	CHECK(result.event_count == 5);
@@ -3285,9 +3214,9 @@ test_sound_toggle(void)
 	current.color_initialized = 1.0f;
 	current.cached_foreground = current.foreground;
 	current.cached_background = current.background;
-	current.sound.user_sound = -1.0f;
+	current.sound.user_sound = true;
 	CHECK(yt_present_sound_toggle(&current, &result) == YT_PRESENT_OK);
-	CHECK(current.sound.user_sound == 0.0f);
+	CHECK(current.sound.user_sound == false);
 	CHECK(result.remote_length == sizeof(off) - 1U
 	    && memcmp(result.remote, off, sizeof(off) - 1U) == 0);
 	CHECK(result.event_count == 4);
@@ -3297,38 +3226,16 @@ test_sound_toggle(void)
 	CHECK(result.events[3].operation == YT_PRESENT_REMOTE_SEMI);
 
 	current = state(true);
-	current.sound.mode = 1.0f;
-	current.sound.user_sound = 0.0f;
-	current.sound.local_sound = 77.0f;
+	current.sound.local_mode = true;
+	current.sound.user_sound = false;
+	current.sound.local_sound = false;
 	CHECK(yt_present_sound_toggle(&current, &result) == YT_PRESENT_OK);
-	CHECK(current.sound.user_sound == -1.0f
-	    && current.sound.local_sound == -1.0f);
+	CHECK(current.sound.user_sound == true
+	    && current.sound.local_sound == true);
 	CHECK(result.remote_length == 0 && result.event_count == 3);
 	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
 	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_LINE);
 	CHECK(result.events[2].operation == YT_PRESENT_LOCAL_PLAY);
-
-	current = state(true);
-	current.sound.mode = 2.0f;
-	current.sound.user_sound = 0.0f;
-	current.sound.local_sound = 77.0f;
-	CHECK(yt_present_sound_toggle(&current, &result) == YT_PRESENT_OK);
-	CHECK(current.sound.user_sound == -1.0f
-	    && current.sound.local_sound == -1.0f);
-	CHECK(result.remote_length == 10U
-	    && memcmp(result.remote, "Sound ON\r\n", 10U) == 0);
-	CHECK(result.event_count == 5);
-	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
-	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_LINE);
-	CHECK(result.events[2].operation == YT_PRESENT_REMOTE_LINE);
-	CHECK(result.events[3].operation == YT_PRESENT_REMOTE_SEMI);
-	CHECK(result.events[4].operation == YT_PRESENT_LOCAL_PLAY);
-
-	current = state(false);
-	current.sound.user_sound = 40000.0f;
-	CHECK(yt_present_sound_toggle(&current, &result)
-	    == YT_PRESENT_SOUND_ERROR);
-	CHECK(result.event_count == 0 && result.remote_length == 0);
 
 	current = state(true);
 	CHECK(yt_present_sound(YT_SOUND_CUE_ACTION, &current, &result) == YT_PRESENT_OK);
@@ -3971,12 +3878,12 @@ test_shared_error_model(void)
 	    && error.route == YT_SHARED_ERROR_DORINFO_COM);
 
 	CHECK(yt_shared_error_compose(53, 2710, &error));
-	current.sound.snoop = false;
+	current.sound.local_output = false;
 	CHECK(yt_present_local_line(error.debug, error.debug_length, &current,
 	    &presentation) == YT_PRESENT_OK);
 	CHECK(presentation.remote_length == 0U
 	    && presentation.event_count == 0U);
-	current.sound.snoop = true;
+	current.sound.local_output = true;
 	CHECK(yt_present_local_line(error.events[0].data,
 	    error.events[0].length, &current, &presentation) == YT_PRESENT_OK);
 	CHECK(presentation.remote_length == 0U
@@ -4020,7 +3927,7 @@ test_time_helpers(void)
 	CHECK(!warned && result.event_count == 0);
 
 	current = state(false);
-	current.sound.mode = 1.0f;
+	current.sound.local_mode = true;
 	remembered = 6.0f;
 	CHECK(yt_present_low_time((const uint8_t *)" 5:59  ", 7,
 	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
@@ -4029,7 +3936,7 @@ test_time_helpers(void)
 	CHECK(current.bold == 1.0f && current.blink == 1.0f);
 
 	current = state(false);
-	current.sound.snoop = false;
+	current.sound.local_output = false;
 	remembered = 7.0f;
 	CHECK(yt_present_low_time((const uint8_t *)" 6:00  ", 7,
 	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
@@ -4051,7 +3958,7 @@ test_time_helpers(void)
 	    && result.remote_length != 0U);
 
 	current = state(false);
-	current.sound.snoop = false;
+	current.sound.local_output = false;
 	remembered = 6.0f;
 	memset(long_time, 'x', sizeof(long_time));
 	long_time[0] = '5';
@@ -4122,14 +4029,6 @@ test_press_any_key_presentation(void)
 	CHECK(result.remote_length == 21U
 	    && result.remote[0] == '\r' && result.remote[20] == '\r');
 
-	current = state(false);
-	current.sound.mode = 2.0f;
-	CHECK(yt_present_press_prompt(&current, &result, &saved)
-	    == YT_PRESENT_OK);
-	CHECK(yt_present_press_cleanup(saved, &current, &result)
-	    == YT_PRESENT_OK);
-	CHECK(result.remote_length == 19U
-	    && memcmp(result.remote, "                   ", 19) == 0);
 }
 
 static void
@@ -5867,7 +5766,7 @@ test_port_report_b05d_adapter_cuts(void)
 }
 
 static void
-computer_return_prompt_fixture(bool ansi, float mode,
+computer_return_prompt_fixture(bool ansi, bool local_mode,
     struct pager_capture *capture, struct yt_present_state *current,
     struct yt_pager_state *pager)
 {
@@ -5876,7 +5775,7 @@ computer_return_prompt_fixture(bool ansi, float mode,
 	struct yt_present_result result;
 
 	*current = state(ansi);
-	current->sound.mode = mode;
+	current->sound.local_mode = local_mode;
 	current->foreground = 6.0f;
 	if (ansi)
 		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
@@ -5903,28 +5802,22 @@ test_computer_return_prompt_presentation(void)
 	struct yt_pager_state pager;
 	struct pager_capture capture;
 
-	computer_return_prompt_fixture(true, 0.0f, &capture, &current,
+	computer_return_prompt_fixture(true, false, &capture, &current,
 	    &pager);
 	CHECK(sizeof(ansi) - 1U == 52U);
 	CHECK(capture.remote_length == sizeof(ansi) - 1U
 	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
 	CHECK(pager.line_count == 1.0f && pager.newline_flag == false);
 
-	computer_return_prompt_fixture(false, 0.0f, &capture, &current,
+	computer_return_prompt_fixture(false, false, &capture, &current,
 	    &pager);
 	CHECK(sizeof(plain) - 1U == 42U);
 	CHECK(capture.remote_length == sizeof(plain) - 1U
 	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
 
-	computer_return_prompt_fixture(true, 1.0f, &capture, &current,
+	computer_return_prompt_fixture(true, true, &capture, &current,
 	    &pager);
 	CHECK(capture.remote_length == 0U && pager.line_count == 1.0f);
-
-	computer_return_prompt_fixture(true, 2.0f, &capture, &current,
-	    &pager);
-	CHECK(capture.remote_length == 2U
-	    && memcmp(capture.remote, "\r\n", 2U) == 0
-	    && pager.line_count == 1.0f);
 }
 
 static void
@@ -5941,7 +5834,7 @@ computer_quit_cancel_cycle_fixture(bool ansi,
 	struct yt_present_result result;
 	char accumulator[80] = "";
 
-	computer_return_prompt_fixture(ansi, 0.0f, capture, current, pager);
+	computer_return_prompt_fixture(ansi, false, capture, current, pager);
 	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
 	CHECK(yt_present_editor_echo(q, sizeof(q) - 1U, q,
 	    sizeof(q) - 1U, current, &result) == YT_PRESENT_OK);
@@ -7538,7 +7431,7 @@ test_earth_anti_cloak_presentation(void)
 	struct yt_pager_state pager;
 	struct pager_capture capture;
 
-	current.sound.user_sound = 0.0f;
+	current.sound.user_sound = false;
 	memset(&pager, 0, sizeof(pager));
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
@@ -7651,7 +7544,7 @@ test_earth_lottery_loss_presentation(void)
 	int actual;
 	int dummy;
 
-	current.sound.user_sound = 0.0f;
+	current.sound.user_sound = false;
 	memset(&pager, 0, sizeof(pager));
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
@@ -7730,7 +7623,7 @@ test_earth_lottery_loss_presentation(void)
 	CHECK(expected_length == 472U && capture.remote_length == expected_length
 	    && memcmp(capture.remote, expected, expected_length) == 0);
 	current = state(false);
-	current.sound.mode = 2.0f;
+	current.sound.local_mode = true;
 	CHECK(yt_present_lottery_rewind(4, 17, &current, &result)
 	    == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 1
@@ -8308,7 +8201,7 @@ normal_exit_tail_fixture(bool ansi, bool evaluation,
 	int index;
 
 	*current = state(ansi);
-	current->sound.user_sound = 0.0f;
+	current->sound.user_sound = false;
 	if (ansi)
 		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 	memset(pager, 0, sizeof(*pager));
@@ -8411,7 +8304,7 @@ computer_deactivation_cycle_fixture(bool ansi,
 	struct yt_present_result result;
 	char accumulator[80] = "";
 
-	computer_return_prompt_fixture(ansi, 0.0f, capture, current, pager);
+	computer_return_prompt_fixture(ansi, false, capture, current, pager);
 	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
 	CHECK(yt_present_editor_echo((const uint8_t *)"1", 1,
 	    (const uint8_t *)"1", 1, current, &result) == YT_PRESENT_OK);
@@ -8485,7 +8378,7 @@ computer_sensor_all_zero_cycle_fixture(bool ansi,
 	struct yt_present_result result;
 	char accumulator[80] = "";
 
-	computer_return_prompt_fixture(ansi, 0.0f, capture, current, pager);
+	computer_return_prompt_fixture(ansi, false, capture, current, pager);
 	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
 	CHECK(yt_present_editor_echo((const uint8_t *)"S", 1,
 	    (const uint8_t *)"S", 1, current, &result) == YT_PRESENT_OK);
@@ -8582,7 +8475,7 @@ computer_profit_cycle_fixture(bool ansi, bool all,
 	CHECK(sizeof(row_one) - 1U == 36U);
 	CHECK(sizeof(row_two) - 1U == 36U);
 	CHECK(sizeof(row_three) - 1U == 36U);
-	computer_return_prompt_fixture(ansi, 0.0f, capture, current, pager);
+	computer_return_prompt_fixture(ansi, false, capture, current, pager);
 	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
 	CHECK(yt_present_editor_echo(command, 2, command, 2, current,
 	    &result) == YT_PRESENT_OK);
@@ -8876,7 +8769,7 @@ computer_avoid_fixture_b05d(struct yt_pager_state *pager,
 }
 
 static void
-computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
+computer_avoid_accepted_cycle_fixture(bool ansi, bool local_mode,
     float old_value, const char *sector_response,
     enum computer_avoid_fixture_stop stop,
     struct computer_avoid_fixture_cut *cut,
@@ -8905,7 +8798,7 @@ computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
 	CHECK(route == YT_COMPUTER_AVOID_SELECTION_ACCEPTED);
 	yt_computer_avoid_transition(old_value, new_value, &locked, &available);
 
-	computer_return_prompt_fixture(ansi, mode, capture, current, pager);
+	computer_return_prompt_fixture(ansi, local_mode, capture, current, pager);
 	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
 	CHECK(yt_present_editor_echo((const uint8_t *)"7", 1U,
 	    (const uint8_t *)"7", 1U, current, &result) == YT_PRESENT_OK);
@@ -9101,19 +8994,6 @@ test_computer_avoid_presentation(void)
 	    "\r\nEnter the sector you wish to avoid [1 - 2004] (0 to clear): "
 	    "5\r\n\x1b[0;32;40m\r\nSector 5 now locked out.\n\r"
 	    "\x1b[0;31;40m\r\nTime: 14:59  Computer command (?=help)? ";
-	static const uint8_t accepted_mode_two[] =
-	    "\r\n\r\n\r\n\r\n\r\n"
-	    "[  1 ]  -=>  0      [ 11 ]  -=>  0      "
-	    "[  2 ]  -=>  0      [ 12 ]  -=>  0      "
-	    "[  3 ]  -=>  0      [ 13 ]  -=>  0      "
-	    "[  4 ]  -=>  0      [ 14 ]  -=>  0      "
-	    "[  5 ]  -=>  0      [ 15 ]  -=>  0      "
-	    "[  6 ]  -=>  0      [ 16 ]  -=>  0      "
-	    "[  7 ]  -=>  0      [ 17 ]  -=>  0      "
-	    "[  8 ]  -=>  0      [ 18 ]  -=>  0      "
-	    "[  9 ]  -=>  0      [ 19 ]  -=>  0      "
-	    "[ 10 ]  -=>  0      [ 20 ]  -=>  0      "
-	    "\r\n\r\n\r\n\r\n\r\n\r\n";
 	struct yt_present_state current = state(false);
 	struct yt_present_result result;
 	struct yt_pager_state pager;
@@ -9179,7 +9059,7 @@ test_computer_avoid_presentation(void)
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
 	CHECK(pager.line_count == 1.0f && pager.newline_flag == false);
 
-	computer_avoid_accepted_cycle_fixture(false, 0.0f, 0.0f, "5",
+	computer_avoid_accepted_cycle_fixture(false, false, 0.0f, "5",
 	    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current, &pager);
 	CHECK(sizeof(accepted_plain) - 1U == 884U);
 	CHECK(capture.remote_length == sizeof(accepted_plain) - 1U
@@ -9187,32 +9067,23 @@ test_computer_avoid_presentation(void)
 	    sizeof(accepted_plain) - 1U) == 0);
 	CHECK(pager.line_count == 2.0f && pager.newline_flag == false);
 	CHECK(capture.local_event_count == 81U);
-					computer_avoid_accepted_cycle_fixture(true, 0.0f, 0.0f, "5",
+	computer_avoid_accepted_cycle_fixture(true, false, 0.0f, "5",
 	    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current, &pager);
 	CHECK(sizeof(accepted_ansi) - 1U == 914U);
 	CHECK(capture.remote_length == sizeof(accepted_ansi) - 1U
 	    && memcmp(capture.remote, accepted_ansi,
 	    sizeof(accepted_ansi) - 1U) == 0);
 	CHECK(pager.line_count == 2.0f && pager.newline_flag == false);
-		computer_avoid_accepted_cycle_fixture(true, 1.0f, 0.0f, "5",
+	computer_avoid_accepted_cycle_fixture(true, true, 0.0f, "5",
 	    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current, &pager);
 	CHECK(capture.remote_length == 0U && pager.line_count == 2.0f
 	    && pager.newline_flag == false
 	    && capture.last_local_foreground == 7
 	    && capture.last_local_background == 0);
-	computer_avoid_accepted_cycle_fixture(true, 2.0f, 0.0f, "5",
-	    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current, &pager);
-	CHECK(sizeof(accepted_mode_two) - 1U == 422U);
-	CHECK(capture.remote_length == sizeof(accepted_mode_two) - 1U
-	    && memcmp(capture.remote, accepted_mode_two,
-	    sizeof(accepted_mode_two) - 1U) == 0);
-	CHECK(pager.line_count == 2.0f && pager.newline_flag == false
-	    && capture.last_local_foreground == 7
-	    && capture.last_local_background == 0);
 	for (transition = 0U; transition < YT_ARRAY_LEN(transition_cases);
 	    ++transition) {
 		computer_avoid_accepted_cycle_fixture(
-		    transition_cases[transition].ansi, 0.0f, 5.0f,
+		    transition_cases[transition].ansi, false, 5.0f,
 		    transition_cases[transition].response,
 		    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current,
 		    &pager);
@@ -9307,16 +9178,14 @@ test_computer_port_report_short_cycles_presentation(void)
 	    "\r\nTime:15:00  Computer command (?=help)? ";
 	static const struct {
 		bool unavailable;
-		float mode;
+		bool local_mode;
 		const uint8_t *expected;
 		size_t expected_length;
 	} cases[] = {
-		{true, 0.0f, no_port, sizeof(no_port) - 1U},
-		{false, 0.0f, blank, sizeof(blank) - 1U},
-		{true, 1.0f, NULL, 0U},
-		{false, 1.0f, NULL, 0U},
-		{true, 2.0f, (const uint8_t *)"\r\n\r\n\r\n\r\n", 8U},
-		{false, 2.0f, (const uint8_t *)"\r\n\r\n\r\n", 6U},
+		{true, false, no_port, sizeof(no_port) - 1U},
+		{false, false, blank, sizeof(blank) - 1U},
+		{true, true, NULL, 0U},
+		{false, true, NULL, 0U},
 	};
 	size_t pass;
 
@@ -9327,7 +9196,7 @@ test_computer_port_report_short_cycles_presentation(void)
 		struct pager_capture capture;
 		char accumulator[80];
 
-		current.sound.mode = cases[pass].mode;
+		current.sound.local_mode = cases[pass].local_mode;
 		current.foreground = 1.0f;
 		current.cached_foreground = 1.0f;
 		memset(&pager, 0, sizeof(pager));
@@ -9568,7 +9437,7 @@ test_computer_avoid_b05d_cuts(void)
 			uint64_t expected_fnv = side == 0U
 			    ? cuts[ordinal].before_fnv : cuts[ordinal].after_fnv;
 
-			computer_avoid_accepted_cycle_fixture(true, 0.0f, 5.0f,
+			computer_avoid_accepted_cycle_fixture(true, false, 5.0f,
 			    "7", COMPUTER_AVOID_FIXTURE_COMPLETE, &cut, &capture,
 			    &current, &pager);
 			CHECK(cut.ordinal == ordinal + 1U
@@ -9732,31 +9601,19 @@ test_computer_port_report_earth_cycle_presentation(void)
 	    "----------------------*--------*------------\n\r"
 	    "\r\n\x1b[0;31;40m"
 	    "Time:15:00  Computer command (?=help)? ";
-	static const uint8_t mode_two[] =
-	    "\r\n\r\n\r\n\r\n"
-	    "[1] Cloak Energy      * 1000   "
-	    "[2] Cargo Holds       * 250    "
-	    "[3] Fighters          * 50     "
-	    "[4] Play Lottery      * 5      "
-	    "[5] Danger Scanner    * 500000 "
-	    "[6] Anti-Cloak Device * 1E+09  "
-	    "[7] Ground Forces     * 200    "
-	    "[8] Shield Power      * 50     "
-	    "[9] Hire Spies (Each) * 1E+09  \r\n";
 	static const uint8_t prompt[] =
 	    "Enter sector number port is in -=> ";
 	static const uint8_t computer_prompt[] =
 	    "Time:15:00  Computer command (?=help)? ";
 	static const struct {
 		bool ansi;
-		float mode;
+		bool local_mode;
 		const uint8_t *expected;
 		size_t expected_length;
 	} cases[] = {
-		{false, 0.0f, plain, sizeof(plain) - 1U},
-		{true, 0.0f, ansi, sizeof(ansi) - 1U},
-		{true, 1.0f, NULL, 0U},
-		{true, 2.0f, mode_two, sizeof(mode_two) - 1U},
+		{false, false, plain, sizeof(plain) - 1U},
+		{true, false, ansi, sizeof(ansi) - 1U},
+		{true, true, NULL, 0U},
 	};
 	struct yt_present_state current;
 	struct yt_present_result result;
@@ -9767,7 +9624,7 @@ test_computer_port_report_earth_cycle_presentation(void)
 
 	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
 		current = state(cases[pass].ansi);
-		current.sound.mode = cases[pass].mode;
+		current.sound.local_mode = cases[pass].local_mode;
 		current.foreground = 1.0f;
 		current.cached_foreground = cases[pass].ansi ? 1.0f : 0.0f;
 		memset(&pager, 0, sizeof(pager));
@@ -9812,8 +9669,7 @@ test_computer_port_report_earth_cycle_presentation(void)
 		    && pager.newline_flag == false
 		    && accumulator[0] == '\0');
 	}
-	CHECK(sizeof(plain) - 1U == 650U && sizeof(ansi) - 1U == 670U
-	    && sizeof(mode_two) - 1U == 289U);
+	CHECK(sizeof(plain) - 1U == 650U && sizeof(ansi) - 1U == 670U);
 }
 
 static void
@@ -10021,14 +9877,6 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 	    "Equipment....  Buying          300       7.25 66    \r\n"
 	    "\r\n\x1b[0;31;40m"
 	    "Time:15:00  Computer command (?=help)? ";
-	static const uint8_t mode_two[] =
-	    "\r\n\r\n"
-	    "\r\nThis port is owned by: YOU, Credits: 1234.5\r\n"
-	    "\r\n\r\n"
-	    "Ore..........  Buying          100        5.5 32    \r\n"
-	    "Organics.....  Selling         200          6 8    \r\n"
-	    "Equipment....  Buying          300       7.25 66    \r\n"
-	    "\r\n";
 	static const uint8_t sector_prompt[] =
 	    "Enter sector number port is in -=> ";
 	static const uint8_t owner[] =
@@ -10057,14 +9905,13 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 	    "Time:15:00  Computer command (?=help)? ";
 	static const struct {
 		bool ansi;
-		float mode;
+		bool local_mode;
 		const uint8_t *expected;
 		size_t expected_length;
 	} cases[] = {
-		{false, 0.0f, plain, sizeof(plain) - 1U},
-		{true, 0.0f, ansi, sizeof(ansi) - 1U},
-		{true, 1.0f, NULL, 0U},
-		{true, 2.0f, mode_two, sizeof(mode_two) - 1U},
+		{false, false, plain, sizeof(plain) - 1U},
+		{true, false, ansi, sizeof(ansi) - 1U},
+		{true, true, NULL, 0U},
 	};
 	struct yt_present_state current;
 	struct yt_present_result result;
@@ -10076,7 +9923,7 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 
 	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
 		current = state(cases[pass].ansi);
-		current.sound.mode = cases[pass].mode;
+		current.sound.local_mode = cases[pass].local_mode;
 		current.foreground = 1.0f;
 		current.cached_foreground = cases[pass].ansi ? 1.0f : 0.0f;
 		memset(&pager, 0, sizeof(pager));
@@ -10156,8 +10003,7 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 		    && pager.newline_flag == false
 		    && accumulator[0] == '\0');
 	}
-	CHECK(sizeof(plain) - 1U == 451U && sizeof(ansi) - 1U == 503U
-	    && sizeof(mode_two) - 1U == 218U);
+	CHECK(sizeof(plain) - 1U == 451U && sizeof(ansi) - 1U == 503U);
 }
 
 static void
@@ -10736,7 +10582,7 @@ computer_nearest_cycle_fixture(bool ansi,
 	static const uint8_t earth[] = "** Earth **";
 	struct yt_present_result result;
 	char accumulator[80] = "";
-	float saved_mode;
+	bool saved_local_mode;
 
 	*current = state(ansi);
 	current->foreground = 6.0f;
@@ -10745,16 +10591,16 @@ computer_nearest_cycle_fixture(bool ansi,
 	memset(capture, 0, sizeof(*capture));
 	if (ansi) {
 		/* A43D changes the local color before 02BF's direct blank. */
-		saved_mode = current->sound.mode;
-		current->sound.mode = 1.0f;
+		saved_local_mode = current->sound.local_mode;
+		current->sound.local_mode = true;
 		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
-		current->sound.mode = saved_mode;
-		current->sound.ansi = 0.0f;
+		current->sound.local_mode = saved_local_mode;
+		current->sound.ansi = false;
 	}
 	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
-	current->sound.ansi = ansi ? -1.0f : 0.0f;
+	current->sound.ansi = ansi;
 	current->foreground = 1.0f;
 	pager->foreground = 1;
 	pager->newline_flag = true;
@@ -10831,16 +10677,16 @@ computer_nearest_cycle_fixture(bool ansi,
 	/* The return hydration's A43D precedes its direct blank locally. */
 	pager->line_count = 0.0f;
 	if (ansi) {
-		saved_mode = current->sound.mode;
-		current->sound.mode = 1.0f;
+		saved_local_mode = current->sound.local_mode;
+		current->sound.local_mode = true;
 		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
-		current->sound.mode = saved_mode;
-		current->sound.ansi = 0.0f;
+		current->sound.local_mode = saved_local_mode;
+		current->sound.ansi = false;
 	}
 	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
-	current->sound.ansi = ansi ? -1.0f : 0.0f;
+	current->sound.ansi = ansi;
 	current->foreground = 1.0f;
 	pager->foreground = 1;
 	pager->newline_flag = true;
@@ -10899,7 +10745,7 @@ computer_fighter_finder_cycle_fixture(bool ansi,
 	memset(capture, 0, sizeof(*capture));
 	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
-	current->sound.ansi = ansi ? -1.0f : 0.0f;
+	current->sound.ansi = ansi;
 	pager->newline_flag = true;
 	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
 	    capture);
@@ -10969,7 +10815,7 @@ computer_planet_finder_cycle_fixture(bool ansi,
 	memset(capture, 0, sizeof(*capture));
 	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
-	current->sound.ansi = ansi ? -1.0f : 0.0f;
+	current->sound.ansi = ansi;
 	pager->newline_flag = true;
 	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
 	    capture);
@@ -12360,7 +12206,7 @@ black_hole_fixture(bool ansi, bool meltdown)
 	current.color_initialized = ansi ? 1.0f : 0.0f;
 	current.cached_foreground = ansi ? 1.0f : 0.0f;
 	current.cached_background = 0.0f;
-	current.sound.user_sound = 0.0f;
+	current.sound.user_sound = false;
 	memset(&capture, 0, sizeof(capture));
 	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
@@ -13784,8 +13630,8 @@ normal_exit_body_run_info(struct physical_viewer_join *viewer,
 		return false;
 	memset(observation, 0, sizeof(*observation));
 	viewer->join.presentation.foreground = 1.0f;
-	viewer->join.presentation.sound.user_sound = 0.0f;
-	viewer->join.presentation.sound.local_sound = 0.0f;
+	viewer->join.presentation.sound.user_sound = false;
+	viewer->join.presentation.sound.local_sound = false;
 	viewer->join.pager.foreground = 1;
 	if (!normal_exit_info_run(viewer, time_text, time_length, info))
 		return false;
@@ -14816,8 +14662,8 @@ planet_sensor_nonzero_cycle_run(struct physical_viewer_join *viewer,
 			return false;
 	}
 	else {
-		join->presentation.sound.user_sound = 0.0f;
-		join->presentation.sound.local_sound = 0.0f;
+		join->presentation.sound.user_sound = false;
+		join->presentation.sound.local_sound = false;
 	}
 	if (!normal_exit_line(join, NULL, 0U)
 	    || !normal_exit_b05d(join, free_holds,
@@ -17176,8 +17022,8 @@ planet_thrusters_accepted_cycle_run(struct physical_viewer_join *viewer,
 	join->pager.foreground = 6;
 	join->pager.line_count = 0.0f;
 	if (!ansi) {
-		join->presentation.sound.user_sound = 0.0f;
-		join->presentation.sound.local_sound = 0.0f;
+		join->presentation.sound.user_sound = false;
+		join->presentation.sound.local_sound = false;
 	}
 	if (!normal_exit_line(join, NULL, 0U)
 	    || !normal_exit_b05d(join, free_holds,
@@ -19315,7 +19161,8 @@ test_direct_emergency_warp_invalid_retry_presentation(void)
 
 static bool
 direct_emergency_warp_mode_decline_run(
-    struct hostile_mines_hazard_fixture *fixture, bool ansi, float mode)
+    struct hostile_mines_hazard_fixture *fixture, bool ansi,
+    bool local_mode)
 {
 	static const uint8_t warning_one[] =
 	    "This is a desperate move! Your engines will be drained and will take time";
@@ -19329,7 +19176,7 @@ direct_emergency_warp_mode_decline_run(
 	char output[80];
 
 	join->presentation = state(ansi);
-	join->presentation.sound.mode = mode;
+	join->presentation.sound.local_mode = local_mode;
 	if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
@@ -19367,85 +19214,58 @@ direct_emergency_warp_mode_decline_run(
 static void
 test_direct_emergency_warp_modes(void)
 {
-	static const uint8_t mode_two[] = "\r\n\r\n[y/N] -=> \r\n";
-	static const struct {
-		float mode;
-		const uint8_t *expected;
-		size_t expected_length;
-	} cases[] = {
-		{1.0f, (const uint8_t *)"", 0U},
-		{2.0f, mode_two, sizeof(mode_two) - 1U},
-	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	uint8_t remote[64];
-	size_t pass;
 
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		memset(&viewer, 0, sizeof(viewer));
-		fixture_viewer_initialize(&viewer, &stream,
-		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-		    "YTSCORE.ASC", true, remote, sizeof(remote));
-		memset(&fixture, 0, sizeof(fixture));
-		fixture.presentation.viewer = &viewer;
-		CHECK(direct_emergency_warp_mode_decline_run(&fixture, true,
-		    cases[pass].mode));
-		CHECK(viewer.join.remote_length == cases[pass].expected_length
-		    && memcmp(remote, cases[pass].expected,
-		    cases[pass].expected_length) == 0
-		    && viewer.join.local_fragment_length == 0U
-		    && viewer.join.local_row_count == 5U
-		    && viewer_rows_fnv1a64(&viewer.join)
-		    == UINT64_C(0x2beacfb4c359313c)
-		    && viewer.join.local_color_count == 8U
-		    && viewer_colors_fnv1a64(&viewer.join)
-		    == UINT64_C(0x844da71c138d59e8)
-		    && strcmp(viewer.join.accumulator, "N") == 0
-		    && viewer.join.source_length == 1U
-		    && viewer.join.source[0] == 'N'
-		    && viewer.join.queue_length == 0U
-		    && viewer.join.presentation.sound.mode == cases[pass].mode
-		    && viewer.join.presentation.foreground == 7.0f
-		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
-		    && viewer.join.presentation.cached_foreground == 0.0f
-		    && viewer.join.pager.foreground == 7
-		    && viewer.join.pager.line_count == 0.0f
-		    && viewer.join.event_count == 10U
-		    && !fixture.warp_called && fixture.draw_position == 0U);
-	}
+	memset(&viewer, 0, sizeof(viewer));
+	fixture_viewer_initialize(&viewer, &stream,
+	    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+	    "YTSCORE.ASC", true, remote, sizeof(remote));
+	memset(&fixture, 0, sizeof(fixture));
+	fixture.presentation.viewer = &viewer;
+	CHECK(direct_emergency_warp_mode_decline_run(&fixture, true, true));
+	CHECK(viewer.join.remote_length == 0U
+	    && viewer.join.local_fragment_length == 0U
+	    && viewer.join.local_row_count == 5U
+	    && viewer_rows_fnv1a64(&viewer.join)
+	    == UINT64_C(0x2beacfb4c359313c)
+	    && viewer.join.local_color_count == 8U
+	    && viewer_colors_fnv1a64(&viewer.join)
+	    == UINT64_C(0x844da71c138d59e8)
+	    && strcmp(viewer.join.accumulator, "N") == 0
+	    && viewer.join.source_length == 1U
+	    && viewer.join.source[0] == 'N'
+	    && viewer.join.queue_length == 0U
+	    && viewer.join.presentation.sound.local_mode
+	    && viewer.join.presentation.foreground == 7.0f
+	    && viewer.join.presentation.background == 0.0f
+	    && viewer.join.presentation.bold == 0.0f
+	    && viewer.join.presentation.blink == 0.0f
+	    && viewer.join.presentation.cached_foreground == 0.0f
+	    && viewer.join.pager.foreground == 7
+	    && viewer.join.pager.line_count == 0.0f
+	    && viewer.join.event_count == 10U
+	    && !fixture.warp_called && fixture.draw_position == 0U);
 }
 
 static bool direct_emergency_warp_accepted_mode_run(
-    struct hostile_mines_hazard_fixture *fixture, float mode,
-    size_t *parent_end);
+	struct hostile_mines_hazard_fixture *fixture, bool local_mode,
+	size_t *parent_end);
 
 static void
 test_direct_emergency_warp_accepted_modes(void)
 {
-	static const uint8_t mode_two[] =
-	    "\r\n\r\n[y/N] -=> \r\n"
-	    "\r\n * EMERGENCY WARP ENGAGED! * \r\n"
-	    "\r\nYou enter a wormhole as your engines build up to emergency power!\r\n"
-	    "\r\n     * Engine Temperature *\r\n"
-	    "[ Normal ][ Danger ][ Overheat ]\r\n"
-	    "================================\r\n"
-	    "[*\r\n\r\n"
-	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
-	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n";
 	static const struct {
-		float mode;
+		bool local_mode;
 		const uint8_t *expected;
 		size_t expected_length;
 		size_t parent_end;
 		uint64_t expected_hash;
 	} cases[] = {
-		{1.0f, (const uint8_t *)"", 0U, 0U,
+		{true, (const uint8_t *)"", 0U, 0U,
 		    UINT64_C(0xcbf29ce484222325)},
-		{2.0f, mode_two, sizeof(mode_two) - 1U, 16U,
-		    UINT64_C(0xd5ce3279a180b4e6)},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -19476,7 +19296,7 @@ test_direct_emergency_warp_accepted_modes(void)
 		before = record;
 		yt_player_decode(&fixture.emergency_player, &record);
 		CHECK(direct_emergency_warp_accepted_mode_run(&fixture,
-		    cases[pass].mode, &parent_end));
+		    cases[pass].local_mode, &parent_end));
 		CHECK(parent_end == cases[pass].parent_end
 		    && viewer.join.remote_length == cases[pass].expected_length
 		    && memcmp(remote, cases[pass].expected,
@@ -19504,7 +19324,7 @@ test_direct_emergency_warp_accepted_modes(void)
 		    && viewer.join.local_color_count == 23U
 		    && viewer_colors_fnv1a64(&viewer.join)
 		    == UINT64_C(0x6e338d8e4536fe7e)
-		    && viewer.join.presentation.sound.mode == cases[pass].mode
+		    && viewer.join.presentation.sound.local_mode == cases[pass].local_mode
 		    && viewer.join.presentation.foreground == 2.0f
 		    && viewer.join.presentation.background == 0.0f
 		    && viewer.join.presentation.bold == 0.0f
@@ -19521,7 +19341,6 @@ test_direct_emergency_warp_accepted_modes(void)
 			    == before.bytes[index]);
 		}
 	}
-	CHECK(sizeof(mode_two) - 1U == 362U);
 }
 
 static void
@@ -19557,7 +19376,7 @@ test_direct_emergency_warp_inherited_pager(void)
 		memset(&fixture, 0, sizeof(fixture));
 		fixture.presentation.viewer = &viewer;
 		CHECK(direct_emergency_warp_mode_decline_run(&fixture,
-		    cases[pass].ansi, 0.0f));
+		    cases[pass].ansi, false));
 		CHECK(viewer.join.remote_length == cases[pass].expected_length
 		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
 		    == cases[pass].expected_hash
@@ -20641,7 +20460,7 @@ test_direct_emergency_warp_warning_two_carrier(void)
 static bool
 direct_emergency_warp_accepted_answer_run(
     struct hostile_mines_hazard_fixture *fixture, bool ansi,
-    size_t *parent_end, bool queued_answer, float mode,
+    size_t *parent_end, bool queued_answer, bool local_mode,
     float cached_foreground)
 {
 	static const uint8_t warning_one[] =
@@ -20658,7 +20477,7 @@ direct_emergency_warp_accepted_answer_run(
 	    ? queued_answer_text : typed_answer;
 
 	join->presentation = state(ansi);
-	join->presentation.sound.mode = mode;
+	join->presentation.sound.local_mode = local_mode;
 	join->presentation.cached_foreground = cached_foreground;
 	if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
@@ -20700,8 +20519,8 @@ direct_emergency_warp_accepted_answer_run(
 	if (!normal_exit_line(join, NULL, 0U))
 		return false;
 	*parent_end = join->remote_length;
-	join->presentation.sound.user_sound = 0.0f;
-	join->presentation.sound.local_sound = 0.0f;
+	join->presentation.sound.user_sound = false;
+	join->presentation.sound.local_sound = false;
 	fixture->warp_called = true;
 	++fixture->warp_calls;
 	return hostile_emergency_warp_present(fixture);
@@ -20713,7 +20532,7 @@ direct_emergency_warp_accepted_run(
     size_t *parent_end)
 {
 	return direct_emergency_warp_accepted_answer_run(fixture, ansi,
-	    parent_end, false, 0.0f, 0.0f);
+	    parent_end, false, false, 0.0f);
 }
 
 static bool
@@ -20722,16 +20541,16 @@ direct_emergency_warp_accepted_queued_run(
     size_t *parent_end)
 {
 	return direct_emergency_warp_accepted_answer_run(fixture, ansi,
-	    parent_end, true, 0.0f, 0.0f);
+	    parent_end, true, false, 0.0f);
 }
 
 static bool
 direct_emergency_warp_accepted_mode_run(
-    struct hostile_mines_hazard_fixture *fixture, float mode,
-    size_t *parent_end)
+	struct hostile_mines_hazard_fixture *fixture, bool local_mode,
+	size_t *parent_end)
 {
 	return direct_emergency_warp_accepted_answer_run(fixture, true,
-	    parent_end, false, mode, 2.0f);
+	    parent_end, false, local_mode, 2.0f);
 }
 
 static void
@@ -23412,7 +23231,7 @@ direct_emergency_warp_main_ordinary_return_run(
 		    sizeof(no_turns_row) - 1U, 0.0f))
 			return false;
 	}
-	else if (!direct_emergency_warp_mode_decline_run(fixture, ansi, 0.0f)) {
+	else if (!direct_emergency_warp_mode_decline_run(fixture, ansi, false)) {
 		return false;
 	}
 	ends[1] = join->remote_length;
@@ -24568,7 +24387,7 @@ direct_emergency_warp_hostile_ordinary_return_run(
 		    sizeof(no_turns_row) - 1U, 0.0f))
 			return false;
 	}
-	else if (!direct_emergency_warp_mode_decline_run(fixture, ansi, 0.0f)) {
+	else if (!direct_emergency_warp_mode_decline_run(fixture, ansi, false)) {
 		return false;
 	}
 	ends[1] = join->remote_length;
@@ -27755,8 +27574,8 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 				    "YTSCORE.ASC", endpoint == 1U, remote,
 				    sizeof(remote));
 				if (endpoint == 2U)
-					viewer.join.presentation.sound.mode = 1.0f;
-				viewer.join.presentation.sound.user_sound = 0.0f;
+					viewer.join.presentation.sound.local_mode = true;
+				viewer.join.presentation.sound.user_sound = false;
 				memset(&fixture, 0, sizeof(fixture));
 				fixture.presentation.viewer = &viewer;
 				fixture.draws[0] = origins[origin].draws[0];
@@ -27970,8 +27789,8 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 			    "YTSCORE.ASC", endpoint == 1U, remote, sizeof(remote));
 			if (endpoint == 2U)
-				viewer.join.presentation.sound.mode = 1.0f;
-			viewer.join.presentation.sound.user_sound = 0.0f;
+				viewer.join.presentation.sound.local_mode = true;
+			viewer.join.presentation.sound.user_sound = false;
 			memset(&fixture, 0, sizeof(fixture));
 			fixture.presentation.viewer = &viewer;
 			fixture.draws[0] = 81143.0f / 8388608.0f;
@@ -28196,7 +28015,7 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 		fixture_viewer_initialize(&viewer, &stream, retained_scoreboard,
 		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
 		    callers[caller].ansi, remote, sizeof(remote));
-		viewer.join.presentation.sound.user_sound = 0.0f;
+		viewer.join.presentation.sound.user_sound = false;
 		memset(&fixture, 0, sizeof(fixture));
 		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
@@ -28374,7 +28193,7 @@ direct_warp_attack_fatal_prefix_setup(struct physical_viewer_join *viewer,
 	fixture_viewer_initialize(viewer, stream, retained_scoreboard,
 	    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC", ansi, remote,
 	    remote_capacity);
-	viewer->join.presentation.sound.user_sound = 0.0f;
+	viewer->join.presentation.sound.user_sound = false;
 	memset(fixture, 0, sizeof(*fixture));
 	fixture->presentation.viewer = viewer;
 	fixture->emergency_sector_cache = 733.0f;
@@ -29669,7 +29488,7 @@ test_destroyed_mine_fatal_projections(void)
 		fixture_viewer_initialize(&viewer, &stream,
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", false, remote, sizeof(remote));
-		viewer.join.presentation.sound.user_sound = 0.0f;
+		viewer.join.presentation.sound.user_sound = false;
 		memset(&fixture, 0, sizeof(fixture));
 		fixture.presentation.viewer = &viewer;
 		fixture.hazard_logical_sector = 733;
@@ -31953,7 +31772,7 @@ main_attack_black_hole_cycle_run(bool ansi, struct pager_capture *capture,
 	current->foreground = 6.0f;
 	current->color_initialized = 1.0f;
 	current->cached_foreground = 6.0f;
-	current->sound.user_sound = 0.0f;
+	current->sound.user_sound = false;
 	memset(pager, 0, sizeof(*pager));
 	pager->foreground = 6;
 	pager->line_count = 8.0f;
@@ -32224,7 +32043,7 @@ main_attack_mine_cycle_run(bool ansi, bool emergency_warp,
 	current->foreground = 6.0f;
 	current->color_initialized = 1.0f;
 	current->cached_foreground = 6.0f;
-	current->sound.user_sound = 0.0f;
+	current->sound.user_sound = false;
 	memset(pager, 0, sizeof(*pager));
 	pager->foreground = 6;
 	pager->line_count = 8.0f;
@@ -35566,8 +35385,8 @@ test_radio_body_cleanup_presentation(void)
 	struct yt_present_state current = state(false);
 	struct yt_present_result result;
 
-	current.sound.snoop = false;
-	current.sound.mode = 0.0f;
+	current.sound.local_output = false;
+	current.sound.local_mode = false;
 	CHECK(yt_present_radio_backspace(1, 0U, &current, &result)
 	    == YT_PRESENT_OK);
 	CHECK(result.remote_length == sizeof(backspace)
@@ -35582,7 +35401,7 @@ test_radio_body_cleanup_presentation(void)
 	    && result.events[3].operation == YT_PRESENT_LOCAL_LOCATE
 	    && result.events[3].row == -1 && result.events[3].column == 4);
 
-	current.sound.mode = 1.0f;
+	current.sound.local_mode = true;
 	CHECK(yt_present_radio_backspace(20, 5U, &current, &result)
 	    == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0U && result.event_count == 3U
@@ -35591,11 +35410,7 @@ test_radio_body_cleanup_presentation(void)
 	    && result.events[1].operation == YT_PRESENT_LOCAL_SEMI
 	    && result.events[2].operation == YT_PRESENT_LOCAL_LOCATE
 	    && result.events[2].column == 10);
-	current.sound.mode = 2.0f;
-	CHECK(yt_present_radio_backspace(1, 0U, &current, &result)
-	    == YT_PRESENT_OK && result.remote_length == 0U);
-
-	current.sound.mode = 0.0f;
+	current.sound.local_mode = false;
 	CHECK(yt_present_radio_wrap_cleanup(1, 74U, &current, &result)
 	    == YT_PRESENT_OK);
 	CHECK(result.remote_length == sizeof(wrap)
@@ -35607,7 +35422,7 @@ test_radio_body_cleanup_presentation(void)
 	    && result.events[1].length == 1U
 	    && result.events[1].data[0] == ' '
 	    && result.events[2].operation == YT_PRESENT_REMOTE_SEMI);
-	current.sound.mode = 1.0f;
+	current.sound.local_mode = true;
 	CHECK(yt_present_radio_wrap_cleanup(1, 71U, &current, &result)
 	    == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0U && result.event_count == 2U
@@ -35616,13 +35431,6 @@ test_radio_body_cleanup_presentation(void)
 	    && result.events[1].operation == YT_PRESENT_LOCAL_SEMI
 	    && result.events[1].length == 4U
 	    && memcmp(result.events[1].data, "    ", 4U) == 0);
-	current.sound.mode = 2.0f;
-	CHECK(yt_present_radio_wrap_cleanup(1, 75U, &current, &result)
-	    == YT_PRESENT_OK && result.remote_length == 1U
-	    && result.remote[0] == '\r' && result.event_count == 3U
-	    && result.events[1].operation == YT_PRESENT_LOCAL_SEMI
-	    && result.events[1].length == 0U);
-
 	CHECK(yt_present_radio_backspace(0, 0U, &current, &result)
 	    == YT_PRESENT_RANGE);
 	CHECK(yt_present_radio_backspace(1, 75U, &current, &result)
@@ -35653,7 +35461,7 @@ test_radio_body_list_pager_reset(void)
 }
 
 static void
-computer_radio_log_empty_cycle_fixture(bool ansi, float mode,
+computer_radio_log_empty_cycle_fixture(bool ansi, bool local_mode,
     const uint8_t *typed, size_t typed_length,
     struct yt_present_state *current, struct yt_pager_state *pager,
     struct pager_capture *capture, char *accumulator,
@@ -35669,7 +35477,7 @@ computer_radio_log_empty_cycle_fixture(bool ansi, float mode,
 
 	CHECK(typed != NULL && typed_length < accumulator_capacity);
 	*current = state(ansi);
-	current->sound.mode = mode;
+	current->sound.local_mode = local_mode;
 	current->foreground = 6.0f;
 	current->cached_foreground = ansi ? 6.0f : 0.0f;
 	memset(pager, 0, sizeof(*pager));
@@ -35735,10 +35543,6 @@ test_computer_radio_log_presentation(void)
 	    "None Found.\r\n"
 	    "\r\n"
 	    "Time: 14:59  Computer command (?=help)? ";
-	static const uint8_t corrupt_expected[] =
-	    "\r\n\r\n\r\n"
-	    "Log of messages sent/recieved.\r\n"
-	    "None Found.\r\n\r\n";
 	static const uint8_t message_prefix[] =
 	    "\r\n"
 	    "Time: 14:59  Computer command (?=help)? 6\r\n"
@@ -35765,7 +35569,7 @@ test_computer_radio_log_presentation(void)
 	size_t queue_position;
 	size_t queue_length;
 
-	computer_radio_log_empty_cycle_fixture(false, 0.0f,
+	computer_radio_log_empty_cycle_fixture(false, false,
 	    (const uint8_t *)"6", 1U, &current, &pager, &capture,
 	    accumulator, sizeof(accumulator), queue, sizeof(queue),
 	    &queue_position, &queue_length);
@@ -35775,7 +35579,7 @@ test_computer_radio_log_presentation(void)
 	CHECK(pager.line_count == 1.0f && pager.newline_flag == false
 	    && queue_position == 0U && queue_length == 0U);
 
-	computer_radio_log_empty_cycle_fixture(true, 0.0f,
+	computer_radio_log_empty_cycle_fixture(true, false,
 	    (const uint8_t *)"6", 1U, &current, &pager, &capture,
 	    accumulator, sizeof(accumulator), queue, sizeof(queue),
 	    &queue_position, &queue_length);
@@ -35784,21 +35588,13 @@ test_computer_radio_log_presentation(void)
 	    && memcmp(capture.remote, ansi_expected,
 	    sizeof(ansi_expected) - 1U) == 0);
 
-	computer_radio_log_empty_cycle_fixture(false, 1.0f,
+	computer_radio_log_empty_cycle_fixture(false, true,
 	    (const uint8_t *)"6", 1U, &current, &pager, &capture,
 	    accumulator, sizeof(accumulator), queue, sizeof(queue),
 	    &queue_position, &queue_length);
 	CHECK(capture.remote_length == 0U && capture.local_event_count != 0U);
 
-	computer_radio_log_empty_cycle_fixture(false, 2.0f,
-	    (const uint8_t *)"6", 1U, &current, &pager, &capture,
-	    accumulator, sizeof(accumulator), queue, sizeof(queue),
-	    &queue_position, &queue_length);
-	CHECK(capture.remote_length == sizeof(corrupt_expected) - 1U
-	    && memcmp(capture.remote, corrupt_expected,
-	    sizeof(corrupt_expected) - 1U) == 0);
-
-	computer_radio_log_empty_cycle_fixture(false, 0.0f,
+	computer_radio_log_empty_cycle_fixture(false, false,
 	    (const uint8_t *)"6;Q", 3U, &current, &pager, &capture,
 	    accumulator, sizeof(accumulator), queue, sizeof(queue),
 	    &queue_position, &queue_length);

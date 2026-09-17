@@ -51,6 +51,7 @@ struct yt_present_time_state {
 
 struct yt_present_state {
 	struct yt_sound_state sound;
+	uint8_t conversion_mode;
 	float foreground;
 	float background;
 	float bold;

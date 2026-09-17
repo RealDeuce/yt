@@ -97,6 +97,6 @@ enum yt_input_drain_reason yt_input_drain_local(
     struct yt_input_drain_state *state,
     const struct yt_input_value *selected);
 enum yt_input_drain_reason yt_input_drain_serial(
-    struct yt_input_drain_state *state, float mode,
+    struct yt_input_drain_state *state, bool local_mode,
     const struct yt_input_value *selected);
 #endif

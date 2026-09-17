@@ -272,7 +272,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 	route->destination = *target;
 	route->amount = *missiles;
 	(void)qb_cint_mode((double)route->destination,
-	    session->presentation.sound.conversion_mode, &overflow);
+	    session->presentation.conversion_mode, &overflow);
 	if (overflow)
 		return true;
 	if (!projectile_opening(session, *amount, plasma,

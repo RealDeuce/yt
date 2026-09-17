@@ -480,11 +480,11 @@ session_drain_pending_input(struct yt_session *session)
 	for (;;) {
 		struct yt_input_value selected = {{0, 0}, 0, false};
 
-		if (session->presentation.sound.mode == 0.0f
+		if (!session->presentation.sound.local_mode
 		    && !yt_input_poll_source(&session->io.input, true, &selected))
 			return false;
 		reason = yt_input_drain_serial(&drain,
-		    session->presentation.sound.mode, &selected);
+		    session->presentation.sound.local_mode, &selected);
 		if (reason == YT_INPUT_DRAIN_ERROR)
 			return false;
 		if (reason == YT_INPUT_DRAIN_COMPLETE)
