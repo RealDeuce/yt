@@ -11,7 +11,7 @@
 #include "yt_platform.h"
 #include "yt_route.h"
 #include "yt_sound.h"
-#include "yt_startup_model.h"
+#include "yt_startup.h"
 #include "yt_text.h"
 #include "yt_team.h"
 

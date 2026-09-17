@@ -7,7 +7,7 @@
 #include "yt_names.h"
 #include "yt_output.h"
 #include "yt_platform.h"
-#include "yt_startup_model.h"
+#include "yt_startup.h"
 #include "yt_text.h"
 
 #include <errno.h>

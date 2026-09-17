@@ -2,7 +2,7 @@
 #define YT_INIT_H
 
 #include "yt_game.h"
-#include "yt_startup_model.h"
+#include "yt_startup.h"
 
 struct yt_name_file;
 

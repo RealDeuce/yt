@@ -71,7 +71,7 @@ set(YT_CORE_SOURCES
     src/yt_presentation.c
     src/yt_random.c
     src/yt_sound.c
-	    src/yt_startup_model.c
+    src/yt_startup.c
     src/yt_text.c)
 
 set(YT_GAME_SOURCES

@@ -1,5 +1,5 @@
-#ifndef YT_STARTUP_MODEL_H
-#define YT_STARTUP_MODEL_H
+#ifndef YT_STARTUP_H
+#define YT_STARTUP_H
 
 #include "yt_common.h"
 

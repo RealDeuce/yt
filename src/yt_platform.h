@@ -2,7 +2,7 @@
 #define YT_PLATFORM_H
 
 #include "yt_common.h"
-#include "yt_startup_model.h"
+#include "yt_startup.h"
 
 #include <time.h>
 
