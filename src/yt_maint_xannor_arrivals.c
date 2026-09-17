@@ -674,10 +674,12 @@ bool
 yt_maintenance_xannor_route_arrivals(struct maint_state *state, int group,
     int target, float top_player_target, float location[21], float size[21],
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_maintenance_xannor_route_result *result,
+    bool *reached_target,
     struct yt_error *error)
 {
-	struct yt_maintenance_xannor_route_result local = {0};
+	int hops = 0;
+
+	*reached_target = false;
 
 	for (;;) {
 		struct yt_sector destination;
@@ -696,8 +698,7 @@ yt_maintenance_xannor_route_arrivals(struct maint_state *state, int group,
 		    error))
 			return false;
 		if (next == 0) {
-			local.route_missing = location[group] != (float)target;
-			if (local.route_missing) {
+			if (location[group] != (float)target) {
 				struct yt_maintenance_output_result output;
 
 				if (!yt_maintenance_compose_xannor_path_error(
@@ -711,7 +712,6 @@ yt_maintenance_xannor_route_arrivals(struct maint_state *state, int group,
 		if (size[group] < 1.0f || location[group] < 1.0f) {
 			size[group] = 0.0f;
 			location[group] = 0.0f;
-			local.exhausted = true;
 			break;
 		}
 		/*
@@ -721,12 +721,12 @@ yt_maintenance_xannor_route_arrivals(struct maint_state *state, int group,
 		 * route this either completes or returns to the same arrival
 		 * continuation without another externally visible operation.
 		 */
-		if (local.hops == 0
+		if (hops == 0
 		    && yt_maintenance_xannor_bypass_initial_arrival(group,
 		    location[group], top_player_target)
 		    && yt_maintenance_xannor_route_complete(location[group],
 		    target)) {
-			local.reached_target = true;
+			*reached_target = true;
 			break;
 		}
 		location[group] = (float)next;
@@ -745,15 +745,13 @@ yt_maintenance_xannor_route_arrivals(struct maint_state *state, int group,
 		else if (!xannor_attack_players(state, group, location, size,
 		    line_output, line_context, error))
 			return false;
-		++local.hops;
-		local.reached_target = yt_maintenance_xannor_route_complete(
+		++hops;
+		*reached_target = yt_maintenance_xannor_route_complete(
 		    location[group], target);
-		local.exhausted = location[group] <= 0.0f
-		    || size[group] <= 0.0f;
-		if (local.reached_target || local.exhausted)
+		if (*reached_target || location[group] <= 0.0f
+		    || size[group] <= 0.0f)
 			break;
 	}
-	*result = local;
 	return true;
 }
 
@@ -895,7 +893,7 @@ yt_maintenance_xannor_roaming_groups(struct maint_state *state, float score,
 			do {
 				int target;
 				struct yt_maintenance_output_result group_output;
-				struct yt_maintenance_xannor_route_result route_result;
+				bool reached_target;
 
 				if (!xannor_candidate_target(state,
 				    location[group], revenge_live, revenge_cached,
@@ -911,12 +909,12 @@ yt_maintenance_xannor_roaming_groups(struct maint_state *state, float score,
 					return false;
 				if (!yt_maintenance_xannor_route_arrivals(state, group,
 				    target, (float)top_target, location, size,
-				    line_output, line_context, &route_result, error))
+				    line_output, line_context, &reached_target, error))
 					return false;
 				if (!yt_maintenance_xannor_target_finish(&state->game,
 				    state->player_sector, state->player_cloak,
 				    (size_t)state->player_count + 2U,
-				    route_result.reached_target, group, hunt_player,
+				    reached_target, group, hunt_player,
 				    &location[group], &size[group], line_output,
 				    line_context, error))
 					return false;

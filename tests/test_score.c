@@ -8119,7 +8119,6 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	struct yt_planet planet;
 	struct yt_radio_record radio[2];
 	struct maint_state state = {0};
-	struct yt_maintenance_xannor_route_result route;
 	struct yt_text_file news = {0};
 	struct yt_game game;
 	struct yt_error error;
@@ -8133,6 +8132,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	float size[21] = {0};
 	int target;
 	int sector;
+	bool reached_target;
 	bool valid = false;
 
 	(void)remove("YTDATA.DAT");
@@ -8205,9 +8205,8 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	    3, 0, 0, &target, &error) || target != 3
 	    || !yt_maintenance_xannor_route_arrivals(&state, 2, target,
 	    (float)target, location, size, maintenance_stdout_line, NULL,
-	    &route, &error)
-	    || route.hops != 2 || !route.reached_target
-	    || route.route_missing || route.exhausted
+	    &reached_target, &error)
+	    || !reached_target
 	    || location[2] != 3.0f || size[2] != 9.0f
 	    || state.game.random.draws != 7U
 	    || random_script.position != sizeof(seven_zero_draws)
@@ -8278,25 +8277,25 @@ check_maintenance_xannor_route_arrivals_pass(void)
 			goto done;
 	}
 	if (!yt_maintenance_xannor_route_arrivals(&state, 2, 4, 4.0f,
-	    location, size, maintenance_stdout_line, NULL, &route, &error)
-	    || route.hops != 0 || route.reached_target
-	    || !route.route_missing || route.exhausted
+	    location, size, maintenance_stdout_line, NULL, &reached_target,
+	    &error)
+	    || reached_target
 	    || location[2] != 3.0f || size[2] != 9.0f)
 		goto done;
 	location[2] = 1.0f;
 	size[2] = 0.0f;
 	if (!yt_maintenance_xannor_route_arrivals(&state, 2, 3, 3.0f,
-	    location, size, maintenance_stdout_line, NULL, &route, &error)
-	    || route.hops != 0 || route.reached_target
-	    || route.route_missing || !route.exhausted
+	    location, size, maintenance_stdout_line, NULL, &reached_target,
+	    &error)
+	    || reached_target
 	    || location[2] != 0.0f || size[2] != 0.0f)
 		goto done;
 	location[2] = 0.6f;
 	size[2] = 10.0f;
 	if (!yt_maintenance_xannor_route_arrivals(&state, 2, 3, 3.0f,
-	    location, size, maintenance_stdout_line, NULL, &route, &error)
-	    || route.hops != 0 || route.reached_target
-	    || route.route_missing || !route.exhausted
+	    location, size, maintenance_stdout_line, NULL, &reached_target,
+	    &error)
+	    || reached_target
 	    || location[2] != 0.0f || size[2] != 0.0f)
 		goto done;
 	valid = true;
