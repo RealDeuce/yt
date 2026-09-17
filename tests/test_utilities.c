@@ -1462,7 +1462,7 @@ test_yt_init_sector_prepass(void)
 	    sizeof(port_offset_raw));
 	ok = yt_init_sector_prepass(&database, 51.0f, 2004,
 	    &port_offset, &error)
-	    && port_offset == 2055.0f && database.records == 1U
+	    && port_offset == 2055.0f
 	    && yt_database_read(&database, 1U, &actual, &error)
 	    && memcmp(actual.bytes, expected.bytes, sizeof(actual.bytes)) == 0;
 
@@ -1483,7 +1483,7 @@ test_yt_init_random_binding(void)
 	yt_error_clear(&error);
 	if (!yt_initialize_begin_yt(&error)
 	    || !yt_initialize_bind_yt(&database, &error)
-	    || database.file == NULL || database.records != 0U)
+	    || database.file == NULL)
 		goto done;
 	yt_database_close(&database);
 	(void)remove("YTDATA.DAT");

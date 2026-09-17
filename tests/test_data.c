@@ -451,7 +451,6 @@ database_close_fixture(struct yt_database *database, bool device)
 	database->file = tmpfile();
 	if (database->file == NULL)
 		return false;
-	database->records = 1U;
 	database->device = device;
 	(void)snprintf(database->path, sizeof(database->path), "%s",
 	    "CLOSE-FIXTURE.DAT");
@@ -491,14 +490,14 @@ test_database_random_open(void)
 	}
 	CHECK(yt_database_open(&database, path, YT_OPEN_UPDATE_CREATE,
 	    &error));
-	CHECK(database.records == 2U && database.file != NULL
+	CHECK(database.file != NULL
 	    && ftell(database.file) == 0L);
 	yt_database_close(&database);
 	CHECK(yt_file_delete(path, false, &error));
 
 	CHECK(yt_database_open(&database, path, YT_OPEN_UPDATE_CREATE,
 	    &error));
-	CHECK(database.records == 0U && database.file != NULL
+	CHECK(database.file != NULL
 	    && ftell(database.file) == 0L);
 	yt_database_close(&database);
 	CHECK(yt_file_delete(path, false, &error));
@@ -625,7 +624,7 @@ test_database_random_close(void)
 		CHECK(database_close_fixture(&database, device != 0U));
 		yt_error_clear(&error);
 		CHECK(yt_database_random_close(&database, &error)
-		    && database.file == NULL && database.records == 0U
+		    && database.file == NULL
 		    && database.last_close_basic_error == 0U);
 	}
 
@@ -1050,7 +1049,6 @@ test_radio_file(void)
 	}
 	yt_radio_file_init(&radio);
 	CHECK(yt_radio_file_open(&radio, sized_path, &error)
-	    && radio.random.records == 2U
 	    && yt_radio_file_size(&radio, &size, &error)
 	    && size == 2U * YT_RADIO_RECORD_SIZE);
 	CHECK(yt_radio_file_close(&radio, &error));

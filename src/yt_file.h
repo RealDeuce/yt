@@ -13,8 +13,6 @@ enum yt_open_mode {
 struct yt_database {
 	FILE *file;
 	char path[512];
-	size_t records;
-	uint32_t device_position;
 	bool device;
 	uint16_t last_open_basic_error;
 	uint16_t last_close_basic_error;
