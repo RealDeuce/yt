@@ -145,25 +145,6 @@ struct yt_maintenance_planet_result {
 	uint64_t draws_consumed;
 };
 
-struct yt_maintenance_wanderer_result {
-	int scanned_sectors;
-	int removed_sector;
-	int candidate_attempts;
-	int target_sector;
-	bool rebuilt;
-	float bank_after;
-	uint64_t draws_consumed;
-};
-
-struct yt_maintenance_xannor_home_result {
-	float planet_link_before;
-	bool rebuilt;
-	float ground_before_daily_update;
-	float ground_after_daily_update;
-	float bank_after;
-	uint64_t draws_consumed;
-};
-
 struct yt_maintenance_xannor_hunt_result {
 	int top_record;
 	float top_score;
@@ -192,14 +173,6 @@ struct yt_maintenance_xannor_reclaim_result {
 	bool attempted;
 	bool successful;
 	double defenders_after;
-	uint64_t draws_consumed;
-};
-
-struct yt_maintenance_xannor_relocation_result {
-	bool triggered;
-	int old_headquarters;
-	int target_sector;
-	int attempts;
 	uint64_t draws_consumed;
 };
 
@@ -233,11 +206,6 @@ struct yt_maintenance_mercenary_tax_result {
 	float tax_pool;
 	float fleet_strength;
 	int taxed_ports;
-};
-
-struct yt_maintenance_mercenary_defection_result {
-	int defections;
-	uint64_t draws_consumed;
 };
 
 struct yt_maintenance_mercenary_mine_result {
@@ -337,9 +305,7 @@ bool yt_maintenance_place_mercenary_fleets(struct yt_game *game,
     struct yt_error *error);
 bool yt_maintenance_mercenary_defections(struct yt_game *game,
     int sector_count, yt_maintenance_score_line_fn line_output,
-    void *line_context,
-    struct yt_maintenance_mercenary_defection_result *result,
-    struct yt_error *error);
+    void *line_context, struct yt_error *error);
 bool yt_maintenance_mercenary_mines(struct yt_game *game,
     int sector_number, float moving_fighters,
     yt_maintenance_score_line_fn line_output, void *line_context,
@@ -373,7 +339,7 @@ bool yt_maintenance_update_port(struct yt_random *random,
 bool yt_maintenance_maintain_ports(struct yt_game *game,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    int *plagued_count, struct yt_error *error);
+    struct yt_error *error);
 bool yt_maintenance_compose_planet_phase(const uint8_t *blank,
     size_t blank_length, const struct yt_maintenance_text *planet_name,
     const struct yt_maintenance_planet_result *mutation,
@@ -384,21 +350,20 @@ bool yt_maintenance_update_planet(struct yt_random *random,
 bool yt_maintenance_maintain_planets(struct yt_game *game,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    int *event_count, struct yt_error *error);
+    struct yt_error *error);
 bool yt_maintenance_compose_wanderer_phase(const uint8_t *blank,
     size_t blank_length, bool rebuilt,
     struct yt_maintenance_output_result *result);
 bool yt_maintenance_maintain_wanderer(struct yt_game *game,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_maintenance_wanderer_result *result, struct yt_error *error);
+    struct yt_error *error);
 bool yt_maintenance_compose_xannor_home(const uint8_t *blank,
     size_t blank_length, bool rebuilt,
     struct yt_maintenance_output_result *result);
 bool yt_maintenance_maintain_xannor_home(struct yt_game *game,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_maintenance_xannor_home_result *result,
     struct yt_error *error);
 bool yt_maintenance_compose_xannor_hunt(const uint8_t *blank,
     size_t blank_length, const struct yt_maintenance_text *hunt_name,
@@ -448,8 +413,7 @@ bool yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
     float location[21], bool original_hostile, float group_one,
     double regeneration, const uint8_t *blank,
     size_t blank_length, yt_maintenance_score_line_fn line_output,
-    void *line_context, struct yt_maintenance_xannor_relocation_result *result,
-    struct yt_error *error);
+    void *line_context, struct yt_error *error);
 bool yt_maintenance_xannor_revenge_slot(struct yt_game *game,
     const float *player_sector, size_t cache_count,
     const uint8_t *blank, size_t blank_length,

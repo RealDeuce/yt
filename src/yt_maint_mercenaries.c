@@ -279,19 +279,14 @@ yt_maintenance_place_mercenary_fleets(struct yt_game *game,
 bool
 yt_maintenance_mercenary_defections(struct yt_game *game, int sector_count,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_maintenance_mercenary_defection_result *result,
     struct yt_error *error)
 {
-	struct yt_maintenance_mercenary_defection_result local = {0};
-	uint64_t starting_draws;
 	int logical;
 
-	if (game == NULL || sector_count < 1 || line_output == NULL
-	    || result == NULL) {
+	if (game == NULL || sector_count < 1 || line_output == NULL) {
 		set_error(error, YT_INVALID, "Mercenary defections", "YTDATA.DAT");
 		return false;
 	}
-	starting_draws = game->random.draws;
 	for (logical = 1; logical <= sector_count; ++logical) {
 		struct yt_sector sector;
 
@@ -360,12 +355,9 @@ yt_maintenance_mercenary_defections(struct yt_game *game, int sector_count,
 				    || !yt_news_append_bytes(line, line_length,
 				    error))
 					return false;
-				++local.defections;
 			}
 		}
 	}
-	local.draws_consumed = game->random.draws - starting_draws;
-	*result = local;
 	return true;
 }
 
@@ -615,7 +607,6 @@ yt_maintenance_mercenaries_run(struct maint_state *state,
 {
 	static const char report[] = "  -  Mercenary Report:";
 	struct yt_maintenance_mercenary_tax_result tax;
-	struct yt_maintenance_mercenary_defection_result defections;
 	struct yt_maintenance_output_result output;
 	bool rebuilt;
 	float hired;
@@ -682,8 +673,7 @@ yt_maintenance_mercenaries_run(struct maint_state *state,
 	    YT_MAINT_ROW_MERCENARY_HIRED, error)))
 		return false;
 	if (!yt_maintenance_mercenary_defections(&state->game,
-	    state->sector_count, line_output, line_context, &defections,
-	    error)
+	    state->sector_count, line_output, line_context, error)
 	    || !yt_maintenance_move_mercenaries(&state->game,
 	    state->sector_count,
 	    &state->route_cache, line_output, line_context, error))

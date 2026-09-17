@@ -613,18 +613,16 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
     float location[21], bool original_hostile, float group_one,
     double regeneration, const uint8_t *blank,
     size_t blank_length, yt_maintenance_score_line_fn line_output,
-    void *line_context, struct yt_maintenance_xannor_relocation_result *result,
-    struct yt_error *error)
+    void *line_context, struct yt_error *error)
 {
-	struct yt_maintenance_xannor_relocation_result local = {0};
 	struct yt_maintenance_output_result output;
 	struct yt_record config_record;
 	struct yt_sector sector;
-	uint64_t starting_draws;
 	float planet_number;
 	int old_logical;
 	int sector_count;
 	int candidate;
+	bool triggered;
 
 	if (game == NULL || location == NULL || line_output == NULL
 	    || (blank == NULL && blank_length != 0U)) {
@@ -639,23 +637,16 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 		    "YTDATA.DAT");
 		return false;
 	}
-	local.triggered = (!original_hostile
+	triggered = (!original_hostile
 	    && (double)group_one == regeneration)
 	    || (original_hostile && group_one > 0.0f);
-	if (result != NULL)
-		memset(result, 0, sizeof(*result));
-	if (!local.triggered) {
-		if (result != NULL)
-			*result = local;
+	if (!triggered)
 		return true;
-	}
-	starting_draws = game->random.draws;
 	for (;;) {
 		if (!yt_random_integer(&game->random,
 		    sector_count - 7, &candidate, error))
 			return false;
 		candidate += 7;
-		++local.attempts;
 		if (!yt_game_read_sector(game, candidate, &sector, error))
 			return false;
 		if (!((sector.fighters > 1.0f
@@ -663,10 +654,7 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 		    || sector.planet > 1.0f))
 			break;
 	}
-	local.draws_consumed = game->random.draws - starting_draws;
 	old_logical = (int)game->config.headquarters;
-	local.old_headquarters = old_logical;
-	local.target_sector = candidate;
 	game->config.headquarters = (float)candidate;
 	location[1] = (float)candidate;
 	if (!yt_database_read(&game->database, 1U, &config_record, error)
@@ -718,8 +706,6 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 	    || !line_output(line_context, output.rows[1].data,
 	    output.rows[1].length, error))
 		return false;
-	if (result != NULL)
-		*result = local;
 	return true;
 }
 bool
@@ -860,16 +846,14 @@ bool
 yt_maintenance_maintain_xannor_home(struct yt_game *game,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_maintenance_xannor_home_result *result,
     struct yt_error *error)
 {
-	struct yt_maintenance_xannor_home_result local = {0};
 	struct yt_maintenance_output_result output;
 	struct yt_sector sector;
 	struct yt_planet planet;
-	uint64_t starting_draws;
 	float sample;
 	float minute;
+	bool rebuilt;
 	int sector_count;
 	int planet_count;
 	int headquarters;
@@ -893,8 +877,6 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 		set_error(error, YT_RANGE, "maintain Xannoron", "YTDATA.DAT");
 		return false;
 	}
-	if (result != NULL)
-		memset(result, 0, sizeof(*result));
 	for (row = 0U; row < output.row_count; ++row) {
 		if (!line_output(line_context, output.rows[row].data,
 		    output.rows[row].length, error))
@@ -902,10 +884,8 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	}
 	if (!yt_game_read_sector(game, headquarters, &sector, error))
 		return false;
-	local.planet_link_before = sector.planet;
-	local.rebuilt = sector.planet == 0.0f;
-	starting_draws = game->random.draws;
-	if (local.rebuilt) {
+	rebuilt = sector.planet == 0.0f;
+	if (rebuilt) {
 		if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
 		    &today, NULL,
 		    error)
@@ -945,7 +925,6 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	}
 	if (!yt_game_read_planet(game, planet_count, &planet, error))
 		return false;
-	local.ground_before_daily_update = planet.ground_forces;
 	if (!yt_random_next(&game->random, &sample, error))
 		return false;
 	planet.ground_forces = qb_single_add(planet.ground_forces,
@@ -953,14 +932,9 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	planet.owner = -1.0f;
 	if (planet.bank == 0.0f)
 		planet.bank = 16000000.0f;
-	local.ground_after_daily_update = planet.ground_forces;
-	local.bank_after = planet.bank;
-	local.draws_consumed = game->random.draws - starting_draws;
 	if (!maintenance_write_xannor_daily(game, planet_count, &planet,
 	    error))
 		return false;
-	if (result != NULL)
-		*result = local;
 	return true;
 }
 

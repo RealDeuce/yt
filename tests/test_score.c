@@ -4401,7 +4401,6 @@ check_maintenance_port_pass(void)
 	struct yt_record after[2];
 	struct yt_game game;
 	struct yt_error error;
-	int plagued = -1;
 	int record;
 	size_t offset;
 	bool valid = false;
@@ -4427,8 +4426,7 @@ check_maintenance_port_pass(void)
 	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	if (!yt_maintenance_maintain_ports(&game,
 	    NULL, 0U, score_line_collect, &screen,
-	    &plagued, &error) || plagued != 1
-	    || clock_script.position != 4U
+	    &error) || clock_script.position != 4U
 	    || random_script.position != sizeof(random_bytes)
 	    || game.random.draws != 3U
 	    || screen.lines != 4U
@@ -5333,7 +5331,6 @@ check_maintenance_mercenary_defection_pass(void)
 		random_bytes, sizeof(random_bytes), 0U
 	};
 	struct score_line_tape screen = {0};
-	struct yt_maintenance_mercenary_defection_result result;
 	struct yt_text_file news = {0};
 	struct yt_record before[5];
 	struct yt_record owner;
@@ -5380,8 +5377,7 @@ check_maintenance_mercenary_defection_pass(void)
 			goto done;
 	}
 	if (!yt_maintenance_mercenary_defections(&game, 5,
-	    score_line_collect, &screen, &result, &error)
-	    || result.defections != 1 || result.draws_consumed != 5U
+	    score_line_collect, &screen, &error)
 	    || game.random.draws != 5U || script.position != sizeof(random_bytes)
 	    || screen.lines != 1U
 	    || screen.length != sizeof(expected_screen) - 1U
@@ -5403,13 +5399,11 @@ check_maintenance_mercenary_defection_pass(void)
 	    || memcmp(news.data, expected_news, sizeof(expected_news) - 1U)
 	    != 0
 	    || yt_maintenance_mercenary_defections(NULL, 5,
-	    score_line_collect, &screen, &result, &error)
+	    score_line_collect, &screen, &error)
 	    || yt_maintenance_mercenary_defections(&game, 0,
-	    score_line_collect, &screen, &result, &error)
+	    score_line_collect, &screen, &error)
 	    || yt_maintenance_mercenary_defections(&game, 5, NULL, &screen,
-	    &result, &error)
-	    || yt_maintenance_mercenary_defections(&game, 5,
-	    score_line_collect, &screen, NULL, &error))
+	    &error))
 		goto done;
 	valid = true;
 
@@ -6866,7 +6860,6 @@ check_maintenance_planet_pass(void)
 	struct yt_record after[3];
 	struct yt_game game;
 	struct yt_error error;
-	int events = -1;
 	int record;
 	size_t offset;
 	bool valid = false;
@@ -6894,7 +6887,7 @@ check_maintenance_planet_pass(void)
 	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	if (!yt_maintenance_maintain_planets(&game,
 	    NULL, 0U, score_line_collect, &screen,
-	    &events, &error) || events != 1 || clock_script.position != 4U
+	    &error) || clock_script.position != 4U
 	    || random_script.position != sizeof(random_bytes)
 	    || game.random.draws != 12U || screen.lines != 7U
 	    || screen.length != sizeof(expected_screen) - 1U
@@ -6998,7 +6991,6 @@ check_maintenance_wanderer_pass(void)
 		{2026, 1, 2, 0, 0, 0, 0}
 	}, 0U};
 	struct score_line_tape screen;
-	struct yt_maintenance_wanderer_result mutation;
 	struct yt_text_file news = {0};
 	struct yt_record before[4];
 	struct yt_record after[4];
@@ -7039,11 +7031,8 @@ check_maintenance_wanderer_pass(void)
 	memset(&screen, 0, sizeof(screen));
 	if (!yt_maintenance_maintain_wanderer(&game,
 	    NULL, 0U, score_line_collect, &screen,
-	    &mutation, &error)
-	    || mutation.scanned_sectors != 1 || mutation.removed_sector != 1
-	    || mutation.rebuilt || mutation.candidate_attempts != 2
-	    || mutation.target_sector != 1 || mutation.bank_after != 12.0f
-	    || mutation.draws_consumed != 2U || game.random.draws != 2U
+	    &error)
+	    || game.random.draws != 2U
 	    || random_script.position != sizeof(existing_draws)
 	    || screen.lines != 4U
 	    || screen.length != sizeof(expected_existing) - 1U
@@ -7101,11 +7090,8 @@ check_maintenance_wanderer_pass(void)
 	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	if (!yt_maintenance_maintain_wanderer(&game,
 	    NULL, 0U, score_line_collect, &screen,
-	    &mutation, &error)
-	    || mutation.scanned_sectors != 3 || mutation.removed_sector != 0
-	    || !mutation.rebuilt || mutation.candidate_attempts != 2
-	    || mutation.target_sector != 3 || mutation.bank_after != 250000.0f
-	    || mutation.draws_consumed != 2U || game.random.draws != 2U
+	    &error)
+	    || game.random.draws != 2U
 	    || random_script.position != sizeof(missing_draws)
 	    || clock_script.position != 1U || screen.lines != 6U
 	    || screen.length != sizeof(expected_missing) - 1U
@@ -7192,7 +7178,6 @@ check_maintenance_xannor_home_pass(void)
 		{2026, 1, 2, 22, 47, 30, 0}
 	}, 0U};
 	struct score_line_tape screen = {0};
-	struct yt_maintenance_xannor_home_result mutation;
 	struct yt_text_file news = {0};
 	struct yt_record sector_before;
 	struct yt_record sector_after;
@@ -7229,12 +7214,8 @@ check_maintenance_xannor_home_pass(void)
 	game.clock = (struct yt_clock){score_clock_read, &clock_script};
 	if (!yt_maintenance_maintain_xannor_home(&game,
 	    NULL, 0U, score_line_collect, &screen,
-	    &mutation, &error)
-	    || mutation.planet_link_before != 0.0f || !mutation.rebuilt
-	    || mutation.ground_before_daily_update != 125.0f
-	    || mutation.ground_after_daily_update != 137.0f
-	    || mutation.bank_after != 2600000.0f
-	    || mutation.draws_consumed != 3U || game.random.draws != 3U
+	    &error)
+	    || game.random.draws != 3U
 	    || random_script.position != sizeof(rebuild_draws)
 	    || clock_script.position != 2U || screen.lines != 5U
 	    || screen.length != sizeof(expected_rebuild) - 1U
@@ -7290,12 +7271,8 @@ check_maintenance_xannor_home_pass(void)
 	clock_script.position = 0U;
 	if (!yt_maintenance_maintain_xannor_home(&game,
 	    NULL, 0U, score_line_collect, &screen,
-	    &mutation, &error)
-	    || mutation.planet_link_before != 2.0f || mutation.rebuilt
-	    || mutation.ground_before_daily_update != 10.0f
-	    || mutation.ground_after_daily_update != 28.0f
-	    || mutation.bank_after != 16000000.0f
-	    || mutation.draws_consumed != 1U || game.random.draws != 1U
+	    &error)
+	    || game.random.draws != 1U
 	    || random_script.position != sizeof(bypass_draw)
 	    || clock_script.position != 0U || screen.lines != 2U
 	    || screen.length != sizeof(expected_bypass) - 1U
@@ -7330,12 +7307,8 @@ check_maintenance_xannor_home_pass(void)
 	clock_script.position = 0U;
 	if (!yt_maintenance_maintain_xannor_home(&game,
 	    NULL, 0U, score_line_collect, &screen,
-	    &mutation, &error)
-	    || mutation.planet_link_before != 3.0f || mutation.rebuilt
-	    || mutation.ground_before_daily_update != 10.0f
-	    || mutation.ground_after_daily_update != 10.0f
-	    || mutation.bank_after != 12.0f
-	    || mutation.draws_consumed != 1U || game.random.draws != 1U
+	    &error)
+	    || game.random.draws != 1U
 	    || random_script.position != sizeof(existing_draw)
 	    || clock_script.position != 0U || screen.lines != 2U
 	    || screen.length != sizeof(expected_bypass) - 1U
@@ -8490,7 +8463,6 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 		success_draws, sizeof(success_draws), 0U
 	};
 	struct score_line_tape screen = {0};
-	struct yt_maintenance_xannor_relocation_result relocation;
 	struct yt_text_file news = {0};
 	struct yt_record config_before;
 	struct yt_record config_after;
@@ -8547,18 +8519,15 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 	/* The false predicate is a true no-op, including the RNG stream. */
 	if (!yt_maintenance_xannor_headquarters_relocate(&game, location,
 	    false, 1.0f, 2.0, NULL, 0U,
-	    score_line_collect, &screen, &relocation, &error)
-	    || relocation.triggered || relocation.draws_consumed != 0U
+	    score_line_collect, &screen, &error)
 	    || game.random.draws != 0U || script.position != 0U
 	    || screen.length != 0U || location[1] != 8.0f
 	    || game.config.headquarters != 8.0f)
 		goto done;
 	if (!yt_maintenance_xannor_headquarters_relocate(&game, location,
 	    true, 1.0f, 0.0, NULL, 0U,
-	    score_line_collect, &screen, &relocation, &error)
-	    || !relocation.triggered || relocation.old_headquarters != 8
-	    || relocation.target_sector != 11 || relocation.attempts != 2
-	    || relocation.draws_consumed != 2U || game.random.draws != 2U
+	    score_line_collect, &screen, &error)
+	    || game.random.draws != 2U
 	    || script.position != sizeof(success_draws)
 	    || game.config.headquarters != 11.0f || location[1] != 11.0f
 	    || screen.length != sizeof(expected_screen) - 1U

@@ -103,7 +103,7 @@ xannor_reclaim_and_relocate(struct maint_state *state, float location[21],
 	return yt_maintenance_xannor_headquarters_relocate(&state->game,
 	    location, reclaim.original_hostile, size[1], (double)regeneration,
 	    NULL, 0U,
-	    line_output, line_context, NULL, error);
+	    line_output, line_context, error);
 }
 
 static bool
@@ -953,7 +953,7 @@ yt_maintenance_xannor_run(struct maint_state *state,
 
 	if (!yt_maintenance_maintain_xannor_home(&state->game,
 	    NULL, 0U,
-	    line_output, line_context, NULL, error)
+	    line_output, line_context, error)
 	    || !yt_maintenance_xannor_hunt(&state->game, state->player_sector,
 	    state->player_cloak, (size_t)state->player_count + 2U,
 	    NULL, 0U,

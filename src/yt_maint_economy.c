@@ -156,7 +156,7 @@ bool
 yt_maintenance_maintain_ports(struct yt_game *game,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    int *plagued_count, struct yt_error *error)
+    struct yt_error *error)
 {
 	struct yt_maintenance_output_result output;
 	int port_count;
@@ -176,8 +176,6 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 		set_error(error, YT_RANGE, "maintain ports", "YTDATA.DAT");
 		return false;
 	}
-	if (plagued_count != NULL)
-		*plagued_count = 0;
 	for (logical = 0; logical < 2; ++logical) {
 		if (!line_output(line_context, output.rows[logical].data,
 		    output.rows[logical].length, error))
@@ -212,8 +210,6 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 		    output.rows[3].length, error))
 			return false;
 	}
-	if (plagued_count != NULL)
-		*plagued_count = plagued;
 	return true;
 }
 
@@ -415,11 +411,10 @@ bool
 yt_maintenance_maintain_planets(struct yt_game *game,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    int *event_count, struct yt_error *error)
+    struct yt_error *error)
 {
 	struct yt_maintenance_output_result output;
 	int planet_count;
-	int events = 0;
 	int logical;
 
 	if (game == NULL || line_output == NULL
@@ -435,8 +430,6 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 		set_error(error, YT_RANGE, "maintain planets", "YTDATA.DAT");
 		return false;
 	}
-	if (event_count != NULL)
-		*event_count = 0;
 	for (logical = 0; logical < 2; ++logical) {
 		if (!line_output(line_context, output.rows[logical].data,
 		    output.rows[logical].length, error))
@@ -473,10 +466,6 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 		}
 		if (!maintenance_write_planet(game, logical, &planet, error))
 			return false;
-		if (mutation.event != YT_MAINTENANCE_PLANET_NO_EVENT)
-			++events;
 	}
-	if (event_count != NULL)
-		*event_count = events;
 	return true;
 }

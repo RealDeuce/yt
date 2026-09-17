@@ -83,15 +83,14 @@ bool
 yt_maintenance_maintain_wanderer(struct yt_game *game,
     const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_maintenance_wanderer_result *result, struct yt_error *error)
+    struct yt_error *error)
 {
 	struct yt_maintenance_output_result output;
-	struct yt_maintenance_wanderer_result local = {0};
 	struct yt_sector sector;
 	struct yt_planet planet;
-	uint64_t starting_draws;
 	int sector_count;
 	int logical;
+	int removed_sector = 0;
 	int today;
 	size_t row;
 
@@ -109,8 +108,6 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 		set_error(error, YT_RANGE, "maintain Wanderer", "YTDATA.DAT");
 		return false;
 	}
-	if (result != NULL)
-		memset(result, 0, sizeof(*result));
 	for (row = 0U; row < 2U; ++row) {
 		if (!line_output(line_context, output.rows[row].data,
 		    output.rows[row].length, error))
@@ -119,9 +116,8 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	for (logical = 1; logical <= sector_count; ++logical) {
 		if (!yt_game_read_sector(game, logical, &sector, error))
 			return false;
-		++local.scanned_sectors;
 		if (sector.planet == 1.0f) {
-			local.removed_sector = logical;
+			removed_sector = logical;
 			sector.planet = 0.0f;
 			if (!maintenance_write_wanderer_sector(game, logical,
 			    &sector, error))
@@ -129,8 +125,7 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 			break;
 		}
 	}
-	local.rebuilt = local.removed_sector == 0;
-	if (local.rebuilt) {
+	if (removed_sector == 0) {
 		if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
 		    &today, NULL,
 		    error)
@@ -155,19 +150,15 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 		    output.rows[row].length, error))
 			return false;
 	}
-	starting_draws = game->random.draws;
 	for (;;) {
 		if (!yt_random_integer(&game->random, sector_count,
 		    &logical, error))
 			return false;
-		++local.candidate_attempts;
 		if (!yt_game_read_sector(game, logical, &sector, error))
 			return false;
 		if (sector.planet == 0.0f)
 			break;
 	}
-	local.target_sector = logical;
-	local.draws_consumed = game->random.draws - starting_draws;
 	sector.planet = 1.0f;
 	if (!maintenance_write_wanderer_sector(game, logical, &sector, error)
 	    || !yt_game_read_planet(game, 1, &planet, error))
@@ -175,10 +166,7 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	planet.owner = 0.0f;
 	if (planet.bank == 0.0f)
 		planet.bank = 250000.0f;
-	local.bank_after = planet.bank;
 	if (!maintenance_write_wanderer_planet(game, &planet, error))
 		return false;
-	if (result != NULL)
-		*result = local;
 	return true;
 }

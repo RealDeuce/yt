@@ -291,13 +291,13 @@ yt_maintenance_run(struct yt_error *error)
 	    error)
 	    || !yt_maintenance_maintain_ports(&state.game,
 	    NULL, 0U,
-	    maintenance_stdout_line, NULL, NULL, error)
+	    maintenance_stdout_line, NULL, error)
 	    || !yt_maintenance_maintain_planets(&state.game,
 	    NULL, 0U,
-	    maintenance_stdout_line, NULL, NULL, error)
+	    maintenance_stdout_line, NULL, error)
 	    || !yt_maintenance_maintain_wanderer(&state.game,
 	    NULL, 0U,
-	    maintenance_stdout_line, NULL, NULL, error)
+	    maintenance_stdout_line, NULL, error)
 	    || !maintain_factions(&state, error)
 	    || !yt_maintenance_finish(&state.game, state.player_count,
 	    state.planet_count, state.sector_count, maintenance_stdout_line,
