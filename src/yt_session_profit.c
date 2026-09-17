@@ -11,8 +11,6 @@
 struct profit_report {
 	bool global;
 	uint8_t conversion_mode;
-	float sector_record_offset;
-	float port_record_offset;
 	float base_price[3];
 	float result_count;
 	size_t rows;
@@ -77,16 +75,11 @@ profit_cint(const struct profit_report *report, float value, int *result,
 }
 
 static bool
-profit_read(struct yt_session *session, float expression,
+profit_read(struct yt_session *session, int physical_record,
     struct yt_record *record, struct yt_error *error)
 {
-	float rounded;
-
-	if (!profit_single(expression, &rounded, error,
-	    "profit record expression"))
-		return false;
 	return yt_database_read(&session->door->game.database,
-	    (size_t)qb_brun_random_record_number(rounded), record, error);
+	    (size_t)physical_record, record, error);
 }
 
 static bool
@@ -362,10 +355,10 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 	struct yt_port source_port;
 	struct yt_nearest_market source_market;
 	float source_prices[4];
-	float current_sector_record = (float)
+	int current_sector_record =
 	    session->navigation.current_sector_physical_record;
-	float source_record;
-	float display_source;
+	float display_source = (float)(current_sector_record
+	    - (int)session_sector_offset(session));
 	int warps[6];
 	size_t slot;
 
@@ -384,9 +377,9 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 		    SESSION_PRESENT_BOLD_LINE, "adjacent profit no-port row",
 		    error);
 	if (!profit_coerce_warps(report, &sector, warps, error)
-	    || !profit_add(report->port_record_offset, sector.port,
-	    &source_record, error, "profit current port record")
-	    || !profit_read(session, source_record, &raw, error))
+	    || !profit_read(session,
+	    (int)session_port_basic_record(session, (int)sector.port),
+	    &raw, error))
 		return false;
 	yt_port_decode(&source_port, &raw);
 	if (!profit_project(session, report, &source_port, &source_market,
@@ -397,31 +390,27 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 		struct yt_port target_port;
 		struct yt_nearest_market target_market;
 		float target_prices[4];
-		float target_record;
+		int target_record;
 		int target = warps[slot];
 		bool keep_going;
 
 		if (target <= 1)
 			continue;
-		if (!profit_add(report->sector_record_offset, (float)target,
-		    &target_record, error, "profit target sector record")
-		    || !profit_read(session, target_record, &raw, error))
+		target_record = (int)session_sector_basic_record(session, target);
+		if (!profit_read(session, target_record, &raw, error))
 			return false;
 		yt_sector_decode(&target_sector, &raw);
 		if (target_sector.port == 0.0f)
 			continue;
-		if (!profit_add(report->port_record_offset, target_sector.port,
-		    &target_record, error, "profit target port record")
-		    || !profit_read(session, target_record, &raw, error))
+		target_record = (int)session_port_basic_record(session,
+		    (int)target_sector.port);
+		if (!profit_read(session, target_record, &raw, error))
 			return false;
 		yt_port_decode(&target_port, &raw);
 		if (target_port.commodity_class == source_port.commodity_class)
 			continue;
 		if (!profit_project(session, report, &target_port,
 		    &target_market, target_prices, error)
-		    || !profit_sub(current_sector_record,
-		    report->sector_record_offset, &display_source, error,
-		    "profit display sector")
 		    || !profit_emit_pair(session, report, display_source, target,
 		    &source_port, &target_port, source_prices, target_prices,
 		    &keep_going, error))
@@ -451,22 +440,21 @@ profit_global(struct yt_session *session, struct profit_report *report,
 		struct yt_port source_port;
 		struct yt_nearest_market source_market;
 		float source_prices[4];
-		float expression;
+		int physical_record;
 		int warps[6];
 		size_t slot;
 
-		if (!profit_add(report->sector_record_offset, (float)source,
-		    &expression, error, "profit source sector record")
-		    || !profit_read(session, expression, &raw, error))
+		physical_record = (int)session_sector_basic_record(session, source);
+		if (!profit_read(session, physical_record, &raw, error))
 			return false;
 		yt_sector_decode(&sector, &raw);
 		if (!profit_coerce_warps(report, &sector, warps, error))
 			return false;
 		if (sector.port <= 0.0f)
 			continue;
-		if (!profit_add(report->port_record_offset, sector.port,
-		    &expression, error, "profit source port record")
-		    || !profit_read(session, expression, &raw, error))
+		physical_record = (int)session_port_basic_record(session,
+		    (int)sector.port);
+		if (!profit_read(session, physical_record, &raw, error))
 			return false;
 		yt_port_decode(&source_port, &raw);
 		if (!profit_project(session, report, &source_port,
@@ -482,18 +470,16 @@ profit_global(struct yt_session *session, struct profit_report *report,
 
 			if (target <= 1)
 				continue;
-			if (!profit_add(report->sector_record_offset,
-			    (float)target, &expression, error,
-			    "profit target sector record")
-			    || !profit_read(session, expression, &raw, error))
+			physical_record = (int)session_sector_basic_record(session,
+			    target);
+			if (!profit_read(session, physical_record, &raw, error))
 				return false;
 			yt_sector_decode(&target_sector, &raw);
 			if (target_sector.port == 0.0f || target <= source)
 				continue;
-			if (!profit_add(report->port_record_offset,
-			    target_sector.port, &expression, error,
-			    "profit target port record")
-			    || !profit_read(session, expression, &raw, error))
+			physical_record = (int)session_port_basic_record(session,
+			    (int)target_sector.port);
+			if (!profit_read(session, physical_record, &raw, error))
 				return false;
 			yt_port_decode(&target_port, &raw);
 			if (target_port.commodity_class
@@ -524,8 +510,6 @@ yt_session_computer_profit(struct yt_session *session, bool global,
 	memset(&report, 0, sizeof(report));
 	report.global = global;
 	report.conversion_mode = session->presentation.sound.conversion_mode;
-	report.sector_record_offset = session_sector_offset(session);
-	report.port_record_offset = session_port_offset(session);
 	memcpy(report.base_price, session->market_bases,
 	    sizeof(report.base_price));
 	return global ? profit_global(session, &report, error)

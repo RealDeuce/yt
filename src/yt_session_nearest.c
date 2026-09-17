@@ -37,11 +37,9 @@ struct nearest_scan {
 	int selector;
 	uint8_t direction;
 	uint8_t conversion_mode;
-	float actor_number;
-	float sector_record_offset;
-	float port_record_offset;
+	int actor_number;
 	float base_price[3];
-	float cached_roster[4];
+	int cached_roster[4];
 	struct yt_player player;
 	struct yt_sector sector;
 	struct yt_port port;
@@ -121,16 +119,11 @@ nearest_cint(const struct nearest_scan *scan, float value, int *result,
 }
 
 static bool
-nearest_read(struct yt_session *session, float expression,
+nearest_read(struct yt_session *session, int physical_record,
     struct yt_record *record, struct yt_error *error)
 {
-	float rounded;
-
-	if (!nearest_single(expression, &rounded, error,
-	    "nearest record expression"))
-		return false;
 	return yt_database_read(&session->door->game.database,
-	    (size_t)qb_brun_random_record_number(rounded), record, error);
+	    (size_t)physical_record, record, error);
 }
 
 static const char *
@@ -216,11 +209,13 @@ nearest_filter(const struct nearest_scan *scan, bool member)
 	} else if (scan->selector == 4) {
 		accepted = true;
 	} else if (scan->selector == 5) {
-		accepted = owner > 0.0f && owner != scan->actor_number && member;
+		accepted = owner > 0.0f
+		    && owner != (float)scan->actor_number && member;
 	} else if (scan->selector == 6) {
-		accepted = owner == scan->actor_number;
+		accepted = owner == (float)scan->actor_number;
 	} else if (scan->selector == 7) {
-		accepted = owner > 0.0f && owner != scan->actor_number
+		accepted = owner > 0.0f
+		    && owner != (float)scan->actor_number
 		    && (scan->current_team == 0.0f
 		    || (scan->current_team > 0.0f && !member));
 	} else if (scan->selector == 8) {
@@ -347,13 +342,10 @@ nearest_scan_run(struct yt_session *session, int selector,
 	scan.direction = direction;
 	scan.conversion_mode =
 	    session->presentation.sound.conversion_mode;
-	scan.actor_number = (float)session_record(session);
-	scan.sector_record_offset = session_sector_offset(session);
-	scan.port_record_offset = session_port_offset(session);
+	scan.actor_number = session_record(session);
 	memcpy(scan.base_price, session->market_bases, sizeof(scan.base_price));
 	for (index = 0U; index < YT_ARRAY_LEN(scan.cached_roster); ++index)
-		scan.cached_roster[index] =
-		    (float)session->team_cache.roster[index];
+		scan.cached_roster[index] = session->team_cache.roster[index];
 	scan.page_count = 4.0f;
 	visited = calloc((size_t)maximum_sector + 1U, sizeof(*visited));
 	current_layer = malloc(((size_t)maximum_sector + 1U)
@@ -365,9 +357,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 		goto done;
 	}
 
-	if (!nearest_single(scan.actor_number, &scan.actor_number, error,
-	    "nearest actor number")
-	    || !nearest_present(session, YT_NEAREST_ENTRY_BLANK,
+	if (!nearest_present(session, YT_NEAREST_ENTRY_BLANK,
 	    YT_NEAREST_PRESENT_LINE, NULL, 0U, error))
 		goto done;
 	session_set_foreground(session, 3.0f);
@@ -407,16 +397,15 @@ nearest_scan_run(struct yt_session *session, int selector,
 			int sector_number = current_layer[layer_index];
 			float sector_operand = first_sector
 			    ? scan.start_sector_raw : (float)sector_number;
-			float expression;
 			float raw_port;
 			size_t slot;
 
 			first_sector = false;
 			scan.current_sector = sector_number;
 			scan.display_sector = sector_operand;
-			if (!nearest_add(scan.sector_record_offset, sector_operand,
-			    &expression, error, "nearest sector record expression")
-			    || !nearest_read(session, expression, &raw, error))
+			if (!nearest_read(session,
+			    (int)session_sector_basic_record(session, sector_number),
+			    &raw, error))
 				goto done;
 			yt_sector_decode(&scan.sector, &raw);
 			for (slot = 0U; slot < 6U; ++slot) {
@@ -450,9 +439,9 @@ nearest_scan_run(struct yt_session *session, int selector,
 			}
 			if (!nearest_single(scan.current_day, &scan.current_day,
 			    error, "nearest current day")
-			    || !nearest_add(scan.port_record_offset, raw_port,
-			    &expression, error, "nearest port record expression")
-			    || !nearest_read(session, expression, &raw, error))
+			    || !nearest_read(session,
+			    (int)session_port_basic_record(session, (int)raw_port),
+			    &raw, error))
 				goto done;
 			yt_port_decode(&scan.port, &raw);
 			{
@@ -460,7 +449,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 
 				if (scan.current_team != 0.0f) {
 					for (slot = 0U; slot < 4U; ++slot) {
-						if (scan.cached_roster[slot]
+						if ((float)scan.cached_roster[slot]
 						    == scan.port.owner)
 							member = true;
 					}
@@ -602,7 +591,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				    error, "nearest owner CINT"))
 					goto done;
 				if (scan.display_sector != 1.0f && owner_record != 0) {
-					if (!nearest_read(session, scan.port.owner, &raw,
+					if (!nearest_read(session, owner_record, &raw,
 					    error))
 						goto done;
 					yt_player_decode(&scan.owner, &raw);
@@ -613,7 +602,8 @@ nearest_scan_run(struct yt_session *session, int selector,
 					    YT_TEXT_FIELD_SIZE + 2U);
 					if (name_length > 26U)
 						name_length = 26U;
-					if (scan.port.owner == scan.actor_number)
+					if (scan.port.owner
+					    == (float)scan.actor_number)
 						session_set_foreground(session, 5.0f);
 				}
 				if (scan.display_sector == 1.0f) {
