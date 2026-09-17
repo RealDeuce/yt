@@ -96,13 +96,12 @@ yt_session_planet_permission(struct yt_session *session,
 	size_t cached_name_length;
 	uint8_t row[256];
 	size_t row_length;
-	float cached_owner;
+	int cached_owner;
 	float cached_ground_forces;
 	float first_draw;
 	float second_draw;
 	float reduced_ground_forces;
 	uint32_t physical_planet_record;
-	int owner_record;
 	bool friendly = false;
 	bool vacant;
 
@@ -117,20 +116,18 @@ yt_session_planet_permission(struct yt_session *session,
 	    &planet, error))
 		return false;
 	cached_name_length = yt_planet_stored_name(&planet, cached_name);
-	cached_owner = planet.owner;
+	cached_owner = (int)planet.owner;
 	cached_ground_forces = planet.ground_forces;
 	if (floorf(cached_ground_forces) <= 0.0f
-	    || cached_owner == (float)session_record(session))
+	    || cached_owner == session_record(session))
 		return true;
-	if (cached_owner >= 2.0f
-	    && cached_owner <= (float)YT_PLAYER_LAST_RECORD) {
-		owner_record = (int)cached_owner;
+	if (cached_owner >= 2 && cached_owner <= YT_PLAYER_LAST_RECORD) {
 		if (!yt_game_read_player(&session->door->game,
 		    session_record(session), &current, error))
 			return false;
 		if (current.team != 0.0f) {
 			if (!yt_game_read_player(&session->door->game,
-			    owner_record, &owner, error))
+			    cached_owner, &owner, error))
 				return false;
 			friendly = yt_sector_force_same_team(current.team,
 			    owner.team);
@@ -141,11 +138,10 @@ yt_session_planet_permission(struct yt_session *session,
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "planet permission late blank", error))
 		return false;
-	vacant = cached_owner == 0.0f;
-	if (!vacant && cached_owner >= 2.0f
-	    && cached_owner <= (float)YT_PLAYER_LAST_RECORD) {
-		owner_record = (int)cached_owner;
-		if (!yt_game_read_player(&session->door->game, owner_record,
+	vacant = cached_owner == 0;
+	if (!vacant && cached_owner >= 2
+	    && cached_owner <= YT_PLAYER_LAST_RECORD) {
+		if (!yt_game_read_player(&session->door->game, cached_owner,
 		    &owner, error))
 			return false;
 		vacant = owner.killed_by != 0.0f;

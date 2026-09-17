@@ -9,22 +9,21 @@
 #include <string.h>
 
 static bool
-planet_move_friendship(struct yt_session *session, float owner,
+planet_move_friendship(struct yt_session *session, int owner,
     bool *friendly, struct yt_error *error)
 {
 	struct yt_player current;
 	struct yt_player other;
-	int owner_record;
 	int last_player = session_sector_offset(session);
 
 	if (friendly == NULL)
 		return false;
 	*friendly = false;
 	session->player_reference.friendly = false;
-	if (owner < 2.0f || owner > (float)last_player
+	if (owner < 2 || owner > last_player
 	    || session_record(session) < 2 || session_record(session) > last_player)
 		return true;
-	if (owner == (float)session_record(session)) {
+	if (owner == session_record(session)) {
 		*friendly = true;
 		session->player_reference.friendly = true;
 		return true;
@@ -34,8 +33,7 @@ planet_move_friendship(struct yt_session *session, float owner,
 		return false;
 	if (current.team == 0.0f)
 		return true;
-	owner_record = (int)owner;
-	if (!yt_game_read_player(&session->door->game, owner_record,
+	if (!yt_game_read_player(&session->door->game, owner,
 	    &other, error))
 		return false;
 	*friendly = other.team == current.team;
@@ -227,7 +225,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	if (target.fighters != 0.0f) {
 		bool friendly;
 
-		if (!planet_move_friendship(session, target.fighter_owner,
+		if (!planet_move_friendship(session, (int)target.fighter_owner,
 		    &friendly, error))
 			return false;
 		if (!friendly)

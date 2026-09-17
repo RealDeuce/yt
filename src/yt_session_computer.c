@@ -21,7 +21,7 @@ session_computer_error(struct yt_error *error, enum yt_status status,
 }
 
 static bool
-yt_session_computer_owner_is_friendly(struct yt_session *session, float owner,
+yt_session_computer_owner_is_friendly(struct yt_session *session, int owner,
     bool *friendly, struct yt_error *error)
 {
 	struct yt_player current;
@@ -31,13 +31,11 @@ yt_session_computer_owner_is_friendly(struct yt_session *session, float owner,
 		return false;
 	*friendly = false;
 	session->player_reference.friendly = false;
-	if (owner < 2.0f
-	    || owner > (float)session_sector_offset(session)
-	    || (float)session_record(session) < 2.0f
-	    || (float)session_record(session)
-	    > (float)session_sector_offset(session))
+	if (owner < 2 || owner > session_sector_offset(session)
+	    || session_record(session) < 2
+	    || session_record(session) > session_sector_offset(session))
 		return true;
-	if (owner == (float)session_record(session)) {
+	if (owner == session_record(session)) {
 		*friendly = true;
 		session->player_reference.friendly = true;
 		return true;
@@ -47,7 +45,7 @@ yt_session_computer_owner_is_friendly(struct yt_session *session, float owner,
 		return false;
 	if (current.team == 0.0f)
 		return true;
-	if (!session_read_player_at_fault(session, (int)owner, &other,
+	if (!session_read_player_at_fault(session, owner, &other,
 	    YT_BASIC_FAULT_PORT_FRIENDSHIP_CANDIDATE_GET, error))
 		return false;
 	*friendly = other.team == current.team;
@@ -67,7 +65,7 @@ yt_session_computer_check_port_visibility(struct yt_session *session,
 		return false;
 	session->navigation.route_marker = 0.0f;
 	if (!yt_session_computer_owner_is_friendly(session,
-	    sector->fighter_owner,
+	    (int)sector->fighter_owner,
 	    &friendly, error))
 		return false;
 	session->planet.current_record = session_planet_basic_record(session,
@@ -171,7 +169,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 		struct yt_planet planet;
 		char response[160];
 		double sector_fighters;
-		float fighter_owner;
+		int fighter_owner;
 		float link;
 		float scratch;
 		float selected;
@@ -233,7 +231,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			    (double)sector.fighters;
 			session->player_reference.record =
 			    (int)sector.fighter_owner;
-			fighter_owner = (float)session->player_reference.record;
+			fighter_owner = session->player_reference.record;
 			if (!yt_session_computer_owner_is_friendly(session,
 			    fighter_owner, &fighter_friendly, error))
 				return false;
@@ -261,7 +259,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 				size_t length = 0;
 
 				if (!yt_session_computer_owner_is_friendly(session,
-				    planet.owner, &last_friendly, error))
+				    (int)planet.owner, &last_friendly, error))
 					return false;
 				relationship_friendly = last_friendly;
 				if (!relationship_friendly) {
@@ -293,7 +291,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 		}
 		else {
 			sector_fighters = session->combat.deployed_fighters;
-			fighter_owner = (float)session->player_reference.record;
+			fighter_owner = session->player_reference.record;
 			relationship_friendly = session->player_reference.friendly;
 			scratch = link;
 		}
@@ -304,7 +302,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			bool team_zero = session->player.team == 0.0f;
 			bool relation_not = !relationship_friendly;
 			bool fighter_owner_differs =
-			    (float)session_record(session) != fighter_owner;
+			    session_record(session) != fighter_owner;
 			bool no_information = scratch_zero
 			    || (fighters_positive && team_positive && relation_not)
 			    || (fighters_positive && team_zero
