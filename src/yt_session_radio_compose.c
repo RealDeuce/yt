@@ -73,8 +73,9 @@ radio_player_search(struct yt_session *session, const char *query,
 		    (const uint8_t *)query, strlen(query)))
 			continue;
 		if (!yt_radio_player_prompt(&player, prompt, sizeof(prompt),
-		    &prompt_length, error)
-		    || !session_confirm(session, prompt, prompt_length, &answer,
+		    &prompt_length, error))
+			return false;
+		if (!session_confirm(session, prompt, prompt_length, &answer,
 		    error))
 			return false;
 		if (answer != YT_YES_NO_NO) {
@@ -108,12 +109,16 @@ radio_edit_draft(struct yt_session *session, char lines[21][76],
 	char prompt[128];
 	int selected;
 
-	if (qb_str_single(count_text, sizeof(count_text), (float)completed) < 0
-	    || snprintf(prompt, sizeof(prompt),
-	    "Edit Which line? (1 -%s) -=> ", count_text) < 0
-	    || !session_present_timed_paged_row(session, (const uint8_t *)prompt, strlen(prompt),
-	    "radio edit line prompt", error)
-	    || !session_read_number_command(session, response, sizeof(response)))
+	if (qb_str_single(count_text, sizeof(count_text), (float)completed) < 0)
+		return false;
+	if (snprintf(prompt, sizeof(prompt),
+	    "Edit Which line? (1 -%s) -=> ", count_text) < 0)
+		return false;
+	if (!session_present_timed_paged_row(session,
+	    (const uint8_t *)prompt, strlen(prompt),
+	    "radio edit line prompt", error))
+		return false;
+	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
 	if (response[0] == '\0')
 		return true;
@@ -150,22 +155,31 @@ radio_edit_draft(struct yt_session *session, char lines[21][76],
 		size_t prefix;
 
 		if (qb_str_single(selected_text, sizeof(selected_text),
-		    (float)selected) < 0
-		    || snprintf(heading, sizeof(heading), "Line%s reads:",
-		    selected_text) < 0
-		    || snprintf(quoted, sizeof(quoted), "\"%s\"",
-		    lines[selected - 1]) < 0
-		    || !session_present_paged_line(session, (const uint8_t *)heading,
-		    strlen(heading), "radio edit old heading", error)
-		    || !session_present_paged_line(session, (const uint8_t *)quoted,
-		    strlen(quoted), "radio edit old row", error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "radio edit search blank", error)
-		    || !session_present_timed_paged_row(session,
+		    (float)selected) < 0)
+			return false;
+		if (snprintf(heading, sizeof(heading), "Line%s reads:",
+		    selected_text) < 0)
+			return false;
+		if (snprintf(quoted, sizeof(quoted), "\"%s\"",
+		    lines[selected - 1]) < 0)
+			return false;
+		if (!session_present_paged_line(session,
+		    (const uint8_t *)heading, strlen(heading),
+		    "radio edit old heading", error))
+			return false;
+		if (!session_present_paged_line(session,
+		    (const uint8_t *)quoted, strlen(quoted),
+		    "radio edit old row", error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "radio edit search blank", error))
+			return false;
+		if (!session_present_timed_paged_row(session,
 		    (const uint8_t *)"Replace what section? -=> ",
 		    strlen("Replace what section? -=> "),
-		    "radio edit search prompt", error)
-		    || !session_read_command(session, search, sizeof(search)))
+		    "radio edit search prompt", error))
+			return false;
+		if (!session_read_command(session, search, sizeof(search)))
 			return false;
 		if (search[0] == '\0')
 			return true;
@@ -175,19 +189,24 @@ radio_edit_draft(struct yt_session *session, char lines[21][76],
 
 			if (snprintf(missing, sizeof(missing),
 			    "\"%s\" NOT FOUND in line%s!", search,
-			    selected_text) < 0
-			    || !session_present_alert(session, (const uint8_t *)missing,
-			    strlen(missing), "radio edit search miss", error))
+			    selected_text) < 0)
+				return false;
+			if (!session_present_alert(session,
+			    (const uint8_t *)missing, strlen(missing),
+			    "radio edit search miss", error))
 				return false;
 			continue;
 		}
 		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "radio edit replacement blank", error)
-		    || !session_present_timed_paged_row(session,
+		    SESSION_PRESENT_LINE, "radio edit replacement blank", error))
+			return false;
+		if (!session_present_timed_paged_row(session,
 		    (const uint8_t *)"Replace it with what? -=> ",
 		    strlen("Replace it with what? -=> "),
-		    "radio edit replacement prompt", error)
-		    || !session_read_command(session, replacement, sizeof(replacement)))
+		    "radio edit replacement prompt", error))
+			return false;
+		if (!session_read_command(session, replacement,
+		    sizeof(replacement)))
 			return false;
 		prefix = (size_t)(match - lines[selected - 1]);
 		snprintf(changed, sizeof(changed), "%.*s%s%s", (int)prefix,
@@ -199,16 +218,23 @@ radio_edit_draft(struct yt_session *session, char lines[21][76],
 			static const uint8_t confirmation[] =
 			    "Is this OK? [Y/N]? -=> ";
 
-			if (snprintf(heading, sizeof(heading), "Line%s now reads:",
-			    selected_text) < 0
-			    || snprintf(quoted, sizeof(quoted), "\"%s\"", changed) < 0
-			    || !session_present_paged_line(session, (const uint8_t *)heading,
-			    strlen(heading), "radio edit preview heading", error)
-			    || !session_present_paged_line(session, (const uint8_t *)quoted,
-			    strlen(quoted), "radio edit preview row", error)
-			    || !session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE, "radio edit confirm blank", error)
-			    || !session_confirm(session, confirmation,
+			if (snprintf(heading, sizeof(heading),
+			    "Line%s now reads:", selected_text) < 0)
+				return false;
+			if (snprintf(quoted, sizeof(quoted), "\"%s\"", changed) < 0)
+				return false;
+			if (!session_present_paged_line(session,
+			    (const uint8_t *)heading, strlen(heading),
+			    "radio edit preview heading", error))
+				return false;
+			if (!session_present_paged_line(session,
+			    (const uint8_t *)quoted, strlen(quoted),
+			    "radio edit preview row", error))
+				return false;
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "radio edit confirm blank", error))
+				return false;
+			if (!session_confirm(session, confirmation,
 			    sizeof(confirmation) - 1U, &answer, error))
 				return false;
 			if (answer == YT_YES_NO_YES) {
@@ -248,20 +274,24 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 	int index;
 
 	if (!session_present_paged_line(session, warming, sizeof(warming) - 1U,
-	    "radio warmup row", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "radio target blank", error)
-	    || !session_present_timed_paged_row(session, target_prompt,
-	    sizeof(target_prompt) - 1U, "radio target prompt", error)
-	    || !session_read_command(session, target, sizeof(target)))
+	    "radio warmup row", error))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "radio target blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, target_prompt,
+	    sizeof(target_prompt) - 1U, "radio target prompt", error))
+		return false;
+	if (!session_read_command(session, target, sizeof(target)))
 		return false;
 	if (target[0] == '\0')
 		return true;
 	qb_title_case(target);
 	if (strcmp(target, "All") == 0) {
 		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "radio broadcast blank", error)
-		    || !session_present_paged_fragment(session, broadcast,
+		    SESSION_PRESENT_LINE, "radio broadcast blank", error))
+			return false;
+		if (!session_present_paged_fragment(session, broadcast,
 		    sizeof(broadcast) - 1U))
 			return false;
 		recipients[0] = -2;
@@ -295,9 +325,11 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 		recipients[0] = selected;
 		recipient_count = 1;
 	}
-	if (!all && !session_present_text(session, NULL, 0,
-	    SESSION_PRESENT_LINE, "radio tuning blank", error))
-		return false;
+	if (!all) {
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "radio tuning blank", error))
+			return false;
+	}
 	for (index = 0; index < recipient_count; ++index) {
 		struct yt_player target_player;
 		uint8_t row[sizeof("Tuning in to ") - 1U + YT_TEXT_FIELD_SIZE
@@ -307,16 +339,18 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 		if (all || recipients[index] == 0)
 			continue;
 		if (!yt_game_read_player(&session->door->game, recipients[index],
-		    &target_player, error)
-		    || !yt_radio_tuning_row(&target_player, row, sizeof(row),
+		    &target_player, error))
+			return false;
+		if (!yt_radio_tuning_row(&target_player, row, sizeof(row),
 		    &row_length, error))
 			return false;
 		if (!session_present_paged_fragment(session, row, row_length))
 			return false;
 	}
 	if (!session_present_paged_line(session, limit, sizeof(limit) - 1U,
-	    "radio line-limit row", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "radio line-limit row", error))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "radio body handoff blank", error))
 		return false;
 
@@ -445,23 +479,29 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 			    "[L] List [S] Send [A] Abort [C] Continue [E] Edit -=> ";
 
 			if (!session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE, "radio menu blank", error)
-			    || !session_present_timed_paged_row(session, menu_prompt,
-			    sizeof(menu_prompt) - 1U, "radio menu prompt", error)
-			    || !session_read_upper_command(session, choice, sizeof(choice)))
+			    SESSION_PRESENT_LINE, "radio menu blank", error))
 				return false;
-			if (choice[0] != '\0'
-			    && !session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE, "radio menu dispatch blank", error))
+			if (!session_present_timed_paged_row(session, menu_prompt,
+			    sizeof(menu_prompt) - 1U, "radio menu prompt", error))
 				return false;
+			if (!session_read_upper_command(session, choice,
+			    sizeof(choice)))
+				return false;
+			if (choice[0] != '\0') {
+				if (!session_present_text(session, NULL, 0,
+				    SESSION_PRESENT_LINE,
+				    "radio menu dispatch blank", error))
+					return false;
+			}
 			if (strcmp(choice, "L") == 0) {
 				session->pager.line_count = 0;
 				for (index = 0; index < line_count; ++index) {
 					char row[96];
 
-					if (snprintf(row, sizeof(row), " %d:%s", index + 1,
-					    lines[index]) < 0
-					    || !session_present_paged_fragment(session,
+					if (snprintf(row, sizeof(row), " %d:%s",
+					    index + 1, lines[index]) < 0)
+						return false;
+					if (!session_present_paged_fragment(session,
 					    (const uint8_t *)row, strlen(row)))
 						return false;
 				}
