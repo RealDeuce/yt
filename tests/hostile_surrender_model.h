@@ -21,6 +21,12 @@ enum test_hostile_surrender_sound_kind {
 	YT_HOSTILE_SURRENDER_JOINED_SOUND,
 };
 
+enum yt_hostile_surrender_answer {
+	YT_HOSTILE_SURRENDER_ANSWER_NO,
+	YT_HOSTILE_SURRENDER_ANSWER_YES,
+	YT_HOSTILE_SURRENDER_ANSWER_EMPTY,
+};
+
 struct test_hostile_surrender_state {
 	int current_player_record;
 	float old_owner;

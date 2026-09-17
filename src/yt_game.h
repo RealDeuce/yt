@@ -178,12 +178,6 @@ enum yt_hostile_surrender_route {
 	YT_HOSTILE_SURRENDER_QUIET,
 };
 
-enum yt_hostile_surrender_answer {
-	YT_HOSTILE_SURRENDER_ANSWER_NO,
-	YT_HOSTILE_SURRENDER_ANSWER_YES,
-	YT_HOSTILE_SURRENDER_ANSWER_EMPTY,
-};
-
 enum yt_bribe_forced_admission {
 	YT_BRIBE_FORCED_FATAL,
 	YT_BRIBE_FORCED_LESS_THAN_ONE,
