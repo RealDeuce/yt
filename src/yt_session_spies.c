@@ -146,10 +146,8 @@ spy_first_finding(struct yt_session *session, size_t spy, int sector,
 static void
 spy_clear_cached_cloak(struct yt_session *session, int player_record)
 {
-	static const uint8_t zero[4] = {0};
-
-	(void)yt_player_cache_set_raw(&session->player_cache, player_record,
-	    YT_PLAYER_CACHE_CLOAK, zero);
+	(void)yt_player_cache_set(&session->player_cache, player_record,
+	    YT_PLAYER_CACHE_CLOAK, 0.0f);
 }
 
 static bool

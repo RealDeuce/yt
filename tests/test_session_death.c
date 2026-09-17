@@ -38,7 +38,6 @@ test_distinct_player_death(void)
 	static const uint8_t expected_news[] =
 	    "  -  Killer killed Victim\r\n"
 	    "  -  Took 1 ports from Victim\r\n\x1a";
-	static const uint8_t cache_zero[4] = {0x00U, 0x00U, 0x7aU, 0x00U};
 	struct yt_door door;
 	struct yt_session session;
 	struct yt_player player;
@@ -46,7 +45,6 @@ test_distinct_player_death(void)
 	struct yt_port port;
 	struct yt_record record;
 	struct yt_error error;
-	uint8_t cached_sector[4];
 	uint8_t news[sizeof(expected_news)];
 	FILE *file;
 
@@ -101,9 +99,8 @@ test_distinct_player_death(void)
 	CHECK(yt_session_kill_player(&session, 3, 2.0f, true, &error));
 	CHECK(!session.fatal_wait_complete);
 	CHECK(session.player.ports_owned == 0.0f);
-	yt_player_cache_raw(&session.player_cache, 3,
-	    YT_PLAYER_CACHE_SECTOR, cached_sector);
-	CHECK(memcmp(cached_sector, cache_zero, sizeof(cache_zero)) == 0);
+	CHECK(yt_player_cache_value(&session.player_cache, 3,
+	    YT_PLAYER_CACHE_SECTOR) == 0.0f);
 	CHECK(yt_game_read_player(&door.game, 3, &player, &error));
 	CHECK(player.killed_by == 2.0f && player.sector == 0.0f
 	    && player.ports_owned == 0.0f);

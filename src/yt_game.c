@@ -78,18 +78,14 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 			    "startup player-cache index");
 		if (!yt_game_read_player(game, basic, &player, error))
 			return false;
-		(void)yt_player_cache_set_raw(player_cache, basic,
-		    YT_PLAYER_CACHE_SECTOR, player.record.bytes + YT_F57);
-		(void)yt_player_cache_set_raw(player_cache, basic,
-		    YT_PLAYER_CACHE_CLOAK, player.record.bytes + YT_F125);
+		(void)yt_player_cache_set(player_cache, basic,
+		    YT_PLAYER_CACHE_SECTOR, player.sector);
+		(void)yt_player_cache_set(player_cache, basic,
+		    YT_PLAYER_CACHE_CLOAK, player.cloak);
 		if (player.cloak < 0.0f || player.cloak > 1.0f) {
-			static const uint8_t one[4] = {
-				0x00U, 0x00U, 0x00U, 0x81U
-			};
-
 			player.cloak = 1.0f;
-			(void)yt_player_cache_set_raw(player_cache, basic,
-			    YT_PLAYER_CACHE_CLOAK, one);
+			(void)yt_player_cache_set(player_cache, basic,
+			    YT_PLAYER_CACHE_CLOAK, player.cloak);
 			if (!yt_record_set_number(&player.record, YT_F125, 1.0f)
 			    || !yt_database_write_durable(&game->database,
 			    (size_t)basic, &player.record, error))

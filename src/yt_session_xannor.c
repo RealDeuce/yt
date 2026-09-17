@@ -55,7 +55,7 @@ yt_session_launch_xannor_retaliation(struct yt_session *session,
 {
 	struct yt_player saved_player;
 	struct yt_sector headquarters;
-	uint8_t saved_cloak_raw[4];
+	float saved_cloak;
 	int saved_record;
 	int target_candidate;
 	float target;
@@ -96,15 +96,11 @@ yt_session_launch_xannor_retaliation(struct yt_session *session,
 	saved_record = session_record(session);
 	valid_cache = yt_player_cache_contains(saved_record);
 	if (valid_cache) {
-		yt_player_cache_raw(&session->player_cache, saved_record,
-		    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
+		saved_cloak = yt_player_cache_value(&session->player_cache,
+		    saved_record, YT_PLAYER_CACHE_CLOAK);
 		if (session->projectile.pending_xannor_provoker != 0) {
-			static const uint8_t cloak_zero[4] = {
-				0x00U, 0x00U, 0x40U, 0x00U
-			};
-
-			(void)yt_player_cache_set_raw(&session->player_cache,
-			    saved_record, YT_PLAYER_CACHE_CLOAK, cloak_zero);
+			(void)yt_player_cache_set(&session->player_cache,
+			    saved_record, YT_PLAYER_CACHE_CLOAK, 0.0f);
 			cache_cleared = true;
 		}
 	}
@@ -136,8 +132,8 @@ yt_session_launch_xannor_retaliation(struct yt_session *session,
 	session->active_player_record = saved_record;
 	session->player = saved_player;
 	if (valid_cache && cache_cleared)
-		(void)yt_player_cache_set_raw(&session->player_cache, saved_record,
-		    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
+		(void)yt_player_cache_set(&session->player_cache, saved_record,
+		    YT_PLAYER_CACHE_CLOAK, saved_cloak);
 	if (!yt_game_read_player(&session->door->game, saved_record,
 	    &session->player, error))
 		goto done;

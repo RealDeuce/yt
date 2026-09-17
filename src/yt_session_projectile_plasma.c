@@ -640,9 +640,6 @@ plasma_reload_sector:
 		}
 		{
 			static const uint8_t self_row[] = "YOU were destroyed!";
-			static const uint8_t cache_zero[4] = {
-				0x00, 0x00, 0x80, 0x00
-			};
 			struct yt_player victim;
 			struct yt_sector mine_persistence;
 			uint8_t victim_name[YT_TEXT_FIELD_SIZE];
@@ -719,8 +716,8 @@ plasma_reload_sector:
 
 			if (self_hit) {
 				session->destroyed = true;
-				if (!yt_player_cache_set_raw(&session->player_cache, basic,
-				    YT_PLAYER_CACHE_SECTOR, cache_zero))
+				if (!yt_player_cache_set(&session->player_cache, basic,
+				    YT_PLAYER_CACHE_SECTOR, 0.0f))
 					return false;
 			}
 			else if (!yt_session_kill_player(session, basic,

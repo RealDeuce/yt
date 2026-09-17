@@ -309,7 +309,6 @@ earth_anti_cloak(struct yt_session *session, float price,
 	static const uint8_t uncloaked[] = " is uncloaked!";
 	static const uint8_t none[] = "Too bad noone was cloaked anyhow!";
 	static const uint8_t fade[] = "...the effect fades.";
-	static const uint8_t zero[4] = {0};
 	struct yt_player field_player;
 	uint8_t row[YT_TEXT_FIELD_SIZE + sizeof(uncloaked) - 1U];
 	int player_terminal = (int)session_sector_offset(session);
@@ -339,8 +338,8 @@ earth_anti_cloak(struct yt_session *session, float price,
 		if (yt_player_cache_value(&session->player_cache, player_record,
 		    YT_PLAYER_CACHE_CLOAK) <= 0.0f)
 			continue;
-		(void)yt_player_cache_set_raw(&session->player_cache, player_record,
-		    YT_PLAYER_CACHE_CLOAK, zero);
+		(void)yt_player_cache_set(&session->player_cache, player_record,
+		    YT_PLAYER_CACHE_CLOAK, 0.0f);
 		if (!yt_game_read_player(&session->door->game, player_record,
 		    &field_player, error)) {
 			if (session->presentation.foreground != 6.0f)

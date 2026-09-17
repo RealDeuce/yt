@@ -250,13 +250,6 @@ display_sector_one(struct yt_session *session, float logical_sector,
 		    yt_player_cache_value(&session->player_cache, basic,
 		    YT_PLAYER_CACHE_SECTOR), logical_sector))
 			continue;
-		{
-			uint8_t cloak_raw[4];
-
-			yt_player_cache_raw(&session->player_cache, basic,
-			    YT_PLAYER_CACHE_CLOAK, cloak_raw);
-			session->player_cache.cloak[basic] = qb_mbf32_decode(cloak_raw);
-		}
 		if (!yt_random_next(&session->door->game.random, &random_value,
 		    error))
 			return false;
@@ -270,13 +263,8 @@ display_sector_one(struct yt_session *session, float logical_sector,
 			    "sector cloak shimmer row", error))
 				return false;
 			yt_sector_pager_add(private_pager, 1.0f);
-			{
-				static const uint8_t zero[4] = {0};
-
-				(void)yt_player_cache_set_raw(&session->player_cache, basic,
-				    YT_PLAYER_CACHE_CLOAK, zero);
-				session->player_cache.cloak[basic] = 0.0f;
-			}
+			(void)yt_player_cache_set(&session->player_cache, basic,
+			    YT_PLAYER_CACHE_CLOAK, 0.0f);
 			if (!session_sound(session, 4.0f,
 			    "sector cloak-reveal sound", error))
 				return false;

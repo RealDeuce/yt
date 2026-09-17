@@ -113,9 +113,6 @@ bool
 yt_session_kill_player(struct yt_session *session, int victim_record,
     float killer, bool wait_for_current, struct yt_error *error)
 {
-	static const uint8_t active_cache_zero[4] = {
-		0x00U, 0x00U, 0x7aU, 0x00U
-	};
 	struct yt_player victim;
 	struct yt_player player;
 	uint8_t victim_name[YT_TEXT_FIELD_SIZE];
@@ -131,8 +128,8 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 	bool valid_killer;
 
 	current_player_record = session_record(session);
-	(void)yt_player_cache_set_raw(&session->player_cache, victim_record,
-	    YT_PLAYER_CACHE_SECTOR, active_cache_zero);
+	(void)yt_player_cache_set(&session->player_cache, victim_record,
+	    YT_PLAYER_CACHE_SECTOR, 0.0f);
 	if (!yt_game_read_player(&session->door->game, victim_record, &victim,
 	    error))
 		return false;

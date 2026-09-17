@@ -235,11 +235,9 @@ bool
 yt_session_store_move(struct yt_session *session, float target,
     struct yt_error *error)
 {
-	uint8_t target_raw[4];
 	int player_record;
 
-	if (session == NULL
-	    || qb_mbf32_encode(target, target_raw) != QB_MBF_OK)
+	if (session == NULL)
 		return false;
 	player_record = session_record(session);
 	session->navigation.self_mines_suppressed = false;
@@ -250,8 +248,8 @@ yt_session_store_move(struct yt_session *session, float target,
 	    (size_t)player_record, &session->player.record, error)
 	    || !yt_database_flush(&session->door->game.database, error))
 		return false;
-	return yt_player_cache_set_raw(&session->player_cache, player_record,
-	    YT_PLAYER_CACHE_SECTOR, target_raw);
+	return yt_player_cache_set(&session->player_cache, player_record,
+	    YT_PLAYER_CACHE_SECTOR, target);
 }
 
 bool

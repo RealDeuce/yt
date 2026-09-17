@@ -116,7 +116,6 @@ test_move_storage(void)
 	struct yt_player player;
 	struct yt_record persisted;
 	struct yt_error error;
-	uint8_t initial_sector[4];
 
 	(void)remove(path);
 	memset(&door, 0, sizeof(door));
@@ -131,9 +130,8 @@ test_move_storage(void)
 	player.sector = 7.0f;
 	player.credits = 1234.0f;
 	yt_player_encode(&player);
-	CHECK(qb_mbf32_encode(7.0f, initial_sector) == QB_MBF_OK);
-	CHECK(yt_player_cache_set_raw(&session.player_cache, 2,
-	    YT_PLAYER_CACHE_SECTOR, initial_sector));
+	CHECK(yt_player_cache_set(&session.player_cache, 2,
+	    YT_PLAYER_CACHE_SECTOR, 7.0f));
 	yt_error_clear(&error);
 	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
 	    &error));

@@ -92,9 +92,8 @@ yt_current_player_hydrate(struct yt_player *player,
 	player->cloak = fresh->cloak;
 	if (!anti_cloak_enabled) {
 		if (player_cache != NULL)
-			(void)yt_player_cache_set_raw(player_cache, player_record,
-			    YT_PLAYER_CACHE_CLOAK,
-			    fresh->record.bytes + YT_F125);
+			(void)yt_player_cache_set(player_cache, player_record,
+			    YT_PLAYER_CACHE_CLOAK, fresh->cloak);
 	}
 	player->shields = fresh->shields;
 	return true;
