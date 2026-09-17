@@ -735,7 +735,6 @@ struct yt_projectile_damage_result {
 	double fighters;
 	float shields;
 	bool scanner_disabled;
-	size_t iterations;
 };
 bool yt_projectile_damage_iteration(float counter, float saved_missiles);
 bool yt_projectile_survivor_overlay(struct yt_player *player, float shields,
@@ -753,7 +752,6 @@ bool yt_projectile_sector_unlink_overlay(struct yt_sector *sector);
 struct yt_projectile_ground_result {
 	float ground;
 	float owner;
-	size_t iterations;
 };
 bool yt_projectile_planet_ground_damage(float ground, float owner,
     float *remaining, struct yt_random *random,
@@ -761,7 +759,6 @@ bool yt_projectile_planet_ground_damage(float ground, float owner,
 struct yt_projectile_productivity_result {
 	float old_total;
 	float new_total;
-	size_t iterations;
 };
 bool yt_projectile_planet_productivity_damage(float updater_ore,
     float production[3], float stock[3], float *remaining,

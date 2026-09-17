@@ -464,7 +464,7 @@ check_projectile_damage_model(void)
 	yt_test_random_use_provider(&random, projectile_damage_fill, &tape);
 	if (!yt_projectile_player_damage(&target, &remaining,
 	    &random, &damage, &error)
-	    || tape.position != 8U || damage.iterations != 2U
+	    || tape.position != 8U
 	    || remaining != 0.5f || damage.fighters != 1000.0
 	    || damage.shields != 100.0f || damage.scanner_disabled
 	    || target.fighters != 0.0f || target.shields != 0.0f
@@ -480,7 +480,7 @@ check_projectile_damage_model(void)
 	tape.position = 0U;
 	if (!yt_projectile_player_damage(&target, &remaining,
 	    &random, &damage, &error)
-	    || tape.position != 3U || damage.iterations != 1U
+	    || tape.position != 3U
 	    || damage.fighters != 0.0 || damage.shields != 0.0f
 	    || target.fighters != 1000.0f || target.shields != 100.0f)
 		return false;
@@ -495,7 +495,7 @@ check_projectile_damage_model(void)
 	tape.position = 0U;
 	if (!yt_projectile_player_damage(&target, &remaining,
 	    &random, &damage, &error)
-	    || tape.position != 4U || damage.iterations != 1U
+	    || tape.position != 4U
 	    || remaining != 100.5f || !damage.scanner_disabled
 	    || target.danger_scanner != 0.0f)
 		return false;
@@ -655,7 +655,7 @@ check_projectile_planet_damage_model(void)
 	remaining = 2.0f;
 	if (!yt_projectile_planet_ground_damage(20.0f, 7.0f, &remaining,
 	    &random, &ground, &error)
-	    || tape.position != 2U || ground.iterations != 2U
+	    || tape.position != 2U
 	    || ground.ground != 0.0f || ground.owner != 0.0f
 	    || remaining != 0.0f)
 		return false;
@@ -663,7 +663,7 @@ check_projectile_planet_damage_model(void)
 	remaining = 3.0f;
 	if (!yt_projectile_planet_ground_damage(-2.5f, 7.0f, &remaining,
 	    &random, &ground, &error)
-	    || tape.position != 0U || ground.iterations != 0U
+	    || tape.position != 0U
 	    || ground.ground != 0.0f || ground.owner != 0.0f
 	    || remaining != 3.0f)
 		return false;
@@ -676,7 +676,7 @@ check_projectile_planet_damage_model(void)
 	remaining = 1.0f;
 	if (!yt_projectile_planet_productivity_damage(1.0f, production,
 	    stock, &remaining, &random, &productivity, &error)
-	    || tape.position != 3U || productivity.iterations != 1U
+	    || tape.position != 3U
 	    || productivity.old_total != 0.0f
 	    || productivity.new_total != 0.0f || remaining != 0.0f
 	    || production[0] != 0.0f || production[1] != 0.0f

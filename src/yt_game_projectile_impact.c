@@ -250,7 +250,6 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 	float saved_missiles;
 	float counter = 1.0f;
 	bool scanner_disabled = false;
-	size_t iterations = 0U;
 
 	if (target == NULL || remaining == NULL || random == NULL
 	    || result == NULL)
@@ -262,7 +261,6 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 		float value;
 		float scanner_product;
 
-		++iterations;
 		*remaining = qb_single_subtract(*remaining, 1.0f);
 		if (!yt_random_next(random, &value, error))
 			return false;
@@ -300,7 +298,6 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 	result->fighters = fighter_damage;
 	result->shields = shield_damage;
 	result->scanner_disabled = scanner_disabled;
-	result->iterations = iterations;
 	return true;
 }
 

@@ -69,13 +69,10 @@ yt_projectile_planet_ground_damage(float ground, float owner,
     float *remaining, struct yt_random *random,
     struct yt_projectile_ground_result *result, struct yt_error *error)
 {
-	size_t iterations = 0U;
-
 	if (remaining == NULL || random == NULL || result == NULL)
 		return false;
 	result->ground = ground;
 	result->owner = owner;
-	result->iterations = 0U;
 	while (ground > 0.0f && *remaining > 0.0f) {
 		float value;
 
@@ -84,9 +81,7 @@ yt_projectile_planet_ground_damage(float ground, float owner,
 		ground = qb_single_subtract(ground,
 		    qb_single_multiply(value, 25.0f));
 		*remaining = qb_single_subtract(*remaining, 1.0f);
-		++iterations;
 		result->ground = ground;
-		result->iterations = iterations;
 	}
 	ground = floorf(ground);
 	if (ground < 1.0f) {
@@ -95,7 +90,6 @@ yt_projectile_planet_ground_damage(float ground, float owner,
 	}
 	result->ground = ground;
 	result->owner = owner;
-	result->iterations = iterations;
 	return true;
 }
 
@@ -108,7 +102,6 @@ yt_projectile_planet_productivity_damage(float updater_ore,
 {
 	float old_total;
 	float new_total;
-	size_t iterations = 0U;
 	size_t index;
 
 	if (production == NULL || stock == NULL || remaining == NULL
@@ -128,7 +121,6 @@ yt_projectile_planet_productivity_damage(float updater_ore,
 			    2000.0f));
 		}
 		*remaining = qb_single_subtract(*remaining, 1.0f);
-		++iterations;
 	}
 	for (index = 0U; index < 3U; ++index) {
 		float cap;
@@ -143,7 +135,6 @@ yt_projectile_planet_productivity_damage(float updater_ore,
 	    production[1]), production[2]);
 	result->old_total = old_total;
 	result->new_total = new_total;
-	result->iterations = iterations;
 	return true;
 }
 
