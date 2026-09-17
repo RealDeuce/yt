@@ -120,7 +120,7 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 		    || !session_reload_player(session, error))
 			return false;
 		if (session_is_disruption_sector(session,
-		    session->player.sector)) {
+		    (int)session->player.sector)) {
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE, "black hole leading blank", error)
 			    || !session_attention_bytes(session, black_hole,
@@ -301,4 +301,3 @@ reenter_sector:
 		continue;
 	}
 }
-

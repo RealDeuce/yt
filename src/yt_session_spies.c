@@ -120,7 +120,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 	    "The spy detected the shimmering of a cloaking device!";
 	static const uint8_t ship_heading[] = "Other Ships: ";
 	static const uint8_t fighter_heading[] = "Fighters in sector:";
-	float disruption_sectors[2] = {
+	int disruption_sectors[2] = {
 		session->disruption_sectors[0],
 		session->disruption_sectors[1]
 	};
@@ -145,8 +145,8 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 			if (!session_read_sector(session, sector_number, &sector,
 			    error))
 				return false;
-			if ((float)sector_number == disruption_sectors[0]
-			    || (float)sector_number == disruption_sectors[1]) {
+			if (sector_number == disruption_sectors[0]
+			    || sector_number == disruption_sectors[1]) {
 				if (!spy_first_finding(session, spy, sector_number, error)
 				    || !session_attention_bytes(session, disruption,
 				    sizeof(disruption) - 1U, "spy attention row", error))

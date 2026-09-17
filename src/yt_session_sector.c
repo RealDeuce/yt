@@ -161,15 +161,15 @@ display_sector_one(struct yt_session *session, int logical_sector,
 	    SESSION_PRESENT_LINE, "sector number row", error))
 		return false;
 	yt_sector_pager_add(private_pager, 1.0f);
-	if (((float)logical_sector == session->disruption_sectors[0]
-	    || (float)logical_sector == session->disruption_sectors[1])
+	if ((logical_sector == session->disruption_sectors[0]
+	    || logical_sector == session->disruption_sectors[1])
 	    && !session_attention_bytes(session,
 	    (const uint8_t *)"** Space-time disruption detected! **",
 	    strlen("** Space-time disruption detected! **"),
 	    "sector disruption attention", error))
 		return false;
-	if ((float)logical_sector == session->disruption_sectors[0]
-	    || (float)logical_sector == session->disruption_sectors[1])
+	if (logical_sector == session->disruption_sectors[0]
+	    || logical_sector == session->disruption_sectors[1])
 		yt_sector_pager_add(private_pager, 1.0f);
 	if (sector.mines != 0.0f) {
 		if (!yt_sector_mine_warning_row(sector.mines, row,

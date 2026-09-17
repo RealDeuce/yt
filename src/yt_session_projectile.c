@@ -221,8 +221,8 @@ plasma_route_run(struct yt_session *session,
 			    SESSION_PRESENT_LINE, "plasma route line", error)
 			    || !session_wait(session, 0.5, "plasma hop wait", error))
 				return false;
-			if ((float)next_hop == session->disruption_sectors[0]
-			    || (float)next_hop == session->disruption_sectors[1]) {
+			if (next_hop == session->disruption_sectors[0]
+			    || next_hop == session->disruption_sectors[1]) {
 				float draw;
 				float span;
 
@@ -356,7 +356,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 
 			if (!yt_projectile_route_has_next((int16_t)next))
 				break;
-			if (session_is_disruption_sector(session, (float)next)) {
+			if (session_is_disruption_sector(session, next)) {
 				uint8_t row[160];
 				size_t row_length;
 				float draw;

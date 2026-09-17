@@ -83,7 +83,7 @@ test_destination_danger(void)
 	sector.fighters = 5.0f;
 	sector.fighter_owner = 3.0f;
 	write_sector(&door.game, &door.game.config, 13, &sector, &error);
-	session.disruption_sectors[0] = 0.0f;
+	session.disruption_sectors[0] = 0;
 	session.player_reference.friendly = false;
 	CHECK(yt_session_destination_is_dangerous(&session, 13.0f,
 	    &dangerous, &error));

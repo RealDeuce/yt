@@ -95,8 +95,8 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 	yt_present_set_background(&session->presentation, 4.0f);
 	if (!session_read_sector(session, (int)target, &sector, error))
 		return false;
-	if (target == session->disruption_sectors[0]
-	    || target == session->disruption_sectors[1]) {
+	if (target == (float)session->disruption_sectors[0]
+	    || target == (float)session->disruption_sectors[1]) {
 		if (!danger_first_warning(session, target, finding, error)
 		    || !session_present_text(session, disruption,
 		    sizeof(disruption) - 1U, SESSION_PRESENT_BOLD_LINE,

@@ -106,7 +106,7 @@ struct yt_session {
 	struct session_combat_state combat;
 	float market_bases[3];
 	struct session_planet_state planet;
-	float disruption_sectors[2];
+	int disruption_sectors[2];
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_player_name_length;
 	struct yt_player_cache player_cache;
@@ -131,7 +131,7 @@ uint32_t session_port_basic_record(const struct yt_session *session,
 	int logical_port);
 int session_sector_count(const struct yt_session *session);
 bool session_is_disruption_sector(const struct yt_session *session,
-    float sector);
+	int sector);
 bool yt_session_players_are_friendly(struct yt_session *session,
     int candidate_record, bool *friendly, struct yt_error *error);
 bool yt_session_destination_is_dangerous(struct yt_session *session,

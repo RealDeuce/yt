@@ -10,7 +10,7 @@
 bool
 yt_game_load_startup_configuration(struct yt_game *game, const char *path,
     bool local_mode, struct yt_player_cache *player_cache,
-    float disruption_sectors[2], float *local_screen, struct yt_error *error)
+    int disruption_sectors[2], float *local_screen, struct yt_error *error)
 {
 	struct yt_config *config;
 	int basic;
@@ -97,7 +97,6 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 		float span;
 		float product;
 		float integral;
-		uint8_t raw[4];
 
 		if (!yt_random_next(&game->random, &draw, error))
 			return false;
@@ -106,19 +105,8 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 		span = qb_single_subtract(difference, 2.0f);
 		product = qb_single_multiply(draw, span);
 		integral = floorf(product);
-		disruption_sectors[index] = qb_single_add(integral, 2.0f);
-		if (integral == -2.0f) {
-			static const uint8_t dirty_zero[4] = {
-				0x00U, 0x00U, 0x80U, 0x00U
-			};
-
-			memcpy(raw, dirty_zero, sizeof(raw));
-		} else if (qb_mbf32_encode(disruption_sectors[index], raw)
-		    != QB_MBF_OK) {
-			return yt_game_error(error, YT_RANGE,
-			    "startup disruption result");
-		}
-		disruption_sectors[index] = qb_mbf32_decode(raw);
+		disruption_sectors[index] =
+		    (int)qb_single_add(integral, 2.0f);
 	}
 	return true;
 }

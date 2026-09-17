@@ -69,7 +69,7 @@ session_record(const struct yt_session *session)
 }
 
 bool
-session_is_disruption_sector(const struct yt_session *session, float sector)
+session_is_disruption_sector(const struct yt_session *session, int sector)
 {
 	return sector == session->disruption_sectors[0]
 	    || sector == session->disruption_sectors[1];

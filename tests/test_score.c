@@ -110,7 +110,7 @@ check_startup_configuration_transaction(void)
 	struct yt_player_cache cache;
 	struct yt_record persisted;
 	struct yt_error error;
-	float disruption_sectors[2] = {0.0f, 0.0f};
+	int disruption_sectors[2] = {0, 0};
 	float local_screen = 99.0f;
 	struct startup_random random = {0U};
 	int record;
@@ -174,10 +174,10 @@ check_startup_configuration_transaction(void)
 	    || cache.cloak[2] != 0.0f || cache.cloak[3] != 1.0f
 	    || cache.cloak[4] != 1.0f
 	    || random.calls != 2U
-	    || disruption_sectors[0] < 2.0f
-	    || disruption_sectors[0] > 5.0f
-	    || disruption_sectors[1] < 2.0f
-	    || disruption_sectors[1] > 5.0f)
+	    || disruption_sectors[0] < 2
+	    || disruption_sectors[0] > 5
+	    || disruption_sectors[1] < 2
+	    || disruption_sectors[1] > 5)
 		goto done;
 	if (!yt_database_read(&game.database, 1U, &persisted, &error)
 	    || memcmp(&persisted, &source.record, sizeof(persisted)) != 0)
