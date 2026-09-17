@@ -9,12 +9,12 @@ bool
 yt_pager_advance(struct yt_pager_state *pager,
     struct yt_present_state *presentation, int *saved_foreground)
 {
-	pager->line_count = qb_single_add(pager->line_count, 1.0f);
-	if (pager->nonstop || pager->line_count < 23.0f
+	++pager->line_count;
+	if (pager->nonstop || pager->line_count < 23
 	    || pager->newline_flag)
 		return false;
 	*saved_foreground = pager->foreground;
-	pager->line_count = 0.0f;
+	pager->line_count = 0;
 	pager->foreground = 3;
 	presentation->foreground = 3;
 	presentation->bold = true;
@@ -29,7 +29,7 @@ yt_pager_editor_enter(struct yt_pager_state *pager, char *accumulator,
 	pager->nonstop = false;
 	if (accumulator_capacity != 0)
 		accumulator[0] = '\0';
-	pager->line_count = 0.0f;
+	pager->line_count = 0;
 	pager->key[0] = '\0';
 }
 
@@ -99,42 +99,42 @@ yt_pager_apply_key(const struct yt_input_value *value,
 void
 yt_sector_pager_begin(struct yt_sector_pager_state *pager)
 {
-	pager->line_count = 3.0f;
+	pager->line_count = 3;
 }
 
 void
-yt_sector_pager_add(struct yt_sector_pager_state *pager, float lines)
+yt_sector_pager_add(struct yt_sector_pager_state *pager, int lines)
 {
-	pager->line_count = qb_single_add(pager->line_count, lines);
+	pager->line_count += lines;
 }
 
 bool
 yt_sector_pager_finish_sector(struct yt_sector_pager_state *pager)
 {
-	if (pager->line_count <= 15.0f)
+	if (pager->line_count <= 15)
 		return false;
-	pager->line_count = 0.0f;
+	pager->line_count = 0;
 	return true;
 }
 
 void
 yt_radio_pager_begin(struct yt_radio_pager_state *pager)
 {
-	pager->line_count = 0.0f;
+	pager->line_count = 0;
 }
 
 void
 yt_radio_pager_add_pair(struct yt_radio_pager_state *pager)
 {
-	pager->line_count = qb_single_add(pager->line_count, 2.0f);
+	pager->line_count += 2;
 }
 
 bool
 yt_radio_pager_add_body(struct yt_radio_pager_state *pager)
 {
-	pager->line_count = qb_single_add(pager->line_count, 1.0f);
-	if (pager->line_count <= 22.0f)
+	++pager->line_count;
+	if (pager->line_count <= 22)
 		return false;
-	pager->line_count = 0.0f;
+	pager->line_count = 0;
 	return true;
 }

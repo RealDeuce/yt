@@ -626,7 +626,7 @@ session_display_game_file(struct yt_session *session, const char *path,
 	yt_text_input_init(&input);
 	if (!yt_text_input_close(&input, active_error))
 		goto done;
-	session->pager.line_count = 0.0f;
+	session->pager.line_count = 0;
 	if (!yt_text_input_open(&input, path, active_error))
 		goto done;
 	for (;;) {
@@ -665,7 +665,7 @@ session_display_game_file(struct yt_session *session, const char *path,
 	}
 	if (!yt_text_input_close(&input, active_error))
 		goto done;
-	session->pager.line_count = 0.0f;
+	session->pager.line_count = 0;
 	session->presentation.foreground = saved_foreground;
 	session->pager.foreground = saved_pager_foreground;
 	session_set_foreground(session, session->presentation.foreground);

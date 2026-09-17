@@ -169,7 +169,7 @@ yt_session_command_shell(struct yt_session *session, struct yt_error *error)
 		enum yt_main_shell_route route;
 		bool enter_sector = false;
 
-		session->pager.line_count = 0.0f;
+		session->pager.line_count = 0;
 		if (!session_reload_player(session, error))
 			return false;
 		session_set_foreground(session, 2);

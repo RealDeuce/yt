@@ -189,7 +189,7 @@ session_earth_report(struct yt_session *session, struct yt_port *earth,
 
 	if (earth == NULL || price == NULL)
 		return false;
-	session_set_pager_line_count(session, 0.0f);
+	session_set_pager_line_count(session, 0);
 	if (!session_read_port_at_fault(session, 1, earth,
 	    YT_BASIC_FAULT_PORT_EARTH_GET, error))
 		return false;

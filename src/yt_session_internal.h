@@ -196,7 +196,7 @@ bool session_wait(struct yt_session *session, double seconds,
 void session_close_game(struct yt_session *session);
 bool session_present_forced_local_line(const uint8_t *text, size_t length,
     const char *operation, struct yt_error *error);
-void session_set_pager_line_count(struct yt_session *session, float value);
+void session_set_pager_line_count(struct yt_session *session, int value);
 bool session_read_command(struct yt_session *session, char *text,
     size_t size);
 bool session_read_upper_command(struct yt_session *session, char *text,

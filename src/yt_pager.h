@@ -7,7 +7,7 @@
 #define YT_PAGER_KEY_SIZE 80U
 
 struct yt_pager_state {
-	float line_count;
+	int line_count;
 	bool nonstop;
 	bool newline_flag;
 	char key[YT_PAGER_KEY_SIZE];
@@ -26,11 +26,11 @@ struct yt_pager_key_state {
 };
 
 struct yt_sector_pager_state {
-	float line_count;
+	int line_count;
 };
 
 struct yt_radio_pager_state {
-	float line_count;
+	int line_count;
 };
 
 bool yt_pager_advance(struct yt_pager_state *pager,
@@ -46,7 +46,7 @@ bool yt_pager_apply_key(const struct yt_input_value *value,
     struct yt_pager_key_state *state);
 
 void yt_sector_pager_begin(struct yt_sector_pager_state *pager);
-void yt_sector_pager_add(struct yt_sector_pager_state *pager, float lines);
+void yt_sector_pager_add(struct yt_sector_pager_state *pager, int lines);
 bool yt_sector_pager_finish_sector(struct yt_sector_pager_state *pager);
 void yt_radio_pager_begin(struct yt_radio_pager_state *pager);
 void yt_radio_pager_add_pair(struct yt_radio_pager_state *pager);

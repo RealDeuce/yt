@@ -161,7 +161,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 	if (!session_present_text(session, row, row_length,
 	    SESSION_PRESENT_LINE, "sector number row", error))
 		return false;
-	yt_sector_pager_add(private_pager, 1.0f);
+	yt_sector_pager_add(private_pager, 1);
 	if ((logical_sector == session->disruption_sectors[0]
 	    || logical_sector == session->disruption_sectors[1])
 	    && !session_attention_bytes(session,
@@ -171,7 +171,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		return false;
 	if (logical_sector == session->disruption_sectors[0]
 	    || logical_sector == session->disruption_sectors[1])
-		yt_sector_pager_add(private_pager, 1.0f);
+		yt_sector_pager_add(private_pager, 1);
 	if (sector.mines != 0.0f) {
 		if (!yt_sector_mine_warning_row(sector.mines, row,
 		    sizeof(row) - 1U, &row_length))
@@ -185,7 +185,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 			    "sector mine follow-up sound", error))
 				return false;
 		}
-		yt_sector_pager_add(private_pager, 1.0f);
+		yt_sector_pager_add(private_pager, 1);
 	}
 	if (sector.port > 0) {
 		struct yt_port port;
@@ -201,7 +201,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		if (!scanner_write_port(session, physical_port, &port,
 		    error))
 			return false;
-		yt_sector_pager_add(private_pager, 1.0f);
+		yt_sector_pager_add(private_pager, 1);
 	}
 	if (!scanner_read_sector(session, logical_sector, &sector, error))
 		return false;
@@ -224,7 +224,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		    SESSION_PRESENT_BOLD_LINE, "sector planet row", error))
 			return false;
 		session_set_foreground(session, saved_foreground);
-		yt_sector_pager_add(private_pager, 1.0f);
+		yt_sector_pager_add(private_pager, 1);
 		if (!scanner_read_sector(session, logical_sector, &sector, error))
 			return false;
 	}
@@ -248,7 +248,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 			    sizeof(shimmer) - 1U, SESSION_PRESENT_BOLD_LINE,
 			    "sector cloak shimmer row", error))
 				return false;
-			yt_sector_pager_add(private_pager, 1.0f);
+			yt_sector_pager_add(private_pager, 1);
 			(void)yt_player_cache_set_cloak(&session->player_cache,
 			    basic, 0.0f);
 			if (!session_sound(session, YT_SOUND_CUE_ACTION,
@@ -258,7 +258,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		if (session->player_cache.cloak[basic] == 0.0f) {
 			struct yt_player other;
 
-			yt_sector_pager_add(private_pager, 1.0f);
+			yt_sector_pager_add(private_pager, 1);
 			if (first_visible) {
 				static const uint8_t heading[] = "Other Ships: ";
 
@@ -378,7 +378,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 	if (!session_present_text(session, NULL, 0U,
 	    SESSION_PRESENT_LINE, "sector warp terminator", error))
 		return false;
-	yt_sector_pager_add(private_pager, 1.0f);
+	yt_sector_pager_add(private_pager, 1);
 	if (yt_sector_pager_finish_sector(private_pager)) {
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "sector private-pause blank", error))

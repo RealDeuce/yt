@@ -11,7 +11,7 @@ struct yt_file_viewer_state {
 	int *foreground;
 	int *pager_foreground;
 	bool *bold;
-	float *line_count;
+	int *line_count;
 	char *pager_key;
 	int saved_foreground;
 	int saved_pager_foreground;
@@ -58,7 +58,7 @@ yt_file_viewer_display(const char *path, struct yt_file_viewer_state *state,
 	yt_text_input_init(&input);
 	if (!yt_text_input_close(&input, error))
 		goto done;
-	*state->line_count = 0.0f;
+	*state->line_count = 0;
 	if (!yt_text_input_open(&input, path, error))
 		goto done;
 	for (;;) {
@@ -91,7 +91,7 @@ yt_file_viewer_display(const char *path, struct yt_file_viewer_state *state,
 	}
 	if (!yt_text_input_close(&input, error))
 		goto done;
-	*state->line_count = 0.0f;
+	*state->line_count = 0;
 	*state->foreground = state->saved_foreground;
 	*state->pager_foreground = state->saved_pager_foreground;
 	result = present(context, NULL, 0U, false, error);

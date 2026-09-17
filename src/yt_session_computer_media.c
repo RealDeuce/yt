@@ -47,7 +47,7 @@ yt_session_computer_scoreboard(struct yt_session *session,
 	length = strlen(response);
 	yt_input_compat_upper_n((uint8_t *)session->io.text_workspace, length);
 	yt_input_compat_upper_n((uint8_t *)response, length);
-	session_set_pager_line_count(session, 0.0f);
+	session_set_pager_line_count(session, 0);
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "scoreboard selector trailing blank", error))
 		return false;
