@@ -94,14 +94,6 @@ bool yt_names_load_sequential(struct yt_text_input *input, const char *path,
 	struct yt_name_file *names,
 	struct yt_name_input_observation *observation,
 	struct yt_names_sequential_state *state, struct yt_error *error);
-/*
- * On incomplete input, names retains every completed group and observation
- * owns the successfully staged fields from the interrupted group.  Release
- * both objects even when this function returns false.
- */
-bool yt_names_parse_input_groups(const uint8_t *data, size_t length,
-    struct yt_name_file *names, struct yt_name_input_observation *observation,
-    struct yt_error *error);
 void yt_names_input_observation_free(
     struct yt_name_input_observation *observation);
 void yt_names_free(struct yt_name_file *names);

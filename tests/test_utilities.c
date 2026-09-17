@@ -2026,12 +2026,9 @@ test_name_input_grammar(struct yt_error *error)
 	static const uint8_t closed_eof[] = "A,B,C,\"D\"\x1a";
 	static const uint8_t lf_eof[] = "A,B,C,\n\x1a";
 	static const uint8_t incomplete[] = "A,B,C\x1a";
-	static const uint8_t staged_after_row[] =
-	    "A,B,C,D\r\nE,F\x1a";
 	static const uint8_t long_suffix[] = ",B,C,D\r\n\x1a";
 	uint8_t long_stream[LONG_FIELD_LENGTH + sizeof(long_suffix) - 1U];
 	struct yt_name_file names;
-	struct yt_name_input_observation observation;
 	bool ok = true;
 
 #define LOAD_NAMES(bytes) (write_file("names.in", (bytes), sizeof(bytes) - 1U) \
@@ -2116,20 +2113,6 @@ test_name_input_grammar(struct yt_error *error)
 	ok = !yt_names_load("names.in", &names, error)
 	    && error->status == YT_EOF && names.rows == NULL && names.count == 0;
 	REQUIRE_NAMES(ok, "incomplete group");
-	yt_error_clear(error);
-	ok = !yt_names_parse_input_groups(staged_after_row,
-	    sizeof(staged_after_row) - 1U, &names, &observation, error)
-	    && error->status == YT_EOF && names.count == 1U
-	    && strcmp(names.rows[0].real_first, "A") == 0
-	    && strcmp(names.rows[0].alias_last, "D") == 0
-	    && observation.staged_count == 2U
-	    && strcmp(observation.staged.real_first, "E") == 0
-	    && strcmp(observation.staged.real_last, "F") == 0
-	    && observation.staged.alias_first == NULL
-	    && observation.staged.alias_last == NULL;
-	yt_names_input_observation_free(&observation);
-	yt_names_free(&names);
-	REQUIRE_NAMES(ok, "staged incomplete group");
 	memset(long_stream, 'A', LONG_FIELD_LENGTH);
 	memcpy(long_stream + LONG_FIELD_LENGTH, long_suffix,
 	    sizeof(long_suffix) - 1U);
