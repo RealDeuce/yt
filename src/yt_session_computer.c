@@ -30,7 +30,7 @@ yt_session_computer_owner_is_friendly(struct yt_session *session, float owner,
 	if (friendly == NULL)
 		return false;
 	*friendly = false;
-	session->shared_status = 0.0f;
+	session->relationship_friendly = false;
 	if (owner < 2.0f
 	    || owner > session_sector_offset(session)
 	    || (float)session_record(session) < 2.0f
@@ -39,7 +39,7 @@ yt_session_computer_owner_is_friendly(struct yt_session *session, float owner,
 		return true;
 	if (owner == (float)session_record(session)) {
 		*friendly = true;
-		session->shared_status = -1.0f;
+		session->relationship_friendly = true;
 		return true;
 	}
 	if (!session_read_player_at_fault(session, session_record(session),
@@ -52,7 +52,7 @@ yt_session_computer_owner_is_friendly(struct yt_session *session, float owner,
 		return false;
 	*friendly = other.team == current.team;
 	if (*friendly)
-		session->shared_status = -1.0f;
+		session->relationship_friendly = true;
 	return true;
 }
 
@@ -160,20 +160,6 @@ yt_session_computer_port_report(struct yt_session *session,
 	}
 }
 
-static bool
-computer_planet_relation_cint(struct yt_session *session, float relationship,
-    int *converted, const char *operation, struct yt_error *error)
-{
-	bool overflow;
-	int32_t value = qb_cint_mode((double)relationship,
-	    session->presentation.sound.conversion_mode, &overflow);
-
-	if (overflow)
-		return session_computer_error(error, YT_RANGE, operation);
-	*converted = (int)value;
-	return true;
-}
-
 bool
 yt_session_computer_planet_report(struct yt_session *session,
     struct yt_error *error)
@@ -191,14 +177,13 @@ yt_session_computer_planet_report(struct yt_session *session,
 		char response[160];
 		double sector_fighters;
 		float fighter_owner;
-		float last_relationship;
 		float link;
 		float scratch;
 		float selected;
-		int relation_cint;
 		bool denied;
 		bool fighter_friendly;
 		bool last_friendly;
+		bool relationship_friendly;
 		bool valid_link;
 
 		if (!yt_session_fresh_no_turn_gate(session, &denied, error))
@@ -257,7 +242,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			    fighter_owner, &fighter_friendly, error))
 				return false;
 			sector_fighters = session->combat.deployed_fighters;
-			last_relationship = session->shared_status;
+			relationship_friendly = fighter_friendly;
 			scratch = qb_single_add(
 			    session_planet_offset(session), link);
 			session->planet.current_physical_record = scratch;
@@ -266,10 +251,6 @@ yt_session_computer_planet_report(struct yt_session *session,
 			name_length = planet.name_length;
 			if (name_length > YT_TEXT_FIELD_SIZE)
 				name_length = YT_TEXT_FIELD_SIZE;
-			if (!computer_planet_relation_cint(session,
-			    last_relationship, &relation_cint,
-			    "computer planet fighter relationship CINT", error))
-				return false;
 			owner_differs = (float)session_record(session) != planet.owner;
 			owner_nonzero = planet.owner != 0.0f;
 			ground_nonzero = planet.ground_forces != 0.0f;
@@ -277,7 +258,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			fighters_positive = sector_fighters > 0.0;
 			limited_candidate = owner_differs && owner_nonzero
 			    && ground_nonzero && (fighters_zero
-			    || (fighters_positive && relation_cint != 0));
+			    || (fighters_positive && relationship_friendly));
 			if (limited_candidate) {
 				char forces[64];
 				uint8_t row[192];
@@ -286,12 +267,8 @@ yt_session_computer_planet_report(struct yt_session *session,
 				if (!yt_session_computer_owner_is_friendly(session,
 				    planet.owner, &last_friendly, error))
 					return false;
-				last_relationship = session->shared_status;
-				if (!computer_planet_relation_cint(session,
-				    last_relationship, &relation_cint,
-				    "computer planet owner relationship CINT", error))
-					return false;
-				if (~relation_cint != 0) {
+				relationship_friendly = last_friendly;
+				if (!relationship_friendly) {
 					static const uint8_t prefix[] = "Planet: ";
 					static const uint8_t infix[] =
 					    " -*- Ground Forces:";
@@ -321,19 +298,15 @@ yt_session_computer_planet_report(struct yt_session *session,
 		else {
 			sector_fighters = session->combat.deployed_fighters;
 			fighter_owner = session->shared_target_record;
-			last_relationship = session->shared_status;
+			relationship_friendly = session->relationship_friendly;
 			scratch = link;
 		}
-		if (!computer_planet_relation_cint(session, last_relationship,
-		    &relation_cint,
-		    "computer planet unavailable relationship CINT", error))
-			return false;
 		{
 			bool scratch_zero = scratch == 0.0f;
 			bool fighters_positive = sector_fighters > 0.0;
 			bool team_positive = session->player.team > 0.0f;
 			bool team_zero = session->player.team == 0.0f;
-			bool relation_not = ~relation_cint != 0;
+			bool relation_not = !relationship_friendly;
 			bool fighter_owner_differs =
 			    (float)session_record(session) != fighter_owner;
 			bool no_information = scratch_zero

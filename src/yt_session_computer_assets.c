@@ -153,8 +153,6 @@ yt_session_computer_owned_fighters(struct yt_session *session,
 	    || !session_present_timed_paged_row(session, searching,
 	    sizeof(searching) - 1U, "owned-fighter searching row", error))
 		return false;
-	session->shared_status = 1.0f;
-
 	for (sector_number = 1; sector_number <= maximum_sector;
 	    ++sector_number) {
 		struct yt_sector sector;
@@ -183,7 +181,6 @@ yt_session_computer_owned_fighters(struct yt_session *session,
 			    || !session_present_paged_fragment(session, rule,
 			    sizeof(rule) - 1U))
 				return false;
-			session->shared_status = 0.0f;
 		}
 
 		number_length = qb_str_single(number, sizeof(number),
@@ -296,5 +293,4 @@ yt_session_computer_owned_planets(struct yt_session *session,
 	}
 	return true;
 }
-
 

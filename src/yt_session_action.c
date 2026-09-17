@@ -14,10 +14,8 @@ yt_session_fresh_no_turn_gate(struct yt_session *session, bool *denied,
 
 	if (!session_reload_player(session, error))
 		return false;
-	session->shared_status = 0.0f;
 	*denied = yt_no_turn_gate_denied(session->player.turns);
 	if (*denied) {
-		session->shared_status = -1.0f;
 		return session_present_alert(session, notice, sizeof(notice) - 1U,
 		    "no-turn gate notice", error);
 	}

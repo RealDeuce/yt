@@ -116,7 +116,6 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 		struct yt_sector sector;
 		bool friendly;
 
-		session->shared_status = 0.0f;
 		if (!yt_session_display_sector(session, false, error)
 		    || !session_reload_player(session, error))
 			return false;
@@ -302,5 +301,4 @@ reenter_sector:
 		continue;
 	}
 }
-
 

@@ -166,11 +166,11 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 				struct yt_team team;
 				bool friendly;
 
-				session->shared_status = 0.0f;
+				session->relationship_friendly = false;
 				if (!yt_session_players_are_friendly(session,
 				    (int)owner, &friendly, error))
 					return false;
-				session->shared_status = friendly ? -1.0f : 0.0f;
+				session->relationship_friendly = friendly;
 				number_length = qb_str_single(number, sizeof(number),
 				    owner_player.team);
 				if (number_length < 1
@@ -203,7 +203,7 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 		if (!hostile && owner > 1.0f
 		    && owner <= session_sector_offset(session)
 		    && owner != (float)session_record(session))
-			hostile = session->shared_status != -1.0f;
+			hostile = !session->relationship_friendly;
 		if (hostile) {
 			if (!danger_first_warning(session, target, finding, error))
 				return false;

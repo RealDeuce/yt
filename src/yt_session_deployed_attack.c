@@ -157,7 +157,6 @@ hostile_surrender_run(struct yt_session *session,
 	case YT_HOSTILE_SURRENDER_QUIET:
 		break;
 	}
-	session->shared_status = 1.0f;
 	state->accepted = accepted;
 	if (!accepted)
 		return true;

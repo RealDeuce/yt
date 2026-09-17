@@ -84,21 +84,21 @@ test_destination_danger(void)
 	sector.fighter_owner = 3.0f;
 	write_sector(&door.game, &door.game.config, 13, &sector, &error);
 	session.disruption_sectors[0] = 0.0f;
-	session.shared_status = 0.0f;
+	session.relationship_friendly = false;
 	CHECK(yt_session_destination_is_dangerous(&session, 13.0f,
 	    &dangerous, &error));
 	CHECK(!dangerous);
-	CHECK(session.shared_status == -1.0f);
+	CHECK(session.relationship_friendly);
 	CHECK(session.presentation.foreground == 7.0f);
 	CHECK(yt_present_background(&session.presentation) == 0.0f);
 	CHECK(session.player.team == 7.0f);
 
 	write_player(&door.game, 3, "SOLO", 0.0f, &error);
-	session.shared_status = -1.0f;
+	session.relationship_friendly = true;
 	CHECK(yt_session_destination_is_dangerous(&session, 13.0f,
 	    &dangerous, &error));
 	CHECK(!dangerous);
-	CHECK(session.shared_status == -1.0f);
+	CHECK(session.relationship_friendly);
 
 	yt_database_close(&door.game.database);
 	CHECK(yt_session_destination_is_dangerous(&session, 0.0f,

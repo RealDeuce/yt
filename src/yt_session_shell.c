@@ -176,7 +176,6 @@ yt_session_command_shell(struct yt_session *session, struct yt_error *error)
 		if (!session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "main prompt leading blank", error))
 			return false;
-		session->shared_status = 0.0f;
 		if (!yt_main_prompt_row((const uint8_t *)session->time.text,
 		    session->time.text_length, prompt, sizeof(prompt),
 		    &prompt_length))

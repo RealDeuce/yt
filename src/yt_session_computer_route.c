@@ -58,6 +58,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	bool found;
 	int cursor;
 	enum yt_route_outcome route_outcome;
+	float route_status;
 
 	if (!autopilot) {
 		session->navigation.route_marker = 9999.0f;
@@ -121,9 +122,9 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	    || !session_present_timed_paged_row(session, working,
 	    sizeof(working) - 1U, "path working prompt", error))
 		return false;
-	session->shared_status = 1.0f;
+	route_status = 1.0f;
 	if (!yt_session_build_route(session, start_value, destination_value,
-	    &route, true, &found, &route_outcome, &session->shared_status,
+	    &route, true, &found, &route_outcome, &route_status,
 	    error))
 		return false;
 	if (!found) {

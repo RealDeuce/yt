@@ -97,7 +97,7 @@ struct yt_session {
 	bool destroyed;
 	float low_time_remembered;
 	float shared_target_record;
-	float shared_status;
+	bool relationship_friendly;
 	struct yt_player player;
 	struct session_combat_state combat;
 	float market_bases[3];

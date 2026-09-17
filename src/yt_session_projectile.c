@@ -632,9 +632,7 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 		    || !session_reload_player(session, error)
 		    || !session_reload_player(session, error))
 			return false;
-		session->shared_status = 0.0f;
 		if (session->player.turns <= 0.0f) {
-			session->shared_status = -1.0f;
 			return session_present_alert(session, no_turns,
 			    sizeof(no_turns) - 1U, "no-turn gate notice", error);
 		}

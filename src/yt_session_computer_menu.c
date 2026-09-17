@@ -66,7 +66,6 @@ computer_menu_prompt(struct yt_session *session, char *command,
 	if (command == NULL || capacity < 3U
 	    || !session_reload_player(session, error))
 		return false;
-	session->shared_status = 0.0f;
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "computer prompt leading blank", error))
 		return false;
@@ -254,7 +253,6 @@ yt_session_computer_menu(struct yt_session *session, bool *enter_sector,
 			}
 		}
 		if (strcmp(command, "6") == 0) {
-			session->shared_status = 1.0f;
 			if (!yt_session_radio_read(session, true, error))
 				return false;
 			continue;

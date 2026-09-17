@@ -54,7 +54,6 @@ test_activate_and_deactivate(void)
 	CHECK(yt_session_computer_menu(&session, &enter_sector, &error));
 	CHECK(enter_sector);
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
-	CHECK(session.shared_status == 0.0f);
 	door.game.config.sector_offset = 3.0f;
 	door.game.config.port_offset = 23.0f;
 	door.game.config.planet_offset = 43.0f;
@@ -152,7 +151,7 @@ test_port_visibility_through_report(void)
 	CHECK(yt_session_computer_port_report(&session, &enter_sector, &error));
 	CHECK(!enter_sector);
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
-	CHECK(session.shared_status == -1.0f);
+	CHECK(session.relationship_friendly);
 	CHECK(session.navigation.route_marker == 0.0f);
 	CHECK(session.planet.current_physical_record == 3107.0f);
 
@@ -164,7 +163,7 @@ test_port_visibility_through_report(void)
 	session.io.typeahead_length = sizeof(sector_number) - 1U;
 	session.io.typeahead_position = 0U;
 	CHECK(yt_session_computer_port_report(&session, &enter_sector, &error));
-	CHECK(session.shared_status == 0.0f);
+	CHECK(!session.relationship_friendly);
 
 	sector.fighter_owner = 2.0f;
 	yt_sector_encode(&sector);
@@ -174,7 +173,7 @@ test_port_visibility_through_report(void)
 	session.io.typeahead_length = sizeof(sector_number) - 1U;
 	session.io.typeahead_position = 0U;
 	CHECK(yt_session_computer_port_report(&session, &enter_sector, &error));
-	CHECK(session.shared_status == -1.0f);
+	CHECK(session.relationship_friendly);
 
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);

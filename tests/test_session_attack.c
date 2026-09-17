@@ -208,7 +208,6 @@ test_deployed_surrender(void)
 	CHECK(yt_session_attack_deployed(&session, &sector, 120.0, true,
 	    &error));
 	CHECK(random.calls == 11U && TEST_DRAWS(door.game.random) == 11U);
-	CHECK(session.shared_status == 1.0f);
 	CHECK(session.combat.ship_fighters == 11.0);
 	CHECK(session.combat.deployed_fighters == 0.0);
 	CHECK(session.player.fighters == 11.0f);
