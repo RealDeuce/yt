@@ -335,7 +335,7 @@ yt_session_show_ship(struct yt_session *session, struct yt_error *error)
 	(void)snprintf(left, sizeof(left), "%s",
 	    session->player.danger_scanner == 0 ? " NONE" : " Installed");
 	if (qb_str_single(right, sizeof(right),
-	    session->player.ports_owned) < 0
+	    (float)session->player.ports_owned) < 0
 	    || !info_panel_ordinary(session, " Scanner.. :", left,
 	    " Ports Owned.. :", right, error))
 		return false;

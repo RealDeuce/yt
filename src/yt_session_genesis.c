@@ -165,9 +165,10 @@ yt_session_command_genesis(struct yt_session *session, struct yt_error *error)
 	if (answer != YT_YES_NO_YES)
 		return session_present_paged_line(session, declined,
 		    sizeof(declined) - 1U, "Genesis declined row", error);
-	if (session->player.ports_owned < required_ports) {
+	if ((float)session->player.ports_owned < required_ports) {
 		if (!yt_genesis_insufficient_rows(required_ports,
-		    session->player.ports_owned, first, sizeof(first), &first_length,
+		    (float)session->player.ports_owned, first, sizeof(first),
+		    &first_length,
 		    second, sizeof(second), &second_length))
 			return session_range_error(error,
 			    "Genesis insufficient row composition");

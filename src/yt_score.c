@@ -164,7 +164,8 @@ base_score(const struct yt_player *player)
 	score = qb_single_add(score, qb_single_multiply(player->ore, 20.0f));
 	score = qb_single_add(score, qb_single_multiply(player->organics, 30.0f));
 	score = qb_single_add(score, qb_single_multiply(player->equipment, 40.0f));
-	score = qb_single_add(score, qb_single_multiply(player->ports_owned, 50000.0f));
+	score = qb_single_add(score, qb_single_multiply(
+	    (float)player->ports_owned, 50000.0f));
 	score = qb_single_add(score, qb_single_multiply(player->missiles, 1000.0f));
 	score = qb_single_add(score, qb_single_multiply(player->ground_forces, 750.0f));
 	score = qb_single_add(score, qb_single_multiply(player->mines, 2500.0f));
@@ -390,7 +391,8 @@ yt_scoreboard_write(struct yt_scoreboard *scoreboard, struct yt_error *error)
 			}
 			if (!format_player_row(line, sizeof(line), rank,
 			    player->score / denominator * 100.0, player->score,
-			    team_text, row_player.ports_owned, row_player.name)) {
+			    team_text, (float)row_player.ports_owned,
+			    row_player.name)) {
 				if (error != NULL)
 					error->status = YT_RANGE;
 				goto failure;

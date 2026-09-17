@@ -16,7 +16,7 @@ static int failures;
 
 static void
 write_player(struct yt_game *game, int record, const char *name,
-	int sector, float ports, struct yt_error *error)
+	int sector, int ports, struct yt_error *error)
 {
 	struct yt_player player;
 
@@ -63,8 +63,8 @@ test_distinct_player_death(void)
 	yt_error_clear(&error);
 	CHECK(yt_database_open(&door.game.database, database_path,
 	    YT_OPEN_CREATE, &error));
-	write_player(&door.game, 2, "Killer", 1.0f, 0.0f, &error);
-	write_player(&door.game, 3, "Victim", 1.0f, 1.0f, &error);
+	write_player(&door.game, 2, "Killer", 1, 0, &error);
+	write_player(&door.game, 3, "Victim", 1, 1, &error);
 	CHECK(yt_game_read_player(&door.game, 2, &session.player, &error));
 
 	memset(&sector, 0, sizeof(sector));
@@ -98,13 +98,13 @@ test_distinct_player_death(void)
 
 	CHECK(yt_session_kill_player(&session, 3, 2, true, &error));
 	CHECK(!session.fatal_wait_complete);
-	CHECK(session.player.ports_owned == 0.0f);
+	CHECK(session.player.ports_owned == 0);
 	CHECK(yt_player_cache_sector(&session.player_cache, 3) == 0);
 	CHECK(yt_game_read_player(&door.game, 3, &player, &error));
 	CHECK(player.killed_by == 2 && player.sector == 0
-	    && player.ports_owned == 0.0f);
+	    && player.ports_owned == 0);
 	CHECK(yt_game_read_player(&door.game, 2, &player, &error));
-	CHECK(player.ports_owned == 1.0f);
+	CHECK(player.ports_owned == 1);
 	CHECK(yt_database_read(&door.game.database, 5U, &record, &error));
 	yt_sector_decode(&sector, &record);
 	CHECK(sector.fighters == 10.0f && sector.fighter_owner == -2);

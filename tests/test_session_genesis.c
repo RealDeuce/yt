@@ -39,7 +39,7 @@ test_genesis_decline(void)
 	yt_record_blank(&player.record);
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Baron");
 	player.name_length = 5U;
-	player.ports_owned = 300.0f;
+	player.ports_owned = 300;
 	yt_player_encode(&player);
 	yt_error_clear(&error);
 	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
@@ -51,7 +51,7 @@ test_genesis_decline(void)
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(door.game_open);
 	CHECK(door.game.database.file != NULL);
-	CHECK(session.player.ports_owned == 300.0f);
+	CHECK(session.player.ports_owned == 300);
 	yt_database_close(&door.game.database);
 	CHECK(remove(path) == 0);
 }

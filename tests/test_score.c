@@ -233,7 +233,7 @@ check_current_player_cache_model(void)
 	fresh.missiles = 15.0f;
 	fresh.score = 16.0f;
 	fresh.plasma = 17.0f;
-	fresh.ports_owned = 18.0f;
+	fresh.ports_owned = 18;
 	fresh.ground_forces = 19.0f;
 	fresh.cloak = 20.0f;
 	fresh.mines = 21.0f;
@@ -253,7 +253,7 @@ check_current_player_cache_model(void)
 	    || player.credits != 12.0f || player.team != 13
 	    || player.danger_scanner != -1 || player.missiles != 15.0f
 	    || player.score != 0.0f || player.plasma != 17.0f
-	    || player.ports_owned != 18.0f || player.ground_forces != 19.0f
+	    || player.ports_owned != 18 || player.ground_forces != 19.0f
 	    || player.cloak != 20.0f || player.mines != 21.0f
 	    || memcmp(&player.record, &fresh.record,
 	    sizeof(player.record)) != 0
@@ -1695,14 +1695,14 @@ check_port_name_editor_model(void)
 		memset(&seller, 0, sizeof(seller));
 		memset(seller.record.bytes, 0xa5, YT_RECORD_SIZE);
 		seller.credits = 10.0f;
-		seller.ports_owned = 3.0f;
+		seller.ports_owned = 3;
 		(void)yt_record_set_number(&seller.record, YT_F81, 10.0f);
 		(void)yt_record_set_number(&seller.record, YT_F117, 3.0f);
 		expected = seller.record;
 		(void)yt_record_set_number(&expected, YT_F81, 16.0f);
 		(void)yt_record_set_number(&expected, YT_F117, 2.0f);
 		if (!yt_port_purchase_seller_overlay(&seller, 4.0f, 2.0)
-		    || seller.credits != 16.0f || seller.ports_owned != 2.0f
+		    || seller.credits != 16.0f || seller.ports_owned != 2
 		    || memcmp(seller.record.bytes, expected.bytes,
 		    YT_RECORD_SIZE) != 0)
 			return false;
@@ -1729,14 +1729,14 @@ check_port_name_editor_model(void)
 		memset(&buyer, 0, sizeof(buyer));
 		memset(buyer.record.bytes, 0xc3, YT_RECORD_SIZE);
 		buyer.credits = 20.0f;
-		buyer.ports_owned = 1.0f;
+		buyer.ports_owned = 1;
 		(void)yt_record_set_number(&buyer.record, YT_F81, 20.0f);
 		(void)yt_record_set_number(&buyer.record, YT_F117, 1.0f);
 		expected = buyer.record;
 		(void)yt_record_set_number(&expected, YT_F81, 18.0f);
 		(void)yt_record_set_number(&expected, YT_F117, 2.0f);
 		if (!yt_port_purchase_buyer_overlay(&buyer, 2.0)
-		    || buyer.credits != 18.0f || buyer.ports_owned != 2.0f
+		    || buyer.credits != 18.0f || buyer.ports_owned != 2
 		    || memcmp(buyer.record.bytes, expected.bytes,
 		    YT_RECORD_SIZE) != 0)
 			return false;
@@ -2645,14 +2645,14 @@ check_player_death_transaction(void)
 	    || tape.news_length[1] != sizeof(port_news) - 1U
 	    || memcmp(tape.news[1], port_news, sizeof(port_news) - 1U) != 0
 	    || !tape.flushed || tape.current_set || tape.rng_position != 23U
-	    || !state.complete || state.old_ports_owned != 99.0f
+	    || !state.complete || state.old_ports_owned != 99
 	    || state.matched_ports != 2 || state.victim_name_length != 3U
 	    || memcmp(state.victim_name, "V\0X", 3U) != 0
 	    || tape.sectors[1].fighter_owner != -2
 	    || tape.sectors[1].fighters != 0.0f
 	    || tape.ports[1].owner != 2 || tape.ports[1].last_minute != 2.0f
 	    || tape.ports[1].treasury != 51.0f
-	    || tape.players[2].ports_owned != 7.0f
+	    || tape.players[2].ports_owned != 7
 	    || memcmp(tape.players[3].record.bytes + YT_F57, dirty_zero, 4U)
 	    != 0 || memcmp(tape.players[3].record.bytes + YT_F117,
 	    dirty_zero, 4U) != 0)
@@ -2736,7 +2736,7 @@ check_player_death_model(void)
 	before = player.record;
 	yt_death_player_overlay(&player, 3);
 	if (player.killed_by != 3 || player.sector != 0
-	    || player.ports_owned != 0.0f
+	    || player.ports_owned != 0
 	    || yt_record_get_number(&player.record, YT_F45) != 3.0f
 	    || memcmp(player.record.bytes + YT_F57, dirty_zero, 4U) != 0
 	    || memcmp(player.record.bytes + YT_F117, dirty_zero, 4U) != 0
@@ -2799,8 +2799,8 @@ check_player_death_model(void)
 	yt_record_blank(&record);
 	(void)yt_record_set_number(&record, YT_F117, 4.0f);
 	yt_player_decode(&player, &record);
-	yt_death_killer_credit_overlay(&player, 2.0f);
-	if (player.ports_owned != 6.0f
+	yt_death_killer_credit_overlay(&player, 2);
+	if (player.ports_owned != 6
 	    || yt_record_get_number(&player.record, YT_F117) != 6.0f)
 		return false;
 	return yt_death_title_row(victim_name, sizeof(victim_name), 2.0f,

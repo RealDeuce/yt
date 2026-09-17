@@ -12580,7 +12580,7 @@ info_panel_presentation_fixture(bool ansi)
 	fixture.player.missiles = 6.0f;
 	fixture.player.equipment = 7.0f;
 	fixture.player.danger_scanner = -1;
-	fixture.player.ports_owned = 8.0f;
+	fixture.player.ports_owned = 8;
 	fixture.player.shields = 90.0f;
 	fixture.player.cloak = 0.75f;
 	fixture.player.ground_forces = 9.0f;
@@ -12893,7 +12893,7 @@ normal_exit_info_values_fixture(void)
 	values.player.missiles = 6.0f;
 	values.player.equipment = 7.0f;
 	values.player.danger_scanner = -1;
-	values.player.ports_owned = 8.0f;
+	values.player.ports_owned = 8;
 	values.player.shields = 90.0f;
 	values.player.cloak = 0.75f;
 	values.player.ground_forces = 9.0f;
@@ -12936,7 +12936,7 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 		fixture.player.missiles = 6.0f;
 		fixture.player.equipment = 7.0f;
 		fixture.player.danger_scanner = -1;
-		fixture.player.ports_owned = 8.0f;
+		fixture.player.ports_owned = 8;
 		fixture.player.shields = 90.0f;
 		fixture.player.cloak = 0.75f;
 		fixture.player.ground_forces = 9.0f;
@@ -18152,12 +18152,12 @@ main_buy_cycle_fixture_initialize(struct main_buy_cycle_fixture *fixture,
 	fixture->buyer_entry.credits = 1000.0f;
 	fixture->buyer_entry.sector = 9.0f;
 	fixture->fresh_buyer = fixture->buyer_entry;
-	fixture->fresh_buyer.ports_owned = 1.0f;
+	fixture->fresh_buyer.ports_owned = 1;
 	(void)yt_record_set_number(&fixture->fresh_buyer.record, YT_F81,
 	    1000.0f);
 	(void)yt_record_set_number(&fixture->fresh_buyer.record, YT_F117, 1.0f);
 	fixture->seller.credits = 10.0f;
-	fixture->seller.ports_owned = 3.0f;
+	fixture->seller.ports_owned = 3;
 	(void)yt_record_set_number(&fixture->seller.record, YT_F81, 10.0f);
 	(void)yt_record_set_number(&fixture->seller.record, YT_F117, 3.0f);
 	fixture->sector.port = 3;
@@ -18266,9 +18266,9 @@ test_main_buy_cycle_presentation(void)
 		    sizeof(accept_events)) == 0
 		    && fixture.name_write_count == 1U);
 		CHECK(fixture.written_seller.credits == 24.0f
-		    && fixture.written_seller.ports_owned == 2.0f
+		    && fixture.written_seller.ports_owned == 2
 		    && fixture.written_buyer.credits == 990.0f
-		    && fixture.written_buyer.ports_owned == 2.0f
+		    && fixture.written_buyer.ports_owned == 2
 		    && fixture.written_port.owner == 2
 		    && fixture.written_port.treasury == 0.0f
 		    && fixture.written_port.name_length == 4U
@@ -27862,7 +27862,7 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 				    sizeof(expected_player.record)) == 0
 				    && fatal.written_player.killed_by == 2
 				    && fatal.written_player.sector == 0
-				    && fatal.written_player.ports_owned == 0.0f
+				    && fatal.written_player.ports_owned == 0
 				    && memcmp(&fatal.written_sector.record,
 				    &expected_sector.record,
 				    sizeof(expected_sector.record)) == 0
@@ -31261,9 +31261,9 @@ main_genesis_cycle_run(struct main_genesis_cycle_fixture *fixture, bool ansi,
 		fixture->genesis.route = fixture->genesis.disabled_presented
 		    ? MAIN_GENESIS_DISABLED_ROUTE : MAIN_GENESIS_DECLINED_ROUTE;
 	}
-	else if (player.ports_owned < fixture->required_ports) {
+	else if ((float)player.ports_owned < fixture->required_ports) {
 		if (!yt_genesis_insufficient_rows(fixture->required_ports,
-		    player.ports_owned, first, sizeof(first), &first_length,
+		    (float)player.ports_owned, first, sizeof(first), &first_length,
 		    second, sizeof(second), &second_length)
 		    || !main_genesis_present(fixture, first, first_length,
 		    MAIN_GENESIS_INSUFFICIENT_FIRST, NULL)
@@ -31326,7 +31326,7 @@ test_main_genesis_decline_cycle_presentation(void)
 		    "YTSCORE.ASC", pass != 0U, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
 		fixture.presentation.viewer = &viewer;
-		fixture.player.ports_owned = 300.0f;
+		fixture.player.ports_owned = 300;
 		fixture.answer = (const uint8_t *)"N";
 		fixture.answer_length = 1U;
 		fixture.required_ports = 300.0f;
@@ -31438,8 +31438,7 @@ test_main_genesis_alternate_cycles_presentation(void)
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
 		fixture.presentation.viewer = &viewer;
-		fixture.player.ports_owned = cases[pass].disabled
-		    ? 300.0f : 299.0f;
+		fixture.player.ports_owned = cases[pass].disabled ? 300 : 299;
 		fixture.answer = (const uint8_t *)"Y";
 		fixture.answer_length = 1U;
 		fixture.required_ports = cases[pass].disabled ? 301.0f : 300.0f;
@@ -31526,7 +31525,7 @@ test_main_genesis_handoff_cycle_presentation(void)
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
 		fixture.presentation.viewer = &viewer;
-		fixture.player.ports_owned = 300.0f;
+		fixture.player.ports_owned = 300;
 		fixture.answer = (const uint8_t *)"Y";
 		fixture.answer_length = 1U;
 		fixture.required_ports = 1.0f;
@@ -33791,7 +33790,7 @@ test_hostile_quit_accept_presentation(void)
 	info.player.missiles = 5.0f;
 	info.player.equipment = 0.0f;
 	info.player.danger_scanner = -1;
-	info.player.ports_owned = 0.0f;
+	info.player.ports_owned = 0;
 	info.player.shields = 100.0f;
 	info.player.cloak = 0.5f;
 	info.player.ground_forces = 0.0f;

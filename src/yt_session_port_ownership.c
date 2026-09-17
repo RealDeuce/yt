@@ -68,7 +68,7 @@ treasury_add(uint8_t total[8], const uint8_t value[4],
 }
 
 static bool
-treasury_update_player(struct yt_player *player, float owned,
+treasury_update_player(struct yt_player *player, int owned,
     const uint8_t total[8], struct yt_error *error)
 {
 	uint8_t fresh_credits[8];
@@ -81,13 +81,13 @@ treasury_update_player(struct yt_player *player, float owned,
 	if (qb_mbf64_add_raw(fresh_credits, total, summed_credits) != QB_MBF_OK
 	    || qb_mbf32_from_mbf64_raw(summed_credits, stored_credits)
 	    == QB_MBF_OVERFLOW
-	    || qb_mbf32_encode(owned, stored_owned) == QB_MBF_OVERFLOW
+	    || qb_mbf32_encode((float)owned, stored_owned) == QB_MBF_OVERFLOW
 	    || !yt_record_set_raw_number(&player->record, YT_F117,
 	    stored_owned)
 	    || !yt_record_set_raw_number(&player->record, YT_F81,
 	    stored_credits))
 		return treasury_error(error, "treasury player overlay");
-	player->ports_owned = qb_mbf32_decode(stored_owned);
+	player->ports_owned = owned;
 	player->credits = qb_mbf32_decode(stored_credits);
 	return true;
 }
@@ -110,9 +110,9 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 	char text[192];
 	int loop_bound;
 	int counter;
-	float owned = 0.0f;
-	float credited = 0.0f;
-	float barren;
+	int owned = 0;
+	int credited = 0;
+	int barren;
 	int player_record;
 
 	if (session == NULL)
@@ -125,7 +125,7 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 	    (size_t)player_record, &record, error))
 		return false;
 	yt_player_decode(&player, &record);
-	if (player.ports_owned < 1.0f) {
+	if (player.ports_owned < 1) {
 		yt_present_set_blink(&session->presentation, 1.0f);
 		return session_present_text(session, no_ports,
 		    sizeof(no_ports) - 1U, SESSION_PRESENT_BOLD_LINE,
@@ -153,10 +153,10 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 		yt_port_decode(&port, &record);
 		if (port.owner != session_record(session))
 			continue;
-		owned = qb_single_add(owned, 1.0f);
+		++owned;
 		if (port.owner == 0)
 			continue;
-		credited = qb_single_add(credited, 1.0f);
+		++credited;
 		if (!treasury_add(total, port.record.bytes + YT_F89, error)
 		    || !treasury_format_single("Sector:", (float)port.sector, text,
 		    sizeof(text), error, "treasury sector field")
@@ -195,18 +195,18 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 	    && !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "treasury nonzero-total blank", error))
 		return false;
-	if (!treasury_format_single("Total ports...:", owned, text,
+	if (!treasury_format_single("Total ports...:", (float)owned, text,
 	    sizeof(text), error, "treasury total ports")
 	    || !session_present_text(session, (const uint8_t *)text,
 	    strlen(text), SESSION_PRESENT_LINE, "treasury total ports", error)
-	    || !treasury_format_single("With credits..:", credited, text,
+	    || !treasury_format_single("With credits..:", (float)credited, text,
 	    sizeof(text), error, "treasury credited ports")
 	    || !session_present_text(session, (const uint8_t *)text,
 	    strlen(text), SESSION_PRESENT_LINE, "treasury credited ports",
 	    error))
 		return false;
-	barren = qb_single_subtract(owned, credited);
-	if (!treasury_format_single("Barren ports..:", barren, text,
+	barren = owned - credited;
+	if (!treasury_format_single("Barren ports..:", (float)barren, text,
 	    sizeof(text), error, "treasury barren ports")
 	    || !session_present_text(session, (const uint8_t *)text,
 	    strlen(text), SESSION_PRESENT_LINE, "treasury barren ports", error)

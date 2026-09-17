@@ -558,7 +558,7 @@ yt_session_computer_nearest_ports(struct yt_session *session,
 	if (selector == 5 && session->player.team == 0)
 		return session_present_alert(session, no_team,
 		    sizeof(no_team) - 1U, "nearest-port team rejection", error);
-	if (selector == 6 && session->player.ports_owned == 0.0f)
+	if (selector == 6 && session->player.ports_owned == 0)
 		return session_present_alert(session, no_ports,
 		    sizeof(no_ports) - 1U,
 		    "nearest-port ownership rejection", error);

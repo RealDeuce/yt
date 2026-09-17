@@ -13,7 +13,7 @@ struct test_player_death_state {
 	const uint8_t *current_name;
 	size_t current_name_length;
 	struct yt_player victim;
-	float old_ports_owned;
+	int old_ports_owned;
 	int matched_ports;
 	uint8_t victim_name[YT_TEXT_FIELD_SIZE];
 	size_t victim_name_length;

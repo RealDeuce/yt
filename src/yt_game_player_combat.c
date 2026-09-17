@@ -267,7 +267,7 @@ yt_death_player_overlay(struct yt_player *player, int killer)
 		return;
 	player->killed_by = killer;
 	player->sector = 0;
-	player->ports_owned = 0.0f;
+	player->ports_owned = 0;
 	(void)yt_record_set_number(&player->record, YT_F45, (float)killer);
 	(void)yt_record_set_raw_number(&player->record, YT_F57, dirty_zero);
 	(void)yt_record_set_raw_number(&player->record, YT_F117, dirty_zero);
@@ -307,15 +307,13 @@ yt_death_port_overlay(struct yt_port *port, int victim, int killer,
 }
 
 void
-yt_death_killer_credit_overlay(struct yt_player *player, float ports)
+yt_death_killer_credit_overlay(struct yt_player *player, int ports)
 {
-	volatile float updated;
-
 	if (player == NULL)
 		return;
-	updated = player->ports_owned + ports;
-	player->ports_owned = updated;
-	(void)yt_record_set_number(&player->record, YT_F117, updated);
+	player->ports_owned += ports;
+	(void)yt_record_set_number(&player->record, YT_F117,
+	    (float)player->ports_owned);
 }
 
 bool

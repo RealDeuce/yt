@@ -29,7 +29,6 @@ test_player_death_run(struct test_player_death_state *state,
 	int logical;
 	bool self;
 	bool valid_killer;
-	float matched;
 
 	if (state == NULL || ops == NULL || ops->clear_active_cache == NULL
 	    || ops->read_player == NULL || ops->write_player == NULL
@@ -64,7 +63,7 @@ test_player_death_run(struct test_player_death_state *state,
 	}
 	if (!ops->remove_team(context, state->victim_record, error))
 		return false;
-	if (state->old_ports_owned != 0.0f) {
+	if (state->old_ports_owned != 0) {
 		for (logical = 1; logical <= state->port_count; ++logical) {
 			struct yt_port port;
 			enum yt_death_port_route route;
@@ -84,16 +83,16 @@ test_player_death_run(struct test_player_death_state *state,
 	valid_killer = (state->killer != state->victim_record)
 	    & (state->killer > 1)
 	    & (state->killer <= state->last_player_record);
-	matched = (float)state->matched_ports;
 	if (valid_killer && state->matched_ports != 0) {
 		if (!yt_death_title_row(state->victim_name,
-		    state->victim_name_length, matched, row, sizeof(row),
+		    state->victim_name_length, (float)state->matched_ports,
+		    row, sizeof(row),
 		    &row_length)
 		    || !ops->present(context, row, row_length, error)
 		    || !ops->read_player(context, state->killer, &player,
 		    error))
 			return false;
-		yt_death_killer_credit_overlay(&player, matched);
+		yt_death_killer_credit_overlay(&player, state->matched_ports);
 		if (!ops->write_player(context, state->killer, &player,
 		    error))
 			return false;
@@ -109,7 +108,8 @@ test_player_death_run(struct test_player_death_state *state,
 		return false;
 	if (!self && state->matched_ports != 0) {
 		if (!yt_death_port_news_row(state->victim_name,
-		    state->victim_name_length, matched, row, sizeof(row),
+		    state->victim_name_length, (float)state->matched_ports,
+		    row, sizeof(row),
 		    &row_length)
 		    || !ops->news(context, row, row_length, error))
 			return false;

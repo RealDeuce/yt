@@ -114,8 +114,7 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 	uint8_t row[300];
 	size_t victim_name_length;
 	size_t row_length;
-	float old_ports_owned;
-	float matched;
+	int old_ports_owned;
 	int matched_ports = 0;
 	int current_player_record;
 	int logical;
@@ -145,7 +144,7 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 	}
 	if (!death_remove_from_team(session, victim_record, error))
 		return false;
-	if (old_ports_owned != 0.0f) {
+	if (old_ports_owned != 0) {
 		for (logical = 1; logical <= death_port_count(session); ++logical) {
 			struct yt_port port;
 			enum yt_death_port_route route;
@@ -166,16 +165,16 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 	valid_killer = (killer != victim_record)
 	    & (killer > 1)
 	    & (killer <= session_sector_offset(session));
-	matched = (float)matched_ports;
 	if (valid_killer && matched_ports != 0) {
-		if (!yt_death_title_row(victim_name, victim_name_length, matched,
+		if (!yt_death_title_row(victim_name, victim_name_length,
+		    (float)matched_ports,
 		    row, sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "death title row", error)
 		    || !yt_game_read_player(&session->door->game, killer,
 		    &player, error))
 			return false;
-		yt_death_killer_credit_overlay(&player, matched);
+		yt_death_killer_credit_overlay(&player, matched_ports);
 		if (!yt_game_write_player(&session->door->game, killer,
 		    &player, error))
 			return false;
@@ -192,7 +191,7 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 		return false;
 	if (!self && matched_ports != 0) {
 		if (!yt_death_port_news_row(victim_name, victim_name_length,
-		    matched, row, sizeof(row), &row_length)
+		    (float)matched_ports, row, sizeof(row), &row_length)
 		    || !yt_news_append_bytes(row, row_length, error))
 			return false;
 	}

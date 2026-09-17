@@ -29,7 +29,7 @@ struct yt_player {
 	float lottery_plays;
 	float score;
 	float plasma;
-	float ports_owned;
+	int ports_owned;
 	float ground_forces;
 	float cloak;
 	float mines;
@@ -813,7 +813,7 @@ void yt_death_player_overlay(struct yt_player *player, int killer);
 bool yt_death_sector_overlay(struct yt_sector *sector, int victim);
 enum yt_death_port_route yt_death_port_overlay(struct yt_port *port,
     int victim, int killer, int last_player);
-void yt_death_killer_credit_overlay(struct yt_player *player, float ports);
+void yt_death_killer_credit_overlay(struct yt_player *player, int ports);
 bool yt_death_title_row(const uint8_t *victim, size_t victim_length,
     float ports, uint8_t *row, size_t capacity, size_t *length);
 bool yt_death_kill_news_row(const uint8_t *killer, size_t killer_length,
