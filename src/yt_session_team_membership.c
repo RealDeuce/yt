@@ -22,10 +22,12 @@ session_team_pick_name(struct yt_session *session, int team_id, char name[42],
 		return false;
 	*accepted = false;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "team name leading blank", error)
-	    || !session_present_timed_paged_row(session, prompt, sizeof(prompt) - 1U,
-	    "team name prompt", error)
-	    || !session_read_command(session, response, sizeof(response)))
+	    "team name leading blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, prompt,
+	    sizeof(prompt) - 1U, "team name prompt", error))
+		return false;
+	if (!session_read_command(session, response, sizeof(response)))
 		return false;
 	if (!yt_team_prepare_name(response, &name_length))
 		return session_present_alert(session, invalid, sizeof(invalid) - 1U,
@@ -57,10 +59,12 @@ session_team_create_password(struct yt_session *session, int team_id,
 
 	for (;;) {
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-		    "team password leading blank", error)
-		    || !session_present_timed_paged_row(session, prompt, sizeof(prompt) - 1U,
-		    "team password prompt", error)
-		    || !session_read_upper_command(session, response, sizeof(response)))
+		    "team password leading blank", error))
+			return false;
+		if (!session_present_timed_paged_row(session, prompt,
+		    sizeof(prompt) - 1U, "team password prompt", error))
+			return false;
+		if (!session_read_upper_command(session, response, sizeof(response)))
 			return false;
 		if (strlen(response) != 4U) {
 			if (!session_present_alert(session, invalid, sizeof(invalid) - 1U,
@@ -72,10 +76,12 @@ session_team_create_password(struct yt_session *session, int team_id,
 		password[4] = '\0';
 		if (snprintf(reminder, sizeof(reminder),
 		    "REMEMBER YOUR TEAM PASSWORD SO OTHERS CAN JOIN! -+> %s",
-		    password) < 0
-		    || !session_present_alert(session, (const uint8_t *)reminder,
-		    strlen(reminder), "team password reminder", error)
-		    || !session_team_read_overlay(session, team_id, &team, error))
+		    password) < 0)
+			return false;
+		if (!session_present_alert(session, (const uint8_t *)reminder,
+		    strlen(reminder), "team password reminder", error))
+			return false;
+		if (!session_team_read_overlay(session, team_id, &team, error))
 			return false;
 		memcpy(team.password, password, 5);
 		yt_team_password_overlay(&team.overlay.record,
@@ -125,8 +131,9 @@ session_team_create(struct yt_session *session, struct yt_error *error)
 	    &session->player, error))
 		return false;
 	yt_team_membership_apply_player(&session->player, id);
-	if (!session_write_player(session, error)
-	    || !session_team_read_overlay(session, id, &team, error))
+	if (!session_write_player(session, error))
+		return false;
+	if (!session_team_read_overlay(session, id, &team, error))
 		return false;
 	team.id = id;
 	team.captain = session_record(session);
@@ -139,15 +146,19 @@ session_team_create(struct yt_session *session, struct yt_error *error)
 	yt_team_roster_overlay(&team.overlay.record, team.roster);
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)session_sector_basic_record(session, team.id),
-	    &team.overlay.record, error)
-	    || !session_team_create_password(session, id, password, error))
+	    &team.overlay.record, error))
+		return false;
+	if (!session_team_create_password(session, id, password, error))
 		return false;
 	session_set_foreground(session, 3);
-	if (qb_str_single(number, sizeof(number), (float)selected) < 0
-	    || snprintf(news, sizeof(news), "%s Created Team%s -=- %s",
-	    actor_name, number, name) < 0
-	    || !yt_news_append(news, error)
-	    || snprintf(success, sizeof(success),
+	if (qb_str_single(number, sizeof(number), (float)selected) < 0)
+		return false;
+	if (snprintf(news, sizeof(news), "%s Created Team%s -=- %s",
+	    actor_name, number, name) < 0)
+		return false;
+	if (!yt_news_append(news, error))
+		return false;
+	if (snprintf(success, sizeof(success),
 	    "Team number [%s ] [%s] CREATED!", number, name) < 0)
 		return false;
 	return session_present_alert(session, (const uint8_t *)success,
@@ -189,19 +200,23 @@ session_team_join(struct yt_session *session, struct yt_error *error)
 			return false;
 		listed = team.live;
 		if (listed) {
-			if (qb_str_single(number, sizeof(number), (float)id) < 0
-			    || snprintf(row, sizeof(row), "%s] %s", number,
-			    team.name) < 0
-			    || !session_present_paged_fragment(session, (const uint8_t *)row,
-			    strlen(row)))
+			if (qb_str_single(number, sizeof(number), (float)id) < 0)
+				return false;
+			if (snprintf(row, sizeof(row), "%s] %s", number,
+			    team.name) < 0)
+				return false;
+			if (!session_present_paged_fragment(session,
+			    (const uint8_t *)row, strlen(row)))
 				return false;
 		}
 	}
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "team join selection blank", error)
-	    || !session_present_timed_paged_row(session, selection_prompt,
-	    sizeof(selection_prompt) - 1U, "team join selection prompt", error)
-	    || !session_read_number_command(session, line, sizeof(line)))
+	    "team join selection blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, selection_prompt,
+	    sizeof(selection_prompt) - 1U, "team join selection prompt", error))
+		return false;
+	if (!session_read_number_command(session, line, sizeof(line)))
 		return false;
 	parsed = qb_val(line);
 	if (!parsed.valid || parsed.overflow) {
@@ -229,13 +244,17 @@ session_team_join(struct yt_session *session, struct yt_error *error)
 		if (!session_team_read_overlay(session, selected, &ignored, error))
 			return false;
 	}
-	if (qb_str_single(number, sizeof(number), (float)selected) < 0
-	    || snprintf(row, sizeof(row), "Team #%s: %s", number,
-	    team.name) < 0
-	    || !session_present_paged_fragment(session, (const uint8_t *)row, strlen(row))
-	    || !session_present_timed_paged_row(session, password_prompt,
-	    sizeof(password_prompt) - 1U, "team join password prompt", error)
-	    || !session_read_upper_command(session, line, sizeof(line)))
+	if (qb_str_single(number, sizeof(number), (float)selected) < 0)
+		return false;
+	if (snprintf(row, sizeof(row), "Team #%s: %s", number, team.name) < 0)
+		return false;
+	if (!session_present_paged_fragment(session, (const uint8_t *)row,
+	    strlen(row)))
+		return false;
+	if (!session_present_timed_paged_row(session, password_prompt,
+	    sizeof(password_prompt) - 1U, "team join password prompt", error))
+		return false;
+	if (!session_read_upper_command(session, line, sizeof(line)))
 		return false;
 	if (strlen(line) != 4U || memcmp(line, team.password, 4) != 0) {
 		if (!session_team_audit(session, selected,
@@ -265,8 +284,9 @@ session_team_join(struct yt_session *session, struct yt_error *error)
 		if (!session_team_store_roster(session, &fresh, error))
 			return false;
 	}
-	if (qb_str_single(number, sizeof(number), (float)selected) < 0
-	    || snprintf(news, sizeof(news), "%s Joined Team%s",
+	if (qb_str_single(number, sizeof(number), (float)selected) < 0)
+		return false;
+	if (snprintf(news, sizeof(news), "%s Joined Team%s",
 	    actor_name, number) < 0)
 		return false;
 	if (!yt_news_append(news, error))
@@ -317,8 +337,9 @@ session_team_quit(struct yt_session *session, struct yt_team *team,
 		if (team->roster[index] == session_record(session))
 			team->roster[index] = 0;
 	}
-	if (!session_team_store_roster(session, team, error)
-	    || !session_load_team(session, old_team, team, error))
+	if (!session_team_store_roster(session, team, error))
+		return false;
+	if (!session_load_team(session, old_team, team, error))
 		return false;
 	for (index = 0; index < 4; ++index)
 		if (team->roster[index] != 0)
@@ -333,8 +354,9 @@ session_team_quit(struct yt_session *session, struct yt_team *team,
 	}
 	session_set_foreground(session, 6);
 	if (!session_present_paged_line(session, success, sizeof(success) - 1U,
-	    "team quit success row", error)
-	    || !session_team_audit(session, old_team, YT_TEAM_AUDIT_QUIT, "",
+	    "team quit success row", error))
+		return false;
+	if (!session_team_audit(session, old_team, YT_TEAM_AUDIT_QUIT, "",
 	    error))
 		return false;
 	return true;
@@ -382,9 +404,12 @@ session_team_search(struct yt_session *session, struct yt_error *error)
 		memcpy(row, player.record.bytes, YT_TEXT_FIELD_SIZE);
 		memcpy(row + YT_TEXT_FIELD_SIZE, number, number_length);
 		if (!session_present_paged_line(session, heading, sizeof(heading) - 1U,
-		    "team resource player heading", error)
-		    || !session_present_paged_fragment(session, rule, sizeof(rule) - 1U)
-		    || !session_present_paged_fragment(session, row,
+		    "team resource player heading", error))
+			return false;
+		if (!session_present_paged_fragment(session, rule,
+		    sizeof(rule) - 1U))
+			return false;
+		if (!session_present_paged_fragment(session, row,
 		    YT_TEXT_FIELD_SIZE + number_length))
 			return false;
 		found = true;
@@ -401,23 +426,27 @@ session_team_search(struct yt_session *session, struct yt_error *error)
 			if (!(sector.fighters > 0.0f
 			    && sector.fighter_owner == player_record))
 				continue;
-			if (first && !session_present_text(session, defending,
-			    sizeof(defending) - 1U, SESSION_PRESENT_RAW,
-			    "team resource defense label", error))
-				return false;
+			if (first) {
+				if (!session_present_text(session, defending,
+				    sizeof(defending) - 1U, SESSION_PRESENT_RAW,
+				    "team resource defense label", error))
+					return false;
+			}
 			first = false;
 			if (qb_str_single(number, sizeof(number),
-			    (float)logical_sector) < 0
-			    || !session_present_text(session,
+			    (float)logical_sector) < 0)
+				return false;
+			if (!session_present_text(session,
 			    (const uint8_t *)number, strlen(number),
-			    SESSION_PRESENT_RAW, "team resource defense sector",
+			    SESSION_PRESENT_RAW, "team resource defense sector", error))
+				return false;
+		}
+		if (!first) {
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "team resource defense terminator",
 			    error))
 				return false;
 		}
-		if (!first && !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "team resource defense terminator",
-		    error))
-			return false;
 
 		first = true;
 		for (logical_sector = 1;
@@ -436,23 +465,27 @@ session_team_search(struct yt_session *session, struct yt_error *error)
 				return false;
 			if (planet.owner != player_record)
 				continue;
-			if (first && !session_present_text(session, planets,
-			    sizeof(planets) - 1U, SESSION_PRESENT_RAW,
-			    "team resource planet label", error))
-				return false;
+			if (first) {
+				if (!session_present_text(session, planets,
+				    sizeof(planets) - 1U, SESSION_PRESENT_RAW,
+				    "team resource planet label", error))
+					return false;
+			}
 			first = false;
 			if (qb_str_single(number, sizeof(number),
-			    (float)logical_sector) < 0
-			    || !session_present_text(session,
+			    (float)logical_sector) < 0)
+				return false;
+			if (!session_present_text(session,
 			    (const uint8_t *)number, strlen(number),
-			    SESSION_PRESENT_RAW, "team resource planet sector",
+			    SESSION_PRESENT_RAW, "team resource planet sector", error))
+				return false;
+		}
+		if (!first) {
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "team resource planet terminator",
 			    error))
 				return false;
 		}
-		if (!first && !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "team resource planet terminator",
-		    error))
-			return false;
 	}
 	if (!found)
 		return session_present_paged_fragment(session, none, sizeof(none) - 1U);

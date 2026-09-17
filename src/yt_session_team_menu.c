@@ -44,15 +44,17 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 
 		session_set_foreground(session, 6);
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-		    "team front leading blank", error)
-		    || !yt_session_info_team_lines(session, &team, &captain,
-		    error))
+		    "team front leading blank", error))
+			return false;
+		if (!yt_session_info_team_lines(session, &team, &captain, error))
 			return false;
 		session->pager.line_count = 0;
-		if (!session_reload_player(session, error)
-		    || !session_present_paged_line(session, exit_row, sizeof(exit_row) - 1U,
-		    "team exit row", error)
-		    || !session_reload_player(session, error))
+		if (!session_reload_player(session, error))
+			return false;
+		if (!session_present_paged_line(session, exit_row,
+		    sizeof(exit_row) - 1U, "team exit row", error))
+			return false;
+		if (!session_reload_player(session, error))
 			return false;
 		if (session->player.team == 0) {
 			for (index = 0; index < YT_ARRAY_LEN(teamless_rows); ++index)
@@ -98,8 +100,9 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 		    sizeof(prompt_body) - 1U);
 		prompt_length += sizeof(prompt_body) - 1U;
 		if (!session_present_timed_paged_row(session, prompt, prompt_length,
-		    "team command prompt", error)
-		    || !session_read_command(session, line, sizeof(line)))
+		    "team command prompt", error))
+			return false;
+		if (!session_read_command(session, line, sizeof(line)))
 			return false;
 		parsed = qb_val(line);
 		if (!parsed.valid || parsed.overflow) {

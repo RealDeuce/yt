@@ -126,10 +126,11 @@ session_team_audit(struct yt_session *session, int team_id,
 	    ++index) {
 		int recipient = session->team_cache.roster[index];
 
-		if (recipient != 0 && recipient != session_record(session)
-		    && !session_append_radio_bytes(message, message_length, -2.0f,
-		    (float)recipient, error))
-			return false;
+		if (recipient != 0 && recipient != session_record(session)) {
+			if (!session_append_radio_bytes(message, message_length,
+			    -2.0f, (float)recipient, error))
+				return false;
+		}
 	}
 	return true;
 }

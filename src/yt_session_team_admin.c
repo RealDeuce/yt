@@ -40,20 +40,27 @@ session_team_transfer(struct yt_session *session, struct yt_error *error)
 		float amount;
 
 		if (qb_str_double(fighter_text, sizeof(fighter_text),
-		    initial_fighters) < 0
-		    || qb_str_double(defense_text, sizeof(defense_text),
-		    initial_defense) < 0
-		    || snprintf(row, sizeof(row), "You have%s fighters.",
-		    fighter_text) < 0
-		    || !session_present_paged_line(session, (const uint8_t *)row, strlen(row),
-		    "team transfer carried row", error)
-		    || snprintf(row, sizeof(row), "There are%s fighters here.",
-		    defense_text) < 0
-		    || !session_present_paged_line(session, (const uint8_t *)row, strlen(row),
-		    "team transfer deployed row", error)
-		    || !session_present_timed_paged_row(session, prompt, sizeof(prompt) - 1U,
-		    "team transfer prompt", error)
-		    || !session_read_number_command(session, response, sizeof(response)))
+		    initial_fighters) < 0)
+			return false;
+		if (qb_str_double(defense_text, sizeof(defense_text),
+		    initial_defense) < 0)
+			return false;
+		if (snprintf(row, sizeof(row), "You have%s fighters.",
+		    fighter_text) < 0)
+			return false;
+		if (!session_present_paged_line(session, (const uint8_t *)row,
+		    strlen(row), "team transfer carried row", error))
+			return false;
+		if (snprintf(row, sizeof(row), "There are%s fighters here.",
+		    defense_text) < 0)
+			return false;
+		if (!session_present_paged_line(session, (const uint8_t *)row,
+		    strlen(row), "team transfer deployed row", error))
+			return false;
+		if (!session_present_timed_paged_row(session, prompt,
+		    sizeof(prompt) - 1U, "team transfer prompt", error))
+			return false;
+		if (!session_read_number_command(session, response, sizeof(response)))
 			return false;
 		parsed = qb_val(response);
 		if (parsed.overflow) {
@@ -80,8 +87,9 @@ session_team_transfer(struct yt_session *session, struct yt_error *error)
 			return true;
 		if ((double)amount > initial_fighters) {
 			if (snprintf(row, sizeof(row), "You only have%s!",
-			    fighter_text) < 0
-			    || !session_present_alert(session, (const uint8_t *)row,
+			    fighter_text) < 0)
+				return false;
+			if (!session_present_alert(session, (const uint8_t *)row,
 			    strlen(row), "team transfer too many", error))
 				return false;
 			continue;
@@ -167,8 +175,9 @@ session_team_banish(struct yt_session *session, struct yt_team *team,
 		team->roster[index] = 0;
 		session->team_cache.roster[index] = 0;
 		if (!session_read_sector(session, team_id,
-		    &team->overlay, error)
-		    || !session_team_store_roster(session, team, error))
+		    &team->overlay, error))
+			return false;
+		if (!session_team_store_roster(session, team, error))
 			return false;
 		return session_present_alert(session, success, sizeof(success) - 1U,
 		    "team banish success", error);
