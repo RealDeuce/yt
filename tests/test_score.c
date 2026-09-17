@@ -12662,10 +12662,10 @@ check_earth_report_model(void)
 static bool
 construct_player_values(struct yt_game *game, int basic_record, float today,
     float turns, struct yt_player *player,
-    struct yt_player_constructor_state *state, struct yt_error *error)
+    enum yt_player_constructor_failure *failure, struct yt_error *error)
 {
 	return yt_game_construct_player(game, basic_record, today, turns,
-	    player, state, error);
+	    player, failure, error);
 }
 
 static bool
@@ -12676,7 +12676,7 @@ check_player_constructor_failures(void)
 	struct yt_record target;
 	struct yt_record after;
 	struct yt_player player;
-	struct yt_player_constructor_state state;
+	enum yt_player_constructor_failure failure;
 	struct yt_error error;
 	bool valid = false;
 
@@ -12708,12 +12708,11 @@ check_player_constructor_failures(void)
 	    &error))
 		goto done;
 	yt_error_clear(&error);
-	if (construct_player_values(&game, 2, 77.0f, 123.0f, &player, &state,
+	if (construct_player_values(&game, 2, 77.0f, 123.0f, &player, &failure,
 	    &error)
 	    || error.status != YT_IO_ERROR
 	    || strcmp(error.operation, "write record") != 0
-	    || !state.config_hydrated || !state.player_hydrated
-	    || !state.put_attempted
+	    || failure != YT_PLAYER_CONSTRUCTOR_PLAYER_PUT
 	    || strcmp(player.name, "Keep Name") != 0
 	    || player.name_length != 9U || player.score != 88.0f
 	    || player.team != 0.0f || player.last_active != 77.0f

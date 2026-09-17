@@ -254,7 +254,7 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 static bool
 construct_player_visible(struct yt_session *session, struct yt_error *error)
 {
-	struct yt_player_constructor_state state;
+	enum yt_player_constructor_failure failure;
 
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "player constructor blank", error)
@@ -266,15 +266,15 @@ construct_player_visible(struct yt_session *session, struct yt_error *error)
 	if (yt_game_construct_player(&session->door->game,
 	    session_record(session), (float)session->door->game.today,
 	    session->door->game.config.turns_per_day, &session->player,
-	    &state, error))
+	    &failure, error))
 		return true;
-	if (!state.config_hydrated)
+	if (failure == YT_PLAYER_CONSTRUCTOR_CONFIG_GET)
 		attach_database_get_fault(session, error,
 		    YT_BASIC_FAULT_CONSTRUCTOR_CONFIG_GET);
-	else if (!state.player_hydrated)
+	else if (failure == YT_PLAYER_CONSTRUCTOR_PLAYER_GET)
 		attach_database_get_fault(session, error,
 		    YT_BASIC_FAULT_CONSTRUCTOR_PLAYER_GET);
-	else if (state.put_attempted)
+	else if (failure == YT_PLAYER_CONSTRUCTOR_PLAYER_PUT)
 		attach_database_put_fault(session, error,
 		    YT_BASIC_FAULT_CONSTRUCTOR_PLAYER_PUT);
 	if (error != NULL && error->basic_fault_valid)

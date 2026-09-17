@@ -486,29 +486,29 @@ yt_game_write_planet(struct yt_game *game, int logical_planet,
 bool
 yt_game_construct_player(struct yt_game *game, int basic_record,
     float today, float turns,
-    struct yt_player *player, struct yt_player_constructor_state *state,
+    struct yt_player *player, enum yt_player_constructor_failure *failure,
     struct yt_error *error)
 {
 	static const uint8_t first_zero[4] = {0x00, 0x00, 0x0a, 0x00};
 	struct yt_record config_record;
 	struct yt_record constructed;
 	struct yt_config config;
-	struct yt_player_constructor_state local_state;
+	enum yt_player_constructor_failure local_failure;
 
 	if (game == NULL || player == NULL)
 		return false;
-	if (state == NULL)
-		state = &local_state;
-	memset(state, 0, sizeof(*state));
+	if (failure == NULL)
+		failure = &local_failure;
+	*failure = YT_PLAYER_CONSTRUCTOR_CONFIG_GET;
 
 	if (!yt_database_read(&game->database, 1, &config_record, error))
 		return false;
-	state->config_hydrated = true;
+	*failure = YT_PLAYER_CONSTRUCTOR_PLAYER_GET;
 	if (!yt_config_decode(&config, &config_record, error))
 		return false;
 	if (!yt_game_read_player(game, basic_record, player, error))
 		return false;
-	state->player_hydrated = true;
+	*failure = YT_PLAYER_CONSTRUCTOR_NO_FAILURE;
 	constructed = player->record;
 	(void)yt_record_set_raw_number(&constructed, YT_F45, first_zero);
 	if (!yt_record_set_number(&constructed, YT_F41, today)
@@ -536,7 +536,7 @@ yt_game_construct_player(struct yt_game *game, int basic_record,
 	    || !yt_record_set_number(&constructed, YT_F129, 0.0f))
 		return false;
 	yt_player_decode(player, &constructed);
-	state->put_attempted = true;
+	*failure = YT_PLAYER_CONSTRUCTOR_PLAYER_PUT;
 	return yt_database_write(&game->database, (size_t)basic_record,
 	    &constructed, error);
 }

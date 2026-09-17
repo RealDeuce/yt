@@ -325,14 +325,15 @@ bool yt_game_read_planet(struct yt_game *game, int logical_planet,
     struct yt_planet *planet, struct yt_error *error);
 bool yt_game_write_planet(struct yt_game *game, int logical_planet,
     struct yt_planet *planet, struct yt_error *error);
-struct yt_player_constructor_state {
-	bool config_hydrated;
-	bool player_hydrated;
-	bool put_attempted;
+enum yt_player_constructor_failure {
+	YT_PLAYER_CONSTRUCTOR_CONFIG_GET,
+	YT_PLAYER_CONSTRUCTOR_PLAYER_GET,
+	YT_PLAYER_CONSTRUCTOR_NO_FAILURE,
+	YT_PLAYER_CONSTRUCTOR_PLAYER_PUT,
 };
 bool yt_game_construct_player(struct yt_game *game, int basic_record,
     float today, float turns,
-    struct yt_player *player, struct yt_player_constructor_state *state,
+    struct yt_player *player, enum yt_player_constructor_failure *failure,
     struct yt_error *error);
 bool yt_sector_force_route(float fighters, float owner,
     int current_player_record, enum yt_sector_force_route *route,
