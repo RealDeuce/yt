@@ -34,7 +34,6 @@ yt_text_input_open(struct yt_text_input *input, const char *path,
 		memset(input->read_ahead, 0, sizeof(input->read_ahead));
 		input->read_total = 0U;
 		input->read_remaining = 0U;
-		input->logical_position = 0U;
 		input->last_read_basic_error = 0U;
 	}
 	return text_input_open_execute(input, path, error);
@@ -152,7 +151,6 @@ yt_text_input_read_line(struct yt_text_input *input, const uint8_t **line,
 		if (eof)
 			break;
 		consumed = true;
-		++input->logical_position;
 		if (value == '\r') {
 			uint8_t following;
 			bool following_eof;
@@ -161,9 +159,7 @@ yt_text_input_read_line(struct yt_text_input *input, const uint8_t **line,
 			    &following_eof, error))
 				return false;
 			if (!following_eof) {
-				if (following == '\n')
-					++input->logical_position;
-				else
+				if (following != '\n')
 					++input->read_remaining;
 			}
 			break;
@@ -187,8 +183,6 @@ text_input_consume_byte(struct yt_text_input *input, uint8_t *value,
 {
 	if (!text_input_get_byte(input, value, eof, error))
 		return false;
-	if (!*eof)
-		++input->logical_position;
 	return true;
 }
 
@@ -196,7 +190,6 @@ static void
 text_input_unread_byte(struct yt_text_input *input)
 {
 	++input->read_remaining;
-	--input->logical_position;
 }
 
 static bool

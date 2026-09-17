@@ -19,7 +19,6 @@ struct yt_text_input {
 	uint8_t read_ahead[YT_TEXT_INPUT_BUFFER_SIZE];
 	size_t read_total;
 	size_t read_remaining;
-	uint64_t logical_position;
 	uint16_t last_open_basic_error;
 	uint16_t last_read_basic_error;
 	uint16_t last_close_basic_error;

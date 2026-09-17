@@ -2143,105 +2143,42 @@ test_name_input_grammar(struct yt_error *error)
 }
 
 static bool
-test_name_sequential_transaction(struct yt_error *error)
+test_name_file_load(struct yt_error *error)
 {
 	static const uint8_t rows[] =
 	    "A,B,C,D\r\nE,F,G,H\r\n\x1a";
 	static const uint8_t empty_row[] = ",,,\r\n\x1a";
-	static const uint8_t incomplete[] =
-	    "A,B,C,D\r\nE,F\x1a";
-	struct yt_names_sequential_state state;
-	struct yt_name_input_observation observation;
-	struct yt_text_input input;
 	struct yt_name_file names;
-	bool result;
 
 	if (!write_file("names.in", rows, sizeof(rows) - 1U))
 		return false;
-	yt_text_input_init(&input);
-	result = yt_names_load_sequential(&input, "names.in", &names,
-	    &observation, &state, error);
-	if (!result || state.failed_operation != YT_NAMES_SEQUENTIAL_NONE
-	    || !state.file_opened || state.eof_checks != 3U
-	    || state.token_reads != 8U || state.rows_committed != 2U
-	    || !state.close_attempted || !state.file_closed || !state.complete
-	    || input.file != NULL || names.count != 2U
-	    || observation.staged_count != 0U || observation.cursor != 18U
+	if (!yt_names_load("names.in", &names, error)
+	    || names.count != 2U
 	    || strcmp(names.rows[1].alias_last, "H") != 0) {
-		yt_names_input_observation_free(&observation);
 		yt_names_free(&names);
-		yt_text_input_destroy(&input);
 		return false;
 	}
-	yt_names_input_observation_free(&observation);
 	yt_names_free(&names);
-	yt_text_input_destroy(&input);
 
 	if (!write_file("names.in", empty_row, sizeof(empty_row) - 1U))
 		return false;
-	yt_text_input_init(&input);
-	result = yt_names_load_sequential(&input, "names.in", &names,
-	    &observation, &state, error);
-	if (!result || state.eof_checks != 2U || state.token_reads != 4U
-	    || state.rows_committed != 1U || !state.complete
-	    || observation.cursor != 5U || names.count != 1U
+	if (!yt_names_load("names.in", &names, error) || names.count != 1U
 	    || names.rows[0].real_first == NULL
 	    || names.rows[0].real_first[0] != '\0'
 	    || names.rows[0].real_last[0] != '\0'
 	    || names.rows[0].alias_first[0] != '\0'
 	    || names.rows[0].alias_last[0] != '\0') {
-		yt_names_input_observation_free(&observation);
 		yt_names_free(&names);
-		yt_text_input_destroy(&input);
 		return false;
 	}
-	yt_names_input_observation_free(&observation);
 	yt_names_free(&names);
-	yt_text_input_destroy(&input);
-
-	if (!write_file("names.in", incomplete, sizeof(incomplete) - 1U))
-		return false;
-	yt_error_clear(error);
-	yt_text_input_init(&input);
-	result = yt_names_load_sequential(&input, "names.in", &names,
-	    &observation, &state, error);
-	if (result || error->status != YT_EOF
-	    || state.failed_operation != YT_NAMES_SEQUENTIAL_TOKEN
-	    || !state.file_opened || state.eof_checks != 2U
-	    || state.token_reads != 7U || state.rows_committed != 1U
-	    || state.close_attempted || state.complete || input.file == NULL
-	    || names.count != 1U || observation.staged_count != 2U
-	    || strcmp(observation.staged.real_first, "E") != 0
-	    || strcmp(observation.staged.real_last, "F") != 0
-	    || observation.staged.alias_first != NULL
-	    || observation.cursor != 12U) {
-		yt_names_input_observation_free(&observation);
-		yt_names_free(&names);
-		yt_text_input_destroy(&input);
-		return false;
-	}
-	yt_names_input_observation_free(&observation);
-	yt_names_free(&names);
-	yt_text_input_destroy(&input);
-
-	yt_text_input_init(&input);
-	result = yt_names_load_sequential(&input, "missing/NAME.DAT", &names,
-	    &observation, &state, error);
-	yt_text_input_destroy(&input);
-	return !result && state.failed_operation == YT_NAMES_SEQUENTIAL_OPEN
-	    && !state.file_opened && state.eof_checks == 0U
-	    && !yt_names_load_sequential(NULL, "names.in", &names,
-	    &observation, &state, error)
-	    && !yt_names_load_sequential(&input, NULL, &names,
-	    &observation, &state, error)
-	    && !yt_names_load_sequential(&input, "names.in", NULL,
-	    &observation, &state, error)
-	    && !yt_names_load_sequential(&input, "names.in", &names,
-	    &observation, NULL, error);
+	return !yt_names_load("missing/NAME.DAT", &names, error)
+	    && !yt_names_load(NULL, &names, error)
+	    && !yt_names_load("names.in", NULL, error);
 }
 
 static bool
-test_name_sequential_output_transaction(struct yt_error *error)
+test_name_file_write(struct yt_error *error)
 {
 	static const struct yt_name_row rows[] = {
 		{.real_first = "A", .real_last = "B", .alias_first = "C",
@@ -2253,48 +2190,24 @@ test_name_sequential_output_transaction(struct yt_error *error)
 	    "A,B,C,D\r\nE,F,G,H\r\n\x1a";
 	static const uint8_t stale[] =
 	    "A STALE OUTPUT TAIL THAT MUST BE TRUNCATED\r\n\x1a";
-	struct yt_names_output_state state;
-	struct yt_text_output output;
 	struct yt_text_file text = {0};
 	struct yt_name_file names = {
 		.rows = (struct yt_name_row *)rows,
 		.count = YT_ARRAY_LEN(rows),
 	};
-	bool result;
-
 	if (!write_file("names.out", stale, sizeof(stale) - 1U))
 		return false;
-	yt_text_output_init(&output);
-	result = yt_names_write_sequential(&output, "names.out", &names,
-	    &state, error);
-	if (!result || !state.complete
-	    || state.attempted != YT_NAMES_OUTPUT_NONE
-	    || !state.file_opened || !state.close_attempted || !state.file_closed
-	    || state.row_index != 2U || state.rows_completed != 2U
-	    || state.values_completed != 14U || output.file != NULL
+	if (!yt_names_write("names.out", &names, error)
 	    || !yt_text_read("names.out", &text, error)
 	    || text.length != sizeof(expected) - 1U
 	    || memcmp(text.data, expected, sizeof(expected) - 1U) != 0) {
 		yt_text_free(&text);
-		yt_text_output_destroy(&output);
 		return false;
 	}
 	yt_text_free(&text);
-	yt_text_output_destroy(&output);
-
-	yt_text_output_init(&output);
-	result = yt_names_write_sequential(&output, "missing/NAME.DAT", &names,
-	    &state, error);
-	yt_text_output_destroy(&output);
-	return !result && state.attempted == YT_NAMES_OUTPUT_OPEN
-	    && !state.file_opened
-	    && !yt_names_write_sequential(NULL, "names.out", &names, &state,
-	    error)
-	    && !yt_names_write_sequential(&output, NULL, &names, &state, error)
-	    && !yt_names_write_sequential(&output, "names.out", NULL, &state,
-	    error)
-	    && !yt_names_write_sequential(&output, "names.out", &names, NULL,
-	    error);
+	return !yt_names_write("missing/NAME.DAT", &names, error)
+	    && !yt_names_write(NULL, &names, error)
+	    && !yt_names_write("names.out", NULL, error);
 }
 
 static bool
@@ -5040,10 +4953,10 @@ main(void)
 		failure = "RMT-INIT missing-old-data branch differs";
 	else if (!test_name_input_grammar(&error))
 		failure = "YTNAME INPUT# grammar differs";
-	else if (!test_name_sequential_transaction(&error))
-		failure = "YTNAME sequential transaction differs";
-	else if (!test_name_sequential_output_transaction(&error))
-		failure = "YTNAME sequential output transaction differs";
+	else if (!test_name_file_load(&error))
+		failure = "YTNAME file load differs";
+	else if (!test_name_file_write(&error))
+		failure = "YTNAME file write differs";
 	else if (!test_name_append(&error))
 		failure = "YTNAME append bytes differ";
 	else if (!test_alias_key_preparation())

@@ -146,7 +146,7 @@ yt_maintenance_remove_alias(const char *player_name, struct yt_error *error)
 			goto done;
 		if (eof)
 			break;
-		if (!yt_names_read_sequential_group(&input, &row,
+		if (!yt_names_read_row(&input, &row,
 		    &staged_count, error))
 			goto done;
 		if (strcmp(row.alias_first, first) == 0

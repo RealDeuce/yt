@@ -667,22 +667,11 @@ static bool
 edit_aliases(struct yt_game *game, struct yt_error *error)
 {
 	struct yt_name_file names;
-	struct yt_name_input_observation observation;
-	struct yt_names_sequential_state load;
-	struct yt_text_input input;
 	struct yt_config_output_result output;
 	unsigned player_count;
 
-	yt_text_input_init(&input);
-	if (!yt_names_load_sequential(&input, "YTNAME.DAT", &names,
-	    &observation, &load, error)) {
-		yt_names_input_observation_free(&observation);
-		yt_names_free(&names);
-		yt_text_input_destroy(&input);
+	if (!yt_names_load("YTNAME.DAT", &names, error))
 		return false;
-	}
-	yt_names_input_observation_free(&observation);
-	yt_text_input_destroy(&input);
 	if (names.count == 0U) {
 		if (error != NULL) {
 			error->status = YT_RANGE;

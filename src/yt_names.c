@@ -48,7 +48,7 @@ duplicate_bytes(const uint8_t *source, size_t length)
 }
 
 bool
-yt_names_read_sequential_group(struct yt_text_input *input,
+yt_names_read_row(struct yt_text_input *input,
     struct yt_name_row *row, size_t *staged_count, struct yt_error *error)
 {
 	char **fields[4];
@@ -94,135 +94,58 @@ yt_names_read_sequential_group(struct yt_text_input *input,
 	return true;
 }
 
-static void
-retain_staged_row(struct yt_name_input_observation *observation,
-    struct yt_name_row *staged, size_t staged_count, size_t cursor)
-{
-	if (observation == NULL) {
-		yt_name_row_free(staged);
-		return;
-	}
-	observation->staged = *staged;
-	observation->staged_count = staged_count;
-	observation->cursor = cursor;
-	memset(staged, 0, sizeof(*staged));
-}
-
-bool
-yt_names_load_sequential(struct yt_text_input *input, const char *path,
-    struct yt_name_file *names,
-    struct yt_name_input_observation *observation,
-    struct yt_names_sequential_state *state, struct yt_error *error)
-{
-	if (names != NULL)
-		memset(names, 0, sizeof(*names));
-	if (observation != NULL)
-		memset(observation, 0, sizeof(*observation));
-	if (state != NULL)
-		memset(state, 0, sizeof(*state));
-	if (input == NULL || path == NULL || names == NULL || state == NULL) {
-		if (error != NULL)
-			error->status = YT_INVALID;
-		return false;
-	}
-	if (!yt_text_input_open(input, path, error)) {
-		state->failed_operation = YT_NAMES_SEQUENTIAL_OPEN;
-		return false;
-	}
-	state->file_opened = true;
-	for (;;) {
-		struct yt_name_row staged = {0};
-		struct yt_name_row *grown;
-		bool eof;
-		size_t staged_count;
-
-		++state->eof_checks;
-		if (!yt_text_input_eof(input, &eof, error)) {
-			state->failed_operation = YT_NAMES_SEQUENTIAL_EOF;
-			if (observation != NULL)
-				observation->cursor = (size_t)input->logical_position;
-			return false;
-		}
-		if (eof)
-			break;
-		if (!yt_names_read_sequential_group(input, &staged, &staged_count,
-		    error)) {
-			state->token_reads += staged_count + 1U;
-			state->failed_operation = error != NULL
-			    && error->status == YT_NO_MEMORY
-			    ? YT_NAMES_SEQUENTIAL_STORE_TOKEN
-			    : YT_NAMES_SEQUENTIAL_TOKEN;
-			retain_staged_row(observation, &staged, staged_count,
-			    (size_t)input->logical_position);
-			return false;
-		}
-		state->token_reads += 4U;
-		if (names->count == SIZE_MAX / sizeof(*names->rows)) {
-			state->failed_operation = YT_NAMES_SEQUENTIAL_STORE_ROW;
-			if (error != NULL)
-				error->status = YT_NO_MEMORY;
-			retain_staged_row(observation, &staged, 4U,
-			    (size_t)input->logical_position);
-			return false;
-		}
-		grown = realloc(names->rows,
-		    (names->count + 1U) * sizeof(*names->rows));
-		if (grown == NULL) {
-			state->failed_operation = YT_NAMES_SEQUENTIAL_STORE_ROW;
-			if (error != NULL)
-				error->status = YT_NO_MEMORY;
-			retain_staged_row(observation, &staged, 4U,
-			    (size_t)input->logical_position);
-			return false;
-		}
-		names->rows = grown;
-		names->rows[names->count++] = staged;
-		state->rows_committed = names->count;
-	}
-	if (observation != NULL)
-		observation->cursor = (size_t)input->logical_position;
-	state->close_attempted = true;
-	if (!yt_text_input_close(input, error)) {
-		state->failed_operation = YT_NAMES_SEQUENTIAL_CLOSE;
-		return false;
-	}
-	state->file_closed = true;
-	state->complete = true;
-	return true;
-}
-
-void
-yt_names_input_observation_free(
-    struct yt_name_input_observation *observation)
-{
-	if (observation == NULL)
-		return;
-	yt_name_row_free(&observation->staged);
-	observation->staged_count = 0U;
-	observation->cursor = 0U;
-}
-
 bool
 yt_names_load(const char *path, struct yt_name_file *names,
     struct yt_error *error)
 {
 	struct yt_text_input input;
-	struct yt_name_input_observation observation;
-	struct yt_names_sequential_state state;
-	bool result;
+	struct yt_name_row staged = {0};
+	struct yt_name_row *grown;
+	size_t staged_count = 0U;
+	bool eof;
+	bool result = false;
 
-	if (names == NULL) {
+	if (path == NULL || names == NULL) {
 		if (error != NULL)
 			error->status = YT_INVALID;
 		return false;
 	}
+	memset(names, 0, sizeof(*names));
 	yt_text_input_init(&input);
-	result = yt_names_load_sequential(&input, path, names, &observation,
-	    &state, error);
+	if (!yt_text_input_open(&input, path, error))
+		goto done;
+	for (;;) {
+		if (!yt_text_input_eof(&input, &eof, error))
+			goto done;
+		if (eof)
+			break;
+		if (!yt_names_read_row(&input, &staged, &staged_count, error))
+			goto done;
+		if (names->count == SIZE_MAX / sizeof(*names->rows)) {
+			if (error != NULL)
+				error->status = YT_NO_MEMORY;
+			goto done;
+		}
+		grown = realloc(names->rows,
+		    (names->count + 1U) * sizeof(*names->rows));
+		if (grown == NULL) {
+			if (error != NULL)
+				error->status = YT_NO_MEMORY;
+			goto done;
+		}
+		names->rows = grown;
+		names->rows[names->count++] = staged;
+		memset(&staged, 0, sizeof(staged));
+		staged_count = 0U;
+	}
+	result = yt_text_input_close(&input, error);
+
+done:
 	yt_text_input_destroy(&input);
-	yt_names_input_observation_free(&observation);
-	if (!result)
+	yt_name_row_free(&staged);
+	if (!result) {
 		yt_names_free(names);
+	}
 	return result;
 }
 
@@ -240,89 +163,15 @@ yt_names_free(struct yt_name_file *names)
 
 static bool
 names_output_value(struct yt_text_output *output,
-    struct yt_names_output_state *state,
-    enum yt_names_output_operation operation, const uint8_t *data,
-    size_t length, bool newline, struct yt_error *error)
+    const uint8_t *data, size_t length, bool newline,
+    struct yt_error *error)
 {
 	static const uint8_t row_end[] = {'\r', '\n'};
 
-	state->attempted = operation;
 	if (!yt_text_output_write(output, data, length, error)
 	    || (newline && !yt_text_output_write(output, row_end,
 	    sizeof(row_end), error)))
 		return false;
-	++state->values_completed;
-	return true;
-}
-
-bool
-yt_names_write_sequential(struct yt_text_output *output, const char *path,
-    const struct yt_name_file *names, struct yt_names_output_state *state,
-    struct yt_error *error)
-{
-	static const uint8_t comma[] = ",";
-	size_t row;
-
-	if (state != NULL)
-		memset(state, 0, sizeof(*state));
-	if (output == NULL || path == NULL || names == NULL || state == NULL
-	    || (names->rows == NULL && names->count != 0U)) {
-		if (error != NULL)
-			error->status = YT_INVALID;
-		return false;
-	}
-	state->attempted = YT_NAMES_OUTPUT_OPEN;
-	if (!yt_text_output_open(output, path, error))
-		return false;
-	state->file_opened = true;
-	for (row = 0U; row < names->count; ++row) {
-		const struct yt_name_row *item = &names->rows[row];
-
-		state->row_index = row;
-		state->attempted = YT_NAMES_OUTPUT_SELECT;
-		if (output->file == NULL || item->real_first == NULL
-		    || item->real_last == NULL || item->alias_first == NULL
-		    || item->alias_last == NULL) {
-			if (error != NULL)
-				error->status = YT_INVALID;
-			return false;
-		}
-		if (!names_output_value(output, state,
-		    YT_NAMES_OUTPUT_REAL_FIRST,
-		    (const uint8_t *)item->real_first,
-		    strlen(item->real_first), false, error)
-		    || !names_output_value(output, state,
-		    YT_NAMES_OUTPUT_COMMA_1, comma, sizeof(comma) - 1U, false,
-		    error)
-		    || !names_output_value(output, state,
-		    YT_NAMES_OUTPUT_REAL_LAST,
-		    (const uint8_t *)item->real_last,
-		    strlen(item->real_last), false, error)
-		    || !names_output_value(output, state,
-		    YT_NAMES_OUTPUT_COMMA_2, comma, sizeof(comma) - 1U, false,
-		    error)
-		    || !names_output_value(output, state,
-		    YT_NAMES_OUTPUT_ALIAS_FIRST,
-		    (const uint8_t *)item->alias_first,
-		    strlen(item->alias_first), false, error)
-		    || !names_output_value(output, state,
-		    YT_NAMES_OUTPUT_COMMA_3, comma, sizeof(comma) - 1U, false,
-		    error)
-		    || !names_output_value(output, state,
-		    YT_NAMES_OUTPUT_ALIAS_LAST_LINE,
-		    (const uint8_t *)item->alias_last,
-		    strlen(item->alias_last), true, error))
-			return false;
-		++state->rows_completed;
-	}
-	state->row_index = names->count;
-	state->attempted = YT_NAMES_OUTPUT_CLOSE;
-	state->close_attempted = true;
-	if (!yt_text_output_close(output, error))
-		return false;
-	state->file_closed = true;
-	state->attempted = YT_NAMES_OUTPUT_NONE;
-	state->complete = true;
 	return true;
 }
 
@@ -330,12 +179,53 @@ bool
 yt_names_write(const char *path, const struct yt_name_file *names,
     struct yt_error *error)
 {
-	struct yt_names_output_state state;
+	static const uint8_t comma[] = ",";
 	struct yt_text_output output;
-	bool result;
+	size_t row;
+	bool result = false;
 
+	if (path == NULL || names == NULL
+	    || (names->rows == NULL && names->count != 0U)) {
+		if (error != NULL)
+			error->status = YT_INVALID;
+		return false;
+	}
 	yt_text_output_init(&output);
-	result = yt_names_write_sequential(&output, path, names, &state, error);
+	if (!yt_text_output_open(&output, path, error))
+		goto done;
+	for (row = 0U; row < names->count; ++row) {
+		const struct yt_name_row *item = &names->rows[row];
+
+		if (output.file == NULL || item->real_first == NULL
+		    || item->real_last == NULL || item->alias_first == NULL
+		    || item->alias_last == NULL) {
+			if (error != NULL)
+				error->status = YT_INVALID;
+			goto done;
+		}
+		if (!names_output_value(&output,
+		    (const uint8_t *)item->real_first,
+		    strlen(item->real_first), false, error)
+		    || !names_output_value(&output, comma, sizeof(comma) - 1U, false,
+		    error)
+		    || !names_output_value(&output,
+		    (const uint8_t *)item->real_last,
+		    strlen(item->real_last), false, error)
+		    || !names_output_value(&output, comma, sizeof(comma) - 1U, false,
+		    error)
+		    || !names_output_value(&output,
+		    (const uint8_t *)item->alias_first,
+		    strlen(item->alias_first), false, error)
+		    || !names_output_value(&output, comma, sizeof(comma) - 1U, false,
+		    error)
+		    || !names_output_value(&output,
+		    (const uint8_t *)item->alias_last,
+		    strlen(item->alias_last), true, error))
+			goto done;
+	}
+	result = yt_text_output_close(&output, error);
+
+done:
 	yt_text_output_destroy(&output);
 	return result;
 }
