@@ -6088,7 +6088,6 @@ check_maintenance_super_lottery_pass(void)
 	};
 	struct score_line_tape screen = {0};
 	struct score_line_fault_tape line_fault;
-	struct yt_maintenance_lottery_result result;
 	struct yt_record player;
 	struct yt_record planet_before;
 	struct yt_record planet_success;
@@ -6147,10 +6146,7 @@ check_maintenance_super_lottery_pass(void)
 		goto done;
 	if (!yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen,
-	    &result, &error)
-	    || result.failure != YT_MAINTENANCE_LOTTERY_SUCCESS
-	    || result.player_record != 2 || result.planet_number != 1
-	    || result.sector_number != 1 || result.draws_consumed != 12U
+	    &error)
 	    || game.random.draws != 12U
 	    || script.position != sizeof(success_draws)
 	    || screen.lines != 3U
@@ -6216,9 +6212,8 @@ check_maintenance_super_lottery_pass(void)
 	    || !yt_database_write(&game.database, 2U, &player, &error)
 	    || !yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen,
-	    &result, &error)
-	    || result.failure != YT_MAINTENANCE_LOTTERY_BLANK_PLAYER
-	    || result.player_record != 2 || result.draws_consumed != 2U
+	    &error)
+	    || game.random.draws != 2U
 	    || screen.length != sizeof(expected_failure) - 1U
 	    || memcmp(screen.data, expected_failure,
 	    sizeof(expected_failure) - 1U) != 0)
@@ -6233,9 +6228,8 @@ check_maintenance_super_lottery_pass(void)
 	    || !yt_database_write(&game.database, 31U, &planet_before, &error)
 	    || !yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen,
-	    &result, &error)
-	    || result.failure != YT_MAINTENANCE_LOTTERY_OCCUPIED_PLANET
-	    || result.planet_number != 1 || result.draws_consumed != 3U
+	    &error)
+	    || game.random.draws != 3U
 	    || screen.length != sizeof(expected_failure) - 1U
 	    || memcmp(screen.data, expected_failure,
 	    sizeof(expected_failure) - 1U) != 0)
@@ -6250,9 +6244,8 @@ check_maintenance_super_lottery_pass(void)
 	    || !yt_database_write(&game.database, 11U, &sector_before, &error)
 	    || !yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen,
-	    &result, &error)
-	    || result.failure != YT_MAINTENANCE_LOTTERY_OCCUPIED_SECTOR
-	    || result.sector_number != 1 || result.draws_consumed != 4U
+	    &error)
+	    || game.random.draws != 4U
 	    || screen.length != sizeof(expected_failure) - 1U
 	    || memcmp(screen.data, expected_failure,
 	    sizeof(expected_failure) - 1U) != 0)
@@ -6263,17 +6256,16 @@ check_maintenance_super_lottery_pass(void)
 	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_super_lottery(&game, 1, 1, 1,
 	    NULL, 0U, score_line_collect, &screen,
-	    &result, &error)
-	    || result.failure != YT_MAINTENANCE_LOTTERY_COIN
-	    || result.draws_consumed != 1U
+	    &error)
+	    || game.random.draws != 1U
 	    || screen.length != sizeof(expected_failure) - 1U
 	    || memcmp(screen.data, expected_failure,
 	    sizeof(expected_failure) - 1U) != 0
 	    || yt_maintenance_super_lottery(NULL, 1, 1, 1,
-	    (const uint8_t *)"", 0U, score_line_collect, &screen, &result,
+	    (const uint8_t *)"", 0U, score_line_collect, &screen,
 	    &error)
 	    || yt_maintenance_super_lottery(&game, 0, 1, 1,
-	    (const uint8_t *)"", 0U, score_line_collect, &screen, &result,
+	    (const uint8_t *)"", 0U, score_line_collect, &screen,
 	    &error))
 		goto done;
 
@@ -6293,7 +6285,7 @@ check_maintenance_super_lottery_pass(void)
 		yt_test_random_use_provider(&game.random, score_random_fill, &script);
 		yt_error_clear(&error);
 		if (yt_maintenance_super_lottery(&game, 1, 1, 1,
-		    NULL, 0U, score_line_collect, &screen, &result, &error)
+		    NULL, 0U, score_line_collect, &screen, &error)
 		    || error.status != YT_RANDOM_ERROR
 		    || game.random.draws != index || script.position != index * 3U
 		    || screen.lines != 2U
@@ -6325,7 +6317,7 @@ check_maintenance_super_lottery_pass(void)
 	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (yt_maintenance_super_lottery(&game, 1, 1, 1,
-	    NULL, 0U, score_line_fail, &line_fault, &result, &error)
+	    NULL, 0U, score_line_fail, &line_fault, &error)
 	    || error.status != YT_IO_ERROR || line_fault.calls != 3U
 	    || line_fault.tape.lines != 2U || game.random.draws != 12U
 	    || line_fault.tape.length != sizeof(phase_prefix) - 1U
@@ -6349,7 +6341,7 @@ check_maintenance_super_lottery_pass(void)
 	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	lottery_call = yt_maintenance_super_lottery(&game, 1, 1, 1,
-	    NULL, 0U, score_line_collect, &screen, &result, &error);
+	    NULL, 0U, score_line_collect, &screen, &error);
 	if (lottery_call
 	    || error.status != YT_IO_ERROR || screen.lines != 3U
 	    || screen.length != sizeof(expected_screen) - 1U
@@ -6376,7 +6368,7 @@ check_maintenance_super_lottery_pass(void)
 		yt_test_random_use_provider(&game.random, score_random_fill, &script);
 		yt_error_clear(&error);
 		if (yt_maintenance_super_lottery(&game, 1, 1, 1,
-		    NULL, 0U, score_line_fail, &line_fault, &result, &error)
+		    NULL, 0U, score_line_fail, &line_fault, &error)
 		    || error.status != YT_IO_ERROR
 		    || line_fault.calls != index + 1U
 		    || line_fault.tape.lines != index
@@ -6400,7 +6392,7 @@ check_maintenance_super_lottery_pass(void)
 	yt_test_random_use_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (yt_maintenance_super_lottery(&game, 1, 1, 1,
-	    NULL, 0U, score_line_collect, &screen, &result, &error)
+	    NULL, 0U, score_line_collect, &screen, &error)
 	    || error.status != YT_RANDOM_ERROR || game.random.draws != 0U
 	    || script.position != 0U || screen.lines != 2U
 	    || screen.length != sizeof(phase_prefix) - 1U

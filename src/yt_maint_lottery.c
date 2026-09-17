@@ -22,14 +22,10 @@ set_error(struct yt_error *error, enum yt_status status,
 
 static bool
 lottery_fail(yt_maintenance_score_line_fn line_output, void *line_context,
-    enum yt_maintenance_lottery_failure failure, uint64_t starting_draws,
-    struct yt_game *game, struct yt_maintenance_lottery_result *result,
     struct yt_error *error)
 {
 	static const uint8_t no_winner[] = "No one won a planet today.";
 
-	result->failure = failure;
-	result->draws_consumed = game->random.draws - starting_draws;
 	return line_output(line_context, no_winner,
 	    sizeof(no_winner) - 1U, error);
 }
@@ -38,8 +34,7 @@ bool
 yt_maintenance_super_lottery(struct yt_game *game, int player_count,
     int planet_count, int sector_count, const uint8_t *blank,
     size_t blank_length, yt_maintenance_score_line_fn line_output,
-    void *line_context, struct yt_maintenance_lottery_result *result,
-    struct yt_error *error)
+    void *line_context, struct yt_error *error)
 {
 	static const uint8_t phase[] = "Running Super Planet Lottery";
 	static const uint8_t winner_prefix[] = " *** ";
@@ -50,7 +45,6 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x3b, 0x00};
 	static const uint8_t canonical_zero[4] = {0};
 	static const uint8_t name_suffix[] = "'s Planet";
-	struct yt_maintenance_lottery_result local = {0};
 	struct yt_player player;
 	struct yt_planet planet;
 	struct yt_sector sector;
@@ -61,22 +55,21 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	size_t working_length;
 	size_t line_length;
 	size_t radio_length;
-	uint64_t starting_draws;
 	size_t player_name_length;
 	int player_slot;
+	int player_record;
+	int planet_number;
+	int sector_number;
 	int index;
 	int sector_length;
 	float gate;
 
 	if (game == NULL || player_count < 1 || planet_count < 1
 	    || sector_count < 1 || (blank == NULL
-	    && blank_length != 0U) || line_output == NULL
-	    || result == NULL) {
+	    && blank_length != 0U) || line_output == NULL) {
 		set_error(error, YT_INVALID, "Super Lottery", "YTDATA.DAT");
 		return false;
 	}
-	memset(result, 0, sizeof(*result));
-	starting_draws = game->random.draws;
 	if (!line_output(line_context, blank,
 	    blank_length, error)
 	    || !line_output(line_context, phase,
@@ -84,48 +77,34 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	    || !yt_random_next(&game->random, &gate, error))
 		return false;
 	if (gate < 0.5f)
-		return lottery_fail(line_output, line_context,
-		    YT_MAINTENANCE_LOTTERY_COIN, starting_draws, game, result,
-		    error);
+		return lottery_fail(line_output, line_context, error);
 	if (!yt_random_integer(&game->random, player_count,
 	    &player_slot, error))
 		return false;
-	local.player_record = player_slot + 1;
-	if (!yt_game_read_player(game, local.player_record, &player, error))
+	player_record = player_slot + 1;
+	if (!yt_game_read_player(game, player_record, &player, error))
 		return false;
-	if (player.name_length == 0U) {
-		local.failure = YT_MAINTENANCE_LOTTERY_BLANK_PLAYER;
-		*result = local;
-		return lottery_fail(line_output, line_context, local.failure,
-		    starting_draws, game, result, error);
-	}
+	if (player.name_length == 0U)
+		return lottery_fail(line_output, line_context, error);
 	player_name_length = player.name_length;
 	working_length = player_name_length + sizeof(name_suffix) - 1U;
 	memcpy(working_name, player.record.bytes, player_name_length);
 	memcpy(working_name + player_name_length, name_suffix,
 	    sizeof(name_suffix) - 1U);
-	if (!yt_random_integer(&game->random, planet_count,
-	    &local.planet_number, error)
-	    || !yt_game_read_planet(game, local.planet_number, &planet, error))
+	if (!yt_random_integer(&game->random, planet_count, &planet_number,
+	    error)
+	    || !yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
-	if (planet.name_length != 0U) {
-		local.failure = YT_MAINTENANCE_LOTTERY_OCCUPIED_PLANET;
-		*result = local;
-		return lottery_fail(line_output, line_context, local.failure,
-		    starting_draws, game, result, error);
-	}
-	if (!yt_random_integer(&game->random, sector_count,
-	    &local.sector_number, error)
-	    || !yt_game_read_sector(game, local.sector_number, &sector, error))
+	if (planet.name_length != 0U)
+		return lottery_fail(line_output, line_context, error);
+	if (!yt_random_integer(&game->random, sector_count, &sector_number,
+	    error)
+	    || !yt_game_read_sector(game, sector_number, &sector, error))
 		return false;
-	if (sector.planet > 0.0f) {
-		local.failure = YT_MAINTENANCE_LOTTERY_OCCUPIED_SECTOR;
-		*result = local;
-		return lottery_fail(line_output, line_context, local.failure,
-		    starting_draws, game, result, error);
-	}
+	if (sector.planet > 0.0f)
+		return lottery_fail(line_output, line_context, error);
 	/* The constructor performs a second, fresh GET of the selected planet. */
-	if (!yt_game_read_planet(game, local.planet_number, &planet, error))
+	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
 	memset(planet.record.bytes, ' ', 41U);
 	memcpy(planet.record.bytes, working_name,
@@ -150,7 +129,7 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	}
 	if (!yt_record_set_raw_number(&planet.record, YT_F69, dirty_zero)
 	    || !yt_record_set_number(&planet.record, YT_F73,
-	    (float)local.player_record)
+	    (float)player_record)
 	    || !yt_random_next(&game->random, &gate, error)
 	    || !yt_record_set_number(&planet.record, YT_F77,
 	    yt_maintenance_sint(qb_single_add(
@@ -162,14 +141,14 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	    canonical_zero))
 		return false;
 	if (!yt_database_write(&game->database,
-	    (size_t)yt_planet_basic_record(&game->config, local.planet_number),
+	    (size_t)yt_planet_basic_record(&game->config, planet_number),
 	    &planet.record, error)
-	    || !yt_game_read_sector(game, local.sector_number, &sector, error))
+	    || !yt_game_read_sector(game, sector_number, &sector, error))
 		return false;
-	sector.planet = (float)local.planet_number;
+	sector.planet = (float)planet_number;
 	if (!yt_record_set_number(&sector.record, YT_F93, sector.planet)
 	    || !yt_database_write(&game->database,
-	    (size_t)yt_sector_basic_record(&game->config, local.sector_number),
+	    (size_t)yt_sector_basic_record(&game->config, sector_number),
 	    &sector.record, error))
 		return false;
 	line_length = 0U;
@@ -183,7 +162,7 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	    || !yt_news_append_bytes(line, line_length, error))
 		return false;
 	sector_length = qb_str_single(sector_text, sizeof(sector_text),
-	    (float)local.sector_number);
+	    (float)sector_number);
 	radio_length = 0U;
 	if (sector_length < 0
 	    || !maintenance_copy_part(radio, sizeof(radio), &radio_length,
@@ -193,10 +172,7 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	    || !maintenance_copy_part(radio, sizeof(radio), &radio_length,
 	    (const uint8_t *)"!\a", 2U)
 	    || !yt_radio_append_maintenance_bytes(radio, radio_length, -2.0f,
-	    (float)local.player_record, error))
+	    (float)player_record, error))
 		return false;
-	local.failure = YT_MAINTENANCE_LOTTERY_SUCCESS;
-	local.draws_consumed = game->random.draws - starting_draws;
-	*result = local;
 	return true;
 }

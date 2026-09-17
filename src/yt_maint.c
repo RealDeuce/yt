@@ -163,7 +163,6 @@ yt_maintenance_finish(struct yt_game *game, int player_count,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error)
 {
-	struct yt_maintenance_lottery_result lottery_result;
 	struct yt_maintenance_output_result wrapper_output;
 
 	if (game == NULL || line_output == NULL) {
@@ -172,7 +171,7 @@ yt_maintenance_finish(struct yt_game *game, int player_count,
 	}
 	if (!yt_maintenance_super_lottery(game, player_count, planet_count,
 	    sector_count, NULL, 0U, line_output, line_context,
-	    &lottery_result, error))
+	    error))
 		return false;
 	if (!store_final_marker(game, error))
 		return false;

@@ -225,22 +225,6 @@ struct yt_maintenance_mercenary_planet_result {
 	float sector_fighters;
 };
 
-enum yt_maintenance_lottery_failure {
-	YT_MAINTENANCE_LOTTERY_SUCCESS,
-	YT_MAINTENANCE_LOTTERY_COIN,
-	YT_MAINTENANCE_LOTTERY_BLANK_PLAYER,
-	YT_MAINTENANCE_LOTTERY_OCCUPIED_PLANET,
-	YT_MAINTENANCE_LOTTERY_OCCUPIED_SECTOR
-};
-
-struct yt_maintenance_lottery_result {
-	enum yt_maintenance_lottery_failure failure;
-	int player_record;
-	int planet_number;
-	int sector_number;
-	uint64_t draws_consumed;
-};
-
 bool yt_maintenance_xannor_should_retarget(float group_location,
     float group_size);
 bool yt_maintenance_xannor_route_complete(float group_location,
@@ -321,8 +305,7 @@ bool yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 bool yt_maintenance_super_lottery(struct yt_game *game, int player_count,
     int planet_count, int sector_count, const uint8_t *blank,
     size_t blank_length, yt_maintenance_score_line_fn line_output,
-    void *line_context, struct yt_maintenance_lottery_result *result,
-    struct yt_error *error);
+    void *line_context, struct yt_error *error);
 bool yt_maintenance_store_final_marker(struct yt_game *game, float serial,
     struct yt_error *error);
 bool yt_maintenance_age_player(float cloak, float last_active,
