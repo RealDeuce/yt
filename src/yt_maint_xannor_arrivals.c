@@ -938,7 +938,6 @@ yt_maintenance_xannor_run(struct maint_state *state,
     struct yt_error *error)
 {
 	struct yt_maintenance_xannor_hunt_result hunt;
-	struct yt_maintenance_xannor_target_result target_result;
 	struct yt_maintenance_xannor_regeneration_result regen_result;
 	struct yt_maintenance_output_result regen_output;
 	struct yt_maintenance_output_result roaming_output;
@@ -960,14 +959,13 @@ yt_maintenance_xannor_run(struct maint_state *state,
 	    line_output, line_context, &hunt, error))
 		return false;
 	score = hunt.top_score;
+	hunt_player = hunt.selected ? hunt.top_record : 0;
+	top_target = hunt.target_sector;
 	if (!yt_maintenance_xannor_target(&state->game.random,
-	    state->sector_count, hunt.selected ? hunt.top_record : 0,
-	    hunt.target_sector, &target_result, error)
+	    state->sector_count, &hunt_player, &top_target, error)
 	    || !yt_maintenance_xannor_groups_extract(&state->game, location,
 	    size, error))
 		return false;
-	top_target = target_result.target_sector;
-	hunt_player = target_result.hunt_player;
 	if (!yt_maintenance_xannor_regeneration(score, size, &regen_result)
 	    || !yt_maintenance_compose_xannor_regeneration(
 	    NULL, 0U,

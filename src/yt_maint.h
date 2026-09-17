@@ -154,13 +154,6 @@ struct yt_maintenance_xannor_hunt_result {
 	uint64_t draws_consumed;
 };
 
-struct yt_maintenance_xannor_target_result {
-	int hunt_player;
-	int target_sector;
-	bool replaced;
-	uint64_t draws_consumed;
-};
-
 struct yt_maintenance_xannor_regeneration_result {
 	float total_before;
 	float ceiling;
@@ -367,8 +360,7 @@ bool yt_maintenance_xannor_hunt(struct yt_game *game,
     struct yt_maintenance_xannor_hunt_result *result,
     struct yt_error *error);
 bool yt_maintenance_xannor_target(struct yt_random *random, int sector_count,
-    int hunt_player, int target_sector,
-    struct yt_maintenance_xannor_target_result *result,
+    int *hunt_player, int *target_sector,
     struct yt_error *error);
 bool yt_maintenance_xannor_groups_extract(struct yt_game *game,
     float location[21], float size[21], struct yt_error *error);

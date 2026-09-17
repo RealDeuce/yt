@@ -243,32 +243,24 @@ yt_maintenance_xannor_player_scan_continue(int player_record,
 
 bool
 yt_maintenance_xannor_target(struct yt_random *random, int sector_count,
-    int hunt_player, int target_sector,
-    struct yt_maintenance_xannor_target_result *result,
+    int *hunt_player, int *target_sector,
     struct yt_error *error)
 {
-	struct yt_maintenance_xannor_target_result local = {
-		hunt_player, target_sector, false, 0U
-	};
-	uint64_t starting_draws;
 	int selected;
 
-	if (random == NULL || result == NULL || sector_count < 8) {
+	if (random == NULL || hunt_player == NULL || target_sector == NULL
+	    || sector_count < 8) {
 		set_error(error, YT_INVALID, "Xannor target", "YTDATA.DAT");
 		return false;
 	}
-	starting_draws = random->draws;
-	if (target_sector < 8 || target_sector > sector_count
-	    || hunt_player == 0) {
+	if (*target_sector < 8 || *target_sector > sector_count
+	    || *hunt_player == 0) {
 		if (!yt_random_integer(random, sector_count - 7,
 		    &selected, error))
 			return false;
-		local.hunt_player = 0;
-		local.target_sector = selected + 7;
-		local.replaced = true;
+		*hunt_player = 0;
+		*target_sector = selected + 7;
 	}
-	local.draws_consumed = random->draws - starting_draws;
-	*result = local;
 	return true;
 }
 

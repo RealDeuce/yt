@@ -3782,41 +3782,45 @@ check_maintenance_xannor_target_model(void)
 	struct score_random_script script = {
 		low_draw, sizeof(low_draw), 0U
 	};
-	struct yt_maintenance_xannor_target_result target;
 	struct yt_random random;
 	struct yt_error error;
+	int hunt_player;
+	int target_sector;
 
 	yt_random_init(&random);
 	yt_test_random_use_provider(&random, score_random_fill, &script);
 	yt_error_clear(&error);
-	if (!yt_maintenance_xannor_target(&random, 2004, 2, 8,
-	    &target, &error)
-	    || target.hunt_player != 2 || target.target_sector != 8
-	    || target.replaced || target.draws_consumed != 0U
+	hunt_player = 2;
+	target_sector = 8;
+	if (!yt_maintenance_xannor_target(&random, 2004, &hunt_player,
+	    &target_sector, &error)
+	    || hunt_player != 2 || target_sector != 8
 	    || random.draws != 0U || script.position != 0U)
 		return false;
-	if (!yt_maintenance_xannor_target(&random, 2004, 0, 2004,
-	    &target, &error)
-	    || target.hunt_player != 0 || target.target_sector != 8
-	    || !target.replaced || target.draws_consumed != 1U
+	hunt_player = 0;
+	target_sector = 2004;
+	if (!yt_maintenance_xannor_target(&random, 2004, &hunt_player,
+	    &target_sector, &error)
+	    || hunt_player != 0 || target_sector != 8
 	    || random.draws != 1U || script.position != sizeof(low_draw))
 		return false;
 	script = (struct score_random_script){
 		high_draw, sizeof(high_draw), 0U
 	};
 	yt_test_random_use_provider(&random, score_random_fill, &script);
-	if (!yt_maintenance_xannor_target(&random, 2004, 2, 7,
-	    &target, &error)
-	    || target.hunt_player != 0 || target.target_sector != 2004
-	    || !target.replaced || target.draws_consumed != 1U
+	hunt_player = 2;
+	target_sector = 7;
+	if (!yt_maintenance_xannor_target(&random, 2004, &hunt_player,
+	    &target_sector, &error)
+	    || hunt_player != 0 || target_sector != 2004
 	    || random.draws != 1U || script.position != sizeof(high_draw))
 		return false;
-	return !yt_maintenance_xannor_target(NULL, 2004, 2, 8,
-	    &target, &error)
-	    && !yt_maintenance_xannor_target(&random, 7, 2, 8,
-	    &target, &error)
-	    && !yt_maintenance_xannor_target(&random, 2004, 2, 8,
-	    NULL, &error);
+	return !yt_maintenance_xannor_target(NULL, 2004, &hunt_player,
+	    &target_sector, &error)
+	    && !yt_maintenance_xannor_target(&random, 7, &hunt_player,
+	    &target_sector, &error)
+	    && !yt_maintenance_xannor_target(&random, 2004, NULL,
+	    &target_sector, &error);
 }
 
 static bool
