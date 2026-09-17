@@ -426,13 +426,17 @@ yt_database_close(struct yt_database *database)
 }
 
 static bool database_seek(FILE *file, int64_t absolute_offset);
+static bool database_random_get_bytes(struct yt_database *, size_t,
+    uint8_t *, size_t, size_t *, struct yt_error *);
+static bool database_random_put_bytes(struct yt_database *, size_t,
+    const uint8_t *, size_t, struct yt_error *);
 
 bool
 yt_database_read(struct yt_database *database, size_t basic_record,
     struct yt_record *record, struct yt_error *error)
 {
-	bool read = yt_database_random_get(database, basic_record, record, NULL,
-	    error);
+	bool read = database_random_get_bytes(database, basic_record,
+	    record != NULL ? record->bytes : NULL, YT_RECORD_SIZE, NULL, error);
 
 	if (!read && error != NULL)
 		(void)snprintf(error->operation, sizeof(error->operation), "%s",
@@ -499,20 +503,11 @@ database_random_get_bytes(struct yt_database *database, size_t basic_record,
 }
 
 bool
-yt_database_random_get(struct yt_database *database, size_t basic_record,
-    struct yt_record *record, size_t *accepted, struct yt_error *error)
-{
-	return database_random_get_bytes(database, basic_record,
-	    record != NULL ? record->bytes : NULL, YT_RECORD_SIZE, accepted,
-	    error);
-}
-
-bool
 yt_database_write(struct yt_database *database, size_t basic_record,
     const struct yt_record *record, struct yt_error *error)
 {
-	bool written = yt_database_random_put(database, basic_record, record,
-	    false, NULL, error);
+	bool written = database_random_put_bytes(database, basic_record,
+	    record != NULL ? record->bytes : NULL, YT_RECORD_SIZE, error);
 
 	if (!written && error != NULL)
 		(void)snprintf(error->operation, sizeof(error->operation), "%s",
@@ -654,17 +649,13 @@ database_reject_short(struct yt_database *database, struct yt_error *error)
 
 static bool
 database_random_put_bytes(struct yt_database *database, size_t basic_record,
-    const uint8_t *data, size_t record_size, bool one_byte_short_ok,
-    size_t *accepted, struct yt_error *error)
+    const uint8_t *data, size_t record_size, struct yt_error *error)
 {
 	int64_t offset;
 	size_t write_count;
 	int saved_errno;
 	uint16_t dos_error;
-	bool tolerated_short;
 
-	if (accepted != NULL)
-		*accepted = 0U;
 	if (database == NULL || database->file == NULL || data == NULL
 	    || record_size == 0U) {
 		set_error(error, YT_INVALID, "random PUT",
@@ -687,8 +678,6 @@ database_random_put_bytes(struct yt_database *database, size_t basic_record,
 	database_prepare_io(database->file);
 	write_count = fwrite(data, 1U, record_size, database->file);
 	saved_errno = errno;
-	if (accepted != NULL)
-		*accepted = write_count;
 	if (ferror(database->file) != 0) {
 		dos_error = (saved_errno == EACCES
 		    || saved_errno == EPERM) ? 5U : 1U;
@@ -698,25 +687,13 @@ database_random_put_bytes(struct yt_database *database, size_t basic_record,
 		return false;
 	}
 	errno = saved_errno;
-	tolerated_short = one_byte_short_ok
-	    && write_count == record_size - 1U;
-	if (write_count != record_size && !tolerated_short) {
+	if (write_count != record_size) {
 		database_reject_short(database, error);
 		return false;
 	}
 	if (basic_record > database->records)
 		database->records = basic_record;
 	return true;
-}
-
-bool
-yt_database_random_put(struct yt_database *database, size_t basic_record,
-    const struct yt_record *record, bool one_byte_short_ok, size_t *accepted,
-    struct yt_error *error)
-{
-	return database_random_put_bytes(database, basic_record,
-	    record != NULL ? record->bytes : NULL, YT_RECORD_SIZE,
-	    one_byte_short_ok, accepted, error);
 }
 
 bool
@@ -836,7 +813,7 @@ yt_radio_file_put(struct yt_radio_file *radio, uint32_t basic_record,
 		return false;
 	}
 	return database_random_put_bytes(&radio->random, basic_record,
-	    record->bytes, YT_RADIO_RECORD_SIZE, false, NULL, error);
+	    record->bytes, YT_RADIO_RECORD_SIZE, error);
 }
 
 bool

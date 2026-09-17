@@ -20077,10 +20077,9 @@ direct_warp_attack_read_player(void *context, int player_record,
 {
 	struct direct_warp_attack_database_state *state = context;
 	struct yt_record field = state->field;
-	size_t accepted = 0U;
 
-	if (yt_database_random_get(&state->database, (size_t)player_record,
-	    &field, &accepted, error)) {
+	if (yt_database_read(&state->database, (size_t)player_record,
+	    &field, error)) {
 		state->field = field;
 		state->field_record = player_record;
 		state->field_player = true;
@@ -22556,7 +22555,6 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 	struct yt_player fresh;
 	struct yt_record field;
 	struct yt_error error;
-	size_t accepted = 0U;
 	size_t index;
 
 	if (fixture == NULL || cycle == NULL || entry == NULL
@@ -22581,8 +22579,7 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 	field = io->field;
 	++cycle->fresh_hostile_attack_sector_reads;
 	yt_error_clear(&error);
-	if (!yt_database_random_get(&io->database, 1054U, &field, &accepted,
-	    &error)) {
+	if (!yt_database_read(&io->database, 1054U, &field, &error)) {
 		yt_database_close(&io->database);
 		return false;
 	}

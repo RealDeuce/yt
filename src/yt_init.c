@@ -793,22 +793,20 @@ yt_initialize_begin_yt(struct yt_error *error)
 }
 
 bool
-yt_initialize_bind_yt(struct yt_database *database,
-    struct yt_init_binding *binding, struct yt_error *error)
+yt_initialize_bind_yt(struct yt_database *database, struct yt_error *error)
 {
 	struct yt_record first;
+	struct yt_record second;
+	struct yt_config loaded;
 
-	if (database == NULL || binding == NULL) {
+	if (database == NULL) {
 		set_error(error, YT_INVALID, "bind YT initializer", "YTDATA.DAT");
 		return false;
 	}
-	memset(binding, 0, sizeof(*binding));
 	if (!yt_database_open(database, "YTDATA.DAT", YT_OPEN_UPDATE, error)
-	    || !yt_database_random_get(database, 1U, &first,
-	    &binding->first_accepted, error)
-	    || !yt_config_decode(&binding->loaded, &first, error)
-	    || !yt_database_random_get(database, 1U, &binding->second_record,
-	    &binding->second_accepted, error)) {
+	    || !yt_database_read(database, 1U, &first, error)
+	    || !yt_config_decode(&loaded, &first, error)
+	    || !yt_database_read(database, 1U, &second, error)) {
 		yt_database_close(database);
 		return false;
 	}

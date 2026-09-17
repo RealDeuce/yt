@@ -51,17 +51,11 @@ bool yt_database_random_lof(struct yt_database *database, uint32_t *length,
 void yt_database_close(struct yt_database *database);
 bool yt_database_read(struct yt_database *database, size_t basic_record,
     struct yt_record *record, struct yt_error *error);
-bool yt_database_random_get(struct yt_database *database,
-    size_t basic_record, struct yt_record *record, size_t *accepted,
-    struct yt_error *error);
 bool yt_database_write(struct yt_database *database, size_t basic_record,
     const struct yt_record *record, struct yt_error *error);
 bool yt_database_write_durable(struct yt_database *database,
     size_t basic_record, const struct yt_record *record,
     struct yt_error *error);
-bool yt_database_random_put(struct yt_database *database,
-    size_t basic_record, const struct yt_record *record,
-    bool one_byte_short_ok, size_t *accepted, struct yt_error *error);
 bool yt_database_flush(struct yt_database *database, struct yt_error *error);
 void yt_radio_file_init(struct yt_radio_file *radio);
 bool yt_radio_file_open(struct yt_radio_file *radio, const char *path,

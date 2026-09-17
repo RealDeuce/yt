@@ -93,13 +93,6 @@ struct yt_initializer_options {
 	struct yt_database *bound_database;
 };
 
-struct yt_init_binding {
-	struct yt_config loaded;
-	struct yt_record second_record;
-	size_t first_accepted;
-	size_t second_accepted;
-};
-
 bool yt_initializer_confirm_response(const char *response);
 void yt_initializer_layout_yt(
 	struct yt_initializer_preparation *preparation);
@@ -139,7 +132,7 @@ bool yt_init_sector_prepass(struct yt_database *database,
     struct yt_error *error);
 bool yt_initialize_begin_yt(struct yt_error *error);
 bool yt_initialize_bind_yt(struct yt_database *database,
-    struct yt_init_binding *binding, struct yt_error *error);
+    struct yt_error *error);
 bool yt_initialize_world(const struct yt_initializer_options *options,
     struct yt_random *random, struct yt_error *error);
 /* Consumes and closes the successfully bound database. */

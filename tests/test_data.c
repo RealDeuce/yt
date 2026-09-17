@@ -826,7 +826,6 @@ test_files(void)
 	struct yt_record replacement;
 	struct yt_text_file text;
 	struct yt_error error;
-	size_t accepted;
 	size_t index;
 
 #ifdef _WIN32
@@ -859,29 +858,25 @@ test_files(void)
 	for (index = 0U; index < sizeof(replacement.bytes); ++index)
 		replacement.bytes[index] = (uint8_t)(index ^ 0xa5U);
 	after = replacement;
-	accepted = 99U;
 	yt_error_clear(&error);
-	CHECK(!yt_database_random_get(&database, 0U, &after, &accepted, &error)
-	    && error.status == YT_RANGE && accepted == 0U
+	CHECK(!yt_database_read(&database, 0U, &after, &error)
+	    && error.status == YT_RANGE
 	    && memcmp(after.bytes, replacement.bytes, YT_RECORD_SIZE) == 0);
 	CHECK(database.last_get_basic_error == 63U);
 	after = replacement;
-	accepted = 99U;
 	yt_error_clear(&error);
-	CHECK(!yt_database_random_get(&database, 0x1000000U, &after, &accepted,
-	    &error) && error.status == YT_RANGE && accepted == 0U
+	CHECK(!yt_database_read(&database, 0x1000000U, &after,
+	    &error) && error.status == YT_RANGE
 	    && memcmp(after.bytes, replacement.bytes, YT_RECORD_SIZE) == 0
 	    && database.last_get_basic_error == 63U);
-	CHECK(yt_database_random_get(&database, 0xFFFFFFU, &after, &accepted,
-	    &error) && accepted == 0U && database.last_get_basic_error == 0U);
-	accepted = 99U;
-	CHECK(!yt_database_random_put(&database, 0U, &replacement, false,
-	    &accepted, &error) && error.status == YT_RANGE && accepted == 0U
+	CHECK(yt_database_read(&database, 0xFFFFFFU, &after,
+	    &error) && database.last_get_basic_error == 0U);
+	CHECK(!yt_database_write(&database, 0U, &replacement,
+	    &error) && error.status == YT_RANGE
 	    && database.last_put_basic_error == 63U);
-	accepted = 99U;
-	CHECK(!yt_database_random_put(&database, 0x1000000U, &replacement,
-	    false, &accepted, &error) && error.status == YT_RANGE
-	    && accepted == 0U && database.last_put_basic_error == 63U);
+	CHECK(!yt_database_write(&database, 0x1000000U, &replacement,
+	    &error) && error.status == YT_RANGE
+	    && database.last_put_basic_error == 63U);
 	yt_error_clear(&error);
 	CHECK(yt_database_write_durable(&database, 1U, &replacement, &error)
 	    && database.last_put_basic_error == 0U);

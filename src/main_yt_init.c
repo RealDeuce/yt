@@ -83,7 +83,6 @@ main(int argc, char **argv)
 	struct yt_random random;
 	struct yt_initializer_preparation preparation;
 	struct yt_database database = {0};
-	struct yt_init_binding binding;
 	struct console_output console = {stdout, 0U};
 	const struct yt_init_presenter presenter = {
 	    .context = &console,
@@ -108,7 +107,7 @@ main(int argc, char **argv)
 		return EXIT_SUCCESS;
 	if (!yt_init_present_opening(&presenter, &error)
 	    || !yt_initialize_begin_yt(&error)
-	    || !yt_initialize_bind_yt(&database, &binding, &error)) {
+	    || !yt_initialize_bind_yt(&database, &error)) {
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;
 	}
