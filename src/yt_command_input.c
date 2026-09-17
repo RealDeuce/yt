@@ -418,7 +418,6 @@ yt_input_drain_local(struct yt_input_drain_state *state,
 	if (state == NULL || selected == NULL || selected->length > 2U
 	    || (selected->remote && selected->length != 0))
 		return YT_INPUT_DRAIN_ERROR;
-	++state->local_reads;
 	if (state->expect_paired_local) {
 		if (selected->length != 0)
 			memcpy(state->residue, selected->bytes,
@@ -442,13 +441,11 @@ yt_input_drain_serial(struct yt_input_drain_state *state, float mode,
 		return YT_INPUT_DRAIN_ERROR;
 	if (mode != 0.0f)
 		return YT_INPUT_DRAIN_COMPLETE;
-	++state->loc_reads;
 	if (selected->length == 0)
 		return YT_INPUT_DRAIN_COMPLETE;
 	if (!selected->remote || selected->length != 1U)
 		return YT_INPUT_DRAIN_ERROR;
 	state->residue[0] = selected->bytes[0];
 	state->residue_length = 1;
-	++state->serial_reads;
 	return YT_INPUT_DRAIN_CONTINUE;
 }

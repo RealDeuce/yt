@@ -56,9 +56,6 @@ enum yt_input_drain_reason {
 struct yt_input_drain_state {
 	uint8_t residue[2];
 	size_t residue_length;
-	size_t local_reads;
-	size_t loc_reads;
-	size_t serial_reads;
 	bool expect_paired_local;
 };
 

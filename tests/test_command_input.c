@@ -699,11 +699,10 @@ test_input_drain(void)
 	value.length = 0;
 	reason = yt_input_drain_local(&drain, &value);
 	CHECK(reason == YT_INPUT_DRAIN_LOCAL_COMPLETE
-	    && drain.local_reads == 5 && drain.residue_length == 1
+	    && drain.residue_length == 1
 	    && drain.residue[0] == 'Z');
 	CHECK(yt_input_drain_serial(&drain, 2.0f, &value)
 	    == YT_INPUT_DRAIN_COMPLETE);
-	CHECK(drain.loc_reads == 0 && drain.serial_reads == 0);
 
 	CHECK(yt_input_drain_begin(&drain, &initial));
 	value.bytes[0] = 'A';
@@ -719,10 +718,9 @@ test_input_drain(void)
 	value.length = 0;
 	CHECK(yt_input_drain_local(&drain, &value)
 	    == YT_INPUT_DRAIN_CONTINUE);
-	CHECK(drain.residue_length == 0 && drain.local_reads == 4);
+	CHECK(drain.residue_length == 0);
 	CHECK(yt_input_drain_local(&drain, &value)
 	    == YT_INPUT_DRAIN_LOCAL_COMPLETE);
-	CHECK(drain.local_reads == 5);
 
 	CHECK(yt_input_drain_begin(&drain, &initial));
 	value.length = 0;
@@ -740,9 +738,7 @@ test_input_drain(void)
 	value.remote = false;
 	CHECK(yt_input_drain_serial(&drain, 0.0f, &value)
 	    == YT_INPUT_DRAIN_COMPLETE);
-	CHECK(drain.residue_length == 1 && drain.residue[0] == 'y'
-	    && drain.local_reads == 1 && drain.loc_reads == 3
-	    && drain.serial_reads == 2);
+	CHECK(drain.residue_length == 1 && drain.residue[0] == 'y');
 }
 
 static void
