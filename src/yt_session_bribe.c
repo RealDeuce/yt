@@ -152,7 +152,7 @@ yt_session_bribe_deployed(struct yt_session *session,
 		    direct_hostile_menu, forced_attack, error);
 	}
 
-	if (sector->planet != 0.0f) {
+	if (sector->planet != 0) {
 		return bribe_name_row(planet_prefix,
 		    sizeof(planet_prefix) - 1U, name, name_length, planet_suffix,
 		    sizeof(planet_suffix) - 1U, row, sizeof(row), &row_length)

@@ -361,10 +361,10 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 		set_error(error, YT_INVALID, "Xannor planet arrival", "");
 		return false;
 	}
-	if (sector->planet <= 0.0f)
+	if (sector->planet <= 0)
 		return true;
 	arrival_sector_number = (int)*group_location;
-	planet_number = (int)sector->planet;
+	planet_number = sector->planet;
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
 	if (planet.name_length == 0U
@@ -440,7 +440,7 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 	    && planet.production[1] == 0.0f
 	    && planet.production[2] == 0.0f;
 	if (destroyed) {
-		sector->planet = 0.0f;
+		sector->planet = 0;
 		planet.name_length = 0U;
 	}
 	if (*group_size <= 0.0f) {
@@ -473,7 +473,7 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 		if (!yt_game_read_sector(game, arrival_sector_number, sector,
 		    error))
 			return false;
-		sector->planet = 0.0f;
+		sector->planet = 0;
 		if (!yt_record_set_number(&sector->record, YT_F93, 0.0f)) {
 			set_error(error, YT_RANGE, "encode destroyed Xannor link",
 			    "YTDATA.DAT");

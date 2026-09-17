@@ -28,12 +28,13 @@ yt_planet_move_add_cost(float cost)
 }
 
 void
-yt_planet_move_sector_overlay(struct yt_sector *sector, float planet_link)
+yt_planet_move_sector_overlay(struct yt_sector *sector, int planet_link)
 {
 	if (sector == NULL)
 		return;
 	sector->planet = planet_link;
-	(void)yt_record_set_number(&sector->record, YT_F93, planet_link);
+	(void)yt_record_set_number(&sector->record, YT_F93,
+	    (float)planet_link);
 }
 
 void

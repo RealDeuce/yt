@@ -163,13 +163,13 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				    "spy attention row", error))
 					return false;
 			}
-			if (sector.planet > 0.0f) {
+			if (sector.planet > 0) {
 				struct yt_planet planet;
 				struct yt_planet updated_planet;
 				uint8_t row[160];
 				size_t length;
 				uint32_t physical = session_planet_basic_record(session,
-				    (int)sector.planet);
+				    sector.planet);
 
 				if (!yt_session_update_planet_physical(session, physical,
 				    &updated_planet, NULL, error)

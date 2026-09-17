@@ -241,10 +241,10 @@ yt_session_computer_owned_planets(struct yt_session *session,
 
 		if (!session_read_sector(session, sector_number, &sector, error))
 			return false;
-		if (sector.planet == 0.0f)
+		if (sector.planet == 0)
 			continue;
 		physical_record = session_planet_basic_record(session,
-		    (int)sector.planet);
+		    sector.planet);
 		if (!yt_database_read(&session->door->game.database,
 		    (size_t)physical_record, &record, error))
 			return false;

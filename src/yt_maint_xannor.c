@@ -124,7 +124,7 @@ yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
 			return false;
 		if ((sector.fighters > 1.0f
 		    && sector.fighter_owner != -1.0f)
-		    || sector.planet > 1.0f)
+		    || sector.planet > 1)
 			discovery_target = candidate;
 		if (discovery_target == 0) {
 			for (player = 2U; player < cache_count; ++player) {
@@ -607,7 +607,7 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 			return false;
 		if (!((sector.fighters > 1.0f
 		    && sector.fighter_owner != -1.0f)
-		    || sector.planet > 1.0f))
+		    || sector.planet > 1))
 			break;
 	}
 	old_logical = (int)game->config.headquarters;
@@ -632,7 +632,7 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 	}
 	planet_number = (int)qb_single_subtract(game->config.total_records,
 	    game->config.planet_offset);
-	if ((int)sector.planet == planet_number) {
+	if (sector.planet == planet_number) {
 		if (!yt_record_set_number(&sector.record, YT_F93, 0.0f)
 		    || !yt_database_write(&game->database,
 		    (size_t)yt_sector_basic_record(&game->config, old_logical),
@@ -787,7 +787,8 @@ static bool
 maintenance_write_xannor_sector(struct yt_game *game, int logical,
     struct yt_sector *sector, struct yt_error *error)
 {
-	if (!yt_record_set_number(&sector->record, YT_F93, sector->planet)) {
+	if (!yt_record_set_number(&sector->record, YT_F93,
+	    (float)sector->planet)) {
 		set_error(error, YT_RANGE, "encode Xannor sector", "YTDATA.DAT");
 		return false;
 	}
@@ -838,7 +839,7 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	}
 	if (!yt_game_read_sector(game, headquarters, &sector, error))
 		return false;
-	rebuilt = sector.planet == 0.0f;
+	rebuilt = sector.planet == 0;
 	if (rebuilt) {
 		if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
 		    &today, NULL,
@@ -872,7 +873,7 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 		    output.rows[4].length, error)
 		    || !yt_game_read_sector(game, headquarters, &sector, error))
 			return false;
-		sector.planet = (float)planet_count;
+		sector.planet = planet_count;
 		if (!maintenance_write_xannor_sector(game, headquarters,
 		    &sector, error))
 			return false;

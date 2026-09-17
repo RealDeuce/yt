@@ -80,7 +80,7 @@ test_activate_and_deactivate(void)
 	CHECK(session.io.typeahead_position == session.io.typeahead_length);
 	CHECK(session.navigation.route_marker == 0.0f);
 	yt_record_blank(&sector.record);
-	sector.planet = 1.0f;
+	sector.planet = 1;
 	yt_sector_encode(&sector);
 	CHECK(yt_database_write_durable(&door.game.database, 10U,
 	    &sector.record, &error));

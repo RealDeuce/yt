@@ -20,7 +20,8 @@ static bool
 maintenance_write_wanderer_sector(struct yt_game *game, int logical,
     struct yt_sector *sector, struct yt_error *error)
 {
-	if (!yt_record_set_number(&sector->record, YT_F93, sector->planet)) {
+	if (!yt_record_set_number(&sector->record, YT_F93,
+	    (float)sector->planet)) {
 		set_error(error, YT_RANGE, "encode Wanderer sector", "YTDATA.DAT");
 		return false;
 	}
@@ -116,9 +117,9 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	for (logical = 1; logical <= sector_count; ++logical) {
 		if (!yt_game_read_sector(game, logical, &sector, error))
 			return false;
-		if (sector.planet == 1.0f) {
+		if (sector.planet == 1) {
 			removed_sector = logical;
-			sector.planet = 0.0f;
+			sector.planet = 0;
 			if (!maintenance_write_wanderer_sector(game, logical,
 			    &sector, error))
 				return false;
@@ -156,10 +157,10 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 			return false;
 		if (!yt_game_read_sector(game, logical, &sector, error))
 			return false;
-		if (sector.planet == 0.0f)
+		if (sector.planet == 0)
 			break;
 	}
-	sector.planet = 1.0f;
+	sector.planet = 1;
 	if (!maintenance_write_wanderer_sector(game, logical, &sector, error)
 	    || !yt_game_read_planet(game, 1, &planet, error))
 		return false;

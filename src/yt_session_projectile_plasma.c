@@ -253,7 +253,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 
 	if (*energy <= 0.0)
 		return true;
-	logical_planet = (int)sector->planet;
+	logical_planet = sector->planet;
 	if (logical_planet == 0)
 		return true;
 	if (!yt_session_update_planet(session, logical_planet, &updated,
@@ -344,7 +344,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		    logical_planet), &persistence.record, error)
 		    || !session_read_sector(session, sector_number, &unlink, error))
 			return false;
-		unlink.planet = 0.0f;
+		unlink.planet = 0;
 		if (!yt_record_set_number(&unlink.record, YT_F93, 0.0f)
 		    || !yt_database_write(&session->door->game.database,
 		    (size_t)session_sector_basic_record(session,
@@ -375,7 +375,7 @@ yt_session_plasma_sector(struct yt_session *session, int sector_number,
     size_t launch_attacker_length, double *energy, struct yt_error *error)
 {
 	struct yt_sector sector;
-	float planet_link;
+	int planet_link;
 	int basic;
 
 	if (initial != NULL)
@@ -734,7 +734,7 @@ plasma_reload_sector:
 				return true;
 		}
 	}
-	if (!(*energy > 0.0) || planet_link == 0.0f)
+	if (!(*energy > 0.0) || planet_link == 0)
 		return true;
 	/* The B099 dispatch cached this link before mines and the player scan. */
 	sector.planet = planet_link;

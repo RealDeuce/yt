@@ -135,7 +135,7 @@ test_land_and_leave_owned_planet(void)
 	player.credits = 1000.0f;
 	yt_player_encode(&player);
 	yt_record_blank(&sector.record);
-	sector.planet = 1.0f;
+	sector.planet = 1;
 	yt_sector_encode(&sector);
 	yt_record_blank(&planet.record);
 	(void)snprintf(planet.name, sizeof(planet.name), "%s", "Home");

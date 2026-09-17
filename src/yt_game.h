@@ -46,7 +46,7 @@ struct yt_sector {
 	int port;
 	float fighters;
 	float fighter_owner;
-	float planet;
+	int planet;
 	float metadata;
 	float mines;
 };
@@ -497,7 +497,7 @@ bool yt_planet_creation_success_row(const uint8_t *planet_name,
 float yt_planet_move_destination(const char *response);
 float yt_planet_move_add_cost(float cost);
 void yt_planet_move_sector_overlay(struct yt_sector *sector,
-    float planet_link);
+    int planet_link);
 void yt_planet_move_explosion_overlay(struct yt_planet *planet);
 void yt_planet_move_fighter_overlay(struct yt_player *player, float loss);
 void yt_planet_move_success_overlay(struct yt_player *player,

@@ -131,7 +131,7 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 
 		if (!yt_game_read_sector(game, sector_number, &sector, error))
 			return false;
-		if (sector.planet == (float)planet_number) {
+		if (sector.planet == planet_number) {
 			linked_sector = sector_number;
 			break;
 		}
@@ -168,9 +168,10 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 			    || !yt_game_read_sector(game, sector_number, &sector,
 			    error))
 				return false;
-		} while (sector.planet > 0.0f);
-		sector.planet = (float)planet_number;
-		if (!yt_record_set_number(&sector.record, YT_F93, sector.planet)) {
+		} while (sector.planet > 0);
+		sector.planet = planet_number;
+		if (!yt_record_set_number(&sector.record, YT_F93,
+		    (float)sector.planet)) {
 			set_error(error, YT_RANGE, "encode Mercenary Base link",
 			    "YTDATA.DAT");
 			return false;
@@ -534,7 +535,7 @@ yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 		return false;
 	}
 	*absorbed = false;
-	planet_number = (int)arrival_sector->planet;
+	planet_number = arrival_sector->planet;
 	if ((arrival_sector->fighter_owner != -2.0f
 	    && arrival_sector->fighter_owner != 0.0f)
 	    || planet_number == 0)

@@ -170,7 +170,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 		char response[160];
 		double sector_fighters;
 		int fighter_owner;
-		float link;
+		int link;
 		float scratch;
 		float selected;
 		bool denied;
@@ -216,7 +216,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			    session->door->game.config.total_records,
 			    (float)session_planet_offset(session));
 
-			valid_link = link > 0.0f && link <= maximum_planet;
+			valid_link = link > 0 && (float)link <= maximum_planet;
 		}
 		if (valid_link) {
 			bool limited_candidate;
@@ -238,9 +238,9 @@ yt_session_computer_planet_report(struct yt_session *session,
 			sector_fighters = session->combat.deployed_fighters;
 			relationship_friendly = fighter_friendly;
 			session->planet.current_record =
-			    session_planet_basic_record(session, (int)link);
+			    session_planet_basic_record(session, link);
 			scratch = (float)session->planet.current_record;
-			if (!session_read_planet(session, (int)link, &planet, error))
+			if (!session_read_planet(session, link, &planet, error))
 				return false;
 			name_length = planet.name_length;
 			if (name_length > YT_TEXT_FIELD_SIZE)
@@ -293,7 +293,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			sector_fighters = session->combat.deployed_fighters;
 			fighter_owner = session->player_reference.record;
 			relationship_friendly = session->player_reference.friendly;
-			scratch = link;
+			scratch = (float)link;
 		}
 		{
 			bool scratch_zero = scratch == 0.0f;
@@ -317,7 +317,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			}
 		}
 		return yt_session_planet_inventory(session, valid_link
-		    ? (int)link : (int)session->planet.current_record
+		    ? link : (int)session->planet.current_record
 		    - session_planet_offset(session), error);
 	}
 }

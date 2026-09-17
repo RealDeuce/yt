@@ -101,7 +101,7 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	    error)
 	    || !yt_game_read_sector(game, sector_number, &sector, error))
 		return false;
-	if (sector.planet > 0.0f)
+	if (sector.planet > 0)
 		return lottery_fail(line_output, line_context, error);
 	/* The constructor performs a second, fresh GET of the selected planet. */
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
@@ -145,8 +145,9 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	    &planet.record, error)
 	    || !yt_game_read_sector(game, sector_number, &sector, error))
 		return false;
-	sector.planet = (float)planet_number;
-	if (!yt_record_set_number(&sector.record, YT_F93, sector.planet)
+	sector.planet = planet_number;
+	if (!yt_record_set_number(&sector.record, YT_F93,
+	    (float)sector.planet)
 	    || !yt_database_write(&game->database,
 	    (size_t)yt_sector_basic_record(&game->config, sector_number),
 	    &sector.record, error))

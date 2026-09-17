@@ -35,7 +35,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		*early_return = true;
 		return true;
 	}
-	logical_planet = (int)sector->planet;
+	logical_planet = sector->planet;
 	if (logical_planet == 0)
 		return true;
 	physical_planet = session_planet_basic_record(session,

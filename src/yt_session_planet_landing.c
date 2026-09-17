@@ -238,7 +238,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	    (size_t)sector_physical, &raw, error))
 		return false;
 	yt_sector_decode(&sector, &raw);
-	sector.planet = (float)selected_logical;
+	sector.planet = selected_logical;
 	(void)yt_record_set_number(&sector.record, YT_F93,
 	    (float)selected_logical);
 	if (!yt_database_write(&session->door->game.database,
@@ -300,8 +300,8 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 	if (!session_read_sector(session,
 	    session->player.sector, &sector, error))
 		return false;
-	session->planet.fallback_index = (int)sector.planet;
-	if (sector.planet == 0.0f) {
+	session->planet.fallback_index = sector.planet;
+	if (sector.planet == 0) {
 		bool created = create_planet(session, error);
 
 		if (created && enter_sector != NULL)
@@ -313,8 +313,8 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 	    "planet landing progress", error))
 		return false;
 	session->planet.current_record = session_planet_basic_record(session,
-	    (int)sector.planet);
-	logical = (int)sector.planet;
+	    sector.planet);
+	logical = sector.planet;
 	physical = session_planet_basic_record(session, logical);
 	if (!yt_session_planet_permission(session, logical, &permission_denied,
 	    error))

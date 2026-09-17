@@ -204,10 +204,10 @@ display_sector_one(struct yt_session *session, int logical_sector,
 	}
 	if (!scanner_read_sector(session, logical_sector, &sector, error))
 		return false;
-	if (sector.planet > 0.0f) {
+	if (sector.planet > 0) {
 		struct yt_planet planet;
 		uint32_t physical_planet = session_planet_basic_record(session,
-		    (int)sector.planet);
+		    sector.planet);
 		float saved_foreground;
 
 		if (!yt_session_update_planet_physical(session, physical_planet,

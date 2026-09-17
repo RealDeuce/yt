@@ -2836,14 +2836,14 @@ test_xannor_planet_arrival(struct yt_error *error)
 	planet.production[0] = 501.0f;
 	planet.production[1] = 0.0f;
 	planet.production[2] = 0.0f;
-	sector.planet = 1.0f;
+	sector.planet = 1;
 	if (!yt_game_write_planet(&game, 1, &planet, error))
 		goto done;
 	yt_test_random_use_provider(&game.random, utility_random_fill, &script);
 	if (!yt_maintenance_xannor_planet_arrival(&game, &location,
 	    &group_size, &sector, utility_capture_line, &tape, error)
 	    || location != 733.0f || group_size != 2.0f
-	    || sector.planet != 1.0f || TEST_DRAWS(game.random) != 0U
+	    || sector.planet != 1 || TEST_DRAWS(game.random) != 0U
 	    || script.position != 0U || tape.calls != 0U)
 		goto done;
 
@@ -2866,7 +2866,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 	if (!yt_game_read_planet(&game, 1, &planet, error)
 	    || !yt_text_read("YTNEWS.DAT", &news, error)
 	    || location != 0.0f || group_size != 0.0f
-	    || sector.planet != 1.0f || planet.owner != 0.0f
+	    || sector.planet != 1 || planet.owner != 0.0f
 	    || planet.ground_forces != 0.0f
 	    || planet.production[0] != 501.0f
 	    || planet.stock[0] != 5010.0f || planet.name_length != 5U
@@ -2890,7 +2890,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 	planet.production[1] = 0.0f;
 	planet.production[2] = 0.0f;
 	planet.stock[0] = 10.0f;
-	sector.planet = 1.0f;
+	sector.planet = 1;
 	yt_record_blank(&sector.record);
 	if (!yt_record_set_number(&sector.record, YT_F93, 1.0f)
 	    || !yt_game_write_sector(&game, 733, &sector, error))
@@ -2909,7 +2909,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 	    || !yt_text_read("YTNEWS.DAT", &news, error))
 		goto done;
 	valid = location == 733.0f && group_size == 2.0f
-	    && sector.planet == 0.0f && planet.owner == 0.0f
+	    && sector.planet == 0 && planet.owner == 0.0f
 	    && planet.ground_forces == 0.0f && planet.name_length == 0U
 	    && planet.stock[0] == 0.0f && TEST_DRAWS(game.random) == 0U
 	    && script.position == 0U && tape.calls == 2U
@@ -3268,7 +3268,7 @@ test_ytconfig_headquarters(struct yt_error *error)
 		goto done;
 	snapshots = true;
 	forced_candidate = original_candidate;
-	forced_candidate.planet = 0.0f;
+	forced_candidate.planet = 0;
 	forced_candidate.fighters = 2.0f;
 	forced_candidate.fighter_owner = -1.0f;
 	if (!yt_game_write_sector(&game, candidate_number, &forced_candidate,

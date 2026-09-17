@@ -1208,6 +1208,9 @@ check_projectile_sector_presence(void)
 	float *objects[] = {
 		&sector.mines,
 		&sector.fighters,
+	};
+	int *links[] = {
+		&sector.port,
 		&sector.planet,
 	};
 	size_t index;
@@ -1219,11 +1222,13 @@ check_projectile_sector_presence(void)
 		    &player_cache, 0))
 			return false;
 	}
-	memset(&sector, 0, sizeof(sector));
-	sector.port = 1;
-	if (!yt_projectile_sector_has_presence(&sector, 17, 3,
-	    &player_cache, 0))
-		return false;
+	for (index = 0U; index < YT_ARRAY_LEN(links); ++index) {
+		memset(&sector, 0, sizeof(sector));
+		*links[index] = 1;
+		if (!yt_projectile_sector_has_presence(&sector, 17, 3,
+		    &player_cache, 0))
+			return false;
+	}
 	memset(&sector, 0, sizeof(sector));
 	if (yt_projectile_sector_has_presence(&sector, 17, 3,
 	    &player_cache, 0))
@@ -2073,8 +2078,8 @@ check_planet_move_model(void)
 		player.record.bytes[index] = (uint8_t)(index ^ 0xb4U);
 	}
 	before = sector.record;
-	yt_planet_move_sector_overlay(&sector, 7.0f);
-	if (sector.planet != 7.0f
+	yt_planet_move_sector_overlay(&sector, 7);
+	if (sector.planet != 7
 	    || yt_record_get_number(&sector.record, YT_F93) != 7.0f)
 		return false;
 	for (index = 0U; index < YT_RECORD_SIZE; ++index)
@@ -3396,7 +3401,7 @@ check_maintenance_mercenary_active_phase_pass(void)
 	    || sector.fighters != 110.0f || sector.fighter_owner != 2.0f
 	    || !yt_game_read_sector(&game, 2, &sector, &error)
 	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f
-	    || sector.planet != 1.0f)
+	    || sector.planet != 1)
 		goto done;
 	radio_file = fopen("YTRMSG.DAT", "rb");
 	if (radio_file == NULL
@@ -3507,7 +3512,7 @@ check_maintenance_mercenary_defection_phase_pass(void)
 	    != 0
 	    || !yt_game_read_sector(&game, 1, &sector, &error)
 	    || sector.fighters != 1.0f || sector.fighter_owner != -2.0f
-	    || sector.planet != 1.0f)
+	    || sector.planet != 1)
 		goto done;
 	radio_file = fopen("YTRMSG.DAT", "rb");
 	valid = radio_file == NULL;
@@ -4623,7 +4628,7 @@ check_maintenance_mercenary_rebuild_phase_pass(void)
 	    || memcmp(news.data, expected_news, sizeof(expected_news) - 1U)
 	    != 0
 	    || !yt_game_read_sector(&game, 1, &sector, &error)
-	    || sector.planet != 1.0f
+	    || sector.planet != 1
 	    || !yt_game_read_planet(&game, 1, &planet, &error)
 	    || planet.owner != -2.0f || planet.ground_forces != 150000.0f
 	    || planet.bank != 25000000.0f || planet.name_length != 14U
@@ -4752,7 +4757,7 @@ check_maintenance_mercenary_funding_phase_pass(void)
 		if (!yt_game_read_sector(&game, logical, &sector, &error)
 		    || sector.fighters != expected_fighters
 		    || sector.fighter_owner != expected_owner
-		    || sector.planet != 1.0f)
+		    || sector.planet != 1)
 			goto done;
 	}
 	radio_file = fopen("YTRMSG.DAT", "rb");
@@ -4863,10 +4868,10 @@ check_maintenance_mercenary_attack_phase_pass(void)
 	    != 0
 	    || !yt_game_read_sector(&game, 1, &sector, &error)
 	    || sector.fighters != 2.0f || sector.fighter_owner != -1.0f
-	    || sector.planet != 0.0f
+	    || sector.planet != 0
 	    || !yt_game_read_sector(&game, 2, &sector, &error)
 	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f
-	    || sector.planet != 1.0f)
+	    || sector.planet != 1)
 		goto done;
 	radio_file = fopen("YTRMSG.DAT", "rb");
 	valid = radio_file == NULL;
@@ -4981,7 +4986,7 @@ check_maintenance_mercenary_mine_planet_phase_pass(void)
 	    != 0
 	    || !yt_game_read_sector(&game, 1, &sector, &error)
 	    || sector.fighters != 12.0f || sector.fighter_owner != -2.0f
-	    || sector.planet != 1.0f || sector.mines != 0.0f
+	    || sector.planet != 1 || sector.mines != 0.0f
 	    || !yt_game_read_sector(&game, 2, &sector, &error)
 	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f
 	    || !yt_game_read_planet(&game, 1, &planet, &error)
@@ -5088,7 +5093,7 @@ check_maintenance_mercenary_disconnected_phase_pass(void)
 	    != 0
 	    || !yt_game_read_sector(&game, 1, &sector, &error)
 	    || sector.fighters != 10.0f || sector.fighter_owner != -2.0f
-	    || sector.planet != 1.0f
+	    || sector.planet != 1
 	    || !yt_game_read_sector(&game, 2, &sector, &error)
 	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f)
 		goto done;
@@ -5856,7 +5861,7 @@ check_maintenance_mercenary_mine_pass(void)
 	    || moving != 9.0f
 	    || TEST_DRAWS(game.random) != 2U || script.position != 6U
 	    || arrival.mines != 2.0f || arrival.fighters != 23.0f
-	    || arrival.fighter_owner != 4.0f || arrival.planet != 9.0f
+	    || arrival.fighter_owner != 4.0f || arrival.planet != 9
 	    || screen.lines != 2U
 	    || screen.length != sizeof(expected_first_screen) - 1U
 	    || memcmp(screen.data, expected_first_screen,
@@ -5988,7 +5993,7 @@ check_maintenance_mercenary_planet_pass(void)
 	    || !yt_maintenance_mercenary_planet_absorption(&game, 7, 20,
 	    10.0, score_line_collect, &screen, &sector, &absorbed, &error)
 	    || !absorbed || sector.fighters != 15.0f
-	    || sector.fighter_owner != -2.0f || sector.planet != 5.0f
+	    || sector.fighter_owner != -2.0f || sector.planet != 5
 	    || screen.lines != 2U
 	    || screen.length != sizeof(expected_screen) - 1U
 	    || memcmp(screen.data, expected_screen,
@@ -7807,7 +7812,7 @@ check_maintenance_xannor_roaming_groups_pass(void)
 	}
 	if (!yt_game_read_sector(&game, 40, &sector, &error)
 	    || sector.fighters != 20.0f || sector.fighter_owner != -1.0f
-	    || sector.planet != 0.0f)
+	    || sector.planet != 0)
 		goto done;
 	valid = true;
 
@@ -7951,7 +7956,7 @@ check_maintenance_xannor_phase_pass(void)
 	}
 	if (!yt_game_read_sector(&game, 40, &sector, &error)
 	    || sector.fighters != 21.0f || sector.fighter_owner != -1.0f
-	    || sector.planet != 100.0f
+	    || sector.planet != 100
 	    || !yt_game_read_planet(&game, 100, &planet, &error)
 	    || planet.owner != -1.0f || planet.ground_forces != 0.0f
 	    || planet.bank != 1.0f || state.route_cache.warps == NULL
@@ -13008,12 +13013,12 @@ check_hostile_menu_front(void)
 		memset(sector.record.bytes, 0xa5, sizeof(sector.record.bytes));
 		sector.fighters = 20.0f;
 		sector.fighter_owner = 7.0f;
-		sector.planet = 99.0f;
+		sector.planet = 99;
 		expected_sector = sector;
 		(void)yt_record_set_number(&expected_sector.record, YT_F81, 3.0f);
 		yt_deployed_attack_sector_overlay(&sector, 3.0f);
 		if (sector.fighters != 3.0f || sector.fighter_owner != 7.0f
-		    || sector.planet != 99.0f
+		    || sector.planet != 99
 		    || memcmp(sector.record.bytes, expected_sector.record.bytes,
 		    YT_RECORD_SIZE) != 0)
 			return false;
@@ -13023,7 +13028,7 @@ check_hostile_menu_front(void)
 		(void)yt_record_set_number(&expected_sector.record, YT_F85, 0.0f);
 		yt_deployed_attack_sector_overlay(&sector, 0.5f);
 		if (sector.fighters != 0.5f || sector.fighter_owner != 0.0f
-		    || sector.planet != 99.0f
+		    || sector.planet != 99
 		    || memcmp(sector.record.bytes, expected_sector.record.bytes,
 		    YT_RECORD_SIZE) != 0)
 			return false;
@@ -13035,7 +13040,7 @@ check_hostile_menu_front(void)
 		(void)yt_record_set_number(&expected_sector.record, YT_F81, 0.0f);
 		yt_bribe_sector_overlay(&sector);
 		if (sector.fighters != 0.0f || sector.fighter_owner != 0.0f
-		    || sector.planet != 99.0f
+		    || sector.planet != 99
 		    || memcmp(sector.record.bytes, expected_sector.record.bytes,
 		    YT_RECORD_SIZE) != 0)
 			return false;
@@ -13136,7 +13141,7 @@ check_hostile_menu_front(void)
 		    sizeof(joined_record));
 		sector.fighters = 99.0f;
 		sector.fighter_owner = 44.0f;
-		sector.planet = 8.0f;
+		sector.planet = 8;
 		player.sector = 99;
 		player.fighters = 12.0f;
 		player.team = 7.0f;
@@ -13152,7 +13157,7 @@ check_hostile_menu_front(void)
 		yt_team_password_overlay(&password_record, password);
 		yt_team_inactive_overlay(&inactive_record);
 		if (sector.fighters != 15.0f || sector.fighter_owner != 44.0f
-		    || sector.planet != 8.0f || player.fighters != 7.0f
+		    || sector.planet != 8 || player.fighters != 7.0f
 		    || player.sector != 99 || player.team != 7.0f
 		    || memcmp(sector.record.bytes, sector_record, YT_F81) != 0
 		    || memcmp(sector.record.bytes + YT_F85,

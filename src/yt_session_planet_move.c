@@ -66,7 +66,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	int moving_planet;
 	int actual_destination = destination;
 	float draw;
-	float xannor_planet = qb_single_subtract(
+	int xannor_planet = (int)qb_single_subtract(
 	    session->door->game.config.total_records,
 	    (float)session_planet_offset(session));
 	uint32_t moving_record;
@@ -102,7 +102,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	}
 	if (!session_read_sector(session, destination, &target, error))
 		return false;
-	if (target.planet > 0.0f) {
+	if (target.planet > 0) {
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "planet move occupied blank", error)
 		    || !session_present_text(session, occupied,
@@ -113,10 +113,10 @@ planet_move_hop(struct yt_session *session, int source_number,
 	}
 	if (!session_read_sector(session, source_number, &source, error))
 		return false;
-	source_link = (int)source.planet;
+	source_link = source.planet;
 	moving_record = session_planet_basic_record(session, source_link);
 	moving_planet = source_link;
-	yt_planet_move_sector_overlay(&source, 0.0f);
+	yt_planet_move_sector_overlay(&source, 0);
 	source_record = (int)session_sector_basic_record(session, source_number);
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)source_record, &source.record, error)
@@ -199,7 +199,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 			if (!session_read_sector(session, actual_destination,
 			    &target, error))
 				return false;
-			if (target.planet <= 0.0f)
+			if (target.planet <= 0)
 				break;
 		}
 	}
@@ -233,7 +233,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 		    error))
 			return false;
 	}
-	yt_planet_move_sector_overlay(&target, (float)moving_planet);
+	yt_planet_move_sector_overlay(&target, moving_planet);
 	destination_record = (int)session_sector_basic_record(session,
 	    actual_destination);
 	if (!yt_database_write(&session->door->game.database,

@@ -429,10 +429,10 @@ session_team_search(struct yt_session *session, struct yt_error *error)
 			if (!session_read_sector(session,
 			    logical_sector, &sector, error))
 				return false;
-			if (sector.planet <= 0.0f)
+			if (sector.planet <= 0)
 				continue;
 			if (!session_read_planet(session,
-			    (int)sector.planet, &planet, error))
+			    sector.planet, &planet, error))
 				return false;
 			if (planet.owner != (float)player_record)
 				continue;

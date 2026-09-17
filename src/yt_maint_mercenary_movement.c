@@ -273,7 +273,7 @@ mercenary_arrival(struct yt_game *game, int sector_number,
 		*arrival_result = MERCENARY_ARRIVAL_TERMINAL;
 		return true;
 	}
-	if (*moving <= 0.0f || sector.planet != 0.0f) {
+	if (*moving <= 0.0f || sector.planet != 0) {
 		*arrival_result = MERCENARY_ARRIVAL_CONTINUE;
 		return true;
 	}
@@ -316,7 +316,7 @@ yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
 
 			if (!yt_random_next(&game->random, &hold, error))
 				return false;
-			if (yt_maintenance_mercenary_stays((int)sector.planet, hold))
+			if (yt_maintenance_mercenary_stays(sector.planet, hold))
 				continue;
 		}
 		moving = sector.fighters;

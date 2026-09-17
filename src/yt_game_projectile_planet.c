@@ -60,7 +60,7 @@ yt_projectile_sector_unlink_overlay(struct yt_sector *sector)
 
 	if (sector == NULL)
 		return false;
-	sector->planet = 0.0f;
+	sector->planet = 0;
 	return yt_record_set_raw_number(&sector->record, YT_F93, link_zero);
 }
 
