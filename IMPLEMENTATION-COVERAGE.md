@@ -1,7 +1,7 @@
 # Native implementation coverage
 
 This is the implementation ledger required by `IMPLEMENTATION-HANDOFF.md`.
-It measures the C17/OpenDoors candidate against the completed byte-pinned
+It measures the C17/OpenDoors implementation against the completed byte-pinned
 3.6G analysis.  It does not reinterpret the analysis coverage ledgers as
 native implementation evidence and does not combine unlike inventories into
 an overall percentage.
@@ -15,8 +15,12 @@ an overall percentage.
 | `verified` | The declared bounded component has an exact native test or fixture and matches the final analysis for that scope. |
 | `explicitly deferred` | The handoff or user explicitly deferred this scope; it is not silently counted as done. |
 
-Any row promoted to `verified` must name the implementing C function and the
-specific native test or fixture. A whole-program smoke test cannot verify an
+Any row promoted to `verified` must record the implementing C function and the
+specific native test or fixture used for that promotion. Those coordinates
+are verification provenance: after a behavior-preserving refactor they remain
+the record of the exact comparison even when the named helper or focused test
+was deliberately folded into a direct controller. Current source ownership is
+listed separately below. A whole-program smoke test cannot newly verify an
 unrelated child root, qualified transfer, failure prefix, or presentation
 family.
 
@@ -42,11 +46,10 @@ declared scope; it does not claim that every consumer or dependency is also
 verified.
 
 The same boundary rule applies to runtime and physical adapters. An exact
-provider-driven transaction is credited independently from the raw BRUN call
-frame, error-router projection, operating-system observation, or OpenDoors
-delivery behind that provider. Those adapter identities remain `candidate`
-until their own contracts are complete; they do not keep the already-exact
-transaction, its internal transfers, or its presentation family `candidate`.
+bounded transaction is credited independently from the raw BRUN call frame,
+error-router projection, operating-system observation, or OpenDoors delivery
+behind it. Refactoring a proved transaction from a provider harness into a
+direct controller does not change the legacy inventory or reopen its proof.
 
 ## Final-analysis denominators
 
@@ -61,9 +64,40 @@ The generated companion ledgers pin these independent final inventories:
 
 All 11 formerly candidate roots are verified against the resolved upstream contracts in `d16edb83` and their native owners and focused fixtures in `dc738d0`. No root remains `candidate`; verified composable dependencies and independently classified physical adapters do not downgrade their callers. Ordinary local and remote game I/O now uses the unmodified public OpenDoors path and is not a deferred boundary. The optional local function-key personality and the separately authorized exact `LOCAL.EXE` compatibility work remain deferred; the transfer ledger now leaves only those two explicitly authorized local scopes deferred.
 
-Older component narratives below may quote framebuffer hashes from the now-removed audit scaffold. Those quotations are historical analysis notes, not native owners, runtime behavior, current test evidence, or implementation credit. Physical terminal coverage is owned only by the OpenDoors I/O row.
+## Post-refactor ownership
 
-Rows which describe recovered DOS `TIMER`, carrier-helper, F8, F10, or wait process-cell residues likewise name retained byte-pinned compatibility models, not parallel host-runtime services. The active `yt` executable maps those seams through the verified General OpenDoors I/O adapter: OpenDoors owns carrier detection, the session-time and inactivity clocks, local SysOp time changes, chat, blocking deadlines, and terminal shutdown.
+The root, transfer, and presentation dispositions are unchanged by the native
+refactor. The detailed `native_function` and `native_test_or_fixture` cells in
+the companion ledgers preserve the verification snapshot that established each
+status; they are not a current symbol index or a supported internal API. In
+particular, names under the former `yt_input_model.c`, `yt_brun_fatal.c`, and
+monolithic `yt_session.c`/`yt_game.c` owners identify deleted proof scaffolds or
+the pre-split location of behavior. Git history retains those exact fixtures.
+
+The authoritative current subsystem ownership is:
+
+| Runtime responsibility | Current native owner | Current assembled test |
+|---|---|---|
+| OpenDoors startup, identity, cleanup, and termination | `src/yt_door.c::{yt_door_start,yt_door_cleanup,yt_door_finish}` | `tests/test_input_adapter.c::main`; `tests/test_output.c::main` |
+| OpenDoors input polling and relative waits | `src/yt_input.c::{yt_input_poll,yt_input_wait,yt_input_pause,yt_input_poll_source,yt_input_source_ready}` | `tests/test_input_adapter.c::main` |
+| OpenDoors output and opening-file delivery | `src/yt_output.c::{yt_out_plain_bytes,yt_out_present_result,yt_out_opening_file}` | `tests/test_output.c::main`; `tests/test_presentation.c::main` |
+| Command editing, typeahead, repeat, confirmation, and input drain | `src/yt_command_input.c`; `src/yt_session_io.c::{session_read_command,session_read_upper_command,session_read_number_command,session_press_any_key}` | `tests/test_command_input.c::main`; `tests/test_presentation.c::main` |
+| Session startup, registration, and lockout | `src/yt_session_startup.c::yt_session_run`; `src/yt_session_registration.c::yt_session_registration`; `src/yt_session_lockout.c::yt_session_check_lockout` | `tests/test_clean_install.c::main`; `tests/test_presentation.c::main`; `tests/test_utilities.c::main` |
+| Command shell and session features | `src/yt_session_shell.c::{yt_session_command_shell,yt_session_quit}` and the feature-owned `src/yt_session_*.c` controllers | `tests/test_session_*.c`; `tests/test_presentation.c::main` |
+| Navigation and route construction | `src/yt_session_route.c::yt_session_build_route`; `src/yt_session_computer_route.c` | `tests/test_route.c::main`; `tests/test_session_computer.c::main` |
+| Typed game state and gameplay rules | `src/yt_game_records.c` and the feature-owned `src/yt_game_*.c` modules | `tests/test_session_*.c`; `tests/test_data.c::main` |
+| Maintenance | `src/yt_maint.c::yt_maintenance_run` and the feature-owned `src/yt_maint_*.c` modules | `tests/test_clean_install.c::main`; `tests/test_planet_updater.c::main` |
+| Initializers | `src/yt_init.c`, `src/yt_init_files.c`, `src/yt_init_output.c`, and `src/yt_init_world.c` | `tests/test_clean_install.c::main`; `tests/test_utilities.c::main` |
+| Native error projection | `src/yt_main_error.c`; `src/yt_session_error.c`; executable entry points | `tests/test_presentation.c::main`; `tests/test_utilities.c::main` |
+
+Older component narratives below may quote framebuffer hashes, process-cell
+addresses, provider cuts, or helper names from proof scaffolds removed by the
+refactor. Those quotations are historical verification notes, not current
+runtime architecture or extension points. The active executable uses typed
+native state and direct feature controllers. OpenDoors owns carrier detection,
+session and inactivity clocks, local SysOp time changes, chat, blocking waits,
+terminal delivery, and shutdown. Physical terminal coverage is owned only by
+the OpenDoors I/O row.
 
 The final documentation gaps `DOC-GAP-016` through `DOC-GAP-019` were closed upstream in `b2c85613` and implemented in native commit `8275622`. Their wait-cell and arbitrary-record process carriers are now reflected in the component rows below; no documentation gap remains open.
 
