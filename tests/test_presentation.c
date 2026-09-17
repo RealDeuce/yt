@@ -61,6 +61,32 @@ state(bool ansi)
 	return value;
 }
 
+static enum yt_present_status
+prime_color(struct yt_present_state *state, struct yt_present_result *result)
+{
+	struct yt_present_result emitted;
+	enum yt_present_status status;
+	float ansi;
+	size_t source;
+
+	ansi = state->sound.ansi;
+	state->sound.ansi = -1.0f;
+	status = yt_present_character(NULL, 0U, state, &emitted);
+	state->sound.ansi = ansi;
+	if (status != YT_PRESENT_OK)
+		return status;
+	memset(result, 0, sizeof(*result));
+	memcpy(result->remote, emitted.remote, emitted.remote_length);
+	result->remote_length = emitted.remote_length;
+	for (source = 0U; source < emitted.event_count; ++source) {
+		if (emitted.events[source].operation != YT_PRESENT_LOCAL_COLOR
+		    && emitted.events[source].length == 0U)
+			continue;
+		result->events[result->event_count++] = emitted.events[source];
+	}
+	return YT_PRESENT_OK;
+}
+
 struct xannor_file_capture {
 	struct yt_present_state presentation;
 	uint8_t remote[512];
@@ -187,69 +213,6 @@ test_xannor_file_playback(void)
 		    && capture.presentation.bold == 0.0f
 		    && capture.presentation.blink == 0.0f);
 	}
-}
-
-static void
-test_color(void)
-{
-	struct yt_present_state current = state(false);
-	struct yt_present_result result;
-	static const uint8_t green[] = "\x1b[0;32;40m";
-	static const uint8_t emphasized[] = "\x1b[0;33;40;5;1m";
-
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == sizeof(green) - 1U);
-	CHECK(memcmp(result.remote, green, sizeof(green) - 1U) == 0);
-	CHECK(result.event_count == 2);
-	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
-	CHECK(result.events[0].foreground == 2
-	    && result.events[0].background == 0);
-	CHECK(result.events[1].operation == YT_PRESENT_REMOTE_SEMI);
-	CHECK(current.color_initialized == 1.0f);
-	CHECK(current.cached_foreground == 2.0f
-	    && current.cached_background == 0.0f);
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == 0 && result.event_count == 1);
-	current.foreground = 1.0f;
-	current.background = 1.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
-	CHECK(current.foreground == 3.0f && current.background == 0.0f);
-	current.sound.mode = 2.0f;
-	current.foreground = 4.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == 0);
-	CHECK(current.cached_foreground == 3.0f);
-
-	current = state(false);
-	current.foreground = 3.0f;
-	current.bold = 1.0f;
-	current.blink = 1.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == sizeof(emphasized) - 1U
-	    && memcmp(result.remote, emphasized, sizeof(emphasized) - 1U) == 0);
-	CHECK(result.event_count == 2U
-	    && result.events[0].operation == YT_PRESENT_LOCAL_COLOR
-	    && result.events[0].foreground == 30
-	    && result.events[0].background == 0
-	    && result.events[1].operation == YT_PRESENT_REMOTE_SEMI);
-	CHECK(current.cached_foreground == 0.0f
-	    && current.cached_background == 0.0f
-	    && current.bold == 0.0f && current.blink == 0.0f);
-
-	current = state(false);
-	current.bold = 2.0f;
-	current.sound.snoop = 0.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == sizeof(green) - 1U
-	    && memcmp(result.remote, green, sizeof(green) - 1U) == 0);
-	CHECK(result.event_count == 2U
-	    && result.events[0].operation == YT_PRESENT_LOCAL_COLOR
-	    && result.events[0].foreground == 2
-	    && result.events[0].background == 0
-	    && result.events[1].operation == YT_PRESENT_REMOTE_SEMI);
-	CHECK(current.cached_foreground == 0.0f
-	    && current.cached_background == 0.0f
-	    && current.bold == 0.0f && current.blink == 0.0f);
 }
 
 static void
@@ -582,7 +545,7 @@ projectile_ordinary_cycle_fixture(bool ansi, struct yt_present_state *current,
 	pager->foreground = 2;
 	memset(&capture, 0, sizeof(capture));
 	if (ansi) {
-		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 		memset(&capture, 0, sizeof(capture));
 	}
 	CHECK(yt_projectile_target_prompt(false, 9.0f, 20.0f,
@@ -710,7 +673,7 @@ test_counterlaunch_presentation(void)
 
 	current = state(true);
 	current.foreground = 5.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&capture, 0, sizeof(capture));
 	current.foreground = 3.0f;
 	pager_capture_line(&capture, &current, NULL, 0U);
@@ -747,7 +710,7 @@ test_xannor_retaliation_presentation(void)
 
 	current = state(true);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&capture, 0, sizeof(capture));
 	pager_capture_line(&capture, &current, NULL, 0U);
 	CHECK(yt_present_bold_line(row, sizeof(row) - 1U, &current, &result)
@@ -2831,7 +2794,7 @@ test_editor_aux_notices(void)
 
 	present = state(true);
 	present.foreground = 3.0f;
-	CHECK(yt_present_color(&present, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&present, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 3;
 	memset(&capture, 0, sizeof(capture));
@@ -2852,7 +2815,7 @@ test_editor_aux_notices(void)
 
 	present = state(true);
 	present.foreground = 3.0f;
-	CHECK(yt_present_color(&present, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&present, &result) == YT_PRESENT_OK);
 	present.bold = 1.0f;
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 3;
@@ -3248,7 +3211,7 @@ test_attention(void)
 	CHECK(yt_present_background(&current) == 0.0f
 	    && yt_present_bold(&current) == 0.0f
 	    && yt_present_blink(&current) == 0.0f);
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	CHECK(current.background == 0.0f && current.bold == 0.0f
 	    && current.blink == 0.0f);
 	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5U,
@@ -4554,7 +4517,7 @@ test_hostile_quit_presentation(void)
 	uint8_t key = 'N';
 
 	current.foreground = 3.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	memset(&capture, 0, sizeof(capture));
 	current.foreground = 7.0f;
@@ -4615,7 +4578,7 @@ test_direct_emergency_warp_presentation(void)
 
 	for (pass = 0; pass < 2; ++pass) {
 		current = state(pass != 0);
-		CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 		memset(&pager, 0, sizeof(pager));
 		pager.foreground = 2;
 		memset(&capture, 0, sizeof(capture));
@@ -4665,7 +4628,7 @@ test_direct_emergency_warp_presentation(void)
 	}
 	for (pass = 0; pass < 2; ++pass) {
 		current = state(pass != 0);
-		CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 		memset(&pager, 0, sizeof(pager));
 		pager.foreground = 2;
 		memset(&capture, 0, sizeof(capture));
@@ -4712,7 +4675,7 @@ test_team_front_presentation(void)
 	for (pass = 0; pass < 2; ++pass) {
 		current = state(pass != 0);
 		current.foreground = 6.0f;
-		CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 		memset(&pager, 0, sizeof(pager));
 		pager.foreground = 6;
 		memset(&capture, 0, sizeof(capture));
@@ -4786,7 +4749,7 @@ test_team_create_presentation(void)
 	char accumulator[80] = "2";
 
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -4864,7 +4827,7 @@ test_team_join_presentation(void)
 	char accumulator[80] = "3";
 
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -4926,7 +4889,7 @@ test_team_quit_presentation(void)
 	char accumulator[80] = "4";
 
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -5002,7 +4965,7 @@ test_team_resource_presentation(void)
 
 	current = state(true);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -5044,7 +5007,7 @@ test_team_resource_presentation(void)
 
 	current = state(false);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -5061,7 +5024,7 @@ test_team_resource_presentation(void)
 
 	current = state(true);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -5095,7 +5058,7 @@ test_team_resource_presentation(void)
 
 	current = state(true);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -5134,7 +5097,7 @@ test_team_banish_presentation(void)
 
 	current = state(false);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -5156,7 +5119,7 @@ test_team_banish_presentation(void)
 
 	current = state(true);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -6057,7 +6020,7 @@ computer_return_prompt_fixture(bool ansi, float mode,
 	current->sound.mode = mode;
 	current->foreground = 6.0f;
 	if (ansi)
-		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 	memset(pager, 0, sizeof(*pager));
 	pager->foreground = 6;
 	memset(capture, 0, sizeof(*capture));
@@ -6212,7 +6175,7 @@ test_main_quit_cancel_presentation(void)
 
 		current = state(ansi_enabled != 0);
 		if (ansi_enabled != 0)
-			CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+			CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 		memset(&pager, 0, sizeof(pager));
 		pager.foreground = 2;
 		memset(&capture, 0, sizeof(capture));
@@ -6447,7 +6410,7 @@ test_main_shell_branch_presentation(void)
 
 		current = state(ansi_enabled != 0);
 		if (ansi_enabled != 0)
-			CHECK(yt_present_color(&current, &result)
+			CHECK(prime_color(&current, &result)
 			    == YT_PRESENT_OK);
 		memset(&pager, 0, sizeof(pager));
 		pager.foreground = 2;
@@ -6539,7 +6502,7 @@ planet_quit_cancel_cycle_fixture(bool ansi,
 	*current = state(ansi);
 	current->foreground = 6.0f;
 	if (ansi)
-		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 	memset(pager, 0, sizeof(*pager));
 	pager->foreground = 6;
 	memset(capture, 0, sizeof(*capture));
@@ -6648,7 +6611,7 @@ planet_menu_front_cycle_fixture(bool help,
 
 	*current = state(true);
 	current->foreground = 6.0f;
-	CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 	memset(pager, 0, sizeof(*pager));
 	pager->foreground = 6;
 	memset(capture, 0, sizeof(*capture));
@@ -6777,7 +6740,7 @@ test_planet_take_all_default_cycle_presentation(void)
 	size_t row;
 
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -6850,7 +6813,7 @@ test_planet_take_one_presentation(void)
 
 	current = state(true);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -6876,7 +6839,7 @@ test_planet_take_one_presentation(void)
 
 	current = state(true);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -6960,7 +6923,7 @@ planet_transfer_fixture(const uint8_t *selector, size_t selector_length,
 	char accumulator[80] = "T";
 
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -7153,7 +7116,7 @@ planet_bank_fixture(const uint8_t *response, size_t response_length,
 	char accumulator[80] = "B";
 
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -7283,7 +7246,7 @@ planet_productivity_fixture(const uint8_t *response, size_t response_length,
 	size_t index;
 
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -7428,7 +7391,7 @@ test_clearance_presentation(void)
 		current = state(use_ansi);
 		current.foreground = 3.0f;
 		if (use_ansi)
-			CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+			CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 		memset(&capture, 0, sizeof(capture));
 		CHECK(yt_present_line(NULL, 0, &current, &result)
 		    == YT_PRESENT_OK);
@@ -7935,7 +7898,7 @@ planet_computer_entry_cycle_fixture(bool ansi,
 	*current = state(ansi);
 	current->foreground = 6.0f;
 	if (ansi)
-		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 	memset(pager, 0, sizeof(*pager));
 	pager->foreground = 6;
 	memset(capture, 0, sizeof(*capture));
@@ -8037,7 +8000,7 @@ planet_display_cycle_fixture(bool ansi,
 	*current = state(ansi);
 	current->foreground = 6.0f;
 	if (ansi)
-		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 	memset(pager, 0, sizeof(*pager));
 	pager->foreground = 6;
 	memset(capture, 0, sizeof(*capture));
@@ -8160,7 +8123,7 @@ planet_sensor_all_zero_cycle_fixture(bool ansi,
 	*current = state(ansi);
 	current->foreground = 6.0f;
 	if (ansi)
-		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 	memset(pager, 0, sizeof(*pager));
 	pager->foreground = 6;
 	memset(capture, 0, sizeof(*capture));
@@ -8284,7 +8247,7 @@ test_planet_rename_presentation(void)
 
 	current = state(true);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -8342,7 +8305,7 @@ test_planet_rename_presentation(void)
 
 	current = state(true);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -8394,7 +8357,7 @@ test_planet_rename_presentation(void)
 
 	current = state(true);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -8427,7 +8390,7 @@ test_planet_rename_presentation(void)
 
 	current = state(true);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -8444,7 +8407,7 @@ test_planet_rename_presentation(void)
 
 	current = state(true);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 6;
 	memset(&capture, 0, sizeof(capture));
@@ -8488,7 +8451,7 @@ normal_exit_tail_fixture(bool ansi, bool evaluation,
 	*current = state(ansi);
 	current->sound.user_sound = 0.0f;
 	if (ansi)
-		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 	memset(pager, 0, sizeof(*pager));
 	pager->foreground = 2;
 	memset(capture, 0, sizeof(*capture));
@@ -10746,7 +10709,7 @@ test_computer_planet_report_front_presentation(void)
 	char accumulator[80] = "";
 
 	current.foreground = 1.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 1;
 	memset(&capture, 0, sizeof(capture));
@@ -10762,7 +10725,7 @@ test_computer_planet_report_front_presentation(void)
 
 	current = state(true);
 	current.foreground = 1.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 1;
 	memset(&capture, 0, sizeof(capture));
@@ -10925,7 +10888,7 @@ computer_nearest_cycle_fixture(bool ansi,
 		/* A43D changes the local color before 02BF's direct blank. */
 		saved_mode = current->sound.mode;
 		current->sound.mode = 1.0f;
-		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
 		current->sound.mode = saved_mode;
 		current->sound.ansi = 0.0f;
@@ -11011,7 +10974,7 @@ computer_nearest_cycle_fixture(bool ansi,
 	if (ansi) {
 		saved_mode = current->sound.mode;
 		current->sound.mode = 1.0f;
-		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
 		current->sound.mode = saved_mode;
 		current->sound.ansi = 0.0f;
@@ -11556,7 +11519,7 @@ test_computer_treasury_presentation(void)
 
 	current = state(true);
 	current.foreground = 1.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	memset(&capture, 0, sizeof(capture));
 	pager_capture_result(&capture, &result);
@@ -14164,7 +14127,7 @@ direct_fighter_fatal_cycle_run(struct physical_viewer_join *viewer,
 	join->pager.foreground = 6;
 	join->pager.line_count = 0.0f;
 	if (ansi) {
-		if (yt_present_color(&join->presentation, &result)
+		if (prime_color(&join->presentation, &result)
 		    != YT_PRESENT_OK)
 			return false;
 		/* The fixture enters after this inherited color is established. */
@@ -14326,7 +14289,7 @@ computer_info_cycle_run(struct physical_viewer_join *viewer, bool ansi,
 	join->pager.foreground = 6;
 	join->pager.line_count = 0.0f;
 	if (ansi) {
-		if (yt_present_color(&join->presentation, &result)
+		if (prime_color(&join->presentation, &result)
 		    != YT_PRESENT_OK)
 			return false;
 	}
@@ -14989,7 +14952,7 @@ planet_sensor_nonzero_cycle_run(struct physical_viewer_join *viewer,
 	join->pager.foreground = 6;
 	join->pager.line_count = 0.0f;
 	if (ansi) {
-		if (yt_present_color(&join->presentation, &result)
+		if (prime_color(&join->presentation, &result)
 		    != YT_PRESENT_OK)
 			return false;
 	}
@@ -19344,7 +19307,7 @@ direct_emergency_warp_invalid_retry_continue(
 	enum yt_yes_no_answer answer;
 	char output[80];
 
-	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
 	join->presentation.bold = 1.0f;
@@ -19512,7 +19475,7 @@ direct_emergency_warp_mode_decline_run(
 
 	join->presentation = state(ansi);
 	join->presentation.sound.mode = mode;
-	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
 	join->presentation.bold = 1.0f;
@@ -19797,7 +19760,7 @@ direct_emergency_warp_invalid_boundary_continue(
 
 	if (boundary == NULL)
 		return false;
-	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
 	join->presentation.bold = 1.0f;
@@ -19971,7 +19934,7 @@ direct_emergency_warp_parent_copy_failure_continue(
 		return false;
 	copy->failure = failure;
 	copy->routed_main_handler = false;
-	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
 	if (failure == DIRECT_WARP_FAIL_WARNING_ONE) {
@@ -20423,7 +20386,7 @@ direct_emergency_warp_ade0_prefix_failure_continue(
 	size_t queue_length = 0U;
 
 	if (projection == NULL
-	    || yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	    || prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
 	join->presentation.bold = 1.0f;
@@ -20626,7 +20589,7 @@ direct_emergency_warp_a8d2_failure_continue(
 
 	if (fault == NULL || submitted == NULL || submitted_length == 0U
 	    || submitted_length >= sizeof(join->accumulator)
-	    || yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	    || prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
 	memset(fault, 0, sizeof(*fault));
@@ -20883,7 +20846,7 @@ direct_emergency_warp_ade0_late_failure_continue(
 
 	if (fault == NULL || projection == NULL || submitted == NULL
 	    || submitted_length >= sizeof(join->accumulator)
-	    || yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	    || prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
 	memset(fault, 0, sizeof(*fault));
@@ -21422,7 +21385,7 @@ direct_emergency_warp_warning_carrier_continue(
 
 	if (carrier == NULL)
 		return false;
-	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
 	join->presentation.bold = 1.0f;
@@ -21670,7 +21633,7 @@ direct_emergency_warp_warning_two_carrier_continue(
 	struct yt_present_result result;
 
 	if (carrier == NULL
-	    || yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	    || prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
 	join->presentation.bold = 1.0f;
@@ -21786,7 +21749,7 @@ direct_emergency_warp_accepted_answer_run(
 	join->presentation = state(ansi);
 	join->presentation.sound.mode = mode;
 	join->presentation.cached_foreground = cached_foreground;
-	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
 	join->presentation.bold = 1.0f;
@@ -24530,7 +24493,7 @@ direct_emergency_warp_main_ordinary_return_run(
 		return false;
 	if (no_turns) {
 		join->presentation = state(ansi);
-		if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+		if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 		    || !normal_exit_line(join, NULL, 0U))
 			return false;
 		join->presentation.bold = 1.0f;
@@ -25686,7 +25649,7 @@ direct_emergency_warp_hostile_ordinary_return_run(
 	if (denied != no_turns)
 		return false;
 	if (no_turns) {
-		if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+		if (prime_color(&join->presentation, &result) != YT_PRESENT_OK
 		    || !normal_exit_line(join, NULL, 0U))
 			return false;
 		join->presentation.bold = 1.0f;
@@ -34498,7 +34461,7 @@ computer_quit_accept_prefix(struct physical_viewer_join *viewer, bool ansi)
 	join->pager.foreground = 6;
 	join->pager.line_count = 0.0f;
 	if (ansi) {
-		if (yt_present_color(&join->presentation, &result)
+		if (prime_color(&join->presentation, &result)
 		    != YT_PRESENT_OK)
 			return false;
 	}
@@ -35232,7 +35195,7 @@ quit_invalid_retry_typeahead_prefix(struct physical_viewer_join *viewer,
 	join->pager.foreground = 6;
 	join->pager.line_count = 0.0f;
 	if (ansi) {
-		if (yt_present_color(&join->presentation, &result)
+		if (prime_color(&join->presentation, &result)
 		    != YT_PRESENT_OK)
 			return false;
 	}
@@ -35412,7 +35375,7 @@ computer_quit_valid_typeahead_prefix(struct physical_viewer_join *viewer,
 	join->pager.foreground = 6;
 	join->pager.line_count = 0.0f;
 	if (ansi) {
-		if (yt_present_color(&join->presentation, &result)
+		if (prime_color(&join->presentation, &result)
 		    != YT_PRESENT_OK)
 			return false;
 	}
@@ -35654,7 +35617,7 @@ computer_quit_heading_sample_blank_prefix(
 	join->pager.foreground = 6;
 	join->pager.line_count = 0.0f;
 	if (ansi) {
-		if (yt_present_color(&join->presentation, &result)
+		if (prime_color(&join->presentation, &result)
 		    != YT_PRESENT_OK)
 			return false;
 	}
@@ -36058,7 +36021,7 @@ spy_cycle_fixture(bool ansi, int active_count, struct pager_capture *capture,
 	*current = state(ansi);
 	current->foreground = 6.0f;
 	if (ansi)
-		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 	memset(pager, 0, sizeof(*pager));
 	pager->foreground = 6;
 	memset(capture, 0, sizeof(*capture));
@@ -37150,7 +37113,7 @@ test_hostile_attack_admission_presentation(void)
 
 	current = state(true);
 	current.foreground = 3.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	memset(&capture, 0, sizeof(capture));
 	pager.foreground = 3;
@@ -37169,7 +37132,7 @@ test_hostile_attack_admission_presentation(void)
 
 	current = state(true);
 	current.foreground = 3.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	memset(&capture, 0, sizeof(capture));
 	pager.foreground = 3;
@@ -37198,7 +37161,7 @@ test_hostile_attack_admission_presentation(void)
 
 	current = state(true);
 	current.foreground = 3.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	memset(&capture, 0, sizeof(capture));
 	pager.foreground = 3;
@@ -37220,7 +37183,7 @@ test_hostile_attack_admission_presentation(void)
 
 	current = state(true);
 	current.foreground = 3.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	memset(&capture, 0, sizeof(capture));
 	pager.foreground = 3;
@@ -37530,7 +37493,7 @@ hostile_bribe_offer_fixture(bool ansi, const uint8_t *response,
 	*current = state(ansi);
 	current->foreground = 3.0f;
 	if (ansi)
-		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 	memset(pager, 0, sizeof(*pager));
 	pager->foreground = 3;
 	memset(&capture, 0, sizeof(capture));
@@ -37574,7 +37537,7 @@ hostile_bribe_refusal_fixture(bool ansi, const uint8_t *row,
 	*current = state(ansi);
 	current->foreground = 3.0f;
 	if (ansi)
-		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 	memset(pager, 0, sizeof(*pager));
 	pager->foreground = 3;
 	memset(&capture, 0, sizeof(capture));
@@ -37776,7 +37739,7 @@ test_hostile_sector_mine_presentation(void)
 		current = state(ansi);
 		current.foreground = 3.0f;
 		if (ansi)
-			CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+			CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 		memset(&pager, 0, sizeof(pager));
 		pager.foreground = 3;
 		memset(&capture, 0, sizeof(capture));
@@ -37827,7 +37790,7 @@ test_hostile_sector_mine_presentation(void)
 
 	current = state(true);
 	current.foreground = 3.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 3;
 	memset(&capture, 0, sizeof(capture));
@@ -37894,7 +37857,7 @@ test_startup_pre_admission_presentation(void)
 	struct pager_capture capture;
 
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	current.foreground = 5.0f;
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 5;
@@ -37921,7 +37884,7 @@ test_startup_pre_admission_presentation(void)
 
 	current = state(true);
 	current.foreground = 6.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	current.foreground = 5.0f;
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 5;
@@ -37991,7 +37954,7 @@ test_new_alias_success_presentation(void)
 	size_t index;
 
 	current.foreground = 5.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 5;
 	pager.line_count = 3.0f;
@@ -38107,7 +38070,7 @@ test_new_player_admission_presentation(void)
 
 	current = state(true);
 	current.foreground = 5.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 5;
 	pager.line_count = 3.0f;
@@ -38192,7 +38155,7 @@ test_new_player_admission_presentation(void)
 
 	current = state(true);
 	current.foreground = 5.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&pager, 0, sizeof(pager));
 	pager.foreground = 5;
 	pager.line_count = 3.0f;
@@ -38239,7 +38202,7 @@ test_returning_player_presentation(void)
 
 	current = state(true);
 	current.foreground = 5.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&capture, 0, sizeof(capture));
 	current.foreground = 2.0f;
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
@@ -38254,7 +38217,7 @@ test_returning_player_presentation(void)
 
 	current = state(true);
 	current.foreground = 5.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&capture, 0, sizeof(capture));
 	current.foreground = 2.0f;
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
@@ -38292,7 +38255,7 @@ test_returning_player_presentation(void)
 
 	current = state(true);
 	current.foreground = 5.0f;
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(prime_color(&current, &result) == YT_PRESENT_OK);
 	memset(&capture, 0, sizeof(capture));
 	current.foreground = 2.0f;
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
@@ -38327,7 +38290,6 @@ int
 main(void)
 {
 	test_xannor_file_playback();
-	test_color();
 	test_direct_output();
 	test_paged_output();
 	test_editor_echo();

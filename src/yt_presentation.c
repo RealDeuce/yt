@@ -399,14 +399,6 @@ emit_line(const uint8_t *text, size_t length,
 }
 
 enum yt_present_status
-yt_present_color(struct yt_present_state *state,
-    struct yt_present_result *result)
-{
-	memset(result, 0, sizeof(*result));
-	return build_color(state, result);
-}
-
-enum yt_present_status
 yt_present_line(const uint8_t *text, size_t length,
     struct yt_present_state *state, struct yt_present_result *result)
 {
