@@ -42,8 +42,9 @@ yt_session_fighter_shield_spill(struct yt_session *session,
 	while (*fighters > 0.0 && *shields > 0.0f) {
 		float draw;
 
-		if (!yt_random_next(&session->door->game.random, &draw, error)
-		    || !yt_fighter_shield_spill_step(fighters, shields, draw))
+		if (!yt_random_next(&session->door->game.random, &draw, error))
+			return false;
+		if (!yt_fighter_shield_spill_step(fighters, shields, draw))
 			return false;
 		if (bind_hostile_cells) {
 			if (draw >= 0.5f)
@@ -52,12 +53,14 @@ yt_session_fighter_shield_spill(struct yt_session *session,
 				session->combat.ship_shields = *shields;
 		}
 	}
-	return yt_fighter_shield_spill_rows(*fighters, *shields,
+	if (!yt_fighter_shield_spill_rows(*fighters, *shields,
 	    fighter_row, sizeof(fighter_row), &fighter_length,
-	    shield_row, sizeof(shield_row), &shield_length)
-	    && session_present_text(session, fighter_row, fighter_length,
-	    SESSION_PRESENT_LINE, "fighter spill result", error)
-	    && session_present_text(session, shield_row, shield_length,
+	    shield_row, sizeof(shield_row), &shield_length))
+		return false;
+	if (!session_present_text(session, fighter_row, fighter_length,
+	    SESSION_PRESENT_LINE, "fighter spill result", error))
+		return false;
+	return session_present_text(session, shield_row, shield_length,
 	    SESSION_PRESENT_LINE, "shield spill result", error);
 }
 
@@ -78,8 +81,10 @@ direct_attack_finish_kill(struct yt_session *session, int target_record,
 
 	if (target_shields > 0.0f)
 		return true;
-	if (!session_sound(session, YT_SOUND_CUE_DESTRUCTION, "player kill sound", error)
-	    || !yt_game_read_player(&session->door->game, target_record,
+	if (!session_sound(session, YT_SOUND_CUE_DESTRUCTION,
+	    "player kill sound", error))
+		return false;
+	if (!yt_game_read_player(&session->door->game, target_record,
 	    &target, error))
 		return false;
 	saved_mines = target.mines;
@@ -87,8 +92,9 @@ direct_attack_finish_kill(struct yt_session *session, int target_record,
 	if (saved_name_length != 0U)
 		memcpy(saved_name, target.record.bytes, saved_name_length);
 	if (!yt_session_kill_player(session, target_record,
-	    current_player_record, true, error)
-	    || !yt_session_salvage_player(session, target_record,
+	    current_player_record, true, error))
+		return false;
+	if (!yt_session_salvage_player(session, target_record,
 	    current_player_record, error))
 		return false;
 	if (!(saved_mines > 0.0f))
@@ -100,13 +106,15 @@ direct_attack_finish_kill(struct yt_session *session, int target_record,
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)yt_sector_basic_record(&session->door->game.config,
 	    current_sector),
-	    &sector.record, error)
-	    || !yt_direct_fighter_mine_warning(saved_name, saved_name_length,
-	    warning, sizeof(warning), &warning_length)
-	    || !session_present_alert(session, warning, warning_length,
-	    "direct fighter mine warning", error)
-	    || !yt_news_append_bytes(warning, warning_length,
-	    error))
+	    &sector.record, error))
+		return false;
+	if (!yt_direct_fighter_mine_warning(saved_name, saved_name_length,
+	    warning, sizeof(warning), &warning_length))
+		return false;
+	if (!session_present_alert(session, warning, warning_length,
+	    "direct fighter mine warning", error))
+		return false;
+	if (!yt_news_append_bytes(warning, warning_length, error))
 		return false;
 	terminal = false;
 	if (!yt_session_mine_encounter(session, &terminal, error))
@@ -181,26 +189,30 @@ yt_session_attack_player(struct yt_session *session, int target_record,
 	    &current, error))
 		return false;
 	if (committed > (double)current.fighters) {
-		return yt_direct_attack_too_many_row((double)current.fighters,
-		    row, sizeof(row), &row_length)
-		    && session_present_alert(session, row, row_length,
+		if (!yt_direct_attack_too_many_row((double)current.fighters,
+		    row, sizeof(row), &row_length))
+			return false;
+		return session_present_alert(session, row, row_length,
 		    "direct Attack too-many row", error);
 	}
 
 	cached_reserve = qb_double_subtract((double)current.fighters, committed);
 	yt_direct_attack_fighter_overlay(&current, (float)cached_reserve);
 	if (!session_write_combat_player(session, current_player_record,
-	    &current, error)
-	    || !session_sound(session, YT_SOUND_CUE_ATTACK, "player attack opening sound",
-	    error)
-	    || !direct_attack_attrition(session, committed, defenders,
+	    &current, error))
+		return false;
+	if (!session_sound(session, YT_SOUND_CUE_ATTACK,
+	    "player attack opening sound", error))
+		return false;
+	if (!direct_attack_attrition(session, committed, defenders,
 	    current.cloak, &attacker_loss, &defender_loss, error))
 		return false;
 	if (defender_loss > 0.0) {
 		name_length = yt_player_stored_name(&current, stored_name);
 		if (!yt_direct_attack_radio_text(stored_name, name_length,
-		    defender_loss, radio, sizeof(radio), &radio_length)
-		    || !session_append_radio_bytes(radio, radio_length, -2.0f,
+		    defender_loss, radio, sizeof(radio), &radio_length))
+			return false;
+		if (!session_append_radio_bytes(radio, radio_length, -2.0f,
 		    (float)target_record, error))
 			return false;
 	}
@@ -214,37 +226,43 @@ yt_session_attack_player(struct yt_session *session, int target_record,
 	yt_direct_attack_fighter_overlay(&current,
 	    (float)qb_double_add(cached_reserve, attacking));
 	if (!session_write_combat_player(session, current_player_record,
-	    &current, error)
-	    || !session_read_combat_player(session, target_record, &target,
+	    &current, error))
+		return false;
+	if (!session_read_combat_player(session, target_record, &target,
 	    error))
 		return false;
 	current_sector = current.sector;
 	target_shields = target.shields;
 	yt_direct_attack_fighter_overlay(&target, (float)defenders);
-	if (!session_write_combat_player(session, target_record, &target, error)
-	    || !yt_direct_attack_result_rows(attacker_loss, cached_reserve,
+	if (!session_write_combat_player(session, target_record, &target, error))
+		return false;
+	if (!yt_direct_attack_result_rows(attacker_loss, cached_reserve,
 	    defender_loss, defenders, row, sizeof(row), &row_length,
-	    second, sizeof(second), &second_length)
-	    || !session_present_paged_line(session, row, row_length,
-	    "direct Attack attacker result", error)
-	    || !session_present_paged_fragment(session, second, second_length))
+	    second, sizeof(second), &second_length))
+		return false;
+	if (!session_present_paged_line(session, row, row_length,
+	    "direct Attack attacker result", error))
+		return false;
+	if (!session_present_paged_fragment(session, second, second_length))
 		return false;
 	if (defenders > 0.0 || attacking < 1.0)
 		return true;
 	if (!session_present_paged_line(session, eliminated,
 	    sizeof(eliminated) - 1U, "direct Attack eliminated row", error))
 		return false;
-	if (target_shields > 0.0f
-	    && !yt_session_fighter_shield_spill(session, &attacking,
-	    &target_shields, false, error))
-		return false;
+	if (target_shields > 0.0f) {
+		if (!yt_session_fighter_shield_spill(session, &attacking,
+		    &target_shields, false, error))
+			return false;
+	}
 
 	remaining_shields = target_shields;
 	if (!session_read_combat_player(session, target_record, &target, error))
 		return false;
 	yt_direct_attack_shield_overlay(&target, remaining_shields);
-	if (!session_write_combat_player(session, target_record, &target, error)
-	    || !session_read_combat_player(session, current_player_record,
+	if (!session_write_combat_player(session, target_record, &target, error))
+		return false;
+	if (!session_read_combat_player(session, current_player_record,
 	    &current, error))
 		return false;
 	yt_direct_attack_fighter_overlay(&current,
@@ -281,8 +299,10 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 	if (enter_sector == NULL)
 		return false;
 	*enter_sector = false;
-	if (!session_present_paged_fragment(session, title, sizeof(title) - 1U)
-	    || !session_read_combat_player(session, session_record(session),
+	if (!session_present_paged_fragment(session, title,
+	    sizeof(title) - 1U))
+		return false;
+	if (!session_read_combat_player(session, session_record(session),
 	    &current, error))
 		return false;
 	if (current.fighters < 1.0f)
@@ -324,8 +344,9 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		same_team = candidate_player.team == current.team;
 		if (positive_team && same_team) {
 			if (!yt_direct_attack_team_row(target_name,
-			    target_name_length, row, sizeof(row), &row_length)
-			    || !session_present_paged_fragment(session, row,
+			    target_name_length, row, sizeof(row), &row_length))
+				return false;
+			if (!session_present_paged_fragment(session, row,
 			    row_length))
 				return false;
 			encountered = true;
@@ -335,8 +356,9 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 
 		encountered = true;
 		if (!yt_direct_attack_candidate_prompt(target_name,
-		    target_name_length, row, sizeof(row), &row_length)
-		    || !session_confirm(session, row, row_length, &answer, error))
+		    target_name_length, row, sizeof(row), &row_length))
+			return false;
+		if (!session_confirm(session, row, row_length, &answer, error))
 			return false;
 		if (answer == YT_YES_NO_NO) {
 			++candidate;
@@ -345,10 +367,12 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		if (answer != YT_YES_NO_YES && answer != YT_YES_NO_EMPTY)
 			return false;
 		if (!yt_direct_attack_commitment_prompt((double)current.fighters,
-		    row, sizeof(row), &row_length)
-		    || !session_present_timed_paged_row(session, row, row_length,
-		    "direct Attack commitment prompt", error)
-		    || !session_read_number_command(session, response,
+		    row, sizeof(row), &row_length))
+			return false;
+		if (!session_present_timed_paged_row(session, row, row_length,
+		    "direct Attack commitment prompt", error))
+			return false;
+		if (!session_read_number_command(session, response,
 		    sizeof(response)))
 			return false;
 		parsed = qb_val(response);
