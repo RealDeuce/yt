@@ -68,7 +68,7 @@ radio_player_search(struct yt_session *session, const char *query,
 		if (!yt_game_read_player(&session->door->game, basic, &player,
 		    error))
 			return false;
-		if (player.record.bytes[YT_F85 + 3U] == 0
+		if (player.name_length == 0U
 		    || !yt_fixed_text_contains(player.record.bytes,
 		    (const uint8_t *)query, strlen(query)))
 			continue;

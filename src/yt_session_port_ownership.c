@@ -162,7 +162,7 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 		if (port.owner != (float)session_record(session))
 			continue;
 		owned = qb_single_add(owned, 1.0f);
-		if (!qb_mbf32_truth(port.record.bytes + YT_F89))
+		if (port.owner == 0.0f)
 			continue;
 		credited = qb_single_add(credited, 1.0f);
 		if (!treasury_add(total, port.record.bytes + YT_F89, error)
@@ -332,7 +332,7 @@ yt_session_command_rename_port(struct yt_session *session,
 	    || !session_read_sector(session, (int)session->player.sector,
 	    &sector, error))
 		return false;
-	if (!qb_mbf32_truth(sector.record.bytes + YT_F65))
+	if (sector.port == 0.0f)
 		return session_present_alert(session, no_port,
 		    sizeof(no_port) - 1U, "rename no-port row", error);
 	logical_port = (int)sector.port;
@@ -564,7 +564,7 @@ yt_session_command_buy_port(struct yt_session *session,
 	if (!session_read_sector(session, (int)cached_buyer_sector,
 	    &sector, error))
 		return false;
-	if (!qb_mbf32_truth(sector.record.bytes + YT_F65))
+	if (sector.port == 0.0f)
 		return session_present_alert(session, no_port,
 		    sizeof(no_port) - 1U, "buy no-port row", error);
 	logical_port = (int)sector.port;
