@@ -151,14 +151,6 @@ struct yt_maintenance_mercenary_tax_result {
 	int taxed_ports;
 };
 
-struct yt_maintenance_mercenary_planet_result {
-	bool absorbed;
-	bool capture_report;
-	bool taking_report;
-	float planet_fighters;
-	float sector_fighters;
-};
-
 bool yt_maintenance_xannor_should_retarget(float group_location,
     float group_size);
 bool yt_maintenance_xannor_route_complete(float group_location,
@@ -232,8 +224,7 @@ bool yt_maintenance_mercenary_mines(struct yt_game *game,
 bool yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
     int sector_number, int selected_destination, double moving_fighters,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_sector *arrival_sector,
-    struct yt_maintenance_mercenary_planet_result *result,
+    struct yt_sector *arrival_sector, bool *absorbed,
     struct yt_error *error);
 bool yt_maintenance_super_lottery(struct yt_game *game, int player_count,
     int planet_count, int sector_count, const uint8_t *blank,

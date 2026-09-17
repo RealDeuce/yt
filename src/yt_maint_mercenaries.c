@@ -513,37 +513,37 @@ bool
 yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
     int sector_number, int selected_destination, double moving_fighters,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_sector *arrival_sector,
-    struct yt_maintenance_mercenary_planet_result *result,
+    struct yt_sector *arrival_sector, bool *absorbed,
     struct yt_error *error)
 {
 	static const uint8_t planet_fighter_zero[4] = {0x00, 0x00, 0x80, 0x00};
-	struct yt_maintenance_mercenary_planet_result local = {0};
 	struct yt_planet planet;
 	uint8_t line[YT_MAINTENANCE_OUTPUT_ROW_SIZE];
 	size_t line_length;
+	float planet_fighters;
+	bool capture_report;
+	bool taking_report;
 	int planet_number;
 	size_t name_length;
 	double incoming;
 	double existing;
 
 	if (game == NULL || sector_number < 1 || line_output == NULL
-	    || arrival_sector == NULL || result == NULL) {
+	    || arrival_sector == NULL || absorbed == NULL) {
 		set_error(error, YT_INVALID, "Mercenary planet arrival",
 		    "YTDATA.DAT");
 		return false;
 	}
+	*absorbed = false;
 	planet_number = (int)arrival_sector->planet;
 	if ((arrival_sector->fighter_owner != -2.0f
 	    && arrival_sector->fighter_owner != 0.0f)
-	    || planet_number == 0) {
-		*result = local;
+	    || planet_number == 0)
 		return true;
-	}
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
 	name_length = planet.name_length;
-	local.planet_fighters = (float)qb_int((double)planet.fighters);
+	planet_fighters = (float)qb_int((double)planet.fighters);
 	planet.fighters = 0.0f;
 	if (!yt_record_set_raw_number(&planet.record, YT_F129,
 	    planet_fighter_zero)) {
@@ -557,9 +557,8 @@ yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 	    || !yt_game_read_sector(game, sector_number, arrival_sector, error))
 		return false;
 	existing = (double)arrival_sector->fighters;
-	incoming = (double)local.planet_fighters + moving_fighters;
-	local.sector_fighters = (float)(incoming + existing);
-	arrival_sector->fighters = local.sector_fighters;
+	incoming = (double)planet_fighters + moving_fighters;
+	arrival_sector->fighters = (float)(incoming + existing);
 	arrival_sector->fighter_owner = -2.0f;
 	if (!yt_record_set_number(&arrival_sector->record, YT_F81,
 	    arrival_sector->fighters)
@@ -572,24 +571,23 @@ yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 	    (size_t)yt_sector_basic_record(&game->config, sector_number),
 	    &arrival_sector->record, error))
 		return false;
-	local.absorbed = true;
-	local.capture_report = selected_destination != sector_number
+	capture_report = selected_destination != sector_number
 	    && moving_fighters != 0.0;
-	local.taking_report = local.planet_fighters > 0.0f;
-	if (local.capture_report
-	    && (!mercenary_planet_line(incoming, local.planet_fighters,
+	taking_report = planet_fighters > 0.0f;
+	if (capture_report
+	    && (!mercenary_planet_line(incoming, planet_fighters,
 	    planet.record.bytes, name_length, false, line, &line_length)
 	    || !line_output(line_context, line, line_length, error)
 	    || !yt_news_append_bytes(line, line_length, error)))
 		return false;
-	if (local.taking_report
+	if (taking_report
 	    && (!mercenary_planet_line(moving_fighters + existing,
-	    local.planet_fighters, planet.record.bytes, name_length,
+	    planet_fighters, planet.record.bytes, name_length,
 	    true, line, &line_length)
 	    || !yt_news_append_bytes(line, line_length, error)
 	    || !line_output(line_context, line, line_length, error)))
 		return false;
-	*result = local;
+	*absorbed = true;
 	return true;
 }
 

@@ -250,7 +250,7 @@ mercenary_arrival(struct yt_game *game, int sector_number,
     enum mercenary_arrival_result *arrival_result, struct yt_error *error)
 {
 	struct yt_sector sector;
-	struct yt_maintenance_mercenary_planet_result planet;
+	bool absorbed;
 
 	if (moving == NULL || arrival_result == NULL) {
 		set_error(error, YT_INVALID, "Mercenary routed arrival",
@@ -266,9 +266,9 @@ mercenary_arrival(struct yt_game *game, int sector_number,
 	}
 	if (!yt_maintenance_mercenary_planet_absorption(game,
 	    sector_number, selected_destination, (double)*moving,
-	    line_output, line_context, &sector, &planet, error))
+	    line_output, line_context, &sector, &absorbed, error))
 		return false;
-	if (planet.absorbed) {
+	if (absorbed) {
 		*moving = 0.0f;
 		*arrival_result = MERCENARY_ARRIVAL_TERMINAL;
 		return true;

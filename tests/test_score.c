@@ -5944,7 +5944,6 @@ check_maintenance_mercenary_planet_pass(void)
 	    "  -  13 Mercenaries captured planet E\0den!\r\n"
 	    "  -  12 Mercenaries taking 3 fighters from planet E\0den!\r\n\x1a";
 	struct score_line_tape screen = {0};
-	struct yt_maintenance_mercenary_planet_result result;
 	struct yt_text_file news = {0};
 	struct yt_record sector_raw;
 	struct yt_record planet_raw;
@@ -5953,6 +5952,7 @@ check_maintenance_mercenary_planet_pass(void)
 	struct yt_sector sector;
 	struct yt_game game;
 	struct yt_error error;
+	bool absorbed;
 	bool valid = false;
 
 	(void)remove("YTDATA.DAT");
@@ -5982,10 +5982,8 @@ check_maintenance_mercenary_planet_pass(void)
 	    || !yt_database_write(&game.database, 25U, &planet_raw, &error)
 	    || !yt_game_read_sector(&game, 7, &sector, &error)
 	    || !yt_maintenance_mercenary_planet_absorption(&game, 7, 20,
-	    10.0, score_line_collect, &screen, &sector, &result, &error)
-	    || !result.absorbed || !result.capture_report
-	    || !result.taking_report || result.planet_fighters != 3.0f
-	    || result.sector_fighters != 15.0f || sector.fighters != 15.0f
+	    10.0, score_line_collect, &screen, &sector, &absorbed, &error)
+	    || !absorbed || sector.fighters != 15.0f
 	    || sector.fighter_owner != -2.0f || sector.planet != 5.0f
 	    || screen.lines != 2U
 	    || screen.length != sizeof(expected_screen) - 1U
@@ -6023,9 +6021,8 @@ check_maintenance_mercenary_planet_pass(void)
 	    || !yt_database_write(&game.database, 26U, &planet_raw, &error)
 	    || !yt_game_read_sector(&game, 8, &sector, &error)
 	    || !yt_maintenance_mercenary_planet_absorption(&game, 8, 8,
-	    1.0, score_line_collect, &screen, &sector, &result, &error)
-	    || !result.absorbed || result.capture_report || result.taking_report
-	    || result.sector_fighters != 5.0f || screen.lines != 2U)
+	    1.0, score_line_collect, &screen, &sector, &absorbed, &error)
+	    || !absorbed || sector.fighters != 5.0f || screen.lines != 2U)
 		goto done;
 
 	/* A player-owned destination bypasses planet I/O and absorption. */
@@ -6036,8 +6033,8 @@ check_maintenance_mercenary_planet_pass(void)
 	    || !yt_database_write(&game.database, 10U, &sector_raw, &error)
 	    || !yt_game_read_sector(&game, 9, &sector, &error)
 	    || !yt_maintenance_mercenary_planet_absorption(&game, 9, 20,
-	    1.0, score_line_collect, &screen, &sector, &result, &error)
-	    || result.absorbed || result.capture_report || result.taking_report
+	    1.0, score_line_collect, &screen, &sector, &absorbed, &error)
+	    || absorbed
 	    || sector.fighters != 6.0f || screen.lines != 2U)
 		goto done;
 	valid = true;
