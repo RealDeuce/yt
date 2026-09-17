@@ -6,14 +6,6 @@
 #include <string.h>
 #include <sys/stat.h>
 
-enum text_close_operation {
-	YT_TEXT_CLOSE_PENDING_WRITE,
-	YT_TEXT_CLOSE_EOF_WRITE,
-	YT_TEXT_CLOSE_TRUNCATE,
-	YT_TEXT_CLOSE_HANDLE,
-	YT_TEXT_CLOSE_CLEANUP_HANDLE,
-};
-
 static void set_error(struct yt_error *error, enum yt_status status,
     const char *operation, const char *path);
 static bool text_input_open_execute(struct yt_text_input *input,
@@ -556,127 +548,6 @@ text_output_position(FILE *file)
 	return position >= 0 ? position : -1;
 }
 
-struct text_output_write_observation {
-	size_t accepted;
-	bool carry;
-	bool handle_open;
-	uint16_t dos_error;
-	int64_t terminal_position;
-};
-
-static bool
-text_output_write_default_common(FILE *file, const uint8_t *data,
-    size_t requested, struct text_output_write_observation *observation)
-{
-	int saved_errno;
-
-	if (file == NULL || (data == NULL && requested != 0U))
-		return false;
-	memset(observation, 0, sizeof(*observation));
-	errno = 0;
-	observation->accepted = fwrite(data, 1U, requested, file);
-	saved_errno = errno;
-	observation->carry = ferror(file) != 0;
-	observation->handle_open = true;
-	observation->dos_error = observation->carry
-	    ? text_output_dos_error(NULL, saved_errno) : 0U;
-	observation->terminal_position = text_output_position(file);
-	errno = saved_errno;
-	return true;
-}
-
-static bool
-text_output_write_perform(FILE *file, const uint8_t *data,
-    size_t requested, struct text_output_write_observation *observation)
-{
-	bool delivered;
-
-	delivered = text_output_write_default_common(file, data, requested,
-	    observation);
-	if (delivered && observation->carry) {
-		observation->accepted = 0U;
-		observation->terminal_position = -1;
-	}
-	return delivered;
-}
-
-struct text_close_observation {
-	size_t accepted;
-	bool carry;
-	bool handle_open;
-	uint16_t dos_error;
-	int64_t terminal_position;
-};
-
-static bool
-text_close_perform(FILE *file,
-    enum text_close_operation operation, const uint8_t *data,
-    size_t requested, struct text_close_observation *observation)
-{
-	struct text_output_write_observation write;
-	int result;
-	int saved_errno;
-
-	memset(observation, 0, sizeof(*observation));
-	observation->terminal_position = text_output_position(file);
-	switch (operation) {
-	case YT_TEXT_CLOSE_PENDING_WRITE:
-	case YT_TEXT_CLOSE_EOF_WRITE:
-		if (!text_output_write_default_common(file, data, requested,
-		    &write))
-			return false;
-		observation->accepted = write.accepted;
-		observation->carry = write.carry;
-		observation->handle_open = write.handle_open;
-		observation->dos_error = write.dos_error;
-		observation->terminal_position = write.terminal_position;
-		return true;
-	case YT_TEXT_CLOSE_TRUNCATE:
-		if (file == NULL || data != NULL || requested != 0U)
-			return false;
-		errno = 0;
-		observation->terminal_position = text_output_position(file);
-		result = observation->terminal_position < 0 || fflush(file) != 0;
-#ifdef _WIN32
-		if (!result)
-			result = _chsize_s(yt_text_fileno(file),
-			    observation->terminal_position) != 0;
-#else
-		if (!result)
-			result = ftruncate(yt_text_fileno(file),
-			    (off_t)observation->terminal_position) != 0;
-#endif
-		saved_errno = errno;
-		observation->carry = result != 0;
-		observation->handle_open = true;
-		observation->dos_error = result != 0
-		    ? text_output_dos_error(NULL, saved_errno) : 0U;
-		errno = saved_errno;
-		return true;
-	case YT_TEXT_CLOSE_HANDLE:
-	case YT_TEXT_CLOSE_CLEANUP_HANDLE:
-		if (data != NULL || requested != 0U)
-			return false;
-		if (file == NULL) {
-			observation->carry = true;
-			observation->dos_error = 6U;
-			return true;
-		}
-		errno = 0;
-		observation->terminal_position = text_output_position(file);
-		result = fclose(file);
-		saved_errno = errno;
-		observation->carry = result != 0;
-		observation->dos_error = result != 0
-		    ? text_output_dos_error(NULL, saved_errno) : 0U;
-		observation->handle_open = false;
-		errno = saved_errno;
-		return true;
-	default:
-		return false;
-	}
-}
-
 static bool
 text_input_close_execute(struct yt_text_input *input, struct yt_error *error)
 {
@@ -969,20 +840,14 @@ static bool
 text_output_write_cleanup_after_carry(struct yt_text_output *output,
     FILE *file, struct yt_error *error)
 {
-	struct text_close_observation cleanup;
+	int saved_errno;
 
 	output->file = NULL;
 	output->pending_count = 0U;
-	memset(&cleanup, 0, sizeof(cleanup));
-	cleanup.terminal_position = -1;
-	if (!text_close_perform(file,
-	    YT_TEXT_CLOSE_CLEANUP_HANDLE, NULL, 0U, &cleanup)) {
-		output->orphaned_file = file;
-		text_output_write_failure(output, 57U, error);
-		return false;
-	}
-	if (cleanup.handle_open)
-		output->orphaned_file = file;
+	errno = 0;
+	(void)fclose(file);
+	saved_errno = errno;
+	errno = saved_errno;
 	text_output_write_failure(output, 71U, error);
 	return false;
 }
@@ -991,8 +856,9 @@ bool
 yt_text_output_write(struct yt_text_output *output, const uint8_t *data,
     size_t length, struct yt_error *error)
 {
-	struct text_output_write_observation observation;
 	FILE *file;
+	int saved_errno;
+	size_t accepted;
 	size_t index;
 
 	if (output == NULL || output->file == NULL
@@ -1007,19 +873,19 @@ yt_text_output_write(struct yt_text_output *output, const uint8_t *data,
 	for (index = 0U; index < length; ++index) {
 		if (output->pending_count == sizeof(output->pending)) {
 			output->pending_count = 0U;
-			memset(&observation, 0, sizeof(observation));
-			observation.terminal_position = -1;
-			if (!text_output_write_perform(file, output->pending,
-			    sizeof(output->pending), &observation)) {
-				text_output_write_failure(output, 57U, error);
-				return false;
-			}
-			if (observation.carry)
+			errno = 0;
+			accepted = fwrite(output->pending, 1U,
+			    sizeof(output->pending), file);
+			saved_errno = errno;
+			if (ferror(file) != 0) {
+				errno = saved_errno;
 				return text_output_write_cleanup_after_carry(output,
 				    file, error);
-			if (observation.accepted != sizeof(output->pending)) {
+			}
+			if (accepted != sizeof(output->pending)) {
 				output->file = NULL;
 				output->orphaned_file = file;
+				errno = saved_errno;
 				text_output_write_failure(output, 61U, error);
 				return false;
 			}
@@ -1027,17 +893,6 @@ yt_text_output_write(struct yt_text_output *output, const uint8_t *data,
 		output->pending[output->pending_count++] = data[index];
 	}
 	return true;
-}
-
-static bool
-text_output_close_observe(FILE *file,
-    enum text_close_operation operation, const uint8_t *data,
-    size_t requested, struct text_close_observation *observation)
-{
-	memset(observation, 0, sizeof(*observation));
-	observation->terminal_position = -1;
-	return text_close_perform(file, operation, data, requested,
-	    observation);
 }
 
 static void
@@ -1051,24 +906,44 @@ text_output_close_failure(struct yt_text_output *output, bool close_all,
 
 static bool
 text_output_cleanup_after_carry(struct yt_text_output *output,
-    FILE *file, bool handle_open, bool close_all, struct yt_error *error)
+    FILE *file, bool close_all, struct yt_error *error)
 {
-	struct text_close_observation cleanup;
+	int saved_errno;
 
 	output->file = NULL;
 	output->pending_count = 0U;
-	if (!text_output_close_observe(
-	    handle_open ? file : NULL, YT_TEXT_CLOSE_CLEANUP_HANDLE,
-	    NULL, 0U, &cleanup)) {
-		if (handle_open)
-			output->orphaned_file = file;
-		text_output_close_failure(output, close_all, 57U, error);
-		return false;
-	}
-	if (cleanup.handle_open)
-		output->orphaned_file = file;
+	errno = 0;
+	(void)fclose(file);
+	saved_errno = errno;
+	errno = saved_errno;
 	text_output_close_failure(output, close_all,
 	    output->device ? 57U : 70U, error);
+	return false;
+}
+
+static bool
+text_output_close_write(struct yt_text_output *output, FILE *file,
+    const uint8_t *data, size_t length, bool close_all,
+    struct yt_error *error)
+{
+	int saved_errno;
+	size_t accepted;
+
+	errno = 0;
+	accepted = fwrite(data, 1U, length, file);
+	saved_errno = errno;
+	if (ferror(file) != 0) {
+		errno = saved_errno;
+		return text_output_cleanup_after_carry(output, file, close_all,
+		    error);
+	}
+	if (accepted == length)
+		return true;
+	output->file = NULL;
+	output->orphaned_file = file;
+	output->pending_count = 0U;
+	errno = saved_errno;
+	text_output_close_failure(output, close_all, 61U, error);
 	return false;
 }
 
@@ -1076,12 +951,11 @@ static bool
 text_output_close_execute(struct yt_text_output *output, bool close_all,
     struct yt_error *error)
 {
-	struct text_close_observation observation;
-	FILE *file;
-	const uint8_t *data;
-	size_t requested;
-	enum text_close_operation operation;
 	static const uint8_t eof_byte = 0x1aU;
+	FILE *file;
+	int64_t position;
+	int result;
+	int saved_errno;
 
 	if (output == NULL) {
 		errno = 0;
@@ -1093,42 +967,43 @@ text_output_close_execute(struct yt_text_output *output, bool close_all,
 	if (output->file == NULL)
 		return true;
 	file = output->file;
-	for (operation = output->device ? YT_TEXT_CLOSE_HANDLE
-	    : YT_TEXT_CLOSE_PENDING_WRITE;
-	    operation <= YT_TEXT_CLOSE_HANDLE; ++operation) {
-		if (operation == YT_TEXT_CLOSE_PENDING_WRITE) {
-			data = output->pending;
-			requested = output->pending_count;
-			output->pending_count = 0U;
-		}
-		else if (operation == YT_TEXT_CLOSE_EOF_WRITE) {
-			output->pending[0] = eof_byte;
-			output->pending_count = 1U;
-			data = output->pending;
-			requested = 1U;
-			output->pending_count = 0U;
-		}
-		else {
-			data = NULL;
-			requested = 0U;
-		}
-		if (!text_output_close_observe(file, operation, data, requested,
-		    &observation)) {
-			text_output_close_failure(output, close_all, 57U, error);
+	if (!output->device) {
+		size_t pending_count = output->pending_count;
+
+		output->pending_count = 0U;
+		if (!text_output_close_write(output, file, output->pending,
+		    pending_count, close_all, error)
+		    || !text_output_close_write(output, file, &eof_byte, 1U,
+		    close_all, error))
 			return false;
-		}
-		if (observation.carry)
+		errno = 0;
+		position = text_output_position(file);
+		result = position < 0 || fflush(file) != 0;
+#ifdef _WIN32
+		if (!result)
+			result = _chsize_s(yt_text_fileno(file), position) != 0;
+#else
+		if (!result)
+			result = ftruncate(yt_text_fileno(file), (off_t)position) != 0;
+#endif
+		if (result) {
+			saved_errno = errno;
+			errno = saved_errno;
 			return text_output_cleanup_after_carry(output, file,
-			    observation.handle_open, close_all, error);
-		if (observation.accepted != requested) {
-			output->file = NULL;
-			output->orphaned_file = file;
-			text_output_close_failure(output, close_all, 61U, error);
-			return false;
+			    close_all, error);
 		}
 	}
 	output->file = NULL;
 	output->pending_count = 0U;
+	errno = 0;
+	result = fclose(file);
+	saved_errno = errno;
+	if (result != 0) {
+		errno = saved_errno;
+		text_output_close_failure(output, close_all,
+		    output->device ? 57U : 70U, error);
+		return false;
+	}
 	return true;
 }
 
