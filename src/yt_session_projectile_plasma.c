@@ -273,12 +273,15 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	if (!yt_projectile_planet_attack_rows(true, attacker, attacker_length,
 	    planet_name, planet_name_length, (float)sector_number, direct_row,
 	    sizeof(direct_row), &direct_length, news_row, sizeof(news_row),
-	    &news_length)
-	    || !session_present_text(session, direct_row, direct_length,
-	    SESSION_PRESENT_LINE, "plasma planet-hit row", error)
-	    || !yt_news_append_bytes(news_row, news_length, error)
-	    || !session_sound(session, YT_SOUND_CUE_ATTACK, "plasma planet attack sound",
-	    error))
+	    &news_length))
+		return false;
+	if (!session_present_text(session, direct_row, direct_length,
+	    SESSION_PRESENT_LINE, "plasma planet-hit row", error))
+		return false;
+	if (!yt_news_append_bytes(news_row, news_length, error))
+		return false;
+	if (!session_sound(session, YT_SOUND_CUE_ATTACK,
+	    "plasma planet attack sound", error))
 		return false;
 
 	original_productivity = qb_single_add(qb_single_add(production[0],
@@ -308,13 +311,17 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	remaining_productivity = qb_single_add(qb_single_add(production[0],
 	    production[1]), production[2]);
 	if (!yt_projectile_planet_productivity_row(original_productivity,
-	    remaining_productivity, row, sizeof(row), &row_length)
-	    || !session_present_text(session, row, row_length,
-	    SESSION_PRESENT_LINE, "plasma productivity row", error)
-	    || !yt_news_append_bytes(row, row_length, error)
-	    || !session_read_planet(session, logical_planet, &persistence,
-	    error)
-	    || !yt_projectile_planet_productivity_overlay(&persistence,
+	    remaining_productivity, row, sizeof(row), &row_length))
+		return false;
+	if (!session_present_text(session, row, row_length,
+	    SESSION_PRESENT_LINE, "plasma productivity row", error))
+		return false;
+	if (!yt_news_append_bytes(row, row_length, error))
+		return false;
+	if (!session_read_planet(session, logical_planet, &persistence,
+	    error))
+		return false;
+	if (!yt_projectile_planet_productivity_overlay(&persistence,
 	    production, stock))
 		return false;
 	remaining_ground = floorf(remaining_ground);
@@ -326,8 +333,9 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	}
 	persistence.ground_forces = remaining_ground;
 	if (!yt_record_set_number(&persistence.record, YT_F77,
-	    remaining_ground)
-	    || !yt_database_write(&session->door->game.database,
+	    remaining_ground))
+		return false;
+	if (!yt_database_write(&session->door->game.database,
 	    (size_t)session_planet_basic_record(session, logical_planet),
 	    &persistence.record, error))
 		return false;
@@ -338,32 +346,40 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		    error))
 			return false;
 		persistence.name_length = 0U;
-		if (!yt_record_set_number(&persistence.record, YT_F85, 0.0f)
-		    || !yt_database_write(&session->door->game.database,
+		if (!yt_record_set_number(&persistence.record, YT_F85, 0.0f))
+			return false;
+		if (!yt_database_write(&session->door->game.database,
 		    (size_t)session_planet_basic_record(session,
-		    logical_planet), &persistence.record, error)
-		    || !session_read_sector(session, sector_number, &unlink, error))
+		    logical_planet), &persistence.record, error))
+			return false;
+		if (!session_read_sector(session, sector_number, &unlink, error))
 			return false;
 		unlink.planet = 0;
-		if (!yt_record_set_number(&unlink.record, YT_F93, 0.0f)
-		    || !yt_database_write(&session->door->game.database,
+		if (!yt_record_set_number(&unlink.record, YT_F93, 0.0f))
+			return false;
+		if (!yt_database_write(&session->door->game.database,
 		    (size_t)session_sector_basic_record(session,
-		    sector_number), &unlink.record, error)
-		    || !session_present_text(session, destroyed_row,
+		    sector_number), &unlink.record, error))
+			return false;
+		if (!session_present_text(session, destroyed_row,
 		    sizeof(destroyed_row) - 1U, SESSION_PRESENT_LINE,
-		    "plasma planet-destroyed row", error)
-		    || !session_sound(session, YT_SOUND_CUE_DESTRUCTION,
-		    "plasma planet destruction sound", error)
-		    || !yt_news_append_bytes(destroyed_row,
+		    "plasma planet-destroyed row", error))
+			return false;
+		if (!session_sound(session, YT_SOUND_CUE_DESTRUCTION,
+		    "plasma planet destruction sound", error))
+			return false;
+		if (!yt_news_append_bytes(destroyed_row,
 		    sizeof(destroyed_row) - 1U, error))
 			return false;
 	}
 	else if (original_ground != 0.0f) {
 		if (!plasma_ground_force_row(original_ground, remaining_ground,
-		    row, sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
-		    SESSION_PRESENT_LINE, "plasma ground-force row", error)
-		    || !yt_news_append_bytes(row, row_length, error))
+		    row, sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "plasma ground-force row", error))
+			return false;
+		if (!yt_news_append_bytes(row, row_length, error))
 			return false;
 	}
 	return true;
@@ -417,8 +433,9 @@ yt_session_plasma_sector(struct yt_session *session, int sector_number,
 			owner_length = sizeof(you) - 1U;
 		}
 		if (!yt_projectile_defense_row((float)sector_number, owner_name,
-		    owner_length, original_fighters, row, sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
+		    owner_length, original_fighters, row, sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_LINE, "plasma defense report", error))
 			return false;
 		session->presentation.bold = true;
@@ -439,19 +456,21 @@ yt_session_plasma_sector(struct yt_session *session, int sector_number,
 			if (destroyed > original_fighters)
 				destroyed = original_fighters;
 			if (!plasma_fighter_damage_row(destroyed, row, sizeof(row),
-			    &row_length)
-			    || !session_present_text(session, row, row_length,
+			    &row_length))
+				return false;
+			if (!session_present_text(session, row, row_length,
 			    SESSION_PRESENT_LINE, "plasma destroyed-defense row",
 			    error))
 				return false;
 			remaining_fighters = original_fighters - destroyed;
-			if (destroyed > 9.0
-			    && (!plasma_fighter_news_row(attacker,
-			    launch_attacker_length, destroyed, sector_number, row,
-			    sizeof(row), &row_length)
-			    || !yt_news_append_bytes(row, row_length,
-			    error)))
-				return false;
+			if (destroyed > 9.0) {
+				if (!plasma_fighter_news_row(attacker,
+				    launch_attacker_length, destroyed, sector_number,
+				    row, sizeof(row), &row_length))
+					return false;
+				if (!yt_news_append_bytes(row, row_length, error))
+					return false;
+			}
 			if (!session_read_sector(session, sector_number, &sector,
 			    error))
 				return false;
@@ -463,8 +482,9 @@ yt_session_plasma_sector(struct yt_session *session, int sector_number,
 				sector.fighters = 0.0f;
 				sector.fighter_owner = 0;
 				if (!yt_record_set_raw_number(&sector.record, YT_F81,
-				    dirty_zero)
-				    || !yt_record_set_raw_number(&sector.record, YT_F85,
+				    dirty_zero))
+					return false;
+				if (!yt_record_set_raw_number(&sector.record, YT_F85,
 				    dirty_zero))
 					return false;
 			}
@@ -474,9 +494,10 @@ yt_session_plasma_sector(struct yt_session *session, int sector_number,
 				return false;
 			if (remaining_fighters == 0.0
 			    && (float)sector_number
-			    == session->door->game.config.headquarters
-			    && !yt_session_xannor_victory(session, error))
-				return false;
+			    == session->door->game.config.headquarters) {
+				if (!yt_session_xannor_victory(session, error))
+					return false;
+			}
 			if (*energy < 1.0)
 				return true;
 		}
@@ -493,12 +514,14 @@ plasma_reload_sector:
 		uint8_t row[256];
 		size_t row_length;
 
-		if (!session_sound(session, YT_SOUND_CUE_DAMAGE, "plasma sector-mine sound",
-		    error)
-		    || !plasma_mine_entry_news_row(attacker,
+		if (!session_sound(session, YT_SOUND_CUE_DAMAGE,
+		    "plasma sector-mine sound", error))
+			return false;
+		if (!plasma_mine_entry_news_row(attacker,
 		    launch_attacker_length, sector_number, row, sizeof(row),
-		    &row_length)
-		    || !yt_news_append_bytes(row, row_length, error))
+		    &row_length))
+			return false;
+		if (!yt_news_append_bytes(row, row_length, error))
 			return false;
 		while (*energy > 0.0 && (double)destroyed < original_mines) {
 			float draw;
@@ -515,17 +538,22 @@ plasma_reload_sector:
 		if ((double)destroyed > original_mines)
 			destroyed = (float)original_mines;
 		if (!plasma_mine_result_row(attacker, launch_attacker_length,
-		    true, destroyed, sector_number, row, sizeof(row), &row_length)
-		    || !yt_news_append_bytes(row, row_length, error)
-		    || !plasma_mine_result_row(NULL, 0U, false, destroyed,
-		    sector_number, row, sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
-		    SESSION_PRESENT_BOLD_LINE, "plasma destroyed-mines row", error)
-		    || !session_read_sector(session, sector_number, &sector, error))
+		    true, destroyed, sector_number, row, sizeof(row), &row_length))
+			return false;
+		if (!yt_news_append_bytes(row, row_length, error))
+			return false;
+		if (!plasma_mine_result_row(NULL, 0U, false, destroyed,
+		    sector_number, row, sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
+		    SESSION_PRESENT_BOLD_LINE, "plasma destroyed-mines row", error))
+			return false;
+		if (!session_read_sector(session, sector_number, &sector, error))
 			return false;
 		sector.mines = qb_single_subtract((float)original_mines, destroyed);
-		if (!yt_record_set_number(&sector.record, YT_F129, sector.mines)
-		    || !yt_database_write(&session->door->game.database,
+		if (!yt_record_set_number(&sector.record, YT_F129, sector.mines))
+			return false;
+		if (!yt_database_write(&session->door->game.database,
 		    (size_t)session_sector_basic_record(session,
 		    sector_number), &sector.record, error))
 			return false;
@@ -604,18 +632,21 @@ plasma_reload_sector:
 			if (!yt_projectile_attack_first_rows(true, attacker,
 			    launch_attacker_length, victim, victim_length,
 			    (float)sector_number, news_row, sizeof(news_row),
-			    &news_length, direct_row, sizeof(direct_row), &direct_length)
-			    || !yt_news_append_bytes(news_row, news_length,
-			    error)
-			    || !session_present_text(session, direct_row, direct_length,
+			    &news_length, direct_row, sizeof(direct_row), &direct_length))
+				return false;
+			if (!yt_news_append_bytes(news_row, news_length, error))
+				return false;
+			if (!session_present_text(session, direct_row, direct_length,
 			    SESSION_PRESENT_BOLD_LINE,
-			    "plasma player attack first row", error)
-			    || !plasma_player_second_row(remaining_shields,
+			    "plasma player attack first row", error))
+				return false;
+			if (!plasma_player_second_row(remaining_shields,
 			    destroyed_fighters, second_row, sizeof(second_row),
-			    &second_length)
-			    || !yt_news_append_bytes(second_row,
-			    second_length, error)
-			    || !session_present_text(session, second_row, second_length,
+			    &second_length))
+				return false;
+			if (!yt_news_append_bytes(second_row, second_length, error))
+				return false;
+			if (!session_present_text(session, second_row, second_length,
 			    SESSION_PRESENT_BOLD_LINE,
 			    "plasma player attack second row", error))
 				return false;
@@ -627,10 +658,12 @@ plasma_reload_sector:
 				persistence.shields = remaining_shields;
 				persistence.fighters = (float)remaining_fighters;
 				if (!yt_record_set_number(&persistence.record, YT_F53,
-				    persistence.shields)
-				    || !yt_record_set_number(&persistence.record, YT_F61,
-				    persistence.fighters)
-				    || !yt_database_write(&session->door->game.database,
+				    persistence.shields))
+					return false;
+				if (!yt_record_set_number(&persistence.record, YT_F61,
+				    persistence.fighters))
+					return false;
+				if (!yt_database_write(&session->door->game.database,
 				    (size_t)basic, &persistence.record, error))
 					return false;
 				if (*energy < 1.0)
@@ -668,9 +701,11 @@ plasma_reload_sector:
 			saved_mines = victim.mines;
 			victim.mines = 0.0f;
 			victim.danger_scanner = 0;
-			if (!yt_record_set_number(&victim.record, YT_F129, 0.0f)
-			    || !yt_record_set_number(&victim.record, YT_F93, 0.0f)
-			    || !yt_database_write(&session->door->game.database,
+			if (!yt_record_set_number(&victim.record, YT_F129, 0.0f))
+				return false;
+			if (!yt_record_set_number(&victim.record, YT_F93, 0.0f))
+				return false;
+			if (!yt_database_write(&session->door->game.database,
 			    (size_t)basic, &victim.record, error))
 				return false;
 
@@ -700,15 +735,17 @@ plasma_reload_sector:
 				session->presentation.blink = true;
 				if (!session_present_text(session, warning_row,
 				    warning_length, SESSION_PRESENT_BOLD_LINE,
-				    "plasma carried-mine warning", error)
-				    || !session_read_sector(session, sector_number,
+				    "plasma carried-mine warning", error))
+					return false;
+				if (!session_read_sector(session, sector_number,
 				    &mine_persistence, error))
 					return false;
 				mine_persistence.mines = qb_single_add(
 				    mine_persistence.mines, saved_mines);
 				if (!yt_record_set_number(&mine_persistence.record, YT_F129,
-				    mine_persistence.mines)
-				    || !yt_database_write(&session->door->game.database,
+				    mine_persistence.mines))
+					return false;
+				if (!yt_database_write(&session->door->game.database,
 				    (size_t)session_sector_basic_record(session,
 				    sector_number), &mine_persistence.record, error))
 					return false;
@@ -720,13 +757,17 @@ plasma_reload_sector:
 				    basic, 0))
 					return false;
 			}
-			else if (!yt_session_kill_player(session, basic,
-			    session_record(session), true, error)
-			    || !session_sound(session, YT_SOUND_CUE_DESTRUCTION, "plasma salvage sound",
-			    error)
-			    || !yt_session_salvage_player(session, basic,
-			    session_record(session), error))
-				return false;
+			else {
+				if (!yt_session_kill_player(session, basic,
+				    session_record(session), true, error))
+					return false;
+				if (!session_sound(session, YT_SOUND_CUE_DESTRUCTION,
+				    "plasma salvage sound", error))
+					return false;
+				if (!yt_session_salvage_player(session, basic,
+				    session_record(session), error))
+					return false;
+			}
 
 			if (*energy > 0.0 && saved_mines > 0.0f)
 				goto plasma_reload_sector;
