@@ -68,8 +68,11 @@ radio_read_attach_fault(struct yt_error *error,
 		return false;
 	if (basic_error == 0U && error->basic_error_valid)
 		basic_error = error->basic_error;
-	if (basic_error == 0U
-	    || !yt_error_attach_basic_fault_number(error, site, basic_error))
+	if (basic_error == 0U) {
+		(void)yt_error_attach_basic_fault(error, site);
+		return false;
+	}
+	if (!yt_error_attach_basic_fault_number(error, site, basic_error))
 		(void)yt_error_attach_basic_fault(error, site);
 	return false;
 }
@@ -191,10 +194,12 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 			    || recipient != previous_recipient) {
 				if (!yt_radio_reader_header(to, to_length, from,
 				    from_length, header, sizeof(header),
-				    &header_length)
-				    || !session_present_text(session, NULL, 0U,
-				    SESSION_PRESENT_LINE, "radio pair blank", error)
-				    || !session_present_text(session, header,
+				    &header_length))
+					goto abort;
+				if (!session_present_text(session, NULL, 0U,
+				    SESSION_PRESENT_LINE, "radio pair blank", error))
+					goto abort;
+				if (!session_present_text(session, header,
 				    header_length, SESSION_PRESENT_LINE,
 				    "radio pair header", error))
 					goto abort;
@@ -225,17 +230,21 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 			    SESSION_PRESENT_LINE, "radio pause blank", error))
 				goto abort;
 		}
-		if (decision.automatic_write
-		    && (!yt_radio_reader_mutate(&record, counter)
-		    || !yt_radio_file_put(&file, record_number, &record,
-		    error)))
-			goto abort;
+		if (decision.automatic_write) {
+			if (!yt_radio_reader_mutate(&record, counter))
+				goto abort;
+			if (!yt_radio_file_put(&file, record_number, &record,
+			    error))
+				goto abort;
+		}
 	}
 
-	if (!visible && !session_present_text(session, none,
-	    sizeof(none) - 1U, SESSION_PRESENT_LINE, "radio none found",
-	    error))
-		goto abort;
+	if (!visible) {
+		if (!session_present_text(session, none,
+		    sizeof(none) - 1U, SESSION_PRESENT_LINE, "radio none found",
+		    error))
+			goto abort;
+	}
 	if (!yt_radio_file_close(&file, error)) {
 		return radio_read_attach_fault(error,
 		    YT_BASIC_FAULT_RADIO_FINAL_CLOSE,
