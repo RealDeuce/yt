@@ -14,10 +14,12 @@ genesis_handoff_open_output(struct yt_text_output *output,
 	bool opened;
 
 	opened = yt_text_output_open(output, "RMTINIT.TMP", error);
-	if (!opened && output->last_output_open_basic_error != 0U)
-		(void)yt_error_attach_basic_fault_number(error,
-		    YT_BASIC_FAULT_GENESIS_OPEN_OUTPUT,
-		    output->last_output_open_basic_error);
+	if (!opened) {
+		if (output->last_output_open_basic_error != 0U)
+			(void)yt_error_attach_basic_fault_number(error,
+			    YT_BASIC_FAULT_GENESIS_OPEN_OUTPUT,
+			    output->last_output_open_basic_error);
+	}
 	return opened;
 }
 
@@ -28,10 +30,12 @@ genesis_handoff_print_command(struct yt_text_output *output,
 	bool printed;
 
 	printed = yt_text_output_write(output, line, line_length, error);
-	if (!printed && output->last_write_basic_error != 0U)
-		(void)yt_error_attach_basic_fault_number(error,
-		    YT_BASIC_FAULT_GENESIS_PRINT_VALUE,
-		    output->last_write_basic_error);
+	if (!printed) {
+		if (output->last_write_basic_error != 0U)
+			(void)yt_error_attach_basic_fault_number(error,
+			    YT_BASIC_FAULT_GENESIS_PRINT_VALUE,
+			    output->last_write_basic_error);
+	}
 	return printed;
 }
 
@@ -109,10 +113,16 @@ genesis_handoff(struct yt_session *session, struct yt_error *error)
 	line[line_length - 2U] = '\r';
 	line[line_length - 1U] = '\n';
 	yt_text_output_init(&output);
-	result = genesis_handoff_open_output(&output, error)
-	    && genesis_handoff_print_command(&output, line, line_length, error)
-	    && genesis_handoff_close_all(session, &output, error)
-	    && genesis_handoff_run_program(session, error);
+	result = false;
+	if (!genesis_handoff_open_output(&output, error))
+		goto done;
+	if (!genesis_handoff_print_command(&output, line, line_length, error))
+		goto done;
+	if (!genesis_handoff_close_all(session, &output, error))
+		goto done;
+	result = genesis_handoff_run_program(session, error);
+
+done:
 	yt_text_output_destroy(&output);
 	return result;
 }
@@ -145,16 +155,21 @@ yt_session_command_genesis(struct yt_session *session, struct yt_error *error)
 	if (cached_trader_length > sizeof(cached_trader))
 		return session_range_error(error, "Genesis cached trader length");
 	memcpy(cached_trader, session->player.name, cached_trader_length);
-	if (!session_reload_player(session, error)
-	    || !session_present_paged_line(session, prophecy_first,
-	    sizeof(prophecy_first) - 1U, "Genesis prophecy first row", error)
-	    || !session_present_paged_fragment(session, prophecy_second,
-	    sizeof(prophecy_second) - 1U)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "Genesis prompt leading blank", error)
-	    || !yt_genesis_confirmation_prompt(cached_trader,
-	    cached_trader_length, prompt, sizeof(prompt), &prompt_length)
-	    || !session_confirm(session, prompt, prompt_length, &answer, error))
+	if (!session_reload_player(session, error))
+		return false;
+	if (!session_present_paged_line(session, prophecy_first,
+	    sizeof(prophecy_first) - 1U, "Genesis prophecy first row", error))
+		return false;
+	if (!session_present_paged_fragment(session, prophecy_second,
+	    sizeof(prophecy_second) - 1U))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "Genesis prompt leading blank", error))
+		return false;
+	if (!yt_genesis_confirmation_prompt(cached_trader,
+	    cached_trader_length, prompt, sizeof(prompt), &prompt_length))
+		return false;
+	if (!session_confirm(session, prompt, prompt_length, &answer, error))
 		return false;
 	if (required_ports > 300.0f) {
 		if (!session_present_alert(session, disabled, sizeof(disabled) - 1U,
@@ -172,9 +187,10 @@ yt_session_command_genesis(struct yt_session *session, struct yt_error *error)
 		    second, sizeof(second), &second_length))
 			return session_range_error(error,
 			    "Genesis insufficient row composition");
-		return session_present_paged_line(session, first, first_length,
-		    "Genesis insufficient first row", error)
-		    && session_present_paged_fragment(session, second,
+		if (!session_present_paged_line(session, first, first_length,
+		    "Genesis insufficient first row", error))
+			return false;
+		return session_present_paged_fragment(session, second,
 		    second_length);
 	}
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
@@ -185,7 +201,8 @@ yt_session_command_genesis(struct yt_session *session, struct yt_error *error)
 	    sizeof(success_first) - 1U))
 		return false;
 	session->presentation.bold = true;
-	return session_present_paged_fragment(session, success_second,
-	    sizeof(success_second) - 1U)
-	    && genesis_handoff(session, error);
+	if (!session_present_paged_fragment(session, success_second,
+	    sizeof(success_second) - 1U))
+		return false;
+	return genesis_handoff(session, error);
 }
