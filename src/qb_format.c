@@ -152,11 +152,15 @@ big_multiply_u64(const struct qb_big *value, uint64_t factor,
 
 	memset(result, 0, sizeof(*result));
 	while (factor != 0) {
-		if ((factor & 1U) != 0 && !big_add(result, &term))
-			return false;
+		if ((factor & 1U) != 0) {
+			if (!big_add(result, &term))
+				return false;
+		}
 		factor >>= 1;
-		if (factor != 0 && !big_shift_left(&term, 1))
-			return false;
+		if (factor != 0) {
+			if (!big_shift_left(&term, 1))
+				return false;
+		}
 	}
 	return true;
 }
@@ -380,8 +384,9 @@ qb_mbf64_add_raw(const uint8_t left_raw[8], const uint8_t right_raw[8],
 	left_magnitude = big_from_u64(left.significand);
 	right_magnitude = big_from_u64(right.significand);
 	if (!big_shift_left(&left_magnitude,
-	    (unsigned)(left.binary_shift - binary_shift))
-	    || !big_shift_left(&right_magnitude,
+	    (unsigned)(left.binary_shift - binary_shift)))
+		return QB_MBF_OVERFLOW;
+	if (!big_shift_left(&right_magnitude,
 	    (unsigned)(right.binary_shift - binary_shift)))
 		return QB_MBF_OVERFLOW;
 	if (left.negative == right.negative) {
@@ -1096,8 +1101,11 @@ qb_val_n(const uint8_t *text, size_t length)
 		if (character >= '0' && character <= '9') {
 			uint32_t digit = (uint32_t)(character - '0');
 
-			if (!big_multiply_small(&integer, 10)
-			    || !big_add_small(&integer, digit)) {
+			if (!big_multiply_small(&integer, 10)) {
+				result.overflow = true;
+				return result;
+			}
+			if (!big_add_small(&integer, digit)) {
 				result.overflow = true;
 				return result;
 			}

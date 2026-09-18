@@ -239,8 +239,9 @@ bool
 yt_error_attach_basic_fault_number(struct yt_error *error,
     enum yt_basic_fault_site site, uint16_t error_number)
 {
-	if (error_number > UINT8_MAX
-	    || !yt_basic_fault_admits(site, (uint8_t)error_number))
+	if (error_number > UINT8_MAX)
+		return false;
+	if (!yt_basic_fault_admits(site, (uint8_t)error_number))
 		return false;
 	if (!yt_error_attach_basic_fault(error, site))
 		return false;
@@ -280,8 +281,9 @@ append_str_single(struct text_builder *builder, float value, bool print)
 	    ? qb_print_single(rendered, sizeof(rendered), value)
 	    : qb_str_single(rendered, sizeof(rendered), value);
 
-	return length >= 0
-	    && append(builder, rendered, (size_t)length);
+	if (length < 0)
+		return false;
+	return append(builder, rendered, (size_t)length);
 }
 
 static bool
@@ -290,8 +292,9 @@ append_print_integer(struct text_builder *builder, int16_t value)
 	char rendered[16];
 	int length = qb_print_integer(rendered, sizeof(rendered), value);
 
-	return length >= 0
-	    && append(builder, rendered, (size_t)length);
+	if (length < 0)
+		return false;
+	return append(builder, rendered, (size_t)length);
 }
 
 static bool
@@ -300,8 +303,9 @@ append_str_integer(struct text_builder *builder, int16_t value)
 	char rendered[16];
 	int length = qb_str_integer(rendered, sizeof(rendered), value);
 
-	return length >= 0
-	    && append(builder, rendered, (size_t)length);
+	if (length < 0)
+		return false;
+	return append(builder, rendered, (size_t)length);
 }
 
 static bool
@@ -592,8 +596,9 @@ yt_basic_fault_project(const struct yt_error *error,
 		return false;
 	site = (enum yt_basic_fault_site)error->basic_fault_site;
 	identity = yt_basic_fault_identity(site);
-	if (identity == NULL
-	    || !yt_basic_fault_admits(site, (uint8_t)error->basic_error))
+	if (identity == NULL)
+		return false;
+	if (!yt_basic_fault_admits(site, (uint8_t)error->basic_error))
 		return false;
 	memset(projection, 0, sizeof(*projection));
 	projection->site = site;

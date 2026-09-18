@@ -494,10 +494,12 @@ yt_score_format_mbf(char *dest, size_t size, const uint8_t *raw,
 	    || (raw_size != 4U && raw_size != 8U))
 		return false;
 	if (!decimal_digit_stream(raw, raw_size, &negative, &digits,
-	    &stream_exponent)
-	    || !rounded_units(units, sizeof(units), digits, stream_exponent,
-	    spec->fractional_digits)
-	    || !fixed_magnitude(magnitude, sizeof(magnitude), units, spec))
+	    &stream_exponent))
+		return false;
+	if (!rounded_units(units, sizeof(units), digits, stream_exponent,
+	    spec->fractional_digits))
+		return false;
+	if (!fixed_magnitude(magnitude, sizeof(magnitude), units, spec))
 		return false;
 	magnitude_length = strlen(magnitude);
 	fixed_width = spec->integer_columns
