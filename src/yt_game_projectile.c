@@ -15,10 +15,12 @@ yt_projectile_target_prompt(bool plasma, float displayed, float maximum,
 	char maximum_text[64];
 	int written;
 
-	if (prompt == NULL || length == NULL || capacity == 0U
-	    || qb_str_single(displayed_text, sizeof(displayed_text), displayed)
-	    < 0
-	    || qb_str_single(maximum_text, sizeof(maximum_text), maximum) < 0)
+	if (prompt == NULL || length == NULL || capacity == 0U)
+		return false;
+	if (qb_str_single(displayed_text, sizeof(displayed_text), displayed)
+	    < 0)
+		return false;
+	if (qb_str_single(maximum_text, sizeof(maximum_text), maximum) < 0)
 		return false;
 	written = snprintf((char *)prompt, capacity,
 	    "You have%s. Send your%sto what sector? [ 1 to%s ] ?",
@@ -49,8 +51,9 @@ yt_projectile_plasma_energy_row(double energy, uint8_t *row,
 	char number[64];
 	int written;
 
-	if (row == NULL || length == NULL
-	    || qb_str_double(number, sizeof(number), energy) < 0)
+	if (row == NULL || length == NULL)
+		return false;
+	if (qb_str_double(number, sizeof(number), energy) < 0)
 		return false;
 	written = snprintf((char *)row, capacity,
 	    "Plasma bolts targeted... firing%s megawatts!", number);
@@ -67,8 +70,9 @@ yt_projectile_plasma_firing_row(float counter, uint8_t *row,
 	char number[64];
 	int written;
 
-	if (row == NULL || length == NULL
-	    || qb_str_single(number, sizeof(number), counter) < 0)
+	if (row == NULL || length == NULL)
+		return false;
+	if (qb_str_single(number, sizeof(number), counter) < 0)
 		return false;
 	written = snprintf((char *)row, capacity, "Firing%s!", number);
 	if (written < 0 || (size_t)written >= capacity)
