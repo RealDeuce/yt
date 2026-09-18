@@ -36,29 +36,29 @@ yt_clearance_normalize(size_t item, float *discount)
 	return true;
 }
 
-float
+uint8_t
 yt_clearance_percentage(float discount)
 {
-	return floorf(qb_single_multiply(100.0f, discount));
+	return (uint8_t)floorf(qb_single_multiply(100.0f, discount));
 }
 
 void
-yt_earth_prices(const float discount[4], float price[4])
+yt_earth_prices(const float discount[4], uint8_t price[4])
 {
 	if (discount == NULL || price == NULL)
 		return;
-	price[0] = floorf(qb_single_subtract(250.0f,
+	price[0] = (uint8_t)floorf(qb_single_subtract(250.0f,
 	    qb_single_multiply(250.0f, discount[0])));
-	price[1] = floorf(qb_single_subtract(50.0f,
+	price[1] = (uint8_t)floorf(qb_single_subtract(50.0f,
 	    qb_single_multiply(50.0f, discount[1])));
-	price[2] = floorf(qb_single_multiply(50.0f,
+	price[2] = (uint8_t)floorf(qb_single_multiply(50.0f,
 	    qb_single_subtract(1.0f, discount[2])));
-	price[3] = floorf(qb_single_multiply(200.5f,
+	price[3] = (uint8_t)floorf(qb_single_multiply(200.5f,
 	    qb_single_subtract(1.0f, discount[3])));
 }
 
 double
-yt_earth_affordable(float credits, float price)
+yt_earth_affordable(float credits, uint32_t price)
 {
 	return floor(qb_double_divide((double)credits, (double)price));
 }
@@ -100,7 +100,7 @@ uint8_t
 yt_earth_cloak_default(uint8_t deficit, float credits)
 {
 	if (qb_single_multiply((float)deficit, 1000.0f) > credits)
-		return (uint8_t)yt_earth_affordable(credits, 1000.0f);
+		return (uint8_t)yt_earth_affordable(credits, 1000U);
 	return deficit;
 }
 

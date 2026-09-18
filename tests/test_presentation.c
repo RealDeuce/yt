@@ -22230,8 +22230,8 @@ direct_warp_attack_tail_clearance(void *context, struct yt_error *error)
 			join->clearance_discount[index] = 0.0f;
 		} else {
 			join->clearance_discount[index] = discount;
-			if (qb_str_single(percent, sizeof(percent),
-			    yt_clearance_percentage(discount)) < 0)
+		if (qb_str_single(percent, sizeof(percent),
+		    (float)yt_clearance_percentage(discount)) < 0)
 				return false;
 			row_length = snprintf(row, sizeof(row),
 			    "Special clearance sale! The Trader's Guild is selling "

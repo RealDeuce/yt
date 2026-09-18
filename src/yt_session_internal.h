@@ -322,7 +322,7 @@ bool session_port_owner_row_capture(struct yt_session *session,
     size_t captured_capacity, size_t *captured_length,
     struct yt_error *error);
 bool session_earth_report(struct yt_session *session, struct yt_port *earth,
-    float price[4], struct yt_error *error);
+    uint8_t price[4], struct yt_error *error);
 bool yt_session_salvage_player(struct yt_session *session, int victim_record,
     int killer_record, struct yt_error *error);
 bool yt_session_kill_player(struct yt_session *session, int victim_record,

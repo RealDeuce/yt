@@ -693,15 +693,16 @@ format_remaining(float deadline, float timer,
 	float deadline_minutes = (float)(deadline / 60.0f);
 	float timer_minutes = (float)(timer / 60.0f);
 	float remaining = (float)(deadline_minutes - timer_minutes);
-	float whole = floorf(remaining);
-	float fraction = (float)(remaining - whole);
-	float seconds_value = floorf((float)(fraction * 60.0f));
+	uint16_t whole = (uint16_t)floorf(remaining);
+	float fraction = (float)(remaining - (float)whole);
+	uint8_t seconds_value = (uint8_t)floorf((float)(fraction * 60.0f));
 	int minute_length;
 	int second_length;
 	size_t length;
 
-	minute_length = qb_str_single(minutes, sizeof(minutes), whole);
-	second_length = qb_str_single(seconds, sizeof(seconds), seconds_value);
+	minute_length = qb_str_single(minutes, sizeof(minutes), (float)whole);
+	second_length = qb_str_single(seconds, sizeof(seconds),
+	    (float)seconds_value);
 
 	if (minute_length < 0 || second_length < 2)
 		return YT_PRESENT_OVERFLOW;

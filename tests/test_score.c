@@ -12568,7 +12568,7 @@ check_clearance_model(void)
 	value = 0.800000011920929f;
 	if (!yt_clearance_normalize(2, &value))
 		return false;
-	return yt_clearance_percentage(0.10000000149011612f) == 10.0f;
+	return yt_clearance_percentage(0.10000000149011612f) == 10U;
 }
 
 static bool
@@ -12579,43 +12579,43 @@ check_earth_report_model(void)
 	const char ticket[6] = {'1', '1', '1', '1', '1', '1'};
 	bool matched[6];
 	float discount[4] = {0};
-	float price[4];
+	uint8_t price[4];
 
 	yt_earth_prices(discount, price);
-	if (price[0] != 250.0f || price[1] != 50.0f
-	    || price[2] != 50.0f || price[3] != 200.0f)
+	if (price[0] != 250U || price[1] != 50U
+	    || price[2] != 50U || price[3] != 200U)
 		return false;
 	discount[0] = 0.10000000149011612f;
 	discount[1] = 0.10000000149011612f;
 	discount[2] = 0.10000000149011612f;
 	discount[3] = 0.10000000149011612f;
 	yt_earth_prices(discount, price);
-	if (price[0] != 225.0f || price[1] != 45.0f
-	    || price[2] != 45.0f || price[3] != 180.0f)
+	if (price[0] != 225U || price[1] != 45U
+	    || price[2] != 45U || price[3] != 180U)
 		return false;
 	discount[0] = 0.5f;
 	discount[1] = 0.25f;
 	discount[2] = 0.25f;
 	discount[3] = 0.5f;
 	yt_earth_prices(discount, price);
-	if (price[0] != 125.0f || price[1] != 37.0f
-	    || price[2] != 37.0f || price[3] != 100.0f)
+	if (price[0] != 125U || price[1] != 37U
+	    || price[2] != 37U || price[3] != 100U)
 		return false;
 	discount[0] = 0.9509999752044678f;
 	discount[1] = 0.9800000190734863f;
 	discount[2] = 0.800000011920929f;
 	discount[3] = 0.8999999761581421f;
 	yt_earth_prices(discount, price);
-	if (price[0] != 12.0f || price[1] != 1.0f
-	    || price[2] != 9.0f || price[3] != 20.0f)
+	if (price[0] != 12U || price[1] != 1U
+	    || price[2] != 9U || price[3] != 20U)
 		return false;
-	if (yt_earth_affordable(12345.0f, 1000.0f) != 12.0
-	    || yt_earth_affordable(12345.0f, 250.0f) != 49.0
-	    || yt_earth_affordable(12345.0f, 50.0f) != 246.0
-	    || yt_earth_affordable(12345.0f, 5.0f) != 2469.0
-	    || yt_earth_affordable(12345.0f, 500000.0f) != 0.0
-	    || yt_earth_affordable(12345.0f, 1000000000.0f) != 0.0
-	    || yt_earth_affordable(12345.0f, 200.0f) != 61.0)
+	if (yt_earth_affordable(12345.0f, 1000U) != 12.0
+	    || yt_earth_affordable(12345.0f, 250U) != 49.0
+	    || yt_earth_affordable(12345.0f, 50U) != 246.0
+	    || yt_earth_affordable(12345.0f, 5U) != 2469.0
+	    || yt_earth_affordable(12345.0f, 500000U) != 0.0
+	    || yt_earth_affordable(12345.0f, 1000000000U) != 0.0
+	    || yt_earth_affordable(12345.0f, 200U) != 61.0)
 		return false;
 	if (yt_earth_purchase_quantity(3.9) != 3.0f
 	    || yt_earth_purchase_quantity(-0.1) != -1.0f

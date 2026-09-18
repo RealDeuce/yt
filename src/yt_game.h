@@ -648,10 +648,10 @@ void yt_planet_rename_overlay(struct yt_planet *planet, const char *name,
 bool yt_clearance_candidate_needed(size_t item, float trigger_draw,
     float discount, bool create);
 bool yt_clearance_normalize(size_t item, float *discount);
-float yt_clearance_percentage(float discount);
+uint8_t yt_clearance_percentage(float discount);
 
-void yt_earth_prices(const float discount[4], float price[4]);
-double yt_earth_affordable(float credits, float price);
+void yt_earth_prices(const float discount[4], uint8_t price[4]);
+double yt_earth_affordable(float credits, uint32_t price);
 int yt_earth_selector_position(const char *command);
 float yt_earth_purchase_quantity(double value);
 float yt_earth_receipt_amount(int owner, int buyer_record, float cost);

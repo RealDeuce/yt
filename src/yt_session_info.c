@@ -297,7 +297,7 @@ yt_session_show_ship(struct yt_session *session, struct yt_error *error)
 	size_t row_length;
 	size_t cached_name_length = session->cached_player_name_length;
 	int saved_foreground = session->presentation.foreground;
-	float cloak_percent;
+	uint8_t cloak_percent;
 	bool anti_cloak = session->earth.anti_cloak_enabled;
 	int length;
 
@@ -382,8 +382,9 @@ yt_session_show_ship(struct yt_session *session, struct yt_error *error)
 	if (anti_cloak)
 		(void)snprintf(right, sizeof(right), "%s", " FAIL");
 	else {
-		cloak_percent = floorf(qb_single_multiply(session->player.cloak, 100.0f));
-		if (qb_str_single(right, sizeof(right), cloak_percent) < 0)
+		cloak_percent = (uint8_t)floorf(qb_single_multiply(
+		    session->player.cloak, 100.0f));
+		if (qb_str_single(right, sizeof(right), (float)cloak_percent) < 0)
 			return false;
 		if (strlen(right) + 1U >= sizeof(right))
 			return false;

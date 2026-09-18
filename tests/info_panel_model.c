@@ -135,7 +135,7 @@ yt_info_panel_run(struct yt_info_panel_state *state,
 	char right[64];
 	size_t row_length;
 	int saved_foreground;
-	float cloak_percent;
+	uint8_t cloak_percent;
 	int length;
 
 	if (state == NULL || ops == NULL || ops->refresh_time == NULL
@@ -215,8 +215,9 @@ yt_info_panel_run(struct yt_info_panel_state *state,
 	if (state->anti_cloak != 0.0f)
 		(void)snprintf(right, sizeof(right), "%s", " FAIL");
 	else {
-		cloak_percent = floorf(single_mul(state->player.cloak, 100.0f));
-		if (qb_str_single(right, sizeof(right), cloak_percent) < 0
+		cloak_percent = (uint8_t)floorf(single_mul(state->player.cloak,
+		    100.0f));
+		if (qb_str_single(right, sizeof(right), (float)cloak_percent) < 0
 		    || strlen(right) + 1U >= sizeof(right))
 			return false;
 		strcat(right, "%");

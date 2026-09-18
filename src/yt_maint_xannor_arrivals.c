@@ -416,12 +416,14 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 		return false;
 	while (planet.ground_forces > 0.0f && *group_size > 0.0f) {
 		float sample;
+		uint16_t damage;
 
 		if (!yt_random_next(&game->random, &sample, error))
 			return false;
+		damage = (uint16_t)floorf(qb_single_multiply(sample, 1000.0f));
 		*group_size = qb_single_subtract(*group_size, 1.0f);
 		planet.ground_forces = qb_single_subtract(planet.ground_forces,
-		    floorf(qb_single_multiply(sample, 1000.0f)));
+		    (float)damage);
 	}
 	if (planet.ground_forces < 0.0f)
 		planet.ground_forces = 0.0f;

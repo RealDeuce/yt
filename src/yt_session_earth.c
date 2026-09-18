@@ -112,7 +112,7 @@ yt_session_clearance(struct yt_session *session, bool create,
 		}
 		session->earth.clearance_discounts[index] = discount;
 		if (qb_str_single(percent, sizeof(percent),
-		    yt_clearance_percentage(discount)) < 0)
+		    (float)yt_clearance_percentage(discount)) < 0)
 			return false;
 		row_length = snprintf(row, sizeof(row),
 		    "Special clearance sale! The Trader's Guild is selling "
@@ -135,8 +135,8 @@ yt_session_clearance(struct yt_session *session, bool create,
 }
 
 static bool
-earth_report_row(struct yt_session *session, const char *label, float price,
-    bool lottery_price, struct yt_error *error)
+earth_report_row(struct yt_session *session, const char *label,
+    uint32_t price, bool lottery_price, struct yt_error *error)
 {
 	char price_text[64];
 	char cost[96];
@@ -151,7 +151,7 @@ earth_report_row(struct yt_session *session, const char *label, float price,
 	if (lottery_price)
 		snprintf(cost, sizeof(cost), "%s", "* 5");
 	else {
-		if (qb_str_single(price_text, sizeof(price_text), price) < 0)
+		if (qb_str_single(price_text, sizeof(price_text), (float)price) < 0)
 			return session_range_error(error,
 			    "Earth report price format");
 		if (snprintf(cost, sizeof(cost), "*%s ", price_text) < 0)
@@ -176,7 +176,7 @@ earth_report_row(struct yt_session *session, const char *label, float price,
 
 bool
 session_earth_report(struct yt_session *session, struct yt_port *earth,
-    float price[4], struct yt_error *error)
+    uint8_t price[4], struct yt_error *error)
 {
 	static const uint8_t separator[] =
 	    "----------------------*--------*------------";
@@ -239,21 +239,21 @@ session_earth_report(struct yt_session *session, struct yt_port *earth,
 	    sizeof(separator) - 1U))
 		return false;
 	for (index = 0; index < 9U; ++index) {
-		float item_price;
+		uint32_t item_price;
 		bool lottery_price = index == 3U;
 
 		if (index == 0U)
-			item_price = 1000.0f;
+			item_price = 1000U;
 		else if (index == 1U)
 			item_price = price[0];
 		else if (index == 2U)
 			item_price = price[1];
 		else if (index == 3U)
-			item_price = 5.0f;
+			item_price = 5U;
 		else if (index == 4U)
-			item_price = 500000.0f;
+			item_price = 500000U;
 		else if (index == 5U || index == 8U)
-			item_price = 1000000000.0f;
+			item_price = 1000000000U;
 		else if (index == 6U)
 			item_price = price[3];
 		else

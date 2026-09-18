@@ -48,7 +48,7 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 	quotient = qb_single_divide(session->player.turns, turn_divisor);
 	anti_cloak_allows = !session->earth.anti_cloak_enabled;
 	if (quotient == floorf(quotient) && anti_cloak_allows) {
-		float display;
+		uint8_t display;
 		int saved_foreground;
 		int cache_record;
 
@@ -66,9 +66,9 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 		cache_record = session_record(session);
 		(void)yt_player_cache_set_cloak(&session->player_cache,
 		    cache_record, session->player.cloak);
-		display = floorf(qb_single_multiply(session->player.cloak,
-		    cloak_display_scale));
-		qb_str_single(number, sizeof(number), display);
+		display = (uint8_t)floorf(qb_single_multiply(
+		    session->player.cloak, cloak_display_scale));
+		qb_str_single(number, sizeof(number), (float)display);
 		snprintf(row, sizeof(row), "Cloak at%s%%", number);
 		saved_foreground = session->presentation.foreground;
 		session_set_foreground(session, 7);

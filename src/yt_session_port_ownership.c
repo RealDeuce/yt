@@ -379,7 +379,7 @@ purchase_report(struct yt_session *session, int logical_port, bool earth,
     float production[3], struct yt_error *error)
 {
 	if (earth) {
-		float earth_prices[4];
+		uint8_t earth_prices[4];
 
 		if (!session_earth_report(session, early_port, earth_prices, error))
 			return false;

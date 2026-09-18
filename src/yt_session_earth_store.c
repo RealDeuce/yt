@@ -37,7 +37,7 @@ session_earth_credit_error(struct yt_session *session, const char *text,
 
 static bool
 earth_purchase_holds(struct yt_session *session,
-    const struct yt_port *cached_earth, float price, struct yt_error *error)
+    const struct yt_port *cached_earth, uint8_t price, struct yt_error *error)
 {
 	static const char prompt[] = "Buy how many holds? [0]? ";
 	char amount[64];
@@ -76,7 +76,7 @@ earth_purchase_holds(struct yt_session *session,
 		return session_earth_credit_error(session,
 		    "You don't need that many!", error);
 	session->player.holds = qb_single_add(session->player.holds, quantity);
-	cost = qb_single_multiply(quantity, price);
+	cost = qb_single_multiply(quantity, (float)price);
 	if (!session_write_player(session, error))
 		return false;
 	return session_earth_receipt(session, cached_earth, cost, error);
@@ -84,7 +84,7 @@ earth_purchase_holds(struct yt_session *session,
 
 static bool
 earth_purchase_supply(struct yt_session *session,
-    const struct yt_port *cached_earth, int choice, float price,
+    const struct yt_port *cached_earth, int choice, uint8_t price,
     struct yt_error *error)
 {
 	const char *prompt;
@@ -112,7 +112,7 @@ earth_purchase_supply(struct yt_session *session,
 	if ((double)quantity > affordable)
 		return session_earth_credit_error(session,
 		    "You do not have enough credits!", error);
-	cost = qb_single_multiply(quantity, price);
+	cost = qb_single_multiply(quantity, (float)price);
 	yt_earth_supply_overlay(&session->player, choice, quantity);
 	if (!session_write_player(session, error))
 		return false;
@@ -191,7 +191,8 @@ earth_purchase_cloak(struct yt_session *session,
 
 static bool
 earth_purchase_scanner(struct yt_session *session,
-    const struct yt_port *cached_earth, float price, struct yt_error *error)
+    const struct yt_port *cached_earth, uint32_t price,
+    struct yt_error *error)
 {
 	double affordable = yt_earth_affordable(session->player.credits, price);
 
@@ -212,12 +213,13 @@ earth_purchase_scanner(struct yt_session *session,
 		return false;
 	if (!session_write_player(session, error))
 		return false;
-	return session_earth_receipt(session, cached_earth, price, error);
+	return session_earth_receipt(session, cached_earth, (float)price, error);
 }
 
 static bool
 earth_purchase_spies(struct yt_session *session,
-    const struct yt_port *cached_earth, float price, struct yt_error *error)
+    const struct yt_port *cached_earth, uint32_t price,
+    struct yt_error *error)
 {
 	for (;;) {
 		char active_text[64];
@@ -271,7 +273,7 @@ earth_purchase_spies(struct yt_session *session,
 			continue;
 		}
 		quantity = (int)quantity_value;
-		cost = qb_single_multiply(quantity_value, price);
+		cost = qb_single_multiply(quantity_value, (float)price);
 		for (spy_index = 0; spy_index < quantity; ++spy_index) {
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE,
@@ -461,12 +463,12 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 		char line[80];
 		char credits_text[64];
 		char prompt[160];
-		float price[4];
+		uint8_t price[4];
 		int choice;
-		float holds_price;
-		float fighters_price;
-		float shields_price;
-		float ground_price;
+		uint8_t holds_price;
+		uint8_t fighters_price;
+		uint8_t shields_price;
+		uint8_t ground_price;
 
 		if (!session_earth_report(session, &earth, price, error))
 			return false;
@@ -576,7 +578,7 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (choice == 5) {
-			if (!earth_purchase_scanner(session, &earth, 500000.0f,
+			if (!earth_purchase_scanner(session, &earth, 500000U,
 			    error))
 				return false;
 			continue;
@@ -622,7 +624,7 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (choice == 9) {
-			if (!earth_purchase_spies(session, &earth, 1000000000.0f,
+			if (!earth_purchase_spies(session, &earth, 1000000000U,
 			    error))
 				return false;
 			continue;
@@ -636,7 +638,7 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 				return false;
 		}
 		else if (choice == 3 || choice == 7 || choice == 8) {
-			float selected_price = choice == 3 ? fighters_price
+			uint8_t selected_price = choice == 3 ? fighters_price
 			    : choice == 7 ? ground_price : shields_price;
 
 			if (!earth_purchase_supply(session, &earth, choice,
