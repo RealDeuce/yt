@@ -287,7 +287,7 @@ yt_session_command_move(struct yt_session *session, bool *moved,
 	uint8_t row[256];
 	char response[YT_COMMAND_SIZE];
 	struct qb_val_result parsed;
-	float maximum;
+	uint16_t maximum;
 	float target;
 	uint8_t target_raw[4];
 	size_t row_length;
@@ -329,9 +329,9 @@ yt_session_command_move(struct yt_session *session, bool *moved,
 	if (qb_mbf32_encode(target, target_raw) == QB_MBF_OVERFLOW)
 		return movement_range_error(error, "movement destination CSNG");
 	target = qb_mbf32_decode(target_raw);
-	maximum = qb_single_subtract((float)session_port_offset(session),
-	    (float)session_sector_offset(session));
-	if (target < 1.0f || target > maximum)
+	maximum = (uint16_t)(session_port_offset(session)
+	    - session_sector_offset(session));
+	if (target < 1.0f || target > (float)maximum)
 		return true;
 	if (target == (float)session->player.sector)
 		return session_present_alert(session, same_sector,

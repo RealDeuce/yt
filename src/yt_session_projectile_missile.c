@@ -271,7 +271,7 @@ cruise_defense_news_row(const uint8_t *shooter, size_t shooter_length,
 bool
 yt_session_missile_sector(struct yt_session *session, int sector_number,
     float *remaining, int *counterattack, int *xannor_provoker,
-    float *last_mine_news_sector, enum yt_missile_sector_route *route,
+    uint16_t *last_mine_news_sector, enum yt_missile_sector_route *route,
     struct yt_error *error)
 {
 	struct yt_sector sector;
@@ -447,7 +447,7 @@ missile_mines:
 		if (!session_sound(session, YT_SOUND_CUE_DAMAGE,
 		    "cruise missile sector-mine sound", error))
 			return false;
-		if (*last_mine_news_sector != (float)sector_number) {
+		if (*last_mine_news_sector != (uint16_t)sector_number) {
 			if (!yt_projectile_sector_mine_news_row(
 			    (const uint8_t *)session->player.name,
 			    strlen(session->player.name), (float)sector_number,
@@ -455,7 +455,7 @@ missile_mines:
 				return false;
 			if (!yt_news_append_bytes(row, row_length, error))
 				return false;
-			*last_mine_news_sector = (float)sector_number;
+			*last_mine_news_sector = (uint16_t)sector_number;
 		}
 		destroyed = (double)*remaining < observed_mines
 		    ? *remaining : (float)observed_mines;

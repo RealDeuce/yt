@@ -10,7 +10,7 @@ enum yt_missile_sector_route {
 
 bool yt_session_missile_sector(struct yt_session *session, int sector_number,
     float *remaining, int *counterattack, int *xannor_provoker,
-    float *last_mine_news_sector, enum yt_missile_sector_route *route,
+    uint16_t *last_mine_news_sector, enum yt_missile_sector_route *route,
     struct yt_error *error);
 bool yt_session_plasma_sector(struct yt_session *session, int sector_number,
     const struct yt_sector *initial, const uint8_t *attacker,

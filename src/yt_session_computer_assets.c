@@ -28,7 +28,7 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 	    "Enter the number of the slot to change [1 - 30]: ";
 	char response[80];
 	float slot_value;
-	float maximum;
+	uint16_t maximum;
 	float new_value;
 	float old_value;
 	bool available;
@@ -86,12 +86,13 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED)
 		return true;
-	maximum = (float)session_sector_count(session);
+	maximum = (uint16_t)session_sector_count(session);
 	{
 		char maximum_text[64];
 		char prompt[160];
 
-		if (qb_str_single(maximum_text, sizeof(maximum_text), maximum) < 0)
+		if (qb_str_single(maximum_text, sizeof(maximum_text),
+		    (float)maximum) < 0)
 			return false;
 		if (snprintf(prompt, sizeof(prompt),
 		    "Enter the sector you wish to avoid [1 -%s] (0 to clear): ",

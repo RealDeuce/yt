@@ -382,13 +382,13 @@ enum yt_computer_port_selection_route {
 	YT_COMPUTER_PORT_SELECTION_INVALID,
 	YT_COMPUTER_PORT_SELECTION_ACCEPTED,
 };
-bool yt_computer_port_select(const char *response, float maximum,
+bool yt_computer_port_select(const char *response, uint16_t maximum,
 	float *selected, enum yt_computer_port_selection_route *route,
 	struct yt_error *error);
 bool yt_computer_path_parse(const char *response, float *selected,
 	struct yt_error *error);
 bool yt_computer_path_append_hop(char *scratch, size_t capacity,
-	size_t *length, float next_sector, float *hop_count,
+	size_t *length, float next_sector, uint16_t *hop_count,
 	struct yt_error *error);
 bool yt_computer_path_wrap_required(int local_column);
 enum yt_computer_avoid_selection_route {
@@ -399,7 +399,7 @@ bool yt_computer_avoid_select_slot(const char *response,
 	uint8_t conversion_mode, float *selected, int *index,
 	enum yt_computer_avoid_selection_route *route,
 	struct yt_error *error);
-bool yt_computer_avoid_select_sector(const char *response, float maximum,
+bool yt_computer_avoid_select_sector(const char *response, uint16_t maximum,
 	float *selected, enum yt_computer_avoid_selection_route *route,
 	struct yt_error *error);
 void yt_computer_avoid_transition(float old_value, float new_value,
@@ -495,16 +495,16 @@ bool yt_planet_creation_success_row(const uint8_t *planet_name,
     size_t planet_name_length, uint8_t *row, size_t capacity,
     size_t *length);
 float yt_planet_move_destination(const char *response);
-float yt_planet_move_add_cost(float cost);
+uint16_t yt_planet_move_add_cost(uint16_t cost);
 void yt_planet_move_sector_overlay(struct yt_sector *sector,
     int planet_link);
 void yt_planet_move_explosion_overlay(struct yt_planet *planet);
 void yt_planet_move_fighter_overlay(struct yt_player *player, float loss);
 void yt_planet_move_success_overlay(struct yt_player *player,
     int destination);
-bool yt_planet_move_path_heading(float start, float destination,
+bool yt_planet_move_path_heading(uint16_t start, uint16_t destination,
     uint8_t *row, size_t capacity, size_t *length);
-bool yt_planet_move_summary(float cost, uint8_t *row, size_t capacity,
+bool yt_planet_move_summary(uint16_t cost, uint8_t *row, size_t capacity,
     size_t *length);
 bool yt_planet_move_turns_row(float turns, uint8_t *row, size_t capacity,
     size_t *length);

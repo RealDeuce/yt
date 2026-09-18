@@ -286,10 +286,11 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	uint8_t row[512];
 	size_t row_length;
 	struct session_route_plan route;
-	float start = (float)session->player.sector;
-	float destination;
-	float maximum = (float)session_sector_count(session);
-	float cost = 0.0f;
+	uint16_t start = (uint16_t)session->player.sector;
+	float destination_value;
+	uint16_t destination;
+	uint16_t maximum = (uint16_t)session_sector_count(session);
+	uint16_t cost = 0U;
 	int start_node;
 	int destination_node;
 	int cursor;
@@ -310,13 +311,14 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 		return false;
 	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
-	destination = yt_planet_move_destination(response);
-	if (destination == start)
+	destination_value = yt_planet_move_destination(response);
+	if (destination_value == (float)start)
 		return session_present_alert(session, same_sector,
 		    sizeof(same_sector) - 1U,
 		    "planet Thrusters same-sector", error);
-	if (destination < 1.0f || destination > maximum) {
-		int number_length = qb_str_single(number, sizeof(number), maximum);
+	if (destination_value < 1.0f || destination_value > (float)maximum) {
+		int number_length = qb_str_single(number, sizeof(number),
+		    (float)maximum);
 
 		if (number_length < 0
 		    || sizeof(range_prefix) - 1U + (size_t)number_length + 1U
@@ -330,6 +332,7 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 		    sizeof(range_prefix) + (size_t)number_length,
 		    "planet Thrusters range", error);
 	}
+	destination = (uint16_t)destination_value;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "planet Thrusters working blank", error))
 		return false;
@@ -397,7 +400,7 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 		return false;
 	if (!session_reload_player(session, error))
 		return false;
-	if (cost > session->player.turns)
+	if ((float)cost > session->player.turns)
 		return session_present_alert(session, insufficient,
 		    sizeof(insufficient) - 1U,
 		    "planet Thrusters insufficient turns", error);

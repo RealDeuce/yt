@@ -19,12 +19,10 @@ yt_planet_move_destination(const char *response)
 	return (float)integral;
 }
 
-float
-yt_planet_move_add_cost(float cost)
+uint16_t
+yt_planet_move_add_cost(uint16_t cost)
 {
-	volatile float result = cost + 10.0f;
-
-	return result;
+	return (uint16_t)(cost + 10U);
 }
 
 void
@@ -81,7 +79,7 @@ yt_planet_move_success_overlay(struct yt_player *player,
 }
 
 bool
-yt_planet_move_path_heading(float start, float destination,
+yt_planet_move_path_heading(uint16_t start, uint16_t destination,
     uint8_t *row, size_t capacity, size_t *length)
 {
 	static const uint8_t first[] = "The shortest path from sector";
@@ -89,9 +87,10 @@ yt_planet_move_path_heading(float start, float destination,
 	static const uint8_t suffix[] = " is:";
 	char start_text[64];
 	char destination_text[64];
-	int start_length = qb_str_single(start_text, sizeof(start_text), start);
+	int start_length = qb_str_single(start_text, sizeof(start_text),
+	    (float)start);
 	int destination_length = qb_str_single(destination_text,
-	    sizeof(destination_text), destination);
+	    sizeof(destination_text), (float)destination);
 
 	if (start_length < 0 || destination_length < 0)
 		return false;
@@ -103,18 +102,18 @@ yt_planet_move_path_heading(float start, float destination,
 }
 
 bool
-yt_planet_move_summary(float cost, uint8_t *row, size_t capacity,
+yt_planet_move_summary(uint16_t cost, uint8_t *row, size_t capacity,
     size_t *length)
 {
 	static const uint8_t first[] = "Distance is";
 	static const uint8_t middle[] = " and will take";
 	static const uint8_t suffix[] = " turns.";
-	volatile float distance = cost / 10.0f;
+	float distance = (float)cost / 10.0f;
 	char distance_text[64];
 	char cost_text[64];
 	int distance_length = qb_str_single(distance_text,
 	    sizeof(distance_text), distance);
-	int cost_length = qb_str_single(cost_text, sizeof(cost_text), cost);
+	int cost_length = qb_str_single(cost_text, sizeof(cost_text), (float)cost);
 
 	if (distance_length < 0 || cost_length < 0)
 		return false;

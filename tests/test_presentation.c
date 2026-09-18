@@ -8781,7 +8781,7 @@ computer_avoid_accepted_cycle_fixture(bool ansi, bool local_mode,
 	bool locked;
 	int row;
 
-	CHECK(yt_computer_avoid_select_sector(sector_response, 2004.0f,
+	CHECK(yt_computer_avoid_select_sector(sector_response, 2004U,
 	    &new_value, &route, NULL));
 	CHECK(route == YT_COMPUTER_AVOID_SELECTION_ACCEPTED);
 	yt_computer_avoid_transition(old_value, new_value, &locked, &available);
@@ -11786,7 +11786,7 @@ test_planet_move_presentation(void)
 	pager.newline_flag = true;
 	pager_fixture_b05d(&pager, &current, working,
 	    sizeof(working) - 1U, &capture);
-	CHECK(yt_planet_move_path_heading(1.0f, 2.0f, row,
+	CHECK(yt_planet_move_path_heading(1U, 2U, row,
 	    sizeof(row), &row_length));
 	pager.newline_flag = false;
 	pager_fixture_b05d(&pager, &current, row, row_length, &capture);
@@ -11803,7 +11803,7 @@ test_planet_move_presentation(void)
 	    strlen(number), &capture);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
-	CHECK(yt_planet_move_summary(10.0f, row, sizeof(row), &row_length));
+	CHECK(yt_planet_move_summary(10U, row, sizeof(row), &row_length));
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	pager.newline_flag = false;
@@ -17073,7 +17073,7 @@ planet_thrusters_accepted_cycle_run(struct physical_viewer_join *viewer,
 	if (!normal_exit_line(join, NULL, 0U)
 	    || !normal_exit_line(join, NULL, 0U)
 	    || !normal_exit_b05d(join, working, sizeof(working) - 1U, 1.0f)
-	    || !yt_planet_move_path_heading(1.0f, 2.0f, row,
+	    || !yt_planet_move_path_heading(1U, 2U, row,
 	    sizeof(row), &row_length)
 	    || !normal_exit_b05d(join, row, row_length, 0.0f)
 	    || !normal_exit_line(join, NULL, 0U))
@@ -17088,7 +17088,7 @@ planet_thrusters_accepted_cycle_run(struct physical_viewer_join *viewer,
 	    (const uint8_t *)number, (size_t)number_length, 1.0f)
 	    || !normal_exit_line(join, NULL, 0U)
 	    || !normal_exit_line(join, NULL, 0U)
-	    || !yt_planet_move_summary(10.0f, row, sizeof(row), &row_length)
+	    || !yt_planet_move_summary(10U, row, sizeof(row), &row_length)
 	    || !normal_exit_b05d(join, row, row_length, 0.0f)
 	    || !yt_planet_move_turns_row(100.0f, row, sizeof(row), &row_length)
 	    || !normal_exit_b05d(join, row, row_length, 0.0f)

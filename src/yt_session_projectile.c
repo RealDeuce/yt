@@ -14,7 +14,7 @@ struct projectile_route_state {
 
 static bool
 projectile_opening(struct yt_session *session, float amount, bool plasma,
-    float *last_mine_news_sector, double *energy, float *hop_loss,
+    uint16_t *last_mine_news_sector, double *energy, float *hop_loss,
     uint8_t *attacker, size_t attacker_capacity, size_t *attacker_length,
     struct yt_error *error)
 {
@@ -42,7 +42,7 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 		if (!session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "cruise missile opening line", error))
 			return false;
-		*last_mine_news_sector = 0.0f;
+		*last_mine_news_sector = 0U;
 		return session_present_text(session, tracking,
 		    sizeof(tracking) - 1U, SESSION_PRESENT_LINE,
 		    "cruise missile tracking row", error);
@@ -289,7 +289,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 	    ? pending_counterattack : &local_counterattack;
 	int *xannor_provoker = pending_xannor != NULL
 	    ? pending_xannor : &local_xannor_provoker;
-	float last_mine_news_sector;
+	uint16_t last_mine_news_sector = 0U;
 	int start = origin_alias != NULL
 	    ? (int)*origin_alias : session->player.sector;
 

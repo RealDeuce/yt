@@ -7,7 +7,7 @@
 #include <string.h>
 
 bool
-yt_computer_port_select(const char *response, float maximum,
+yt_computer_port_select(const char *response, uint16_t maximum,
     float *selected, enum yt_computer_port_selection_route *route,
     struct yt_error *error)
 {
@@ -37,7 +37,7 @@ yt_computer_port_select(const char *response, float maximum,
 		    "computer port sector CSNG");
 	*selected = status == QB_MBF_UNDERFLOW ? 0.0f
 	    : qb_mbf32_decode(raw);
-	above = *selected > maximum;
+	above = *selected > (float)maximum;
 	below = *selected < 1.0f;
 	*route = (above | below) ? YT_COMPUTER_PORT_SELECTION_INVALID
 	    : YT_COMPUTER_PORT_SELECTION_ACCEPTED;
@@ -76,14 +76,11 @@ yt_computer_path_parse(const char *response, float *selected,
 
 bool
 yt_computer_path_append_hop(char *scratch, size_t capacity,
-    size_t *length, float next_sector, float *hop_count,
+    size_t *length, float next_sector, uint16_t *hop_count,
     struct yt_error *error)
 {
 	char number[64];
-	uint8_t hop_count_raw[4];
 	int number_length;
-	volatile float incremented;
-	enum qb_mbf_status status;
 
 	if (scratch == NULL || capacity == 0U || length == NULL
 	    || *length >= capacity || scratch[*length] != '\0'
@@ -101,12 +98,10 @@ yt_computer_path_append_hop(char *scratch, size_t capacity,
 	memcpy(scratch + *length, number, (size_t)number_length);
 	*length += (size_t)number_length;
 	scratch[*length] = '\0';
-	incremented = *hop_count + 1.0f;
-	status = qb_mbf32_encode(incremented, hop_count_raw);
-	if (status != QB_MBF_OK)
+	if (*hop_count == UINT16_MAX)
 		return yt_game_error(error, YT_RANGE,
 		    "computer path hop increment");
-	*hop_count = qb_mbf32_decode(hop_count_raw);
+	++*hop_count;
 	return true;
 }
 
@@ -165,7 +160,7 @@ yt_computer_avoid_select_slot(const char *response, uint8_t conversion_mode,
 }
 
 bool
-yt_computer_avoid_select_sector(const char *response, float maximum,
+yt_computer_avoid_select_sector(const char *response, uint16_t maximum,
     float *selected, enum yt_computer_avoid_selection_route *route,
     struct yt_error *error)
 {
@@ -183,7 +178,7 @@ yt_computer_avoid_select_sector(const char *response, float maximum,
 	if (!computer_avoid_csng(&parsed, selected, error,
 	    "avoid sector CSNG"))
 		return false;
-	if (*selected < 0.0f || *selected > maximum)
+	if (*selected < 0.0f || *selected > (float)maximum)
 		return true;
 	*route = YT_COMPUTER_AVOID_SELECTION_ACCEPTED;
 	return true;

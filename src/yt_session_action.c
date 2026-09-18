@@ -145,7 +145,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	float first;
 	float second;
 	float duration;
-	float heat = 0.0f;
+	uint8_t heat = 0U;
 	int counter = 1;
 	int destination;
 	float override;
@@ -197,11 +197,11 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		if (draw > 0.75f)
-			heat = qb_single_add(heat, 1.0f);
-		if (heat < 10.0f) {
+			++heat;
+		if (heat < 10U) {
 			session_set_foreground(session, 2);
 		}
-		else if (heat < 20.0f) {
+		else if (heat < 20U) {
 			session_set_foreground(session, 3);
 		}
 		else {
@@ -215,7 +215,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 		if (!session_wait(session, 0.33000001311302185,
 		    "emergency-warp heat wait", error))
 			return false;
-		if (heat >= 31.0f)
+		if (heat >= 31U)
 			break;
 		++counter;
 		if ((float)counter > duration)
@@ -240,9 +240,9 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	    session_sector_count(session));
 	if (override > 0.949999988079071f)
 		destination = (int)session->door->game.config.headquarters;
-	cost = yt_emergency_warp_cost(heat, turn_draw, session->player.turns,
-	    heat >= 31.0f);
-	if (heat >= 31.0f) {
+	cost = yt_emergency_warp_cost((float)heat, turn_draw,
+	    session->player.turns, heat >= 31U);
+	if (heat >= 31U) {
 		if (!session_attention_bytes(session, meltdown,
 		    sizeof(meltdown) - 1U,
 		    "meltdown attention", error))

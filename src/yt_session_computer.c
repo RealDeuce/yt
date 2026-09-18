@@ -84,7 +84,7 @@ yt_session_computer_port_report(struct yt_session *session,
 	static const uint8_t prompt[] =
 	    "Enter sector number port is in -=> ";
 	static const uint8_t unavailable[] = "No information available.";
-	float maximum = (float)session_sector_count(session);
+	uint16_t maximum = (uint16_t)session_sector_count(session);
 	int cached_team = session->player.team;
 	char response[80];
 	float selected;
@@ -116,7 +116,7 @@ yt_session_computer_port_report(struct yt_session *session,
 			char number[64];
 			char notice[128];
 
-			if (qb_str_single(number, sizeof(number), maximum) < 0)
+			if (qb_str_single(number, sizeof(number), (float)maximum) < 0)
 				return false;
 			if (snprintf(notice, sizeof(notice),
 			    "Invalid sector number! Range is 1 -%s", number) < 0)

@@ -27,10 +27,10 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	char programmed_moves[YT_COMMAND_SIZE];
 	size_t programmed_moves_length;
 	struct session_route_plan route;
-	float maximum;
+	uint16_t maximum;
 	float start_value;
 	float destination_value;
-	float hop_count;
+	uint16_t hop_count;
 	bool reuse_retained_start = autopilot
 	    && session->navigation.reuse_route_start;
 	int start;
@@ -70,13 +70,13 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		return true;
 	if (!yt_computer_path_parse(response, &destination_value, error))
 		return false;
-	maximum = (float)session_sector_count(session);
-	if (destination_value < 1.0f || destination_value > maximum
-	    || start_value < 1.0f || start_value > maximum) {
+	maximum = (uint16_t)session_sector_count(session);
+	if (destination_value < 1.0f || destination_value > (float)maximum
+	    || start_value < 1.0f || start_value > (float)maximum) {
 		char number[64];
 		char notice[128];
 
-		if (qb_str_single(number, sizeof(number), maximum) < 0)
+		if (qb_str_single(number, sizeof(number), (float)maximum) < 0)
 			return false;
 		if (snprintf(notice, sizeof(notice),
 		    "Valid sector numbers are from 1 to%s!", number) < 0)
@@ -125,7 +125,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	programmed_moves[0] = '1';
 	programmed_moves[1] = '\0';
 	programmed_moves_length = 1U;
-	hop_count = 0.0f;
+	hop_count = 0U;
 	{
 		char number[64];
 
@@ -174,7 +174,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		char hop_text[64];
 		char course[128];
 
-		if (qb_str_single(hop_text, sizeof(hop_text), hop_count) < 0)
+		if (qb_str_single(hop_text, sizeof(hop_text), (float)hop_count) < 0)
 			return false;
 		if (snprintf(course, sizeof(course),
 		    "Course will take%s turns.", hop_text) < 0)
@@ -189,7 +189,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		return true;
 	if (!session_reload_player(session, error))
 		return false;
-	if (hop_count > session->player.turns) {
+	if ((float)hop_count > session->player.turns) {
 		if (!session_present_alert(session, insufficient,
 		    sizeof(insufficient) - 1U,
 		    "autopilot insufficient turns", error))

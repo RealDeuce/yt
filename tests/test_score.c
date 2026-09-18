@@ -2046,11 +2046,11 @@ check_planet_move_model(void)
 
 	if (yt_planet_move_destination("3.9") != 3.0f
 	    || yt_planet_move_destination("") != 0.0f
-	    || yt_planet_move_add_cost(10.0f) != 20.0f
-	    || !yt_planet_move_path_heading(1.0f, 3.0f, row,
+	    || yt_planet_move_add_cost(10U) != 20U
+	    || !yt_planet_move_path_heading(1U, 3U, row,
 	    sizeof(row), &length) || length != sizeof(heading) - 1U
 	    || memcmp(row, heading, length) != 0
-	    || !yt_planet_move_summary(20.0f, row, sizeof(row), &length)
+	    || !yt_planet_move_summary(20U, row, sizeof(row), &length)
 	    || length != sizeof(summary) - 1U
 	    || memcmp(row, summary, length) != 0
 	    || !yt_planet_move_turns_row(100.0f, row, sizeof(row), &length)
@@ -13767,7 +13767,7 @@ check_computer_port_selection(void)
 	};
 	struct yt_error error;
 	enum yt_computer_port_selection_route route;
-	float maximum = 2004.0f;
+	uint16_t maximum = 2004U;
 	float selected;
 	size_t index;
 
@@ -13810,7 +13810,7 @@ check_computer_path_numeric_boundary(void)
 	size_t index;
 	char scratch[32] = "1";
 	size_t scratch_length = 1U;
-	float hops = 0.0f;
+	uint16_t hops = 0U;
 
 	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
 		if (!yt_computer_path_parse(cases[index].response, &selected,
@@ -13824,7 +13824,7 @@ check_computer_path_numeric_boundary(void)
 	    &scratch_length, 12.0f, &hops, NULL)
 	    || scratch_length != 12U
 	    || memcmp(scratch, "1\rM\r 2\rM\r 12", 13U) != 0
-	    || hops != 2.0f
+	    || hops != 2U
 	    || yt_computer_path_wrap_required(74)
 	    || !yt_computer_path_wrap_required(75))
 		return false;
@@ -13863,7 +13863,7 @@ check_computer_avoid_selection(void)
 	struct yt_error error;
 	enum yt_computer_avoid_selection_route route;
 	char formatted[64];
-	float maximum = 2004.0f;
+	uint16_t maximum = 2004U;
 	float selected;
 	bool available;
 	bool locked;
@@ -13925,7 +13925,7 @@ check_computer_avoid_selection(void)
 	yt_error_clear(&error);
 	return !yt_computer_avoid_select_slot(NULL, 0U, &selected, &index,
 	    &route, &error) && error.status == YT_INVALID
-	    && !yt_computer_avoid_select_sector(NULL, 1.0f, &selected, &route,
+	    && !yt_computer_avoid_select_sector(NULL, 1U, &selected, &route,
 	    &error);
 }
 
