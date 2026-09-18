@@ -30,9 +30,10 @@ write_composed_values(enum yt_portname_output_kind kind, float logical_port,
 {
 	struct yt_portname_output output;
 
-	return yt_portname_compose_output(kind, logical_port, name, name_length,
-	    &output)
-	    && write_output(stdout, output.bytes, output.length, error);
+	if (!yt_portname_compose_output(kind, logical_port, name, name_length,
+	    &output))
+		return false;
+	return write_output(stdout, output.bytes, output.length, error);
 }
 
 static bool
@@ -69,22 +70,26 @@ rename_ports(struct yt_game *game, struct yt_random *random,
 			return false;
 		physical = yt_port_basic_record(&game->config, logical);
 		if (!yt_database_read(&game->database, (size_t)physical, &record,
-		    error)
-		    || !yt_portname_overlay_record(&record, name, name_length, error)
-		    || !yt_database_write(&game->database, (size_t)physical,
+		    error))
+			return false;
+		if (!yt_portname_overlay_record(&record, name, name_length, error))
+			return false;
+		if (!yt_database_write(&game->database, (size_t)physical,
 		    &record, error))
 			return false;
 		++logical;
 	}
-	return write_composed(YT_PORTNAME_OUTPUT_COMPLETE, error)
-	    && yt_database_random_close(&game->database, error);
+	if (!write_composed(YT_PORTNAME_OUTPUT_COMPLETE, error))
+		return false;
+	return yt_database_random_close(&game->database, error);
 }
 
 static bool
 portname_close_all(struct yt_game *game, struct yt_error *error)
 {
-	return game->database.file == NULL
-	    || yt_database_close_all_single(&game->database, error);
+	if (game->database.file == NULL)
+		return true;
+	return yt_database_close_all_single(&game->database, error);
 }
 
 static bool
@@ -149,9 +154,17 @@ main(void)
 		return EXIT_FAILURE;
 	}
 	if (file_size == 0) {
-		if (!write_composed(YT_PORTNAME_OUTPUT_MISSING_DATA, &error)
-		    || !portname_close_all(&game, &error)
-		    || !yt_file_kill("YTDATA.DAT", &error)) {
+		if (!write_composed(YT_PORTNAME_OUTPUT_MISSING_DATA, &error)) {
+			yt_database_close(&game.database);
+			yt_cli_error("PORTNAME", &error);
+			return EXIT_FAILURE;
+		}
+		if (!portname_close_all(&game, &error)) {
+			yt_database_close(&game.database);
+			yt_cli_error("PORTNAME", &error);
+			return EXIT_FAILURE;
+		}
+		if (!yt_file_kill("YTDATA.DAT", &error)) {
 			yt_database_close(&game.database);
 			yt_cli_error("PORTNAME", &error);
 			return EXIT_FAILURE;
@@ -163,8 +176,15 @@ main(void)
 		yt_cli_error("PORTNAME", &error);
 		return EXIT_FAILURE;
 	}
-	if (!write_composed(YT_PORTNAME_OUTPUT_INTRO, &error)
-	    || !read_confirmation(answer, &answer_length, &error)) {
+	if (!write_composed(YT_PORTNAME_OUTPUT_INTRO, &error)) {
+		yt_database_close(&game.database);
+		if (error.status != YT_OK) {
+			yt_cli_error("PORTNAME", &error);
+			return EXIT_FAILURE;
+		}
+		return EXIT_SUCCESS;
+	}
+	if (!read_confirmation(answer, &answer_length, &error)) {
 		yt_database_close(&game.database);
 		if (error.status != YT_OK) {
 			yt_cli_error("PORTNAME", &error);
