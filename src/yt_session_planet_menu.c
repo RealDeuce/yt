@@ -45,12 +45,16 @@ yt_session_planet_menu(struct yt_session *session, int logical_planet,
 		    (double)session->player.ore),
 		    (double)session->player.organics),
 		    (double)session->player.equipment);
-		if (qb_str_double(free_text, sizeof(free_text), free_holds) < 0
-		    || snprintf(free_row, sizeof(free_row),
-		    "You have%s free cargo holds.", free_text) < 0
-		    || !session_present_paged_line(session, (const uint8_t *)free_row,
-		    strlen(free_row), "planet free-holds row", error)
-		    || !session_present_text(session, NULL, 0,
+		if (qb_str_double(free_text, sizeof(free_text), free_holds) < 0)
+			return false;
+		if (snprintf(free_row, sizeof(free_row),
+		    "You have%s free cargo holds.", free_text) < 0)
+			return false;
+		if (!session_present_paged_line(session,
+		    (const uint8_t *)free_row, strlen(free_row),
+		    "planet free-holds row", error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "planet prompt framing blank", error))
 			return false;
 		session_set_foreground(session, 6);
@@ -66,12 +70,15 @@ yt_session_planet_menu(struct yt_session *session, int logical_planet,
 		memcpy(prompt + prompt_length, prompt_body,
 		    sizeof(prompt_body) - 1U);
 		prompt_length += sizeof(prompt_body) - 1U;
-		if (!session_reload_player(session, error)
-		    || !yt_session_update_planet(session, logical_planet,
-		    &(struct yt_planet){0}, NULL, error)
-		    || !session_present_timed_paged_row(session, prompt,
-		    prompt_length, "planet command prompt", error)
-		    || !session_read_upper_command(session, upper, sizeof(upper)))
+		if (!session_reload_player(session, error))
+			return false;
+		if (!yt_session_update_planet(session, logical_planet,
+		    &(struct yt_planet){0}, NULL, error))
+			return false;
+		if (!session_present_timed_paged_row(session, prompt,
+		    prompt_length, "planet command prompt", error))
+			return false;
+		if (!session_read_upper_command(session, upper, sizeof(upper)))
 			return false;
 		if (upper[0] == '\0')
 			strcpy(upper, "A");
@@ -133,8 +140,9 @@ yt_session_planet_menu(struct yt_session *session, int logical_planet,
 			size_t row;
 
 			if (!session_present_paged_line(session, heading,
-			    sizeof(heading) - 1U, "planet help heading", error)
-			    || !session_present_paged_line(session,
+			    sizeof(heading) - 1U, "planet help heading", error))
+				return false;
+			if (!session_present_paged_line(session,
 			    (const uint8_t *)rows[0], strlen(rows[0]),
 			    "planet help first row", error))
 				return false;
