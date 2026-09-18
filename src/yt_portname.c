@@ -106,8 +106,9 @@ yt_generate_port_name(struct yt_random *random, char name[42],
 		set_error(error, YT_INVALID, "compiled port-name pool", "");
 		return false;
 	}
-	if (!yt_random_next(random, &first, error)
-	    || !yt_random_next(random, &second, error))
+	if (!yt_random_next(random, &first, error))
+		return false;
+	if (!yt_random_next(random, &second, error))
 		return false;
 	parts = (int)floorf(qb_single_multiply(qb_single_multiply(first, second),
 	    3.0f)) + 2;

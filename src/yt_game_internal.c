@@ -79,6 +79,7 @@ yt_game_row_number(struct yt_game_row_builder *builder, float value,
 	    ? qb_str_double(number, sizeof(number), (double)value)
 	    : qb_str_single(number, sizeof(number), value);
 
-	return length >= 0
-	    && yt_game_row_append(builder, number, (size_t)length);
+	if (length < 0)
+		return false;
+	return yt_game_row_append(builder, number, (size_t)length);
 }

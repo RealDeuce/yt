@@ -149,8 +149,9 @@ yt_random_market_bases(struct yt_random *random, float bases[3],
 		float first;
 		float second;
 
-		if (!yt_random_next(random, &first, error)
-		    || !yt_random_next(random, &second, error))
+		if (!yt_random_next(random, &first, error))
+			return false;
+		if (!yt_random_next(random, &second, error))
 			return false;
 		bases[commodity] = qb_single_add(
 		    qb_single_subtract(center[commodity],

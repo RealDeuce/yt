@@ -46,9 +46,9 @@ yt_record_set_number_if_changed(struct yt_record *record, size_t offset,
 {
 	if (!valid_numeric_offset(offset))
 		return false;
-	if (yt_record_get_number(record, offset) != value
-	    && qb_mbf32_encode(value, record->bytes + offset)
-	    == QB_MBF_OVERFLOW)
+	if (yt_record_get_number(record, offset) == value)
+		return true;
+	if (qb_mbf32_encode(value, record->bytes + offset) == QB_MBF_OVERFLOW)
 		return false;
 	return true;
 }
