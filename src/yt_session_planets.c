@@ -56,10 +56,12 @@ yt_session_update_planet_physical(struct yt_session *session,
 		return false;
 	timer_seconds = (float)yt_clock_timer(&session->door->game.clock);
 	if (!yt_planet_update_record(&record, (float)today,
-	    timer_seconds, &updated_economy, error)
-	    || !yt_database_write(&session->door->game.database,
-	    (size_t)physical_record, &record, error)
-	    || !yt_database_flush(&session->door->game.database, error))
+	    timer_seconds, &updated_economy, error))
+		return false;
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	if (!yt_database_flush(&session->door->game.database, error))
 		return false;
 	yt_planet_decode(planet, &record);
 	session->planet.economy = updated_economy;
@@ -111,8 +113,9 @@ yt_session_planet_permission(struct yt_session *session,
 	physical_planet_record = session_planet_basic_record(session,
 	    logical_planet);
 	if (!yt_session_update_planet_physical(session, physical_planet_record,
-	    &(struct yt_planet){0}, NULL, error)
-	    || !read_planet_physical(session, physical_planet_record,
+	    &(struct yt_planet){0}, NULL, error))
+		return false;
+	if (!read_planet_physical(session, physical_planet_record,
 	    &planet, error))
 		return false;
 	cached_name_length = yt_planet_stored_name(&planet, cached_name);
@@ -149,40 +152,51 @@ yt_session_planet_permission(struct yt_session *session,
 	if (vacant) {
 		if (!session_present_text(session, governor,
 		    sizeof(governor) - 1U, SESSION_PRESENT_LINE,
-		    "vacant planet governor row", error)
-		    || !session_sound(session, YT_SOUND_CUE_REWARD, "vacant planet sound", error)
-		    || !session_wait(session, 2.0,
-		    "vacant-planet governor wait", error)
-		    || !read_planet_physical(session, physical_planet_record,
-		    &fresh, error)
-		    || !yt_random_next(&session->door->game.random, &first_draw,
-		    error)
-		    || !yt_random_next(&session->door->game.random, &second_draw,
+		    "vacant planet governor row", error))
+			return false;
+		if (!session_sound(session, YT_SOUND_CUE_REWARD,
+		    "vacant planet sound", error))
+			return false;
+		if (!session_wait(session, 2.0,
+		    "vacant-planet governor wait", error))
+			return false;
+		if (!read_planet_physical(session, physical_planet_record,
+		    &fresh, error))
+			return false;
+		if (!yt_random_next(&session->door->game.random, &first_draw,
+		    error))
+			return false;
+		if (!yt_random_next(&session->door->game.random, &second_draw,
 		    error))
 			return false;
 		reduced_ground_forces = yt_planet_landing_attrition(first_draw,
 		    second_draw, cached_ground_forces);
 		if (!session_present_text(session, unrest, sizeof(unrest) - 1U,
-		    SESSION_PRESENT_LINE, "vacant planet unrest row", error)
-		    || !yt_planet_landing_unrest_row(reduced_ground_forces,
-		    cached_ground_forces, row, sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "vacant planet unrest row", error))
+			return false;
+		if (!yt_planet_landing_unrest_row(reduced_ground_forces,
+		    cached_ground_forces, row, sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "vacant planet reduction row", error))
 			return false;
 		yt_planet_landing_vacancy_overlay(&fresh,
 		    reduced_ground_forces, session_record(session));
 		if (!session_write_planet_physical(session,
-		    physical_planet_record, &fresh, false, error)
-		    || !session_wait(session, 5.0,
+		    physical_planet_record, &fresh, false, error))
+			return false;
+		if (!session_wait(session, 5.0,
 		    "vacant-planet unrest wait", error))
 			return false;
 		return true;
 	}
 	if (!yt_planet_landing_traffic_row(cached_name, cached_name_length,
-	    row, sizeof(row), &row_length)
-	    || !session_present_text(session, row, row_length,
-	    SESSION_PRESENT_LINE, "planet permission traffic row", error)
-	    || !session_present_text(session, permission,
+	    row, sizeof(row), &row_length))
+		return false;
+	if (!session_present_text(session, row, row_length,
+	    SESSION_PRESENT_LINE, "planet permission traffic row", error))
+		return false;
+	if (!session_present_text(session, permission,
 	    sizeof(permission) - 1U, SESSION_PRESENT_RAW,
 	    "planet permission prefix", error))
 		return false;
