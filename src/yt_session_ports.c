@@ -100,9 +100,10 @@ port_report_owner(struct yt_session *session,
 	if (!yt_port_owner_compose(kind, market->port.treasury,
 	    owner_name, owner_name_length, row, sizeof(row), &row_length))
 		return session_range_error(error, "port owner row composition");
-	return session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "port owner leading blank", error)
-	    && session_present_text(session, row, row_length,
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "port owner leading blank", error))
+		return false;
+	return session_present_text(session, row, row_length,
 	    SESSION_PRESENT_LINE, "port owner row", error);
 }
 
@@ -133,8 +134,9 @@ yt_session_port_report(struct yt_session *session, int logical_port,
 	    ? market->port_physical_record
 	    : session_port_basic_record(session, logical_port);
 	session->pager.line_count = 0;
-	if (!port_report_owner(session, market, error)
-	    || !session_reload_player(session, error))
+	if (!port_report_owner(session, market, error))
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	current_player = session->player;
 	if (!read_database_record_at_fault(session, physical_record, &record,
@@ -151,14 +153,18 @@ yt_session_port_report(struct yt_session *session, int logical_port,
 	memcpy(time_text, rendered_time, sizeof(time_text));
 	if (!yt_port_report_compose(market, &current_player, &report_port,
 	    date, time_text,
-	    &report, error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "port report title blank", error)
-	    || !session_present_paged_row(session, report.title,
-	    report.title_length)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "port report header blank", error)
-	    || !session_present_paged_row(session, header, sizeof(header) - 1U))
+	    &report, error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "port report title blank", error))
+		return false;
+	if (!session_present_paged_row(session, report.title,
+	    report.title_length))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "port report header blank", error))
+		return false;
+	if (!session_present_paged_row(session, header, sizeof(header) - 1U))
 		return false;
 	session->presentation.bold = true;
 	if (!session_present_paged_row(session, rule, sizeof(rule) - 1U))
@@ -169,14 +175,17 @@ yt_session_port_report(struct yt_session *session, int logical_port,
 		session_set_foreground(session, item->foreground);
 		if (!session_present_text(session, item->name_status,
 		    sizeof(item->name_status), SESSION_PRESENT_RAW,
-		    "port report commodity/status", error)
-		    || !session_present_text(session, item->capacity,
+		    "port report commodity/status", error))
+			return false;
+		if (!session_present_text(session, item->capacity,
 		    sizeof(item->capacity), SESSION_PRESENT_RAW,
-		    "port report stock", error)
-		    || !session_present_text(session, item->hold,
+		    "port report stock", error))
+			return false;
+		if (!session_present_text(session, item->hold,
 		    sizeof(item->hold), SESSION_PRESENT_RAW,
-		    "port report player hold", error)
-		    || !session_present_text(session, item->price,
+		    "port report player hold", error))
+			return false;
+		if (!session_present_text(session, item->price,
 		    item->price_length, SESSION_PRESENT_LINE,
 		    "port report price", error))
 			return false;
