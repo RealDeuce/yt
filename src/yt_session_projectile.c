@@ -359,7 +359,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 					route->amount = *missiles;
 					return false;
 				}
-				if (!yt_projectile_cruise_reroute_row((float)next, row,
+				if (!yt_projectile_cruise_reroute_row((uint16_t)next, row,
 				    sizeof(row), &row_length)) {
 					route->origin = *origin_alias;
 					route->destination = *target;
@@ -380,8 +380,8 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 				if (!yt_random_next(&session->door->game.random, &draw, error))
 					return false;
 				*target = yt_projectile_cruise_reroute_destination(draw,
-				    session_sector_offset(session),
-				    session_port_offset(session));
+				    (uint16_t)session_sector_offset(session),
+				    (uint16_t)session_port_offset(session));
 				route->origin = *origin_alias;
 				route->destination = *target;
 				route->amount = *missiles;
@@ -393,7 +393,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 			static const uint8_t union_police_row[] =
 			    "The Union Police have destroyed the Missiles!";
 
-			if (yt_projectile_union_police_admitted((float)next,
+			if (yt_projectile_union_police_admitted((uint16_t)next,
 			    destination, *counterattack, *xannor_provoker)) {
 				if (!session_present_text(session, union_police_row,
 				    sizeof(union_police_row) - 1U, SESSION_PRESENT_LINE,

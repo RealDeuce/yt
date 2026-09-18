@@ -29,7 +29,7 @@ struct yt_player {
 	int lottery_plays;
 	float score;
 	float plasma;
-	int ports_owned;
+	uint16_t ports_owned;
 	float ground_forces;
 	float cloak;
 	float mines;
@@ -229,22 +229,22 @@ bool yt_projectile_plasma_firing_row(float counter, uint8_t *row,
     size_t capacity, size_t *length);
 float yt_projectile_plasma_next_firing(float counter);
 
-bool yt_projectile_cruise_reroute_row(float hop, uint8_t *row,
+bool yt_projectile_cruise_reroute_row(uint16_t hop, uint8_t *row,
     size_t capacity, size_t *length);
-float yt_projectile_cruise_reroute_destination(float draw,
-    int sector_record_offset, int port_record_offset);
+uint16_t yt_projectile_cruise_reroute_destination(float draw,
+    uint16_t sector_record_offset, uint16_t port_record_offset);
 
-bool yt_projectile_union_police_admitted(float hop, float destination,
+bool yt_projectile_union_police_admitted(uint16_t hop, float destination,
     int counterattack, int xannor_provoker);
 
 bool yt_projectile_sector_has_presence(const struct yt_sector *sector,
     int sector_number, int last_player,
     const struct yt_player_cache *player_cache, int xannor_provoker);
 
-bool yt_projectile_sector_mine_hit_row(double mines, float sector,
+bool yt_projectile_sector_mine_hit_row(double mines, uint16_t sector,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_projectile_sector_mine_news_row(const uint8_t *shooter,
-    size_t shooter_length, float sector, uint8_t *row, size_t capacity,
+    size_t shooter_length, uint16_t sector, uint8_t *row, size_t capacity,
     size_t *length);
 bool yt_projectile_sector_mine_destroyed_row(float destroyed,
     uint8_t *row, size_t capacity, size_t *length);
@@ -536,7 +536,7 @@ bool yt_sector_mine_shields_row(float shields, uint8_t *row,
 bool yt_sector_mine_loss_row(enum yt_sector_mine_loss_kind kind, float loss,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_sector_mine_entry_news(const uint8_t *player_name,
-    size_t player_name_length, float sector, uint8_t *row, size_t capacity,
+    size_t player_name_length, uint16_t sector, uint8_t *row, size_t capacity,
     size_t *length);
 bool yt_sector_mine_final_news(float shields, uint8_t *row,
     size_t capacity, size_t *length);
@@ -544,7 +544,7 @@ bool yt_direct_fighter_mine_warning(const uint8_t *victim_name,
     size_t victim_name_length, uint8_t *row, size_t capacity,
     size_t *length);
 float yt_emergency_warp_duration(float first, float second);
-int yt_emergency_warp_destination(float draw, int sector_count);
+uint16_t yt_emergency_warp_destination(float draw, uint16_t sector_count);
 float yt_emergency_warp_cost(float heat, float draw, float turns,
     bool meltdown);
 void yt_emergency_warp_player_overlay(struct yt_player *player,
@@ -688,7 +688,7 @@ bool yt_sector_fighter_row(const struct yt_sector *sector,
     const struct yt_team *team, uint8_t *row, size_t capacity,
     size_t *length, uint8_t *scratch, size_t scratch_capacity,
     size_t *scratch_length, bool *scratch_changed);
-bool yt_projectile_defense_row(float sector, const uint8_t *owner,
+bool yt_projectile_defense_row(uint16_t sector, const uint8_t *owner,
     size_t owner_length, double fighters, uint8_t *row, size_t capacity,
     size_t *length);
 enum yt_projectile_candidate_route {
@@ -763,7 +763,7 @@ bool yt_projectile_player_damage(struct yt_player *target, float *remaining,
     struct yt_projectile_damage_result *result, struct yt_error *error);
 bool yt_projectile_attack_first_rows(bool plasma,
     const uint8_t *attacker, size_t attacker_length,
-    const uint8_t *victim, size_t victim_length, float sector,
+    const uint8_t *victim, size_t victim_length, uint16_t sector,
     uint8_t *news, size_t news_capacity, size_t *news_length,
     uint8_t *direct, size_t direct_capacity, size_t *direct_length);
 bool yt_projectile_destroyed_rows(const uint8_t *victim,
@@ -774,7 +774,7 @@ bool yt_projectile_friendly_planet_row(const uint8_t *planet,
     size_t planet_length, uint8_t *row, size_t capacity, size_t *length);
 bool yt_projectile_planet_attack_rows(bool plasma,
     const uint8_t *attacker, size_t attacker_length,
-    const uint8_t *planet, size_t planet_length, float sector,
+    const uint8_t *planet, size_t planet_length, uint16_t sector,
     uint8_t *direct, size_t direct_capacity, size_t *direct_length,
     uint8_t *news, size_t news_capacity, size_t *news_length);
 bool yt_xannor_victory_winner(const uint8_t *player, size_t player_length,
@@ -813,14 +813,14 @@ void yt_death_player_overlay(struct yt_player *player, int killer);
 bool yt_death_sector_overlay(struct yt_sector *sector, int victim);
 enum yt_death_port_route yt_death_port_overlay(struct yt_port *port,
     int victim, int killer, int last_player);
-void yt_death_killer_credit_overlay(struct yt_player *player, int ports);
+void yt_death_killer_credit_overlay(struct yt_player *player, uint16_t ports);
 bool yt_death_title_row(const uint8_t *victim, size_t victim_length,
-    float ports, uint8_t *row, size_t capacity, size_t *length);
+    uint16_t ports, uint8_t *row, size_t capacity, size_t *length);
 bool yt_death_kill_news_row(const uint8_t *killer, size_t killer_length,
     const uint8_t *victim, size_t victim_length, bool self,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_death_port_news_row(const uint8_t *victim, size_t victim_length,
-    float ports, uint8_t *row, size_t capacity, size_t *length);
+    uint16_t ports, uint8_t *row, size_t capacity, size_t *length);
 void yt_bribe_sector_overlay(struct yt_sector *sector);
 void yt_bribe_player_overlay(struct yt_player *player, float fighters,
     float credits);

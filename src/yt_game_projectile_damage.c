@@ -5,7 +5,7 @@
 #include <string.h>
 
 bool
-yt_projectile_sector_mine_hit_row(double mines, float sector,
+yt_projectile_sector_mine_hit_row(double mines, uint16_t sector,
     uint8_t *row, size_t capacity, size_t *length)
 {
 	static const uint8_t hit_prefix[] = "The missiles hit";
@@ -19,7 +19,7 @@ yt_projectile_sector_mine_hit_row(double mines, float sector,
 	if (row == NULL || length == NULL)
 		return false;
 	sector_length = qb_str_single(sector_text, sizeof(sector_text),
-	    sector);
+	    (float)sector);
 	mine_length = qb_str_double(mine_text, sizeof(mine_text), mines);
 	if (sector_length < 0 || mine_length < 0
 	    || sizeof(hit_prefix) - 1U + (size_t)mine_length
@@ -41,7 +41,7 @@ yt_projectile_sector_mine_hit_row(double mines, float sector,
 
 bool
 yt_projectile_sector_mine_news_row(const uint8_t *shooter,
-    size_t shooter_length, float sector, uint8_t *row, size_t capacity,
+    size_t shooter_length, uint16_t sector, uint8_t *row, size_t capacity,
     size_t *length)
 {
 	static const uint8_t middle[] =
@@ -53,7 +53,8 @@ yt_projectile_sector_mine_news_row(const uint8_t *shooter,
 	if (row == NULL || length == NULL
 	    || (shooter == NULL && shooter_length != 0U))
 		return false;
-	sector_length = qb_str_single(sector_text, sizeof(sector_text), sector);
+	sector_length = qb_str_single(sector_text, sizeof(sector_text),
+	    (float)sector);
 	if (sector_length < 0 || shooter_length + sizeof(middle) - 1U
 	    + (size_t)sector_length + 1U > capacity)
 		return false;

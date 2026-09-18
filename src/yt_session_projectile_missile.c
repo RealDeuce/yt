@@ -74,7 +74,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	    attacker_name);
 	if (!yt_projectile_planet_attack_rows(false, attacker_name,
 	    attacker_name_length, planet_name, planet_name_length,
-	    (float)sector_number, direct_row, sizeof(direct_row),
+	    (uint16_t)sector_number, direct_row, sizeof(direct_row),
 	    &direct_length, news_row, sizeof(news_row), &news_length))
 		return false;
 	if (!session_present_text(session, direct_row, direct_length,
@@ -230,7 +230,7 @@ cruise_defense_damage_row(float destroyed, uint8_t *row, size_t capacity,
 
 static bool
 cruise_defense_news_row(const uint8_t *shooter, size_t shooter_length,
-    float destroyed, float sector, uint8_t *row, size_t capacity,
+    float destroyed, uint16_t sector, uint8_t *row, size_t capacity,
     size_t *length)
 {
 	static const uint8_t damage[] = "'s Missiles destroyed";
@@ -246,7 +246,8 @@ cruise_defense_news_row(const uint8_t *shooter, size_t shooter_length,
 		return false;
 	destroyed_length = qb_str_single(destroyed_text,
 	    sizeof(destroyed_text), destroyed);
-	sector_length = qb_str_single(sector_text, sizeof(sector_text), sector);
+	sector_length = qb_str_single(sector_text, sizeof(sector_text),
+	    (float)sector);
 	if (destroyed_length < 0 || sector_length < 0
 	    || shooter_length + sizeof(damage) - 1U
 	    + (size_t)destroyed_length + sizeof(location) - 1U
@@ -324,7 +325,7 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 			owner_length = sizeof(you) - 1U;
 			friendly = true;
 		}
-		if (!yt_projectile_defense_row((float)sector_number, owner_name,
+		if (!yt_projectile_defense_row((uint16_t)sector_number, owner_name,
 		    owner_length, (double)sector.fighters, row, sizeof(row),
 		    &row_length))
 			return false;
@@ -382,7 +383,7 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 			if (!cruise_defense_news_row(
 			    (const uint8_t *)session->player.name,
 			    strlen(session->player.name), destroyed,
-			    (float)sector_number, row, sizeof(row), &row_length))
+			    (uint16_t)sector_number, row, sizeof(row), &row_length))
 				return false;
 			if (!yt_news_append_bytes(row, row_length, error))
 				return false;
@@ -438,7 +439,7 @@ missile_mines:
 		if (!(observed_mines > 0.0))
 			break;
 		if (!yt_projectile_sector_mine_hit_row(observed_mines,
-		    (float)sector_number, row, sizeof(row), &row_length))
+		    (uint16_t)sector_number, row, sizeof(row), &row_length))
 			return false;
 		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_LINE, "cruise missile sector-mine row",
@@ -450,7 +451,7 @@ missile_mines:
 		if (*last_mine_news_sector != (uint16_t)sector_number) {
 			if (!yt_projectile_sector_mine_news_row(
 			    (const uint8_t *)session->player.name,
-			    strlen(session->player.name), (float)sector_number,
+			    strlen(session->player.name), (uint16_t)sector_number,
 			    row, sizeof(row), &row_length))
 				return false;
 			if (!yt_news_append_bytes(row, row_length, error))
@@ -545,7 +546,7 @@ missile_mines:
 		    victim_name);
 		if (!yt_projectile_attack_first_rows(false,
 		    attacker_name, attacker_length, victim_name, victim_length,
-		    (float)sector_number, first_news, sizeof(first_news),
+		    (uint16_t)sector_number, first_news, sizeof(first_news),
 		    &first_news_length, first_direct, sizeof(first_direct),
 		    &first_direct_length))
 			return false;

@@ -8,7 +8,7 @@
 #include <string.h>
 
 bool
-yt_projectile_defense_row(float sector, const uint8_t *owner,
+yt_projectile_defense_row(uint16_t sector, const uint8_t *owner,
     size_t owner_length, double fighters, uint8_t *row, size_t capacity,
     size_t *length)
 {
@@ -26,7 +26,8 @@ yt_projectile_defense_row(float sector, const uint8_t *owner,
 	if (length == NULL || (owner == NULL && owner_length != 0U))
 		return false;
 	*length = 0U;
-	sector_length = qb_str_single(sector_text, sizeof(sector_text), sector);
+	sector_length = qb_str_single(sector_text, sizeof(sector_text),
+	    (float)sector);
 	fighter_length = qb_str_double(fighter_text, sizeof(fighter_text),
 	    fighters);
 	if (sector_length < 0 || fighter_length < 0)
@@ -112,7 +113,7 @@ yt_projectile_damage_iteration(float counter, float saved_missiles)
 }
 
 bool
-yt_projectile_cruise_reroute_row(float hop, uint8_t *row,
+yt_projectile_cruise_reroute_row(uint16_t hop, uint8_t *row,
     size_t capacity, size_t *length)
 {
 	static const uint8_t prefix[] =
@@ -124,7 +125,7 @@ yt_projectile_cruise_reroute_row(float hop, uint8_t *row,
 
 	if (row == NULL || length == NULL)
 		return false;
-	number_length = qb_str_single(number, sizeof(number), hop);
+	number_length = qb_str_single(number, sizeof(number), (float)hop);
 	if (number_length < 0
 	    || sizeof(prefix) - 1U + (size_t)number_length + sizeof(suffix) - 1U
 	    > capacity)
@@ -138,21 +139,21 @@ yt_projectile_cruise_reroute_row(float hop, uint8_t *row,
 	return true;
 }
 
-float
+uint16_t
 yt_projectile_cruise_reroute_destination(float draw,
-    int sector_record_offset, int port_record_offset)
+    uint16_t sector_record_offset, uint16_t port_record_offset)
 {
 	float span = (float)(port_record_offset - sector_record_offset);
 	float selected = floorf(qb_single_multiply(draw, span));
 
-	return qb_single_add(selected, 1.0f);
+	return (uint16_t)selected + 1U;
 }
 
 bool
-yt_projectile_union_police_admitted(float hop, float destination,
+yt_projectile_union_police_admitted(uint16_t hop, float destination,
     int counterattack, int xannor_provoker)
 {
-	return hop < 8.0f && destination < 8.0f
+	return hop < 8U && destination < 8.0f
 	    && counterattack == 0 && xannor_provoker == 0;
 }
 
@@ -265,7 +266,7 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 bool
 yt_projectile_attack_first_rows(bool plasma,
     const uint8_t *attacker, size_t attacker_length,
-    const uint8_t *victim, size_t victim_length, float sector,
+    const uint8_t *victim, size_t victim_length, uint16_t sector,
     uint8_t *news, size_t news_capacity, size_t *news_length,
     uint8_t *direct, size_t direct_capacity, size_t *direct_length)
 {
@@ -293,7 +294,8 @@ yt_projectile_attack_first_rows(bool plasma,
 		return false;
 	*news_length = 0U;
 	*direct_length = 0U;
-	sector_length = qb_str_single(sector_text, sizeof(sector_text), sector);
+	sector_length = qb_str_single(sector_text, sizeof(sector_text),
+	    (float)sector);
 	if (sector_length < 0)
 		return false;
 	news_needed = attacker_length + news_infix_length + victim_length

@@ -1165,29 +1165,29 @@ check_projectile_cruise_reroute_transaction(void)
 	uint8_t row[160];
 	size_t length;
 
-	return yt_projectile_cruise_reroute_row(3.0f, row, sizeof(row),
+	return yt_projectile_cruise_reroute_row(3U, row, sizeof(row),
 	    &length)
 	    && length == sizeof(expected_attention) - 1U
 	    && memcmp(row, expected_attention, length) == 0
 	    && yt_projectile_cruise_reroute_destination(0.5f, 51,
-	    2055) == 1003.0f;
+	    2055) == 1003U;
 }
 
 static bool
 check_projectile_union_police_admission(void)
 {
 	static const struct {
-		float hop;
+		uint16_t hop;
 		float destination;
 		int counterattack;
 		int xannor_provoker;
 		bool admitted;
 	} cases[] = {
-		{7.0f, 7.0f, 0, 0, true},
-		{8.0f, 7.0f, 0, 0, false},
-		{7.0f, 8.0f, 0, 0, false},
-		{7.0f, 7.0f, 1, 0, false},
-		{7.0f, 7.0f, 0, 1, false},
+		{7U, 7.0f, 0, 0, true},
+		{8U, 7.0f, 0, 0, false},
+		{7U, 8.0f, 0, 0, false},
+		{7U, 7.0f, 1, 0, false},
+		{7U, 7.0f, 0, 1, false},
 	};
 	size_t index;
 
@@ -1269,12 +1269,12 @@ check_projectile_sector_mine_rows(void)
 	uint8_t row[256];
 	size_t length;
 
-	if (!yt_projectile_sector_mine_hit_row(5.25, 7.0f, row,
+	if (!yt_projectile_sector_mine_hit_row(5.25, 7U, row,
 	    sizeof(row), &length)
 	    || length != sizeof(hit) - 1U
 	    || memcmp(row, hit, sizeof(hit) - 1U) != 0
 	    || !yt_projectile_sector_mine_news_row(shooter,
-	    sizeof(shooter), 7.0f, row, sizeof(row), &length)
+	    sizeof(shooter), 7U, row, sizeof(row), &length)
 	    || length != sizeof(news) - 1U
 	    || memcmp(row, news, sizeof(news) - 1U) != 0
 	    || !yt_projectile_sector_mine_destroyed_row(2.5f, row,
@@ -1286,10 +1286,10 @@ check_projectile_sector_mine_rows(void)
 	    || length != sizeof(singular) - 1U
 	    || memcmp(row, singular, sizeof(singular) - 1U) != 0)
 		return false;
-	return !yt_projectile_sector_mine_hit_row(5.25, 7.0f, row,
+	return !yt_projectile_sector_mine_hit_row(5.25, 7U, row,
 	    sizeof(hit) - 2U, &length)
 	    && !yt_projectile_sector_mine_news_row(shooter,
-	    sizeof(shooter), 7.0f, row, sizeof(news) - 2U, &length)
+	    sizeof(shooter), 7U, row, sizeof(news) - 2U, &length)
 	    && !yt_projectile_sector_mine_destroyed_row(2.5f, row,
 	    sizeof(destroyed) - 2U, &length);
 }
@@ -1395,16 +1395,16 @@ check_projectile_parent_model(void)
 	    || yt_counterlaunch_rows(target_binary, sizeof(target_binary), 3.0f,
 	    saved_binary, sizeof(saved_binary), terminal, 4U,
 	    &terminal_length, news, sizeof(news), &news_length)
-	    || !yt_projectile_defense_row(7.0f, owner_binary,
+	    || !yt_projectile_defense_row(7U, owner_binary,
 	    sizeof(owner_binary), 12.0, defense, sizeof(defense),
 	    &defense_length)
 	    || defense_length != sizeof(defense_expected) - 1U
 	    || memcmp(defense, defense_expected, defense_length) != 0
-	    || yt_projectile_defense_row(7.0f, owner_binary,
+	    || yt_projectile_defense_row(7U, owner_binary,
 	    sizeof(owner_binary), 12.0, defense, 8U, &defense_length)
 	    || !yt_projectile_attack_first_rows(false,
 	    saved_binary, sizeof(saved_binary), target_binary,
-	    sizeof(target_binary), 7.0f, news, sizeof(news), &news_length,
+	    sizeof(target_binary), 7U, news, sizeof(news), &news_length,
 	    direct, sizeof(direct), &terminal_length)
 	    || news_length != sizeof(attack_news_expected) - 1U
 	    || memcmp(news, attack_news_expected, news_length) != 0
@@ -1412,7 +1412,7 @@ check_projectile_parent_model(void)
 	    || memcmp(direct, attack_direct_expected, terminal_length) != 0
 	    || !yt_projectile_attack_first_rows(true,
 	    saved_binary, sizeof(saved_binary), target_binary,
-	    sizeof(target_binary), 7.0f, news, sizeof(news), &news_length,
+	    sizeof(target_binary), 7U, news, sizeof(news), &news_length,
 	    direct, sizeof(direct), &terminal_length)
 	    || news_length != sizeof(plasma_news_expected) - 1U
 	    || memcmp(news, plasma_news_expected, news_length) != 0
@@ -1431,7 +1431,7 @@ check_projectile_parent_model(void)
 	    || memcmp(direct, friendly_planet_expected, terminal_length) != 0
 	    || !yt_projectile_planet_attack_rows(false,
 	    saved_binary, sizeof(saved_binary), planet_binary,
-	    sizeof(planet_binary), 7.0f, direct, sizeof(direct),
+	    sizeof(planet_binary), 7U, direct, sizeof(direct),
 	    &terminal_length, news, sizeof(news), &news_length)
 	    || terminal_length != sizeof(missile_planet_direct_expected) - 1U
 	    || memcmp(direct, missile_planet_direct_expected,
@@ -1440,7 +1440,7 @@ check_projectile_parent_model(void)
 	    || memcmp(news, missile_planet_news_expected, news_length) != 0
 	    || !yt_projectile_planet_attack_rows(true,
 	    saved_binary, sizeof(saved_binary), planet_binary,
-	    sizeof(planet_binary), 7.0f, direct, sizeof(direct),
+	    sizeof(planet_binary), 7U, direct, sizeof(direct),
 	    &terminal_length, news, sizeof(news), &news_length)
 	    || terminal_length != sizeof(plasma_planet_direct_expected) - 1U
 	    || memcmp(direct, plasma_planet_direct_expected,
@@ -2196,7 +2196,7 @@ check_sector_mine_model(void)
 	    || !yt_sector_mine_shields_row(1.0f, row, sizeof(row), &length)
 	    || length != sizeof(shields) - 1U
 	    || memcmp(row, shields, length) != 0
-	    || !yt_sector_mine_entry_news(entry_news, 3U, 42.0f, row,
+	    || !yt_sector_mine_entry_news(entry_news, 3U, 42U, row,
 	    sizeof(row), &length) || length != sizeof(entry_news) - 1U
 	    || memcmp(row, entry_news, length) != 0
 	    || !yt_sector_mine_final_news(0.0f, row, sizeof(row), &length)
@@ -2803,7 +2803,7 @@ check_player_death_model(void)
 	if (player.ports_owned != 6
 	    || yt_record_get_number(&player.record, YT_F117) != 6.0f)
 		return false;
-	return yt_death_title_row(victim_name, sizeof(victim_name), 2.0f,
+	return yt_death_title_row(victim_name, sizeof(victim_name), 2U,
 	    row, sizeof(row), &length)
 	    && length == sizeof(title_expected) - 1U
 	    && memcmp(row, title_expected, length) == 0
@@ -2815,11 +2815,11 @@ check_player_death_model(void)
 	    victim_name, sizeof(victim_name), false, row, sizeof(row), &length)
 	    && length == sizeof(kill_expected) - 1U
 	    && memcmp(row, kill_expected, length) == 0
-	    && yt_death_port_news_row(victim_name, sizeof(victim_name), 2.0f,
+	    && yt_death_port_news_row(victim_name, sizeof(victim_name), 2U,
 	    row, sizeof(row), &length)
 	    && length == sizeof(ports_expected) - 1U
 	    && memcmp(row, ports_expected, length) == 0
-	    && !yt_death_title_row(victim_name, sizeof(victim_name), 2.0f,
+	    && !yt_death_title_row(victim_name, sizeof(victim_name), 2U,
 	    row, sizeof(title_expected) - 2U, &length);
 }
 

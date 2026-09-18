@@ -325,7 +325,7 @@ yt_death_port_overlay(struct yt_port *port, int victim, int killer,
 }
 
 void
-yt_death_killer_credit_overlay(struct yt_player *player, int ports)
+yt_death_killer_credit_overlay(struct yt_player *player, uint16_t ports)
 {
 	if (player == NULL)
 		return;
@@ -336,7 +336,7 @@ yt_death_killer_credit_overlay(struct yt_player *player, int ports)
 
 bool
 yt_death_title_row(const uint8_t *victim, size_t victim_length,
-    float ports, uint8_t *row, size_t capacity, size_t *length)
+    uint16_t ports, uint8_t *row, size_t capacity, size_t *length)
 {
 	static const uint8_t prefix[] = "The titles to";
 	static const uint8_t middle[] = " ports of ";
@@ -350,7 +350,7 @@ yt_death_title_row(const uint8_t *victim, size_t victim_length,
 	*length = 0U;
 	if (row == NULL || (victim == NULL && victim_length != 0U))
 		return false;
-	number_length = qb_str_single(number, sizeof(number), ports);
+	number_length = qb_str_single(number, sizeof(number), (float)ports);
 	if (number_length < 0)
 		return false;
 	if (!direct_attack_append(row, capacity, &position, prefix,
@@ -409,7 +409,7 @@ yt_death_kill_news_row(const uint8_t *killer, size_t killer_length,
 
 bool
 yt_death_port_news_row(const uint8_t *victim, size_t victim_length,
-    float ports, uint8_t *row, size_t capacity, size_t *length)
+    uint16_t ports, uint8_t *row, size_t capacity, size_t *length)
 {
 	static const uint8_t prefix[] = "  -  Took";
 	static const uint8_t middle[] = " ports from ";
@@ -422,7 +422,7 @@ yt_death_port_news_row(const uint8_t *victim, size_t victim_length,
 	*length = 0U;
 	if (row == NULL || (victim == NULL && victim_length != 0U))
 		return false;
-	number_length = qb_str_single(number, sizeof(number), ports);
+	number_length = qb_str_single(number, sizeof(number), (float)ports);
 	if (number_length < 0)
 		return false;
 	if (!direct_attack_append(row, capacity, &position, prefix,

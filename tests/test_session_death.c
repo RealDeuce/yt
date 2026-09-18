@@ -16,7 +16,7 @@ static int failures;
 
 static void
 write_player(struct yt_game *game, int record, const char *name,
-	int sector, int ports, struct yt_error *error)
+	int sector, uint16_t ports, struct yt_error *error)
 {
 	struct yt_player player;
 

@@ -12032,7 +12032,7 @@ direct_fighter_kill_composition_run(bool ansi, struct pager_capture *capture,
 	pager_capture_result(capture, &result);
 	ends[0] = capture->remote_length;
 
-	if (!yt_death_title_row((const uint8_t *)"VICTIM", 6U, 1.0f,
+	if (!yt_death_title_row((const uint8_t *)"VICTIM", 6U, 1U,
 	    row, sizeof(row), &row_length))
 		return false;
 	pager_capture_line(capture, current, row, row_length);
@@ -13828,7 +13828,7 @@ direct_fighter_fatal_cycle_run(struct physical_viewer_join *viewer,
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
-	if (!yt_death_title_row(victim, sizeof(victim) - 1U, 1.0f,
+	if (!yt_death_title_row(victim, sizeof(victim) - 1U, 1U,
 	    row, sizeof(row), &row_length)
 	    || !normal_exit_line(join, row, row_length)
 	    || !normal_exit_line(join, NULL, 0U)

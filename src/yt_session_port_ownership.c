@@ -68,7 +68,7 @@ treasury_add(uint8_t total[8], const uint8_t value[4],
 }
 
 static bool
-treasury_update_player(struct yt_player *player, int owned,
+treasury_update_player(struct yt_player *player, uint16_t owned,
     const uint8_t total[8], struct yt_error *error)
 {
 	uint8_t fresh_credits[8];
@@ -112,7 +112,7 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 	char text[192];
 	int loop_bound;
 	int counter;
-	int owned = 0;
+	uint16_t owned = 0U;
 	int credited = 0;
 	int barren;
 	int player_record;

@@ -214,7 +214,7 @@ yt_projectile_friendly_planet_row(const uint8_t *planet,
 bool
 yt_projectile_planet_attack_rows(bool plasma,
     const uint8_t *attacker, size_t attacker_length,
-    const uint8_t *planet, size_t planet_length, float sector,
+    const uint8_t *planet, size_t planet_length, uint16_t sector,
     uint8_t *direct, size_t direct_capacity, size_t *direct_length,
     uint8_t *news, size_t news_capacity, size_t *news_length)
 {
@@ -241,7 +241,8 @@ yt_projectile_planet_attack_rows(bool plasma,
 		return false;
 	*direct_length = 0U;
 	*news_length = 0U;
-	sector_length = qb_str_single(sector_text, sizeof(sector_text), sector);
+	sector_length = qb_str_single(sector_text, sizeof(sector_text),
+	    (float)sector);
 	if (sector_length < 0)
 		return false;
 	direct_needed = direct_prefix_length + planet_length

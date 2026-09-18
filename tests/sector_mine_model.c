@@ -105,7 +105,7 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 	if ((size_t)converted > YT_TEXT_FIELD_SIZE)
 		converted = YT_TEXT_FIELD_SIZE;
 	if (!yt_sector_mine_entry_news(state->player.record.bytes,
-	    (size_t)converted, state->current_sector, row, sizeof(row),
+	    (size_t)converted, (uint16_t)current, row, sizeof(row),
 	    &row_length)
 	    || !ops->news(context, row, row_length, error))
 		return false;

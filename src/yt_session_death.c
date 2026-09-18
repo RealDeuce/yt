@@ -118,8 +118,8 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 	uint8_t row[300];
 	size_t victim_name_length;
 	size_t row_length;
-	int old_ports_owned;
-	int matched_ports = 0;
+	uint16_t old_ports_owned;
+	uint16_t matched_ports = 0U;
 	int current_player_record;
 	int logical;
 	bool self;
@@ -172,7 +172,7 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 	    & (killer <= session_sector_offset(session));
 	if (valid_killer && matched_ports != 0) {
 		if (!yt_death_title_row(victim_name, victim_name_length,
-		    (float)matched_ports,
+		    matched_ports,
 		    row, sizeof(row), &row_length))
 			return false;
 		if (!session_present_text(session, row, row_length,
@@ -200,7 +200,7 @@ yt_session_kill_player(struct yt_session *session, int victim_record,
 		return false;
 	if (!self && matched_ports != 0) {
 		if (!yt_death_port_news_row(victim_name, victim_name_length,
-		    (float)matched_ports, row, sizeof(row), &row_length))
+		    matched_ports, row, sizeof(row), &row_length))
 			return false;
 		if (!yt_news_append_bytes(row, row_length, error))
 			return false;

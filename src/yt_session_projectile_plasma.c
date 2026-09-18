@@ -271,7 +271,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	remaining_ground = original_ground;
 	planet_name_length = yt_planet_stored_name(&planet, planet_name);
 	if (!yt_projectile_planet_attack_rows(true, attacker, attacker_length,
-	    planet_name, planet_name_length, (float)sector_number, direct_row,
+	    planet_name, planet_name_length, (uint16_t)sector_number, direct_row,
 	    sizeof(direct_row), &direct_length, news_row, sizeof(news_row),
 	    &news_length))
 		return false;
@@ -432,7 +432,7 @@ yt_session_plasma_sector(struct yt_session *session, int sector_number,
 			memcpy(owner_name, you, sizeof(you) - 1U);
 			owner_length = sizeof(you) - 1U;
 		}
-		if (!yt_projectile_defense_row((float)sector_number, owner_name,
+		if (!yt_projectile_defense_row((uint16_t)sector_number, owner_name,
 		    owner_length, original_fighters, row, sizeof(row), &row_length))
 			return false;
 		if (!session_present_text(session, row, row_length,
@@ -631,7 +631,7 @@ plasma_reload_sector:
 			victim_length = yt_player_stored_name(&target, victim);
 			if (!yt_projectile_attack_first_rows(true, attacker,
 			    launch_attacker_length, victim, victim_length,
-			    (float)sector_number, news_row, sizeof(news_row),
+			    (uint16_t)sector_number, news_row, sizeof(news_row),
 			    &news_length, direct_row, sizeof(direct_row), &direct_length))
 				return false;
 			if (!yt_news_append_bytes(news_row, news_length, error))

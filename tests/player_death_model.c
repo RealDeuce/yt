@@ -85,7 +85,7 @@ test_player_death_run(struct test_player_death_state *state,
 	    & (state->killer <= state->last_player_record);
 	if (valid_killer && state->matched_ports != 0) {
 		if (!yt_death_title_row(state->victim_name,
-		    state->victim_name_length, (float)state->matched_ports,
+		    state->victim_name_length, state->matched_ports,
 		    row, sizeof(row),
 		    &row_length)
 		    || !ops->present(context, row, row_length, error)
@@ -108,7 +108,7 @@ test_player_death_run(struct test_player_death_state *state,
 		return false;
 	if (!self && state->matched_ports != 0) {
 		if (!yt_death_port_news_row(state->victim_name,
-		    state->victim_name_length, (float)state->matched_ports,
+		    state->victim_name_length, state->matched_ports,
 		    row, sizeof(row),
 		    &row_length)
 		    || !ops->news(context, row, row_length, error))

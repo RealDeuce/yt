@@ -237,7 +237,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	if (!yt_random_next(&session->door->game.random, &turn_draw, error))
 		return false;
 	destination = yt_emergency_warp_destination(first,
-	    session_sector_count(session));
+	    (uint16_t)session_sector_count(session));
 	if (override > 0.949999988079071f)
 		destination = (int)session->door->game.config.headquarters;
 	cost = yt_emergency_warp_cost((float)heat, turn_draw,

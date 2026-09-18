@@ -177,13 +177,13 @@ yt_sector_mine_loss_row(enum yt_sector_mine_loss_kind kind, float loss,
 
 bool
 yt_sector_mine_entry_news(const uint8_t *player_name,
-    size_t player_name_length, float sector, uint8_t *row, size_t capacity,
+    size_t player_name_length, uint16_t sector, uint8_t *row, size_t capacity,
     size_t *length)
 {
 	static const uint8_t middle[] = " hit sector mines in sector";
 	static const uint8_t suffix[] = "!";
 	char number[64];
-	int number_length = qb_str_single(number, sizeof(number), sector);
+	int number_length = qb_str_single(number, sizeof(number), (float)sector);
 
 	if (number_length < 0)
 		return false;
@@ -235,14 +235,13 @@ yt_emergency_warp_duration(float first, float second)
 	return result;
 }
 
-int
-yt_emergency_warp_destination(float draw, int sector_count)
+uint16_t
+yt_emergency_warp_destination(float draw, uint16_t sector_count)
 {
 	volatile float product = draw * (float)sector_count;
 	volatile float integral = floorf(product);
-	volatile float result = integral + 1.0f;
 
-	return (int)result;
+	return (uint16_t)integral + 1U;
 }
 
 float

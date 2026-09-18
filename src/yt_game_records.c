@@ -90,7 +90,7 @@ yt_player_decode(struct yt_player *player, const struct yt_record *record)
 	player->lottery_plays = (int)yt_record_get_number(record, YT_F105);
 	player->score = yt_record_get_number(record, YT_F109);
 	player->plasma = yt_record_get_number(record, YT_F113);
-	player->ports_owned = (int)yt_record_get_number(record, YT_F117);
+	(void)record_generated_u16(record, YT_F117, &player->ports_owned);
 	player->ground_forces = yt_record_get_number(record, YT_F121);
 	player->cloak = yt_record_get_number(record, YT_F125);
 	player->mines = yt_record_get_number(record, YT_F129);

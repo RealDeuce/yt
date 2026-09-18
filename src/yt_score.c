@@ -60,7 +60,7 @@ fixed_string(char dest[7], const char *source)
 
 static bool
 format_player_row(char *dest, size_t size, int rank, double percentage,
-    double score, const char *team, float ports, const char *name)
+    double score, const char *team, uint16_t ports, const char *name)
 {
 	char rank_text[32];
 	char percentage_text[64];
@@ -80,7 +80,7 @@ format_player_row(char *dest, size_t size, int rank, double percentage,
 		return false;
 	if (!fixed_string(team_text, team))
 		return false;
-	if (!yt_score_format_single(ports_text, sizeof(ports_text), ports,
+	if (!yt_score_format_single(ports_text, sizeof(ports_text), (float)ports,
 	    YT_SCORE_FIELD_PORTS))
 		return false;
 	written = snprintf(dest, size, "%s  %s%%  %s   %s %s    %.30s\r\n",
@@ -403,7 +403,7 @@ yt_scoreboard_write(struct yt_scoreboard *scoreboard, struct yt_error *error)
 			}
 			if (!format_player_row(line, sizeof(line), rank,
 			    player->score / denominator * 100.0, player->score,
-			    team_text, (float)row_player.ports_owned,
+			    team_text, row_player.ports_owned,
 			    row_player.name)) {
 				if (error != NULL)
 					error->status = YT_RANGE;
