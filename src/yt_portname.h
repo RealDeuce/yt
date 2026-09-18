@@ -39,7 +39,7 @@ enum yt_portname_parse_result yt_portname_parse_confirmation(
     const uint8_t *input, size_t input_length, uint8_t *value,
     size_t value_capacity, size_t *value_length);
 bool yt_portname_compose_output(enum yt_portname_output_kind kind,
-    float logical_port, const uint8_t *name, size_t name_length,
+    uint16_t logical_port, const uint8_t *name, size_t name_length,
     struct yt_portname_output *output);
 bool yt_portname_overlay_record(struct yt_record *record, const uint8_t *name,
     size_t name_length, struct yt_error *error);

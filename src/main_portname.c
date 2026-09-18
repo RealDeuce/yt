@@ -27,7 +27,7 @@ write_output(void *context, const uint8_t *data, size_t length,
 }
 
 static bool
-write_composed_values(enum yt_portname_output_kind kind, float logical_port,
+write_composed_values(enum yt_portname_output_kind kind, uint16_t logical_port,
     const uint8_t *name, size_t name_length, struct yt_error *error)
 {
 	struct yt_portname_output output;
@@ -41,7 +41,7 @@ write_composed_values(enum yt_portname_output_kind kind, float logical_port,
 static bool
 write_composed(enum yt_portname_output_kind kind, struct yt_error *error)
 {
-	return write_composed_values(kind, 0.0f, NULL, 0U, error);
+	return write_composed_values(kind, 0U, NULL, 0U, error);
 }
 
 static bool
@@ -68,7 +68,7 @@ rename_ports(struct yt_game *game, struct yt_random *random,
 			name_length = strlen(generated);
 		}
 		if (!write_composed_values(YT_PORTNAME_OUTPUT_PROGRESS,
-		    (float)logical, name, name_length, error))
+		    (uint16_t)logical, name, name_length, error))
 			return false;
 		physical = yt_port_basic_record(&game->config, logical);
 		if (!yt_database_read(&game->database, (size_t)physical, &record,

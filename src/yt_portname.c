@@ -220,7 +220,7 @@ copy_output(struct yt_portname_output *output, const uint8_t *data,
 
 bool
 yt_portname_compose_output(enum yt_portname_output_kind kind,
-    float logical_port, const uint8_t *name, size_t name_length,
+    uint16_t logical_port, const uint8_t *name, size_t name_length,
     struct yt_portname_output *output)
 {
 	const uint8_t *fixed = NULL;
@@ -253,7 +253,7 @@ yt_portname_compose_output(enum yt_portname_output_kind kind,
 	case YT_PORTNAME_OUTPUT_PROGRESS: {
 		char number[64];
 		int number_length = qb_print_single(number, sizeof(number),
-		    logical_port);
+		    (float)logical_port);
 
 		if (number_length < 0 || name_length + (size_t)number_length + 1U
 		    > sizeof(output->bytes))

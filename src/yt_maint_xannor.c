@@ -750,8 +750,8 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x28, 0x00};
 	struct yt_maintenance_output_result output;
 	struct yt_sector metadata;
-	float slot_value;
-	int record;
+	float stored_slot;
+	uint8_t record;
 
 	if (game == NULL || player_sector == NULL || line_output == NULL
 	    || live_sector == NULL || cached_target == NULL
@@ -763,12 +763,19 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 	*cached_target = 0;
 	if (!yt_game_read_sector(game, 21, &metadata, error))
 		return false;
-	slot_value = metadata.metadata;
-	if (slot_value > 0.0f) {
+	stored_slot = metadata.metadata;
+	if (stored_slot != 0.0f) {
 		struct yt_player player;
 
-		record = (int)slot_value;
-		if (record < 0 || (size_t)record >= cache_count) {
+		if (!isfinite(stored_slot) || floorf(stored_slot) != stored_slot
+		    || stored_slot < (float)YT_PLAYER_FIRST_RECORD
+		    || stored_slot > (float)YT_PLAYER_LAST_RECORD) {
+			set_error(error, YT_RANGE, "Xannor revenge player",
+			    "YTDATA.DAT");
+			return false;
+		}
+		record = (uint8_t)stored_slot;
+		if ((size_t)record >= cache_count) {
 			set_error(error, YT_RANGE, "Xannor revenge player",
 			    "YTDATA.DAT");
 			return false;

@@ -380,15 +380,15 @@ date_serial_epoch(const struct yt_clock_value *date, float epoch,
 	    {0, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
 	int year = date->year % 100;
 	int serial;
-	float prior;
+	int16_t prior;
 
 	if ((float)year < epoch)
 		year += 100;
 	serial = date->day + days_before[date->month];
 	if (year % 4 == 0 && date->month > 2)
 		++serial;
-	prior = (float)year - 1.0f;
-	if ((float)year != epoch && prior >= epoch) {
+	prior = (int16_t)(year - 1);
+	if ((float)year != epoch && (float)prior >= epoch) {
 		float quarter = epoch * 0.25f;
 
 		serial += 365;

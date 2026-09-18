@@ -174,14 +174,14 @@ test_portname_controller(void)
 	    || yt_portname_parse_confirmation((const uint8_t *)"\"Y\"X", 4U,
 	    parsed, sizeof(parsed), &parsed_length) != YT_PORTNAME_PARSE_REDO)
 		return false;
-	if (!yt_portname_compose_output(YT_PORTNAME_OUTPUT_INTRO, 0.0f,
+	if (!yt_portname_compose_output(YT_PORTNAME_OUTPUT_INTRO, 0U,
 	    NULL, 0U, &output) || output.length != sizeof(intro) - 1U
 	    || memcmp(output.bytes, intro, sizeof(intro) - 1U) != 0
 	    || !yt_portname_compose_output(YT_PORTNAME_OUTPUT_MISSING_DATA,
-	    0.0f, NULL, 0U, &output)
+	    0U, NULL, 0U, &output)
 	    || output.length != sizeof(missing) - 1U
 	    || memcmp(output.bytes, missing, sizeof(missing) - 1U) != 0
-	    || !yt_portname_compose_output(YT_PORTNAME_OUTPUT_PROGRESS, 1.0f,
+	    || !yt_portname_compose_output(YT_PORTNAME_OUTPUT_PROGRESS, 1U,
 	    (const uint8_t *)"Earth", 5U, &output)
 	    || output.length != 9U || memcmp(output.bytes, " 1 Earth\r", 9U) != 0)
 		return false;
@@ -4315,7 +4315,7 @@ test_portname(struct yt_error *error)
 		struct yt_portname_output expected_missing;
 
 		if (!yt_portname_compose_output(YT_PORTNAME_OUTPUT_MISSING_DATA,
-		    0.0f, NULL, 0U, &expected_missing)
+		    0U, NULL, 0U, &expected_missing)
 		    || output_length != expected_missing.length
 		    || memcmp(output, expected_missing.bytes,
 		    expected_missing.length) != 0

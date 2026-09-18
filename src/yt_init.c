@@ -80,7 +80,6 @@ yt_init_sector_prepass(struct yt_database *database, int sector_offset,
     int sector_count, uint16_t *port_offset, struct yt_error *error)
 {
 	struct yt_record record;
-	float computed;
 	int sum;
 
 	if (database == NULL || port_offset == NULL || sector_offset < 0
@@ -89,11 +88,10 @@ yt_init_sector_prepass(struct yt_database *database, int sector_offset,
 		return false;
 	}
 	sum = sector_offset + sector_count;
-	computed = qb_single_add((float)sector_offset, (float)sector_count);
 	*port_offset = (uint16_t)sum;
 	if (!yt_database_read(database, 1U, &record, error))
 		return false;
-	yt_record_set_number(&record, YT_F57, computed);
+	yt_record_set_number(&record, YT_F57, (float)*port_offset);
 	return yt_database_write(database, 1U, &record, error);
 }
 
