@@ -168,10 +168,13 @@ names_output_value(struct yt_text_output *output,
 {
 	static const uint8_t row_end[] = {'\r', '\n'};
 
-	if (!yt_text_output_write(output, data, length, error)
-	    || (newline && !yt_text_output_write(output, row_end,
-	    sizeof(row_end), error)))
+	if (!yt_text_output_write(output, data, length, error))
 		return false;
+	if (newline) {
+		if (!yt_text_output_write(output, row_end,
+		    sizeof(row_end), error))
+			return false;
+	}
 	return true;
 }
 
@@ -205,20 +208,26 @@ yt_names_write(const char *path, const struct yt_name_file *names,
 		}
 		if (!names_output_value(&output,
 		    (const uint8_t *)item->real_first,
-		    strlen(item->real_first), false, error)
-		    || !names_output_value(&output, comma, sizeof(comma) - 1U, false,
-		    error)
-		    || !names_output_value(&output,
+		    strlen(item->real_first), false, error))
+			goto done;
+		if (!names_output_value(&output, comma, sizeof(comma) - 1U, false,
+		    error))
+			goto done;
+		if (!names_output_value(&output,
 		    (const uint8_t *)item->real_last,
-		    strlen(item->real_last), false, error)
-		    || !names_output_value(&output, comma, sizeof(comma) - 1U, false,
-		    error)
-		    || !names_output_value(&output,
+		    strlen(item->real_last), false, error))
+			goto done;
+		if (!names_output_value(&output, comma, sizeof(comma) - 1U, false,
+		    error))
+			goto done;
+		if (!names_output_value(&output,
 		    (const uint8_t *)item->alias_first,
-		    strlen(item->alias_first), false, error)
-		    || !names_output_value(&output, comma, sizeof(comma) - 1U, false,
-		    error)
-		    || !names_output_value(&output,
+		    strlen(item->alias_first), false, error))
+			goto done;
+		if (!names_output_value(&output, comma, sizeof(comma) - 1U, false,
+		    error))
+			goto done;
+		if (!names_output_value(&output,
 		    (const uint8_t *)item->alias_last,
 		    strlen(item->alias_last), true, error))
 			goto done;
