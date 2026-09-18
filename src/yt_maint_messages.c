@@ -29,8 +29,9 @@ yt_news_append_bytes(const uint8_t *text, size_t length,
 bool
 yt_news_append(const char *text, struct yt_error *error)
 {
-	return text != NULL && yt_news_append_bytes(
-	    (const uint8_t *)text, strlen(text), error);
+	if (text == NULL)
+		return false;
+	return yt_news_append_bytes((const uint8_t *)text, strlen(text), error);
 }
 
 static bool
@@ -174,22 +175,29 @@ yt_radio_append_maintenance_bytes(const uint8_t *text, size_t length,
 	yt_radio_set_number(&record, 8, sender);
 	yt_radio_set_text(&record, text, length, 72);
 	yt_radio_file_init(&file);
-	if (!yt_radio_file_open(&file, "YTRMSG.DAT", error)
-	    || !yt_radio_file_next_record(&file, &basic_record, error)
-	    || !yt_radio_file_put(&file, basic_record, &record, error)
-	    || !yt_radio_file_close(&file, error)) {
-		(void)yt_radio_file_close(&file, NULL);
-		return false;
-	}
+	if (!yt_radio_file_open(&file, "YTRMSG.DAT", error))
+		goto fail;
+	if (!yt_radio_file_next_record(&file, &basic_record, error))
+		goto fail;
+	if (!yt_radio_file_put(&file, basic_record, &record, error))
+		goto fail;
+	if (!yt_radio_file_close(&file, error))
+		goto fail;
 	return true;
+
+fail:
+	(void)yt_radio_file_close(&file, NULL);
+	return false;
 }
 
 bool
 yt_radio_append_maintenance(const char *text, float sender, float recipient,
     struct yt_error *error)
 {
-	return text != NULL && yt_radio_append_maintenance_bytes(
-	    (const uint8_t *)text, strlen(text), sender, recipient, error);
+	if (text == NULL)
+		return false;
+	return yt_radio_append_maintenance_bytes((const uint8_t *)text,
+	    strlen(text), sender, recipient, error);
 }
 
 bool
@@ -209,13 +217,18 @@ yt_radio_compact(struct yt_error *error)
 	yt_text_output_init(&temporary);
 	yt_radio_file_init(&destination);
 	yt_radio_file_init(&source);
-	if (!yt_text_output_open(&temporary, "TEMP", error)
-	    || !yt_text_output_close(&temporary, error)
-	    || !yt_file_kill("TEMP", error)
-	    || !yt_radio_file_open_text_width(&destination, "TEMP", 72U, error)
-	    || !yt_radio_file_open_text_width(&source, "YTRMSG.DAT", 72U,
-	    error)
-	    || !yt_radio_file_size(&source, &source_length, error))
+	if (!yt_text_output_open(&temporary, "TEMP", error))
+		goto done;
+	if (!yt_text_output_close(&temporary, error))
+		goto done;
+	if (!yt_file_kill("TEMP", error))
+		goto done;
+	if (!yt_radio_file_open_text_width(&destination, "TEMP", 72U, error))
+		goto done;
+	if (!yt_radio_file_open_text_width(&source, "YTRMSG.DAT", 72U,
+	    error))
+		goto done;
+	if (!yt_radio_file_size(&source, &source_length, error))
 		goto done;
 	record_count = source_length / YT_RADIO_RECORD_SIZE;
 	if (record_count > 0xFFFFFFU) {
@@ -242,10 +255,13 @@ yt_radio_compact(struct yt_error *error)
 		    error))
 			goto done;
 	}
-	if (!yt_radio_file_close(&source, error)
-	    || !yt_radio_file_close(&destination, error)
-	    || !yt_file_kill("YTRMSG.DAT", error)
-	    || !yt_file_rename("TEMP", "YTRMSG.DAT", error))
+	if (!yt_radio_file_close(&source, error))
+		goto done;
+	if (!yt_radio_file_close(&destination, error))
+		goto done;
+	if (!yt_file_kill("YTRMSG.DAT", error))
+		goto done;
+	if (!yt_file_rename("TEMP", "YTRMSG.DAT", error))
 		goto done;
 	result = true;
 
@@ -263,16 +279,20 @@ yt_news_rotate(struct yt_error *error)
 	bool result = false;
 
 	yt_text_output_init(&output);
-	if (!yt_text_output_open_append(&output, "YTNEWS.DAT", error)
-	    || !yt_text_output_close(&output, error))
+	if (!yt_text_output_open_append(&output, "YTNEWS.DAT", error))
+		goto done;
+	if (!yt_text_output_close(&output, error))
 		goto done;
 	/* The second compiled OPEN reuses file number four after its CLOSE. */
 	yt_text_output_destroy(&output);
 	yt_text_output_init(&output);
-	if (!yt_text_output_open_append(&output, "YTYNEWS.DAT", error)
-	    || !yt_text_output_close(&output, error)
-	    || !yt_file_kill("YTYNEWS.DAT", error)
-	    || !yt_file_rename("YTNEWS.DAT", "YTYNEWS.DAT", error))
+	if (!yt_text_output_open_append(&output, "YTYNEWS.DAT", error))
+		goto done;
+	if (!yt_text_output_close(&output, error))
+		goto done;
+	if (!yt_file_kill("YTYNEWS.DAT", error))
+		goto done;
+	if (!yt_file_rename("YTNEWS.DAT", "YTYNEWS.DAT", error))
 		goto done;
 	result = true;
 
