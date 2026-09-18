@@ -11,9 +11,11 @@ bribe_name_row(const uint8_t *prefix, size_t prefix_length,
 {
 	size_t used = 0U;
 
-	if (!session_buffer_append(row, capacity, &used, prefix, prefix_length)
-	    || !session_buffer_append(row, capacity, &used, name, name_length)
-	    || !session_buffer_append(row, capacity, &used, suffix, suffix_length))
+	if (!session_buffer_append(row, capacity, &used, prefix, prefix_length))
+		return false;
+	if (!session_buffer_append(row, capacity, &used, name, name_length))
+		return false;
+	if (!session_buffer_append(row, capacity, &used, suffix, suffix_length))
 		return false;
 	*length = used;
 	return true;
@@ -32,15 +34,19 @@ bribe_accept(struct yt_session *session, double cached_defenders,
 	int player_record = session_record(session);
 
 	if (!session_present_alert(session, deal, sizeof(deal) - 1U,
-	    "accepted Mercenary Bribe", error)
-	    || !session_sound(session, YT_SOUND_CUE_REWARD, "accepted bribe sound", error)
-	    || !session_read_sector(session, current_sector, &sector, error))
+	    "accepted Mercenary Bribe", error))
+		return false;
+	if (!session_sound(session, YT_SOUND_CUE_REWARD,
+	    "accepted bribe sound", error))
+		return false;
+	if (!session_read_sector(session, current_sector, &sector, error))
 		return false;
 	yt_bribe_sector_overlay(&sector);
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)yt_sector_basic_record(&session->door->game.config,
-	    current_sector), &sector.record, error)
-	    || !session_reload_player(session, error))
+	    current_sector), &sector.record, error))
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	current = session->player;
 	fighters = qb_double_add((double)current.fighters,
@@ -139,10 +145,12 @@ yt_session_bribe_deployed(struct yt_session *session,
 	if (session->combat.hostile_owner != -2) {
 		if (!bribe_name_row(ordinary_prefix,
 		    sizeof(ordinary_prefix) - 1U, name, name_length, bang,
-		    sizeof(bang) - 1U, row, sizeof(row), &row_length)
-		    || !session_present_alert(session, row, row_length,
-		    "ordinary Bribe refusal", error)
-		    || !yt_random_next(&session->door->game.random, &draw, error))
+		    sizeof(bang) - 1U, row, sizeof(row), &row_length))
+			return false;
+		if (!session_present_alert(session, row, row_length,
+		    "ordinary Bribe refusal", error))
+			return false;
+		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		force_attack = yt_bribe_ordinary_forces(session->combat.hostile_owner,
 		    cached_defenders, ship_fighters, draw);
@@ -153,24 +161,26 @@ yt_session_bribe_deployed(struct yt_session *session,
 	}
 
 	if (sector->planet != 0) {
-		return bribe_name_row(planet_prefix,
+		if (!bribe_name_row(planet_prefix,
 		    sizeof(planet_prefix) - 1U, name, name_length, planet_suffix,
-		    sizeof(planet_suffix) - 1U, row, sizeof(row), &row_length)
-		    && session_present_alert(session, row, row_length,
+		    sizeof(planet_suffix) - 1U, row, sizeof(row), &row_length))
+			return false;
+		return session_present_alert(session, row, row_length,
 		    "Mercenary planet refusal", error);
 	}
 
-	if (!yt_random_next(&session->door->game.random, &draw, error)
-	    || !yt_random_next(&session->door->game.random, &second_draw,
-	    error))
+	if (!yt_random_next(&session->door->game.random, &draw, error))
+		return false;
+	if (!yt_random_next(&session->door->game.random, &second_draw, error))
 		return false;
 	force_attack = yt_bribe_mercenary_forces(cached_defenders,
 	    ship_fighters, draw, second_draw, session->combat.mercenaries_hurt);
 	if (force_attack) {
 		if (!bribe_name_row(life_prefix, sizeof(life_prefix) - 1U,
 		    name, name_length, bang, sizeof(bang) - 1U, row,
-		    sizeof(row), &row_length)
-		    || !session_present_alert(session, row, row_length,
+		    sizeof(row), &row_length))
+			return false;
+		if (!session_present_alert(session, row, row_length,
 		    "Mercenary life demand", error))
 			return false;
 		return bribe_force_attack(session, sector, true,
@@ -179,22 +189,28 @@ yt_session_bribe_deployed(struct yt_session *session,
 
 	if (!bribe_name_row(introduction_prefix,
 	    sizeof(introduction_prefix) - 1U, name, name_length, bang,
-	    sizeof(bang) - 1U, row, sizeof(row), &row_length)
-	    || !session_present_paged_line(session, row, row_length,
+	    sizeof(bang) - 1U, row, sizeof(row), &row_length))
+		return false;
+	if (!session_present_paged_line(session, row, row_length,
 	    "Mercenary Bribe introduction", error))
 		return false;
 	credits_length = qb_str_double(credits, sizeof(credits),
 	    available_credits);
-	if (credits_length < 0
-	    || !session_buffer_append(prompt, sizeof(prompt), &prompt_length,
-	    prompt_prefix, sizeof(prompt_prefix) - 1U)
-	    || !session_buffer_append(prompt, sizeof(prompt), &prompt_length,
-	    (const uint8_t *)credits, (size_t)credits_length)
-	    || !session_buffer_append(prompt, sizeof(prompt), &prompt_length,
-	    prompt_suffix, sizeof(prompt_suffix) - 1U)
-	    || !session_present_timed_paged_row(session, prompt, prompt_length,
-	    "Mercenary Bribe offer prompt", error)
-	    || !session_read_number_command(session, response, sizeof(response)))
+	if (credits_length < 0)
+		return false;
+	if (!session_buffer_append(prompt, sizeof(prompt), &prompt_length,
+	    prompt_prefix, sizeof(prompt_prefix) - 1U))
+		return false;
+	if (!session_buffer_append(prompt, sizeof(prompt), &prompt_length,
+	    (const uint8_t *)credits, (size_t)credits_length))
+		return false;
+	if (!session_buffer_append(prompt, sizeof(prompt), &prompt_length,
+	    prompt_suffix, sizeof(prompt_suffix) - 1U))
+		return false;
+	if (!session_present_timed_paged_row(session, prompt, prompt_length,
+	    "Mercenary Bribe offer prompt", error))
+		return false;
+	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
 	if (response[0] == '\0')
 		return true;
@@ -227,8 +243,9 @@ yt_session_bribe_deployed(struct yt_session *session,
 
 	if (!bribe_name_row(rejected_prefix, sizeof(rejected_prefix) - 1U,
 	    name, name_length, rejected_suffix, sizeof(rejected_suffix) - 1U,
-	    row, sizeof(row), &row_length)
-	    || !session_present_alert(session, row, row_length,
+	    row, sizeof(row), &row_length))
+		return false;
+	if (!session_present_alert(session, row, row_length,
 	    "Mercenary rejected offer", error))
 		return false;
 	return bribe_force_attack(session, sector, true, direct_hostile_menu,
