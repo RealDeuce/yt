@@ -149,14 +149,18 @@ yt_nearest_market_project(struct yt_nearest_market *market,
 	}
 	nearest_market_copy(market, port);
 	if (!nearest_div(timer_seconds, 60.0f, &market->minute, error,
-	    "nearest market minute")
-	    || !nearest_sub(current_day, market->stored_day, &day_delta, error,
-	    "nearest market day delta")
-	    || !nearest_sub(market->minute, market->stored_minute, &minute_delta,
-	    error, "nearest market minute delta")
-	    || !nearest_div(minute_delta, 1440.0f, &minute_delta, error,
-	    "nearest market minute fraction")
-	    || !nearest_add(day_delta, minute_delta, &market->elapsed, error,
+	    "nearest market minute"))
+		return false;
+	if (!nearest_sub(current_day, market->stored_day, &day_delta, error,
+	    "nearest market day delta"))
+		return false;
+	if (!nearest_sub(market->minute, market->stored_minute, &minute_delta,
+	    error, "nearest market minute delta"))
+		return false;
+	if (!nearest_div(minute_delta, 1440.0f, &minute_delta, error,
+	    "nearest market minute fraction"))
+		return false;
+	if (!nearest_add(day_delta, minute_delta, &market->elapsed, error,
 	    "nearest market elapsed"))
 		return false;
 	if (market->elapsed > 10.0f || market->elapsed < 0.0f)
@@ -173,28 +177,36 @@ yt_nearest_market_project(struct yt_nearest_market *market,
 		float rounded;
 
 		if (!nearest_mul(market->production[index], market->elapsed,
-		    &growth, error, "nearest market growth")
-		    || !nearest_add(port->stock[index], growth,
-		    &market->stock[index], error, "nearest market stock")
-		    || !nearest_div(market->stock[index], 10.0f, &candidate,
+		    &growth, error, "nearest market growth"))
+			return false;
+		if (!nearest_add(port->stock[index], growth,
+		    &market->stock[index], error, "nearest market stock"))
+			return false;
+		if (!nearest_div(market->stock[index], 10.0f, &candidate,
 		    error, "nearest market production comparison"))
 			return false;
-		if (candidate > market->production[index]
-		    && !nearest_div(market->stock[index], 10.0f,
-		    &market->production[index], error,
-		    "nearest market production replacement"))
-			return false;
+		if (candidate > market->production[index]) {
+			if (!nearest_div(market->stock[index], 10.0f,
+			    &market->production[index], error,
+			    "nearest market production replacement"))
+				return false;
+		}
 		if (!nearest_mul(market->factor[index], market->stock[index],
-		    &numerator, error, "nearest market numerator")
-		    || !nearest_mul(market->production[index], 1000.0f,
-		    &denominator, error, "nearest market denominator")
-		    || !nearest_div(numerator, denominator, &ratio, error,
-		    "nearest market ratio")
-		    || !nearest_sub(1.0f, ratio, &scale, error,
-		    "nearest market scale")
-		    || !nearest_mul(base_price[index], scale, &raw, error,
-		    "nearest market raw price")
-		    || !nearest_add(raw, 0.5f, &rounded, error,
+		    &numerator, error, "nearest market numerator"))
+			return false;
+		if (!nearest_mul(market->production[index], 1000.0f,
+		    &denominator, error, "nearest market denominator"))
+			return false;
+		if (!nearest_div(numerator, denominator, &ratio, error,
+		    "nearest market ratio"))
+			return false;
+		if (!nearest_sub(1.0f, ratio, &scale, error,
+		    "nearest market scale"))
+			return false;
+		if (!nearest_mul(base_price[index], scale, &raw, error,
+		    "nearest market raw price"))
+			return false;
+		if (!nearest_add(raw, 0.5f, &rounded, error,
 		    "nearest market price rounding"))
 			return false;
 		rounded = floorf(rounded);
