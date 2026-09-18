@@ -18544,7 +18544,7 @@ struct hostile_mines_hazard_fixture {
 	int emergency_destination;
 	float emergency_cost;
 	float emergency_sector_cache;
-	float emergency_heat;
+	uint8_t emergency_heat;
 	size_t emergency_ticks;
 	bool destroyed;
 	unsigned reentry_failure;
@@ -18848,10 +18848,10 @@ hostile_emergency_warp_present(struct hostile_mines_hazard_fixture *fixture)
 	    || !hostile_mine_hazard_random(fixture, &tick_draw, NULL))
 		return false;
 	if (tick_draw > 0.75f)
-		fixture->emergency_heat += 1.0f;
+		++fixture->emergency_heat;
 	if (!hostile_mine_emergency_set_foreground(fixture,
-	    fixture->emergency_heat < 10.0f ? 2.0f
-	    : fixture->emergency_heat < 20.0f ? 3.0f : 1.0f)
+	    fixture->emergency_heat < 10U ? 2.0f
+	    : fixture->emergency_heat < 20U ? 3.0f : 1.0f)
 	    || !hostile_mine_hazard_present(fixture, gauge_tick,
 	    sizeof(gauge_tick) - 1U, TEST_SECTOR_MINE_OUTPUT_BOLD_RAW, NULL))
 		return false;

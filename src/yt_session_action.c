@@ -240,7 +240,7 @@ yt_session_emergency_warp(struct yt_session *session, struct yt_error *error)
 	    (uint16_t)session_sector_count(session));
 	if (override > 0.949999988079071f)
 		destination = (int)session->door->game.config.headquarters;
-	cost = yt_emergency_warp_cost((float)heat, turn_draw,
+	cost = yt_emergency_warp_cost(heat, turn_draw,
 	    session->player.turns, heat >= 31U);
 	if (heat >= 31U) {
 		if (!session_attention_bytes(session, meltdown,

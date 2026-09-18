@@ -2840,9 +2840,9 @@ check_emergency_warp_model(void)
 	    || yt_emergency_warp_duration(0.5f, 0.25f) != 52.5f
 	    || yt_emergency_warp_destination(0.5f, 2004) != 1003
 	    || yt_emergency_warp_destination(0.0f, 2004) != 1
-	    || yt_emergency_warp_cost(0.0f, 0.75f, 77.0f, false) != 3.0f
-	    || yt_emergency_warp_cost(20.0f, 0.0f, 77.0f, false) != 77.0f
-	    || yt_emergency_warp_cost(31.0f, 0.0f, 77.0f, true) != 77.0f
+	    || yt_emergency_warp_cost(0U, 0.75f, 77.0f, false) != 3.0f
+	    || yt_emergency_warp_cost(20U, 0.0f, 77.0f, false) != 77.0f
+	    || yt_emergency_warp_cost(31U, 0.0f, 77.0f, true) != 77.0f
 	    || !yt_emergency_warp_result_row(1003, 3.0f, row,
 	    sizeof(row), &length)
 	    || length != sizeof(result_expected) - 1U

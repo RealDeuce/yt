@@ -108,11 +108,11 @@ yt_planet_move_summary(uint16_t cost, uint8_t *row, size_t capacity,
 	static const uint8_t first[] = "Distance is";
 	static const uint8_t middle[] = " and will take";
 	static const uint8_t suffix[] = " turns.";
-	float distance = (float)cost / 10.0f;
+	uint16_t distance = cost / 10U;
 	char distance_text[64];
 	char cost_text[64];
 	int distance_length = qb_str_single(distance_text,
-	    sizeof(distance_text), distance);
+	    sizeof(distance_text), (float)distance);
 	int cost_length = qb_str_single(cost_text, sizeof(cost_text), (float)cost);
 
 	if (distance_length < 0 || cost_length < 0)

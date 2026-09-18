@@ -245,12 +245,12 @@ yt_emergency_warp_destination(float draw, uint16_t sector_count)
 }
 
 float
-yt_emergency_warp_cost(float heat, float draw, float turns, bool meltdown)
+yt_emergency_warp_cost(uint8_t heat, float draw, float turns, bool meltdown)
 {
-	volatile float heat_cost = heat * 4.0f;
 	volatile float jitter_product = draw * 4.0f;
-	volatile float jitter = floorf(jitter_product);
-	volatile float result = heat_cost + jitter;
+	uint8_t jitter = (uint8_t)floorf(jitter_product);
+	uint16_t calculated = (uint16_t)heat * 4U + jitter;
+	float result = (float)calculated;
 
 	if (result > turns)
 		result = turns;
