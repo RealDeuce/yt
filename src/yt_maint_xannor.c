@@ -104,8 +104,8 @@ yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
 		set_error(error, YT_INVALID, "Xannor candidate discovery", "");
 		return false;
 	}
-	sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
+	sector_count = (int)game->config.port_offset
+	    - (int)game->config.sector_offset;
 	if (sector_count < 2 || current_sector < 1
 	    || current_sector > sector_count) {
 		set_error(error, YT_RANGE, "Xannor candidate discovery", "");
@@ -382,8 +382,8 @@ yt_maintenance_xannor_groups_extract(struct yt_game *game,
 		    "YTDATA.DAT");
 		return false;
 	}
-	sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
+	sector_count = (int)game->config.port_offset
+	    - (int)game->config.sector_offset;
 	if (sector_count < 20) {
 		set_error(error, YT_RANGE, "Xannor group extraction",
 		    "YTDATA.DAT");
@@ -627,8 +627,8 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 		    "YTDATA.DAT");
 		return false;
 	}
-	sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
+	sector_count = (int)game->config.port_offset
+	    - (int)game->config.sector_offset;
 	if (sector_count < 8) {
 		set_error(error, YT_RANGE, "Xannor headquarters relocation",
 		    "YTDATA.DAT");
@@ -686,8 +686,8 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 			    "YTDATA.DAT");
 		return false;
 	}
-	planet_number = (int)qb_single_subtract(game->config.total_records,
-	    game->config.planet_offset);
+	planet_number = (int)game->config.total_records
+	    - (int)game->config.planet_offset;
 	if (sector.planet == planet_number) {
 		if (!yt_record_set_number(&sector.record, YT_F93, 0.0f)) {
 			if (error != NULL && error->status == YT_OK)
@@ -922,10 +922,10 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 		set_error(error, YT_INVALID, "maintain Xannoron", "YTDATA.DAT");
 		return false;
 	}
-	sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
-	planet_count = (int)(game->config.total_records
-	    - game->config.planet_offset);
+	sector_count = (int)game->config.port_offset
+	    - (int)game->config.sector_offset;
+	planet_count = (int)game->config.total_records
+	    - (int)game->config.planet_offset;
 	headquarters = (int)game->config.headquarters;
 	if (headquarters < 1 || headquarters > sector_count
 	    || planet_count < 1 || planet_count > 100) {

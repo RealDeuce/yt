@@ -66,9 +66,8 @@ planet_move_hop(struct yt_session *session, int source_number,
 	int moving_planet;
 	int actual_destination = destination;
 	float draw;
-	int xannor_planet = (int)qb_single_subtract(
-	    session->door->game.config.total_records,
-	    (float)session_planet_offset(session));
+	int xannor_planet = (int)session->door->game.config.total_records
+	    - session_planet_offset(session);
 	uint32_t moving_record;
 	int source_record;
 	int destination_record;

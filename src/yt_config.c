@@ -44,16 +44,28 @@ yt_config_decode(struct yt_config *config, const struct yt_record *record,
 	config->scoreboard[stored_length] = '\0';
 	config->epoch_year = yt_record_get_number(record, YT_F45);
 	config->turns_per_day = yt_record_get_number(record, YT_F49);
-	config->sector_offset = yt_record_get_number(record, YT_F53);
-	config->port_offset = yt_record_get_number(record, YT_F57);
-	config->planet_offset = yt_record_get_number(record, YT_F61);
+	if (!config_decode_unsigned(record, YT_F53, UINT8_MAX, &integer,
+	    error))
+		return false;
+	config->sector_offset = (uint8_t)integer;
+	if (!config_decode_unsigned(record, YT_F57, UINT16_MAX, &integer,
+	    error))
+		return false;
+	config->port_offset = (uint16_t)integer;
+	if (!config_decode_unsigned(record, YT_F61, UINT16_MAX, &integer,
+	    error))
+		return false;
+	config->planet_offset = (uint16_t)integer;
 	config->initial_fighters = yt_record_get_number(record, YT_F65);
 	config->initial_credits = yt_record_get_number(record, YT_F69);
 	config->initial_holds = yt_record_get_number(record, YT_F73);
 	config->retention_days = yt_record_get_number(record, YT_F77);
 	config->last_maintenance = yt_record_get_number(record, YT_F81);
 	config->local_screen = yt_record_get_number(record, YT_F85) != 0.0f;
-	config->total_records = yt_record_get_number(record, YT_F93);
+	if (!config_decode_unsigned(record, YT_F93, UINT16_MAX, &integer,
+	    error))
+		return false;
+	config->total_records = (uint16_t)integer;
 	config->lottery_plays = yt_record_get_number(record, YT_F101);
 	config->genesis_ports = yt_record_get_number(record, YT_F105);
 	config->headquarters = yt_record_get_number(record, YT_F117);
@@ -172,8 +184,8 @@ yt_config_headquarters_relocate(struct yt_database *database,
 	    (size_t)yt_sector_basic_record(config, candidate_logical), &field,
 	    error))
 		return false;
-	planet_link = qb_single_subtract(config->total_records,
-	    config->planet_offset);
+	planet_link = qb_single_subtract((float)config->total_records,
+	    (float)config->planet_offset);
 	if (!yt_record_set_number(&field, YT_F85, -1.0f))
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters candidate overlay");

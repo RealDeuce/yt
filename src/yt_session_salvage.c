@@ -67,7 +67,7 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 	    error))
 		return false;
 	if (killer_record < YT_PLAYER_FIRST_RECORD
-	    || (float)killer_record > session->door->game.config.sector_offset)
+	    || killer_record > session->door->game.config.sector_offset)
 		return true;
 	victim_name_length = yt_player_stored_name(&victim, victim_name);
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,

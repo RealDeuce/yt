@@ -103,8 +103,8 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 
 		if (!yt_random_next(&game->random, &draw, error))
 			return false;
-		difference = qb_single_subtract(config->port_offset,
-		    config->sector_offset);
+		difference = qb_single_subtract((float)config->port_offset,
+		    (float)config->sector_offset);
 		span = qb_single_subtract(difference, 2.0f);
 		product = qb_single_multiply(draw, span);
 		integral = floorf(product);

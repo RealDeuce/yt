@@ -287,12 +287,12 @@ yt_maintenance_expire_player(struct yt_game *game, int *player_sector,
 	memset(&state, 0, sizeof(state));
 	state.game = *game;
 	state.player_count = player_count;
-	state.sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
-	state.port_count = (int)(game->config.planet_offset
-	    - game->config.port_offset);
-	state.planet_count = (int)(game->config.total_records
-	    - game->config.planet_offset);
+	state.sector_count = (int)game->config.port_offset
+	    - (int)game->config.sector_offset;
+	state.port_count = (int)game->config.planet_offset
+	    - (int)game->config.port_offset;
+	state.planet_count = (int)game->config.total_records
+	    - (int)game->config.planet_offset;
 	state.player_sector = player_sector;
 	state.player_cloak = player_cloak;
 	return expire_player_impl(&state, player_record, player, error);
@@ -507,12 +507,12 @@ yt_maintenance_immediate_death(struct yt_game *game, int *player_sector,
 	memset(&state, 0, sizeof(state));
 	state.game = *game;
 	state.player_count = player_count;
-	state.sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
-	state.port_count = (int)(game->config.planet_offset
-	    - game->config.port_offset);
-	state.planet_count = (int)(game->config.total_records
-	    - game->config.planet_offset);
+	state.sector_count = (int)game->config.port_offset
+	    - (int)game->config.sector_offset;
+	state.port_count = (int)game->config.planet_offset
+	    - (int)game->config.port_offset;
+	state.planet_count = (int)game->config.total_records
+	    - (int)game->config.planet_offset;
 	state.player_sector = player_sector;
 	state.player_cloak = player_cloak;
 	return immediate_death_cleanup_impl(&state, victim_record, killer,

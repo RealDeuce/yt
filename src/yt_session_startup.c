@@ -474,14 +474,13 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 {
 	char full[256];
 	struct yt_clock_value now;
-	float returning_bound;
+	int returning_bound;
 	int basic;
 	bool returning = false;
 
 	snprintf(full, sizeof(full), "%s %s", first, last);
 	returning_bound = session->door->game.config.sector_offset;
-	for (basic = YT_PLAYER_FIRST;
-	    (float)basic <= returning_bound; ++basic) {
+	for (basic = YT_PLAYER_FIRST; basic <= returning_bound; ++basic) {
 		struct yt_player candidate;
 		bool matches;
 
@@ -504,7 +503,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 	}
 	if (!returning) {
 		int vacant = 0;
-		float vacancy_bound;
+		int vacancy_bound;
 
 		session_set_foreground(session, 5);
 		if (!session_present_paged_line(session,
@@ -515,7 +514,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		vacancy_bound = session->door->game.config.sector_offset;
 		session->active_player_record = YT_PLAYER_FIRST;
 		for (basic = YT_PLAYER_FIRST;
-		    (float)basic <= vacancy_bound;
+		    basic <= vacancy_bound;
 		    ++basic) {
 			struct yt_player candidate;
 

@@ -230,12 +230,12 @@ yt_maintenance_run(struct yt_error *error)
 	}
 	yt_config_normalize_maintenance(&state.game.config);
 	state.player_count = (int)state.game.config.sector_offset - 1;
-	state.sector_count = (int)(state.game.config.port_offset
-	    - state.game.config.sector_offset);
-	state.port_count = (int)(state.game.config.planet_offset
-	    - state.game.config.port_offset);
-	state.planet_count = (int)(state.game.config.total_records
-	    - state.game.config.planet_offset);
+	state.sector_count = (int)state.game.config.port_offset
+	    - (int)state.game.config.sector_offset;
+	state.port_count = (int)state.game.config.planet_offset
+	    - (int)state.game.config.port_offset;
+	state.planet_count = (int)state.game.config.total_records
+	    - (int)state.game.config.planet_offset;
 	state.today = state.game.today;
 	same_day = yt_maintenance_same_day(state.game.config.last_maintenance,
 	    (float)state.today);

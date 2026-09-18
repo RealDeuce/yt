@@ -73,8 +73,8 @@ yt_maintenance_route_next_hop(struct yt_game *game,
 		set_error(error, YT_INVALID, "maintenance route", "");
 		return false;
 	}
-	sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
+	sector_count = (int)game->config.port_offset
+	    - (int)game->config.sector_offset;
 	if (source < 1 || source > sector_count
 	    || target < 0 || target > sector_count) {
 		set_error(error, YT_RANGE, "maintenance route endpoint",

@@ -77,17 +77,20 @@ yt_rmt_preprocess_old_database(struct yt_database *database,
 
 bool
 yt_init_sector_prepass(struct yt_database *database, int sector_offset,
-    int sector_count, float *port_offset, struct yt_error *error)
+    int sector_count, uint16_t *port_offset, struct yt_error *error)
 {
 	struct yt_record record;
 	float computed;
+	int sum;
 
-	if (database == NULL || port_offset == NULL || sector_count < 0) {
+	if (database == NULL || port_offset == NULL || sector_offset < 0
+	    || sector_count < 0 || sector_offset > UINT16_MAX - sector_count) {
 		set_error(error, YT_INVALID, "YT-INIT sector prepass", "");
 		return false;
 	}
+	sum = sector_offset + sector_count;
 	computed = qb_single_add((float)sector_offset, (float)sector_count);
-	*port_offset = computed;
+	*port_offset = (uint16_t)sum;
 	if (!yt_database_read(database, 1U, &record, error))
 		return false;
 	yt_record_set_number(&record, YT_F57, computed);
@@ -108,7 +111,7 @@ yt_initializer_layout_yt(struct yt_initializer_preparation *preparation)
 	if (preparation == NULL)
 		return;
 	memset(preparation, 0, sizeof(*preparation));
-	preparation->config.sector_offset = YT_INIT_PLAYERS + 1.0f;
+	preparation->config.sector_offset = YT_INIT_PLAYERS + 1;
 	preparation->config.port_offset = preparation->config.sector_offset
 	    + YT_INIT_SECTORS;
 	preparation->config.planet_offset = preparation->config.port_offset
@@ -169,9 +172,12 @@ make_config_record(struct yt_config *config, size_t stored_scoreboard_length)
 	    (float)stored_scoreboard_length);
 	yt_record_set_number(&config->record, YT_F45, config->epoch_year);
 	yt_record_set_number(&config->record, YT_F49, config->turns_per_day);
-	yt_record_set_number(&config->record, YT_F53, config->sector_offset);
-	yt_record_set_number(&config->record, YT_F57, config->port_offset);
-	yt_record_set_number(&config->record, YT_F61, config->planet_offset);
+	yt_record_set_number(&config->record, YT_F53,
+	    (float)config->sector_offset);
+	yt_record_set_number(&config->record, YT_F57,
+	    (float)config->port_offset);
+	yt_record_set_number(&config->record, YT_F61,
+	    (float)config->planet_offset);
 	yt_record_set_number(&config->record, YT_F65, config->initial_fighters);
 	yt_record_set_number(&config->record, YT_F69, config->initial_credits);
 	yt_record_set_number(&config->record, YT_F73, config->initial_holds);
@@ -180,7 +186,8 @@ make_config_record(struct yt_config *config, size_t stored_scoreboard_length)
 	    config->last_maintenance);
 	yt_record_set_number(&config->record, YT_F85,
 	    config->local_screen ? -1.0f : 0.0f);
-	yt_record_set_number(&config->record, YT_F93, config->total_records);
+	yt_record_set_number(&config->record, YT_F93,
+	    (float)config->total_records);
 	yt_record_set_number(&config->record, YT_F101, config->lottery_plays);
 	yt_record_set_number(&config->record, YT_F105, config->genesis_ports);
 	yt_record_set_number(&config->record, YT_F117, config->headquarters);
@@ -337,7 +344,7 @@ write_config_and_players(struct yt_database *database,
 
 	if (options->family == YT_INITIALIZER_YT) {
 		players_length = qb_str_single(players_text, sizeof(players_text),
-		    config->sector_offset - 1.0f);
+		    (float)config->sector_offset - 1.0f);
 		if (players_length < 0)
 			return false;
 		if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
@@ -350,7 +357,7 @@ write_config_and_players(struct yt_database *database,
 		if (!yt_present_text(options, YT_INIT_OUTPUT_INLINE,
 		    "Generating Player Records for", error))
 			return false;
-		if (!yt_present_number(options, config->sector_offset - 1.0f,
+		if (!yt_present_number(options, (float)config->sector_offset - 1.0f,
 		    YT_INIT_OUTPUT_INLINE, error))
 			return false;
 		if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
@@ -359,7 +366,7 @@ write_config_and_players(struct yt_database *database,
 	}
 	if (options->family == YT_INITIALIZER_RMT) {
 		players_length = qb_str_single(players_text, sizeof(players_text),
-		    config->sector_offset - 1.0f);
+		    (float)config->sector_offset - 1.0f);
 		prefix_length = sizeof("Generating Player Records for") - 1U;
 		if (players_length < 0
 		    || prefix_length + (size_t)players_length
@@ -576,7 +583,8 @@ write_world_database(struct yt_database *database,
 	    "Initializing planets...", error))
 		return false;
 	if (!yt_present_str_number_line(options, "   Maximum number of planets:",
-	    config->total_records - config->planet_offset, error))
+	    (float)((int)config->total_records - (int)config->planet_offset),
+	    error))
 		return false;
 	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))
 		return false;
@@ -586,7 +594,8 @@ write_world_database(struct yt_database *database,
 	    "Initializing planets...", error))
 		return false;
 	if (!rmt_present_number_line(options, "   Maximum number of planets:",
-	    config->total_records - config->planet_offset, error))
+	    (float)((int)config->total_records - (int)config->planet_offset),
+	    error))
 		return false;
 	record = config->record;
 	yt_record_set_number(&record, YT_F85, 0.0f);
@@ -671,8 +680,8 @@ yt_initialize_world(const struct yt_initializer_options *options,
 		}
 		config = options->config;
 		config.scoreboard_length = strlen(config.scoreboard);
-		world.sectors = (int)(config.port_offset - config.sector_offset);
-		world.ports = (int)(config.planet_offset - config.port_offset);
+		world.sectors = (int)config.port_offset - (int)config.sector_offset;
+		world.ports = (int)config.planet_offset - (int)config.port_offset;
 		if (world.sectors < 7 || world.ports < 4) {
 			set_error(error, YT_RANGE, "initializer configuration", "");
 			goto done;
@@ -730,20 +739,20 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			}
 			config = options->config;
 			config.scoreboard_length = strlen(config.scoreboard);
-			world.sectors = (int)(config.port_offset
-			    - config.sector_offset);
-			world.ports = (int)(config.planet_offset
-			    - config.port_offset);
+			world.sectors = (int)config.port_offset
+			    - (int)config.sector_offset;
+			world.ports = (int)config.planet_offset
+			    - (int)config.port_offset;
 		}
 		else if (!yt_clock_read(options->clock, &current, error))
 			goto done;
 		else if (options->use_existing_config) {
 			config = options->config;
 			config.scoreboard_length = strlen(config.scoreboard);
-			world.sectors = (int)(config.port_offset
-			    - config.sector_offset);
-			world.ports = (int)(config.planet_offset
-			    - config.port_offset);
+			world.sectors = (int)config.port_offset
+			    - (int)config.sector_offset;
+			world.ports = (int)config.planet_offset
+			    - (int)config.port_offset;
 		}
 		else {
 			scoreboard = options->scoreboard != NULL
@@ -760,7 +769,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			config.scoreboard_length = scoreboard_length;
 			config.epoch_year = (float)(current.year % 100);
 			config.turns_per_day = 500.0f;
-			config.sector_offset = YT_INIT_PLAYERS + 1.0f;
+			config.sector_offset = YT_INIT_PLAYERS + 1;
 			config.port_offset = config.sector_offset + YT_INIT_SECTORS;
 			config.planet_offset = config.port_offset + YT_INIT_PORTS;
 			config.initial_fighters = 25.0f;

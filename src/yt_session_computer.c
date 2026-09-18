@@ -220,9 +220,9 @@ yt_session_computer_planet_report(struct yt_session *session,
 			return false;
 		link = sector.planet;
 		{
-			float maximum_planet = qb_single_subtract(
-			    session->door->game.config.total_records,
-			    (float)session_planet_offset(session));
+			float maximum_planet = (float)(
+			    (int)session->door->game.config.total_records
+			    - session_planet_offset(session));
 
 			valid_link = link > 0 && (float)link <= maximum_planet;
 		}

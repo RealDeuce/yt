@@ -17,11 +17,11 @@ test_config_encode(struct yt_config *config)
 	yt_record_set_number_if_changed(&config->record, YT_F49,
 	    config->turns_per_day);
 	yt_record_set_number_if_changed(&config->record, YT_F53,
-	    config->sector_offset);
+	    (float)config->sector_offset);
 	yt_record_set_number_if_changed(&config->record, YT_F57,
-	    config->port_offset);
+	    (float)config->port_offset);
 	yt_record_set_number_if_changed(&config->record, YT_F61,
-	    config->planet_offset);
+	    (float)config->planet_offset);
 	yt_record_set_number_if_changed(&config->record, YT_F65,
 	    config->initial_fighters);
 	yt_record_set_number_if_changed(&config->record, YT_F69,
@@ -35,7 +35,7 @@ test_config_encode(struct yt_config *config)
 	yt_record_set_number_if_changed(&config->record, YT_F85,
 	    config->local_screen ? -1.0f : 0.0f);
 	yt_record_set_number_if_changed(&config->record, YT_F93,
-	    config->total_records);
+	    (float)config->total_records);
 	yt_record_set_number_if_changed(&config->record, YT_F101,
 	    config->lottery_plays);
 	yt_record_set_number_if_changed(&config->record, YT_F105,

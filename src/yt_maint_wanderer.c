@@ -110,10 +110,10 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 		set_error(error, YT_INVALID, "maintain Wanderer", "YTDATA.DAT");
 		return false;
 	}
-	sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
+	sector_count = (int)game->config.port_offset
+	    - (int)game->config.sector_offset;
 	if (sector_count < 1
-	    || game->config.total_records - game->config.planet_offset < 1.0f) {
+	    || game->config.total_records <= game->config.planet_offset) {
 		set_error(error, YT_RANGE, "maintain Wanderer", "YTDATA.DAT");
 		return false;
 	}

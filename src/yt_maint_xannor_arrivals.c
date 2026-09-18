@@ -808,8 +808,8 @@ yt_maintenance_xannor_groups_persist(struct yt_game *game,
 		    "YTDATA.DAT");
 		return false;
 	}
-	sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
+	sector_count = (int)game->config.port_offset
+	    - (int)game->config.sector_offset;
 	if (sector_count < 20) {
 		set_error(error, YT_RANGE, "Xannor group persistence",
 		    "YTDATA.DAT");
@@ -875,8 +875,8 @@ yt_maintenance_xannor_group_twenty_finish(struct yt_game *game,
 	if (group_number != 20 || group_size <= 0.0f
 	    || group_location <= 0.0f)
 		return true;
-	sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
+	sector_count = (int)game->config.port_offset
+	    - (int)game->config.sector_offset;
 	logical = qb_cint(group_location, &overflow);
 	if (overflow || logical < 1 || logical > sector_count) {
 		set_error(error, YT_RANGE, "Xannor group 20 sector",

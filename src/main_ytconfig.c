@@ -317,8 +317,8 @@ edit_headquarters(struct yt_game *game, struct yt_error *error)
 	enum yt_config_hq_route route;
 	char line[160];
 	float raw;
-	float upper = game->config.port_offset
-	    - game->config.sector_offset;
+	float upper = (float)((int)game->config.port_offset
+	    - (int)game->config.sector_offset);
 
 	if (!yt_config_compose_hq_prompt(game->config.headquarters, upper, 0U,
 	    &output))

@@ -128,7 +128,7 @@ void yt_rmt_normalize_config(struct yt_config *config, bool local_mode);
 bool yt_rmt_preprocess_old_database(struct yt_database *database,
     struct yt_config *config, struct yt_error *error);
 bool yt_init_sector_prepass(struct yt_database *database,
-    int sector_offset, int sector_count, float *port_offset,
+    int sector_offset, int sector_count, uint16_t *port_offset,
     struct yt_error *error);
 bool yt_initialize_begin_yt(struct yt_error *error);
 bool yt_initialize_bind_yt(struct yt_database *database,

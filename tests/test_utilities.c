@@ -580,6 +580,66 @@ test_rmt_config_normalization(void)
 }
 
 static bool
+test_config_integer_boundaries(void)
+{
+	struct yt_config source;
+	struct yt_config decoded;
+	struct yt_record record;
+	struct yt_error error;
+
+	memset(&source, 0, sizeof(source));
+	yt_record_clear(&source.record);
+	source.sector_offset = 51U;
+	source.port_offset = 2055U;
+	source.planet_offset = 3055U;
+	source.total_records = 3155U;
+	test_config_encode(&source);
+	yt_error_clear(&error);
+	if (!yt_config_decode(&decoded, &source.record, &error)
+	    || decoded.sector_offset != 51U
+	    || decoded.port_offset != 2055U
+	    || decoded.planet_offset != 3055U
+	    || decoded.total_records != 3155U)
+		return false;
+
+	record = source.record;
+	(void)yt_record_set_number(&record, YT_F53, 51.5f);
+	yt_error_clear(&error);
+	if (yt_config_decode(&decoded, &record, &error)
+	    || error.status != YT_RANGE)
+		return false;
+	record = source.record;
+	(void)yt_record_set_number(&record, YT_F53, 256.0f);
+	yt_error_clear(&error);
+	if (yt_config_decode(&decoded, &record, &error)
+	    || error.status != YT_RANGE)
+		return false;
+	record = source.record;
+	(void)yt_record_set_number(&record, YT_F57, 2055.5f);
+	yt_error_clear(&error);
+	if (yt_config_decode(&decoded, &record, &error)
+	    || error.status != YT_RANGE)
+		return false;
+	record = source.record;
+	(void)yt_record_set_number(&record, YT_F57, 65536.0f);
+	yt_error_clear(&error);
+	if (yt_config_decode(&decoded, &record, &error)
+	    || error.status != YT_RANGE)
+		return false;
+	record = source.record;
+	(void)yt_record_set_number(&record, YT_F61, -1.0f);
+	yt_error_clear(&error);
+	if (yt_config_decode(&decoded, &record, &error)
+	    || error.status != YT_RANGE)
+		return false;
+	record = source.record;
+	(void)yt_record_set_number(&record, YT_F93, 3155.5f);
+	yt_error_clear(&error);
+	return !yt_config_decode(&decoded, &record, &error)
+	    && error.status == YT_RANGE;
+}
+
+static bool
 test_maintenance_alias_compaction(void)
 {
 	static const uint8_t input[] =
@@ -1414,7 +1474,7 @@ test_yt_init_sector_prepass(void)
 	struct yt_record expected;
 	struct yt_record actual;
 	struct yt_error error;
-	float port_offset = 0.0f;
+	uint16_t port_offset = 0U;
 	bool ok = false;
 
 	(void)remove("YTPREPASS.DAT");
@@ -1429,7 +1489,7 @@ test_yt_init_sector_prepass(void)
 	    || !yt_database_flush(&database, &error)
 	    || !yt_init_sector_prepass(&database, 51, 2004,
 	    &port_offset, &error)
-	    || port_offset != 2055.0f
+	    || port_offset != 2055U
 	    || !yt_database_read(&database, 1U, &actual, &error)
 	    || memcmp(actual.bytes, expected.bytes, sizeof(actual.bytes)) != 0)
 		goto done;
@@ -1439,10 +1499,10 @@ test_yt_init_sector_prepass(void)
 	if (!yt_database_open(&database, "YTPREPASS.DAT", YT_OPEN_READ,
 	    &error))
 		goto done;
-	port_offset = 0.0f;
+	port_offset = 0U;
 	if (yt_init_sector_prepass(&database, 51, 2004,
 	    &port_offset, &error)
-	    || port_offset != 2055.0f || error.status != YT_IO_ERROR
+	    || port_offset != 2055U || error.status != YT_IO_ERROR
 	    || strcmp(error.operation, "write record") != 0)
 		goto done;
 	yt_database_close(&database);
@@ -1452,13 +1512,13 @@ test_yt_init_sector_prepass(void)
 	if (!yt_database_open(&database, "YTPREPASS.DAT", YT_OPEN_CREATE,
 	    &error))
 		goto done;
-	port_offset = 0.0f;
+	port_offset = 0U;
 	yt_record_clear(&expected);
 	memcpy(expected.bytes + YT_F57, port_offset_raw,
 	    sizeof(port_offset_raw));
 	ok = yt_init_sector_prepass(&database, 51, 2004,
 	    &port_offset, &error)
-	    && port_offset == 2055.0f
+	    && port_offset == 2055U
 	    && yt_database_read(&database, 1U, &actual, &error)
 	    && memcmp(actual.bytes, expected.bytes, sizeof(actual.bytes)) == 0;
 
@@ -4828,6 +4888,8 @@ main(void)
 		failure = "RMT old-database prepass differs";
 	else if (!test_rmt_config_normalization())
 		failure = "RMT old-configuration normalization differs";
+	else if (!test_config_integer_boundaries())
+		failure = "configuration integer boundaries differ";
 	else if (!test_maintenance_alias_compaction())
 		failure = "maintenance alias compaction differs";
 	else if (!test_maintenance_message_compaction())

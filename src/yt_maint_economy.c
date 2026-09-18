@@ -173,8 +173,8 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 		set_error(error, YT_INVALID, "maintain ports", "YTDATA.DAT");
 		return false;
 	}
-	port_count = (int)(game->config.planet_offset
-	    - game->config.port_offset);
+	port_count = (int)game->config.planet_offset
+	    - (int)game->config.port_offset;
 	if (port_count < 1 || port_count > 1000) {
 		set_error(error, YT_RANGE, "maintain ports", "YTDATA.DAT");
 		return false;
@@ -440,8 +440,8 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 		set_error(error, YT_INVALID, "maintain planets", "YTDATA.DAT");
 		return false;
 	}
-	planet_count = (int)(game->config.total_records
-	    - game->config.planet_offset);
+	planet_count = (int)game->config.total_records
+	    - (int)game->config.planet_offset;
 	if (planet_count < 1 || planet_count > 100) {
 		set_error(error, YT_RANGE, "maintain planets", "YTDATA.DAT");
 		return false;
