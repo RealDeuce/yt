@@ -48,9 +48,10 @@ session_port_owner_row_capture(struct yt_session *session,
 	if (!yt_port_owner_compose(kind, port->treasury, owner_name,
 	    owner_name_length, row, sizeof(row), &length))
 		return session_range_error(error, "port owner row composition");
-	return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "port owner leading blank", error)
-	    && session_present_text(session, row, length, SESSION_PRESENT_LINE,
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "port owner leading blank", error))
+		return false;
+	return session_present_text(session, row, length, SESSION_PRESENT_LINE,
 	    "port owner row", error);
 }
 
@@ -116,8 +117,9 @@ yt_session_clearance(struct yt_session *session, bool create,
 		row_length = snprintf(row, sizeof(row),
 		    "Special clearance sale! The Trader's Guild is selling "
 		    "%s for%s%% off!", name[index], percent);
-		if (row_length < 0 || (size_t)row_length >= sizeof(row)
-		    || !session_present_text(session, (const uint8_t *)row,
+		if (row_length < 0 || (size_t)row_length >= sizeof(row))
+			return false;
+		if (!session_present_text(session, (const uint8_t *)row,
 		    (size_t)row_length, SESSION_PRESENT_LINE,
 		    "clearance announcement", error))
 			return false;
@@ -125,8 +127,10 @@ yt_session_clearance(struct yt_session *session, bool create,
 	}
 	if (!announced)
 		return true;
-	return session_sound(session, YT_SOUND_CUE_REWARD, "clearance sale sound", error)
-	    && session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	if (!session_sound(session, YT_SOUND_CUE_REWARD,
+	    "clearance sale sound", error))
+		return false;
+	return session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "clearance trailing blank", error);
 }
 
@@ -147,8 +151,10 @@ earth_report_row(struct yt_session *session, const char *label, float price,
 	if (lottery_price)
 		snprintf(cost, sizeof(cost), "%s", "* 5");
 	else {
-		if (qb_str_single(price_text, sizeof(price_text), price) < 0
-		    || snprintf(cost, sizeof(cost), "*%s ", price_text) < 0)
+		if (qb_str_single(price_text, sizeof(price_text), price) < 0)
+			return session_range_error(error,
+			    "Earth report price format");
+		if (snprintf(cost, sizeof(cost), "*%s ", price_text) < 0)
 			return session_range_error(error,
 			    "Earth report price format");
 	}
@@ -158,11 +164,14 @@ earth_report_row(struct yt_session *session, const char *label, float price,
 		return false;
 	affordable = yt_earth_affordable(session->player.credits, price);
 	if (qb_str_double(affordable_text, sizeof(affordable_text),
-	    affordable) < 0
-	    || snprintf(tail, sizeof(tail), "*%s", affordable_text) < 0)
+	    affordable) < 0)
 		return session_range_error(error,
 		    "Earth report affordability format");
-	return session_present_paged_row(session, (const uint8_t *)tail, strlen(tail));
+	if (snprintf(tail, sizeof(tail), "*%s", affordable_text) < 0)
+		return session_range_error(error,
+		    "Earth report affordability format");
+	return session_present_paged_row(session, (const uint8_t *)tail,
+	    strlen(tail));
 }
 
 bool
@@ -194,16 +203,19 @@ session_earth_report(struct yt_session *session, struct yt_port *earth,
 	    YT_BASIC_FAULT_PORT_EARTH_GET, error))
 		return false;
 	session_set_foreground(session, 3);
-	if (!yt_clock_read(&session->door->game.clock, &date_now, error)
-	    || !yt_clock_read(&session->door->game.clock, &time_now, error))
+	if (!yt_clock_read(&session->door->game.clock, &date_now, error))
+		return false;
+	if (!yt_clock_read(&session->door->game.clock, &time_now, error))
 		return false;
 	yt_format_date(&date_now, date);
 	yt_format_time(&time_now, time_text);
 	if (snprintf(title, sizeof(title),
-	    "Commerce report for Earth: %s %s", date, time_text) < 0
-	    || !session_present_paged_line(session, (const uint8_t *)title,
-	    strlen(title), "Earth report title", error)
-	    || !session_port_owner_row_capture(session, earth, NULL, 0U, NULL,
+	    "Commerce report for Earth: %s %s", date, time_text) < 0)
+		return false;
+	if (!session_present_paged_line(session, (const uint8_t *)title,
+	    strlen(title), "Earth report title", error))
+		return false;
+	if (!session_port_owner_row_capture(session, earth, NULL, 0U, NULL,
 	    error))
 		return false;
 	memcpy(discount, session->earth.clearance_discounts, sizeof(discount));
@@ -218,9 +230,13 @@ session_earth_report(struct yt_session *session, struct yt_port *earth,
 	session->earth.report_seen = true;
 	if (!session_reload_player(session, error))
 		return false;
-	if (!session_present_paged_row(session, separator, sizeof(separator) - 1U)
-	    || !session_present_paged_row(session, header, sizeof(header) - 1U)
-	    || !session_present_paged_row(session, separator, sizeof(separator) - 1U))
+	if (!session_present_paged_row(session, separator,
+	    sizeof(separator) - 1U))
+		return false;
+	if (!session_present_paged_row(session, header, sizeof(header) - 1U))
+		return false;
+	if (!session_present_paged_row(session, separator,
+	    sizeof(separator) - 1U))
 		return false;
 	for (index = 0; index < 9U; ++index) {
 		float item_price;
