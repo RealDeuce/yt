@@ -221,9 +221,10 @@ session_sector_count(const struct yt_session *session)
 bool
 session_write_player(struct yt_session *session, struct yt_error *error)
 {
-	return yt_game_write_player(&session->door->game,
-	    session_record(session), &session->player, error)
-	    && yt_database_flush(&session->door->game.database, error);
+	if (!yt_game_write_player(&session->door->game,
+	    session_record(session), &session->player, error))
+		return false;
+	return yt_database_flush(&session->door->game.database, error);
 }
 
 
@@ -232,9 +233,10 @@ basic_fault_retries(const struct yt_error *error)
 {
 	struct yt_basic_fault_projection projection;
 
-	return yt_basic_fault_project(error, NULL, 0U, NULL, 0U, NULL, 0U,
-	    &projection)
-	    && projection.disposition == YT_BASIC_FAULT_RETRY_STATEMENT;
+	if (!yt_basic_fault_project(error, NULL, 0U, NULL, 0U, NULL, 0U,
+	    &projection))
+		return false;
+	return projection.disposition == YT_BASIC_FAULT_RETRY_STATEMENT;
 }
 
 bool
@@ -324,8 +326,9 @@ session_reload_player(struct yt_session *session, struct yt_error *error)
 	struct yt_player fresh;
 
 	if (!session_read_player_at_fault(session, session_record(session), &fresh,
-	    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET, error)
-	    || !yt_current_player_hydrate(&session->player, &fresh,
+	    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET, error))
+		return false;
+	if (!yt_current_player_hydrate(&session->player, &fresh,
 	    session_record(session), session_sector_offset(session),
 	    session->earth.anti_cloak_enabled, &session->navigation.current_sector_physical_record,
 	    &session->player_cache))
@@ -342,6 +345,7 @@ session_mutate_player_credits(struct yt_session *session, float argument,
 	uint8_t raw[4];
 	float sum;
 	float result;
+	bool overflow_result;
 
 	if (hydrated != NULL)
 		*hydrated = false;
@@ -360,8 +364,10 @@ session_mutate_player_credits(struct yt_session *session, float argument,
 		*hydrated = true;
 	sum = qb_single_add(session->player.credits, argument);
 	result = floorf(sum);
-	if (qb_mbf32_encode(sum, raw) == QB_MBF_OVERFLOW
-	    || qb_mbf32_encode(result, raw) == QB_MBF_OVERFLOW) {
+	overflow_result = qb_mbf32_encode(sum, raw) == QB_MBF_OVERFLOW;
+	if (!overflow_result)
+		overflow_result = qb_mbf32_encode(result, raw) == QB_MBF_OVERFLOW;
+	if (overflow_result) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
 			(void)snprintf(error->operation,

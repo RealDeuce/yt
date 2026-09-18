@@ -105,8 +105,9 @@ yt_session_build_route(struct yt_session *session, float start_value,
 		plan->next_hop[plan->start] = 0;
 		plan->outcome = YT_ROUTE_NOT_FOUND;
 		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "route failure first blank", error)
-		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "route failure first blank", error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "route failure second blank", error))
 			return false;
 		session->presentation.blink = true;
