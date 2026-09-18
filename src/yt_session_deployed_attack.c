@@ -434,7 +434,7 @@ yt_session_attack_deployed(struct yt_session *session,
 		    attacker_loss);
 		double remaining_defender = qb_double_subtract(old_count,
 		    defender_loss);
-		volatile double ratio;
+		double ratio;
 
 		quantum = yt_hostile_attack_quantum(remaining_attacker,
 		    remaining_defender);

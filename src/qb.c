@@ -172,7 +172,7 @@ qb_mbf64_encode(double value, uint8_t raw[8])
 float
 qb_single_add(float left, float right)
 {
-	volatile float result = left + right;
+	float result = left + right;
 
 	return result;
 }
@@ -180,7 +180,7 @@ qb_single_add(float left, float right)
 float
 qb_single_subtract(float left, float right)
 {
-	volatile float result = left - right;
+	float result = left - right;
 
 	return result;
 }
@@ -188,7 +188,7 @@ qb_single_subtract(float left, float right)
 float
 qb_single_multiply(float left, float right)
 {
-	volatile float result = left * right;
+	float result = left * right;
 
 	return result;
 }
@@ -196,7 +196,7 @@ qb_single_multiply(float left, float right)
 float
 qb_single_divide(float left, float right)
 {
-	volatile float result = left / right;
+	float result = left / right;
 
 	return result;
 }
@@ -204,7 +204,7 @@ qb_single_divide(float left, float right)
 double
 qb_double_add(double left, double right)
 {
-	volatile double result = left + right;
+	double result = left + right;
 
 	return result;
 }
@@ -212,7 +212,7 @@ qb_double_add(double left, double right)
 double
 qb_double_subtract(double left, double right)
 {
-	volatile double result = left - right;
+	double result = left - right;
 
 	return result;
 }
@@ -220,7 +220,7 @@ qb_double_subtract(double left, double right)
 double
 qb_double_multiply(double left, double right)
 {
-	volatile double result = left * right;
+	double result = left * right;
 
 	return result;
 }
@@ -228,7 +228,7 @@ qb_double_multiply(double left, double right)
 double
 qb_double_divide(double left, double right)
 {
-	volatile double result = left / right;
+	double result = left / right;
 
 	return result;
 }

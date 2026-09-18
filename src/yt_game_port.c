@@ -269,11 +269,11 @@ yt_port_name_overlay(struct yt_port *port, const uint8_t *candidate,
 double
 yt_port_purchase_price(const float production[3])
 {
-	volatile float sum12;
-	volatile float sum123;
-	volatile float divided;
-	volatile float integral;
-	volatile float result;
+	float sum12;
+	float sum123;
+	float divided;
+	float integral;
+	float result;
 
 	if (production == NULL)
 		return 0.0;
@@ -288,8 +288,8 @@ yt_port_purchase_price(const float production[3])
 float
 yt_port_purchase_seller_credit(float treasury, float credits, double price)
 {
-	volatile double subtotal = (double)treasury + (double)credits;
-	volatile double total = subtotal + price;
+	double subtotal = (double)treasury + (double)credits;
+	double total = subtotal + price;
 
 	return (float)total;
 }
@@ -297,7 +297,7 @@ yt_port_purchase_seller_credit(float treasury, float credits, double price)
 float
 yt_port_purchase_buyer_credit(float credits, double price)
 {
-	volatile double result = (double)credits - price;
+	double result = (double)credits - price;
 
 	return (float)result;
 }

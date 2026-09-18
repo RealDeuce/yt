@@ -428,7 +428,7 @@ missile_mines:
 		struct yt_sector mine_sector;
 		double observed_mines;
 		float destroyed;
-		volatile float missiles_after;
+		float missiles_after;
 		uint8_t row[256];
 		size_t row_length;
 

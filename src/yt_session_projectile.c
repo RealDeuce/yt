@@ -538,9 +538,9 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	if (session->projectile.retained_counterlaunch_missiles > available
 	    || session->projectile.retained_counterlaunch_missiles == 0.0f) {
 		float draw;
-		volatile float product;
-		volatile float integral;
-		volatile float selected;
+		float product;
+		float integral;
+		float selected;
 
 		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;

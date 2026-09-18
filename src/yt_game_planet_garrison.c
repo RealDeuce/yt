@@ -12,7 +12,7 @@ yt_planet_garrison_prompt(float player_forces, float planet_forces,
 	static const uint8_t prefix[] =
 	    "Drop how many ground force units on the planet?";
 	static const uint8_t suffix[] = " Available ->";
-	volatile float available = player_forces + planet_forces;
+	float available = player_forces + planet_forces;
 	char number[64];
 	int number_length;
 	size_t needed;
@@ -39,8 +39,8 @@ float
 yt_planet_garrison_after(float player_forces, float desired,
     float planet_forces)
 {
-	volatile float subtracted = player_forces - desired;
-	volatile float result = subtracted + planet_forces;
+	float subtracted = player_forces - desired;
+	float result = subtracted + planet_forces;
 
 	return result;
 }
@@ -67,7 +67,7 @@ yt_planet_garrison_overlay(struct yt_planet *planet, float desired,
 void
 yt_planet_garrison_player_overlay(struct yt_player *player, float remaining)
 {
-	volatile float integral = floorf(remaining);
+	float integral = floorf(remaining);
 
 	if (player == NULL)
 		return;

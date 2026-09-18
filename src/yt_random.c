@@ -32,9 +32,9 @@ yt_random_one_based_single(struct yt_random *random, float range,
     float *value, struct yt_error *error)
 {
 	float selection;
-	volatile float product;
-	volatile float integral;
-	volatile float result;
+	float product;
+	float integral;
+	float result;
 
 	if (!yt_random_next(random, &selection, error))
 		return false;
@@ -50,7 +50,7 @@ yt_random_integer(struct yt_random *random, int range, uint16_t *value,
     struct yt_error *error)
 {
 	float selection;
-	volatile float product;
+	float product;
 	uint16_t integral;
 
 	if (range < 1 || range > UINT16_MAX) {

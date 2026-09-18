@@ -475,7 +475,7 @@ bool
 yt_maintenance_xannor_regeneration(float top_score, float size[21],
     double *regeneration)
 {
-	volatile float converted;
+	float converted;
 	float regeneration_single;
 	float total = 0.0f;
 	float ceiling;
@@ -581,7 +581,7 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 			goto encode_error;
 	}
 	else {
-		volatile float remaining = (float)defenders;
+		float remaining = (float)defenders;
 
 		if (!yt_record_set_number(&host.record, YT_F81, remaining))
 			goto encode_error;

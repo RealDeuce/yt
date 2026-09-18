@@ -381,8 +381,8 @@ yt_planet_productivity_cache(float rate[10], double units, float delta[4])
 float
 yt_planet_productivity_credit_argument(double units)
 {
-	volatile double cost = units * 250.0;
-	volatile float single_cost = (float)cost;
+	double cost = units * 250.0;
+	float single_cost = (float)cost;
 
 	return -single_cost;
 }

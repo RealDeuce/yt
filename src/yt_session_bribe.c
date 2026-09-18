@@ -28,8 +28,8 @@ bribe_accept(struct yt_session *session, double cached_defenders,
 	static const uint8_t deal[] = "Good Deal! We join up with you!";
 	struct yt_sector sector;
 	struct yt_player current;
-	volatile double fighters;
-	volatile double credits;
+	double fighters;
+	double credits;
 	int current_sector = session->player.sector;
 	int player_record = session_record(session);
 

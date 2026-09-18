@@ -39,7 +39,7 @@ yt_genesis_insufficient_rows(float required, uint16_t owned,
 	    "enough to initiate Genesis. You are";
 	static const uint8_t second_suffix[] =
 	    " short of fulfilling the prophesy.";
-	volatile float shortfall = required - (float)owned;
+	float shortfall = required - (float)owned;
 	char required_text[64];
 	char shortfall_text[64];
 	int required_length;

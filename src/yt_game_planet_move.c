@@ -46,7 +46,7 @@ yt_planet_move_explosion_overlay(struct yt_planet *planet)
 void
 yt_planet_move_fighter_overlay(struct yt_player *player, float loss)
 {
-	volatile float remaining;
+	float remaining;
 
 	if (player == NULL)
 		return;
@@ -59,7 +59,7 @@ void
 yt_planet_move_success_overlay(struct yt_player *player,
     int destination)
 {
-	volatile float remaining;
+	float remaining;
 
 	if (player == NULL)
 		return;

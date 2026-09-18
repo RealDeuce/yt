@@ -10,8 +10,8 @@ float
 yt_planet_landing_attrition(float first_draw, float second_draw,
     float cached_ground_forces)
 {
-	volatile float product = first_draw * second_draw;
-	volatile float scaled = product * cached_ground_forces;
+	float product = first_draw * second_draw;
+	float scaled = product * cached_ground_forces;
 
 	return floorf(scaled);
 }
@@ -192,7 +192,7 @@ yt_planet_landing_unrest_row(float reduced, float original,
 void
 yt_planet_assault_player_overlay(struct yt_player *player, float commitment)
 {
-	volatile float remaining;
+	float remaining;
 
 	if (player == NULL)
 		return;
@@ -205,7 +205,7 @@ void
 yt_planet_assault_victory_overlay(struct yt_planet *planet, int owner,
     float attackers)
 {
-	volatile float integral = floorf(attackers);
+	float integral = floorf(attackers);
 
 	if (planet == NULL)
 		return;
@@ -218,7 +218,7 @@ yt_planet_assault_victory_overlay(struct yt_planet *planet, int owner,
 void
 yt_planet_assault_failure_overlay(struct yt_planet *planet, float defenders)
 {
-	volatile float integral = floorf(defenders);
+	float integral = floorf(defenders);
 
 	if (planet == NULL)
 		return;
@@ -230,8 +230,8 @@ void
 yt_planet_assault_round(bool attacker_damage, float amount,
     float *attackers, float *defenders)
 {
-	volatile float product;
-	volatile float reduced;
+	float product;
+	float reduced;
 
 	if (attackers == NULL || defenders == NULL)
 		return;

@@ -22,7 +22,7 @@ yt_hostile_attack_quantum(double remaining_attacker,
 {
 	double minimum = remaining_attacker < remaining_defender
 	    ? remaining_attacker : remaining_defender;
-	volatile double divided = minimum / 20.0;
+	double divided = minimum / 20.0;
 	float quantum = (float)qb_int(divided);
 
 	return quantum < 1.0f ? 1.0f : quantum;
@@ -31,8 +31,8 @@ yt_hostile_attack_quantum(double remaining_attacker,
 bool
 yt_hostile_attack_loses_attacker(float cloak, float draw)
 {
-	volatile float cloak_term = cloak / 10.0f;
-	volatile float total = cloak_term + draw;
+	float cloak_term = cloak / 10.0f;
+	float total = cloak_term + draw;
 
 	return total < 0.44999998807907104f;
 }
@@ -59,12 +59,12 @@ yt_fighter_shield_spill_step(double *fighters, float *shields, float draw)
 		return false;
 	quantum = *fighters > 100.0 && *shields > 100.0f ? 100U : 1U;
 	if (draw >= 0.5f) {
-		volatile double reduced = *fighters - (double)quantum;
+		double reduced = *fighters - (double)quantum;
 
 		*fighters = reduced;
 	}
 	else {
-		volatile float reduced = *shields - (float)quantum;
+		float reduced = *shields - (float)quantum;
 
 		*shields = reduced;
 	}
@@ -202,12 +202,12 @@ float
 yt_xannor_attack_bonus(double defenders_destroyed, float turns,
     float turns_per_day)
 {
-	volatile double quotient = defenders_destroyed / 256000.0;
+	double quotient = defenders_destroyed / 256000.0;
 	float bonus = (float)qb_int(quotient);
-	volatile float sum = turns + bonus;
+	float sum = turns + bonus;
 
 	if (sum > turns_per_day) {
-		volatile float clamped = turns_per_day - turns;
+		float clamped = turns_per_day - turns;
 
 		bonus = clamped;
 	}
@@ -234,9 +234,9 @@ yt_bribe_mercenary_forces(double defenders, double ship_fighters,
 double
 yt_bribe_offer_threshold(double defenders, float draw)
 {
-	volatile double product = defenders * (double)draw;
-	volatile double doubled = product * 2.0;
-	volatile double threshold = doubled + defenders;
+	double product = defenders * (double)draw;
+	double doubled = product * 2.0;
+	double threshold = doubled + defenders;
 
 	return threshold;
 }

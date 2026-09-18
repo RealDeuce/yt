@@ -170,7 +170,7 @@ void
 yt_team_transfer_apply_sector(struct yt_sector *sector,
     double initial_fighters, float amount)
 {
-	volatile float updated;
+	float updated;
 
 	if (sector == NULL)
 		return;
@@ -182,7 +182,7 @@ yt_team_transfer_apply_sector(struct yt_sector *sector,
 void
 yt_team_transfer_apply_player(struct yt_player *player, float amount)
 {
-	volatile float updated;
+	float updated;
 
 	if (player == NULL)
 		return;

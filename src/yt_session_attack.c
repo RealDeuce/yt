@@ -76,7 +76,7 @@ direct_attack_finish_kill(struct yt_session *session, int target_record,
 	size_t saved_name_length;
 	size_t warning_length;
 	float saved_mines;
-	volatile float deployed;
+	float deployed;
 	bool terminal;
 
 	if (target_shields > 0.0f)
@@ -136,7 +136,7 @@ direct_attack_attrition(struct yt_session *session, double committed,
 		double remaining_defender = defenders - *defender_loss;
 		double minimum = remaining_attacker < remaining_defender
 		    ? remaining_attacker : remaining_defender;
-		volatile double integral = floor(minimum / 20.0);
+		double integral = floor(minimum / 20.0);
 		float quantum = (float)integral;
 		float sampled;
 

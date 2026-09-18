@@ -11,7 +11,7 @@
 float
 yt_sector_mine_batch(float mines_before)
 {
-	volatile float quotient;
+	float quotient;
 
 	if (!(mines_before > 19.0f))
 		return 1.0f;
@@ -22,10 +22,10 @@ yt_sector_mine_batch(float mines_before)
 float
 yt_sector_mine_shield_result(float shields, float batch, float draw)
 {
-	volatile float product = draw * 1001.0f;
+	float product = draw * 1001.0f;
 	uint16_t quantum = (uint16_t)floorf(product);
-	volatile float loss = (float)quantum * batch;
-	volatile float result = shields - loss;
+	float loss = (float)quantum * batch;
+	float result = shields - loss;
 
 	return result < 1.0f ? 0.0f : result;
 }
@@ -33,10 +33,10 @@ yt_sector_mine_shield_result(float shields, float batch, float draw)
 float
 yt_sector_mine_cloak_loss(float cloak, float batch, float draw)
 {
-	volatile float first = draw * batch;
-	volatile float scaled = first * 100.0f;
-	volatile float integral = floorf(scaled);
-	volatile float loss = integral / 100.0f;
+	float first = draw * batch;
+	float scaled = first * 100.0f;
+	float integral = floorf(scaled);
+	float loss = integral / 100.0f;
 
 	return loss > cloak ? cloak : loss;
 }
@@ -44,9 +44,9 @@ yt_sector_mine_cloak_loss(float cloak, float batch, float draw)
 float
 yt_sector_mine_missile_loss(float missiles, float batch, float draw)
 {
-	volatile float range = batch * missiles;
-	volatile float product = draw * range;
-	volatile float loss = floorf(product) + 1.0f;
+	float range = batch * missiles;
+	float product = draw * range;
+	float loss = floorf(product) + 1.0f;
 
 	return loss > missiles ? missiles : loss;
 }
@@ -54,7 +54,7 @@ yt_sector_mine_missile_loss(float missiles, float batch, float draw)
 float
 yt_sector_mine_empty_holds(const struct yt_player *player)
 {
-	volatile float empty;
+	float empty;
 
 	if (player == NULL)
 		return 0.0f;
@@ -228,9 +228,9 @@ yt_direct_fighter_mine_warning(const uint8_t *victim_name,
 float
 yt_emergency_warp_duration(float first, float second)
 {
-	volatile float first_part = first * 70.0f;
-	volatile float second_part = second * 70.0f;
-	volatile float result = first_part + second_part;
+	float first_part = first * 70.0f;
+	float second_part = second * 70.0f;
+	float result = first_part + second_part;
 
 	return result;
 }
@@ -238,7 +238,7 @@ yt_emergency_warp_duration(float first, float second)
 uint16_t
 yt_emergency_warp_destination(float draw, uint16_t sector_count)
 {
-	volatile float product = draw * (float)sector_count;
+	float product = draw * (float)sector_count;
 	uint16_t selected = (uint16_t)floorf(product);
 
 	return selected + 1U;
@@ -247,7 +247,7 @@ yt_emergency_warp_destination(float draw, uint16_t sector_count)
 float
 yt_emergency_warp_cost(uint8_t heat, float draw, float turns, bool meltdown)
 {
-	volatile float jitter_product = draw * 4.0f;
+	float jitter_product = draw * 4.0f;
 	uint8_t jitter = (uint8_t)floorf(jitter_product);
 	uint16_t calculated = (uint16_t)heat * 4U + jitter;
 	float result = (float)calculated;
@@ -263,7 +263,7 @@ void
 yt_emergency_warp_player_overlay(struct yt_player *player,
     int destination, float cost)
 {
-	volatile float remaining;
+	float remaining;
 
 	if (player == NULL)
 		return;

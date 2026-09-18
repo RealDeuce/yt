@@ -386,7 +386,7 @@ yt_computer_selector_position(const char *command)
 void
 yt_trade_treasury_overlay(struct yt_port *port, float receipt)
 {
-	volatile float updated;
+	float updated;
 
 	if (port == NULL)
 		return;
@@ -400,8 +400,8 @@ yt_trade_holds_overlay(struct yt_player *player, size_t commodity,
 	float quantity, int8_t direction)
 {
 	float *selected;
-	volatile float single_delta;
-	volatile double updated;
+	float single_delta;
+	double updated;
 
 	if (player == NULL || commodity >= 3U)
 		return;
