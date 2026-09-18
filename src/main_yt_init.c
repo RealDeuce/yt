@@ -39,9 +39,10 @@ console_present(void *context, enum yt_init_output_entry entry,
 			goto failure;
 		output->column = 0U;
 	}
-	if (payload_length != 0U
-	    && fwrite(payload, 1, payload_length, stream) != payload_length)
-		goto failure;
+	if (payload_length != 0U) {
+		if (fwrite(payload, 1, payload_length, stream) != payload_length)
+			goto failure;
+	}
 	output->column = (output->column + payload_length) % 80U;
 	if (entry == YT_INIT_OUTPUT_LINE) {
 		if (fputc('\n', stream) == EOF)
@@ -102,17 +103,28 @@ main(int argc, char **argv)
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;
 	}
-	if (!yt_cli_line(answer, sizeof(answer))
-	    || !yt_initializer_confirm_response(answer))
+	if (!yt_cli_line(answer, sizeof(answer)))
 		return EXIT_SUCCESS;
-	if (!yt_init_present_opening(&presenter, &error)
-	    || !yt_initialize_begin_yt(&error)
-	    || !yt_initialize_bind_yt(&database, &error)) {
+	if (!yt_initializer_confirm_response(answer))
+		return EXIT_SUCCESS;
+	if (!yt_init_present_opening(&presenter, &error)) {
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;
 	}
-	if (!yt_initializer_prepare_yt(NULL, &random, &preparation, &error)
-	    || !yt_init_present_prepared_configuration(&preparation,
+	if (!yt_initialize_begin_yt(&error)) {
+		yt_cli_error("YT-INIT", &error);
+		return EXIT_FAILURE;
+	}
+	if (!yt_initialize_bind_yt(&database, &error)) {
+		yt_cli_error("YT-INIT", &error);
+		return EXIT_FAILURE;
+	}
+	if (!yt_initializer_prepare_yt(NULL, &random, &preparation, &error)) {
+		yt_database_close(&database);
+		yt_cli_error("YT-INIT", &error);
+		return EXIT_FAILURE;
+	}
+	if (!yt_init_present_prepared_configuration(&preparation,
 	    &presenter, &error)) {
 		yt_database_close(&database);
 		yt_cli_error("YT-INIT", &error);
@@ -131,8 +143,11 @@ main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 	if (!yt_platform_executable_path(executable, sizeof(executable),
-	    argv[0], &error)
-	    || !yt_platform_sibling_program(maintenance, sizeof(maintenance),
+	    argv[0], &error)) {
+		yt_cli_error("YT-INIT", &error);
+		return EXIT_FAILURE;
+	}
+	if (!yt_platform_sibling_program(maintenance, sizeof(maintenance),
 	    executable, "ytmaint", &error)) {
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;
