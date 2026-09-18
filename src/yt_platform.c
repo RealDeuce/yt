@@ -501,7 +501,11 @@ yt_platform_rmt_serial_prepare(int port,
 	}
 #else
 	(void)port;
-	if (!isatty(STDIN_FILENO) || tcgetattr(STDIN_FILENO, &state.original) != 0) {
+	if (!isatty(STDIN_FILENO)) {
+		set_error(error, YT_IO_ERROR, "observe RMT serial", "stdin");
+		return false;
+	}
+	if (tcgetattr(STDIN_FILENO, &state.original) != 0) {
 		set_error(error, YT_IO_ERROR, "observe RMT serial", "stdin");
 		return false;
 	}
@@ -513,10 +517,19 @@ yt_platform_rmt_serial_prepare(int port,
 		return false;
 	}
 	state.opening = state.original;
-	if (!rmt_termios_framing(&state.opening, framing)
-	    || cfsetispeed(&state.opening, B1200) != 0
-	    || cfsetospeed(&state.opening, B1200) != 0
-	    || tcsetattr(STDIN_FILENO, TCSANOW, &state.opening) != 0) {
+	if (!rmt_termios_framing(&state.opening, framing)) {
+		set_error(error, YT_IO_ERROR, "open RMT serial at 1200", "stdin");
+		return false;
+	}
+	if (cfsetispeed(&state.opening, B1200) != 0) {
+		set_error(error, YT_IO_ERROR, "open RMT serial at 1200", "stdin");
+		return false;
+	}
+	if (cfsetospeed(&state.opening, B1200) != 0) {
+		set_error(error, YT_IO_ERROR, "open RMT serial at 1200", "stdin");
+		return false;
+	}
+	if (tcsetattr(STDIN_FILENO, TCSANOW, &state.opening) != 0) {
 		set_error(error, YT_IO_ERROR, "open RMT serial at 1200", "stdin");
 		return false;
 	}
@@ -551,9 +564,15 @@ yt_platform_rmt_serial_restore(struct yt_platform_rmt_serial *serial,
 		return false;
 	}
 #else
-	if (cfsetispeed(&state.opening, state.observed_input) != 0
-	    || cfsetospeed(&state.opening, state.observed_output) != 0
-	    || tcsetattr(STDIN_FILENO, TCSANOW, &state.opening) != 0) {
+	if (cfsetispeed(&state.opening, state.observed_input) != 0) {
+		set_error(error, YT_IO_ERROR, "restore RMT serial speed", "stdin");
+		return false;
+	}
+	if (cfsetospeed(&state.opening, state.observed_output) != 0) {
+		set_error(error, YT_IO_ERROR, "restore RMT serial speed", "stdin");
+		return false;
+	}
+	if (tcsetattr(STDIN_FILENO, TCSANOW, &state.opening) != 0) {
 		set_error(error, YT_IO_ERROR, "restore RMT serial speed", "stdin");
 		return false;
 	}
