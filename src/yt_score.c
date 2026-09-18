@@ -70,13 +70,17 @@ format_player_row(char *dest, size_t size, int rank, double percentage,
 	int written;
 
 	if (!yt_score_format_single(rank_text, sizeof(rank_text), (float)rank,
-	    YT_SCORE_FIELD_RANK)
-	    || !yt_score_format_double(percentage_text,
-	    sizeof(percentage_text), percentage, YT_SCORE_FIELD_PERCENT)
-	    || !yt_score_format_double(score_text, sizeof(score_text), score,
-	    YT_SCORE_FIELD_SCORE)
-	    || !fixed_string(team_text, team)
-	    || !yt_score_format_single(ports_text, sizeof(ports_text), ports,
+	    YT_SCORE_FIELD_RANK))
+		return false;
+	if (!yt_score_format_double(percentage_text,
+	    sizeof(percentage_text), percentage, YT_SCORE_FIELD_PERCENT))
+		return false;
+	if (!yt_score_format_double(score_text, sizeof(score_text), score,
+	    YT_SCORE_FIELD_SCORE))
+		return false;
+	if (!fixed_string(team_text, team))
+		return false;
+	if (!yt_score_format_single(ports_text, sizeof(ports_text), ports,
 	    YT_SCORE_FIELD_PORTS))
 		return false;
 	written = snprintf(dest, size, "%s  %s%%  %s   %s %s    %.30s\r\n",
@@ -96,12 +100,15 @@ format_team_row(char *dest, size_t size, int rank, double percentage,
 	int written;
 
 	if (!yt_score_format_single(rank_text, sizeof(rank_text), (float)rank,
-	    YT_SCORE_FIELD_RANK)
-	    || !yt_score_format_double(percentage_text,
-	    sizeof(percentage_text), percentage, YT_SCORE_FIELD_PERCENT)
-	    || !yt_score_format_double(score_text, sizeof(score_text), score,
-	    YT_SCORE_FIELD_SCORE)
-	    || !yt_score_format_single(team_text, sizeof(team_text),
+	    YT_SCORE_FIELD_RANK))
+		return false;
+	if (!yt_score_format_double(percentage_text,
+	    sizeof(percentage_text), percentage, YT_SCORE_FIELD_PERCENT))
+		return false;
+	if (!yt_score_format_double(score_text, sizeof(score_text), score,
+	    YT_SCORE_FIELD_SCORE))
+		return false;
+	if (!yt_score_format_single(team_text, sizeof(team_text),
 	    (float)team, YT_SCORE_FIELD_RANK))
 		return false;
 	written = snprintf(dest, size, "%s  %s%%  %s   %s    %.36s\r\n",
@@ -121,14 +128,17 @@ format_nonhuman_row(char *dest, size_t size, double xannor,
 	int written;
 
 	if (!yt_score_format_single(xannor_text, sizeof(xannor_text),
-	    (float)xannor, YT_SCORE_FIELD_SCORE)
-	    || !yt_score_format_double(xannor_percentage_text,
+	    (float)xannor, YT_SCORE_FIELD_SCORE))
+		return false;
+	if (!yt_score_format_double(xannor_percentage_text,
 	    sizeof(xannor_percentage_text), xannor_percentage,
-	    YT_SCORE_FIELD_XANNOR_PERCENT)
-	    || !yt_score_format_single(mercenary_text,
+	    YT_SCORE_FIELD_XANNOR_PERCENT))
+		return false;
+	if (!yt_score_format_single(mercenary_text,
 	    sizeof(mercenary_text), (float)mercenaries,
-	    YT_SCORE_FIELD_SCORE)
-	    || !yt_score_format_double(mercenary_percentage_text,
+	    YT_SCORE_FIELD_SCORE))
+		return false;
+	if (!yt_score_format_double(mercenary_percentage_text,
 	    sizeof(mercenary_percentage_text), mercenary_percentage,
 	    YT_SCORE_FIELD_PERCENT))
 		return false;
@@ -347,15 +357,17 @@ yt_scoreboard_write(struct yt_scoreboard *scoreboard, struct yt_error *error)
 	    "Y a n k e e   T r a d e r   S c o r e b o a r d\r\n\r\n",
 	    error))
 		goto failure;
-	if (!yt_clock_read(&game->clock, &date_now, error)
-	    || !yt_clock_read(&game->clock, &time_now, error))
+	if (!yt_clock_read(&game->clock, &date_now, error))
+		goto failure;
+	if (!yt_clock_read(&game->clock, &time_now, error))
 		goto failure;
 	yt_format_date(&date_now, date);
 	yt_format_time(&time_now, time_text);
 	snprintf(line, sizeof(line), "Last updated at: %s %s\r\n\r\n", date,
 	    time_text);
-	if (!write_bytes(&output, line, error)
-	    || !write_bytes(&output,
+	if (!write_bytes(&output, line, error))
+		goto failure;
+	if (!write_bytes(&output,
 	    "Rank  Rank%        Score        Team   Ports   Player\r\n"
 	    "==== ======= ================= ====== ======= "
 	    "================================\r\n", error))
@@ -468,10 +480,13 @@ yt_score_generate(struct yt_game *game, struct yt_error *error)
 {
 	struct yt_scoreboard scoreboard;
 
-	return yt_scoreboard_prepare(&scoreboard, game,
-	    (int)game->config.sector_offset, (int)game->config.port_offset, error)
-	    && yt_scoreboard_load_players(&scoreboard, error)
-	    && yt_scoreboard_score_sectors(&scoreboard, error)
-	    && (yt_scoreboard_rank_players(&scoreboard), true)
-	    && yt_scoreboard_write(&scoreboard, error);
+	if (!yt_scoreboard_prepare(&scoreboard, game,
+	    (int)game->config.sector_offset, (int)game->config.port_offset, error))
+		return false;
+	if (!yt_scoreboard_load_players(&scoreboard, error))
+		return false;
+	if (!yt_scoreboard_score_sectors(&scoreboard, error))
+		return false;
+	yt_scoreboard_rank_players(&scoreboard);
+	return yt_scoreboard_write(&scoreboard, error);
 }
