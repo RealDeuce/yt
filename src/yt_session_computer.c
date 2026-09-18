@@ -165,8 +165,8 @@ yt_session_computer_planet_report(struct yt_session *session,
 	static const uint8_t prompt[] =
 	    "What sector number is the planet in? ";
 	static const uint8_t unavailable[] = "No information available.";
-	float maximum = qb_single_subtract((float)session_port_offset(session),
-	    (float)session_sector_offset(session));
+	uint16_t maximum = (uint16_t)(session_port_offset(session)
+	    - session_sector_offset(session));
 
 	for (;;) {
 		struct qb_val_result parsed;
@@ -176,7 +176,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 		double sector_fighters;
 		int fighter_owner;
 		int link;
-		float scratch;
+		uint16_t scratch;
 		float selected;
 		bool denied;
 		bool fighter_friendly;
@@ -201,11 +201,12 @@ yt_session_computer_planet_report(struct yt_session *session,
 		selected = parsed.valid ? (float)qb_int(parsed.value) : 0.0f;
 		if (selected < 1.0f)
 			return true;
-		if (selected > maximum) {
+		if (selected > (float)maximum) {
 			char number[64];
 			char notice[128];
 
-			if (qb_str_single(number, sizeof(number), maximum) < 0)
+			if (qb_str_single(number, sizeof(number),
+			    (float)maximum) < 0)
 				return false;
 			if (snprintf(notice, sizeof(notice),
 			    "Valid sector numbers are from 1 to%s.", number) < 0)
@@ -220,11 +221,11 @@ yt_session_computer_planet_report(struct yt_session *session,
 			return false;
 		link = sector.planet;
 		{
-			float maximum_planet = (float)(
+			uint16_t maximum_planet = (uint16_t)(
 			    (int)session->door->game.config.total_records
 			    - session_planet_offset(session));
 
-			valid_link = link > 0 && (float)link <= maximum_planet;
+			valid_link = link > 0 && link <= maximum_planet;
 		}
 		if (valid_link) {
 			bool limited_candidate;
@@ -246,7 +247,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			relationship_friendly = fighter_friendly;
 			session->planet.current_record =
 			    session_planet_basic_record(session, link);
-			scratch = (float)session->planet.current_record;
+			scratch = (uint16_t)session->planet.current_record;
 			if (!session_read_planet(session, link, &planet, error))
 				return false;
 			name_length = planet.name_length;
@@ -300,10 +301,10 @@ yt_session_computer_planet_report(struct yt_session *session,
 			sector_fighters = session->combat.deployed_fighters;
 			fighter_owner = session->player_reference.record;
 			relationship_friendly = session->player_reference.friendly;
-			scratch = (float)link;
+			scratch = (uint16_t)link;
 		}
 		{
-			bool scratch_zero = scratch == 0.0f;
+			bool scratch_zero = scratch == 0U;
 			bool fighters_positive = sector_fighters > 0.0;
 			bool team_positive = session->player.team > 0;
 			bool team_zero = session->player.team == 0;

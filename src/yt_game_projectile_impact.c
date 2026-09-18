@@ -143,10 +143,11 @@ uint16_t
 yt_projectile_cruise_reroute_destination(float draw,
     uint16_t sector_record_offset, uint16_t port_record_offset)
 {
-	float span = (float)(port_record_offset - sector_record_offset);
-	float selected = floorf(qb_single_multiply(draw, span));
+	uint16_t span = port_record_offset - sector_record_offset;
+	uint16_t selected = (uint16_t)floorf(qb_single_multiply(draw,
+	    (float)span));
 
-	return (uint16_t)selected + 1U;
+	return selected + 1U;
 }
 
 bool

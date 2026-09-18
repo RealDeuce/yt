@@ -162,8 +162,8 @@ profit_right_four(uint8_t result[4], float value, bool integer)
 }
 
 static bool
-profit_compose_row(struct yt_session *session, float source_number,
-    int target_number, const struct yt_port *source_port,
+profit_compose_row(struct yt_session *session, uint16_t source_number,
+    uint16_t target_number, const struct yt_port *source_port,
     const struct yt_port *target_port, const float source_price[4],
     const float target_price[4], uint8_t row[36], struct yt_error *error)
 {
@@ -204,7 +204,7 @@ profit_compose_row(struct yt_session *session, float source_number,
 		return false;
 	profit_pair_color(session, source_port->commodity_class,
 	    target_port->commodity_class);
-	if (!profit_right_four(row + length, source_number, false))
+	if (!profit_right_four(row + length, (float)source_number, false))
 		return profit_error(error, YT_RANGE, "profit source formatting");
 	length += 4U;
 	row[length++] = ',';
@@ -269,7 +269,7 @@ profit_page(struct yt_session *session, bool *keep_going,
 
 static bool
 profit_emit_pair(struct yt_session *session, struct profit_report *report,
-    float source_number, int target_number,
+    uint16_t source_number, uint16_t target_number,
     const struct yt_port *source_port, const struct yt_port *target_port,
     const float source_price[4], const float target_price[4],
     bool *keep_going, struct yt_error *error)
@@ -325,7 +325,7 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 	float source_prices[4];
 	int current_sector_record =
 	    session->navigation.current_sector_physical_record;
-	float display_source = (float)(current_sector_record
+	uint16_t display_source = (uint16_t)(current_sector_record
 	    - session_sector_offset(session));
 	int warps[6];
 	size_t slot;
@@ -386,7 +386,8 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 		if (!profit_project(session, report, &target_port,
 		    &target_market, target_prices, error))
 			return false;
-		if (!profit_emit_pair(session, report, display_source, target,
+		if (!profit_emit_pair(session, report, display_source,
+		    (uint16_t)target,
 		    &source_port, &target_port, source_prices, target_prices,
 		    &keep_going, error))
 			return false;
@@ -466,9 +467,9 @@ profit_global(struct yt_session *session, struct profit_report *report,
 			if (!profit_project(session, report, &target_port,
 			    &target_market, target_prices, error))
 				return false;
-			if (!profit_emit_pair(session, report, (float)source,
-			    target, &source_port, &target_port, source_prices,
-			    target_prices, &keep_going, error))
+			if (!profit_emit_pair(session, report, (uint16_t)source,
+			    (uint16_t)target, &source_port, &target_port,
+			    source_prices, target_prices, &keep_going, error))
 				return false;
 			if (!keep_going)
 				return true;
