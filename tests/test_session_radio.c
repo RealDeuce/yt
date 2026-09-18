@@ -31,7 +31,7 @@ test_real_radio_file_and_empty_compose(void)
 	session.pager.nonstop = true;
 	yt_error_clear(&error);
 	CHECK(session_append_radio_bytes(message, sizeof(message) - 1U,
-	    -1.0f, -2.0f, &error));
+	    -1, -2, &error));
 	CHECK(yt_session_radio_read(&session, true, &error));
 	memcpy(session.io.typeahead, empty_target, sizeof(empty_target) - 1U);
 	session.io.typeahead_length = sizeof(empty_target) - 1U;

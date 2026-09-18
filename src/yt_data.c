@@ -149,54 +149,33 @@ yt_radio_set_text(struct yt_radio_record *record, const uint8_t *text,
 }
 
 bool
-yt_radio_reader_decide(float counter, float recipient, float sender,
-    float current_player, float reader_mode,
-    struct yt_radio_reader_decision *decision, struct yt_error *error)
+yt_radio_reader_decide(uint8_t counter, int8_t recipient, int8_t sender,
+    uint8_t current_player, bool log_mode,
+    struct yt_radio_reader_decision *decision)
 {
-	bool overflow;
-	int32_t mode;
-	int32_t greater;
-	int32_t equal_one;
-	int32_t recipient_equal;
-	int32_t sender_equal;
-
 	if (decision == NULL)
 		return false;
 	memset(decision, 0, sizeof(*decision));
-	mode = qb_cint((double)reader_mode, &overflow);
-	if (overflow) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation,
-			    sizeof(error->operation), "%s",
-			    "radio reader mode CINT");
-		}
-		return false;
-	}
-	greater = counter > 1.0f ? -1 : 0;
-	equal_one = counter == 1.0f ? -1 : 0;
-	recipient_equal = recipient == current_player ? -1 : 0;
-	sender_equal = sender == current_player ? -1 : 0;
-	decision->log_heading = reader_mode != 0.0f;
-	decision->visible = (greater | ((equal_one | mode)
-	    & (recipient_equal | (mode & sender_equal)))) != 0;
-	decision->automatic_write = reader_mode == 0.0f
+	decision->log_heading = log_mode;
+	decision->visible = counter > 1U
+	    || ((counter == 1U || log_mode)
+	    && (recipient == current_player
+	    || (log_mode && sender == current_player)));
+	decision->automatic_write = !log_mode
 	    && decision->visible;
 	return true;
 }
 
 bool
-yt_radio_reader_mutate(struct yt_radio_record *record, float counter)
+yt_radio_reader_mutate(struct yt_radio_record *record, uint8_t counter)
 {
 	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x80, 0x00};
-	volatile float updated;
 
 	if (record == NULL)
 		return false;
-	if (!(counter > 1.0f))
+	if (counter <= 1U)
 		return yt_radio_set_raw_number(record, 0, dirty_zero);
-	updated = counter - 2.0f;
-	return yt_radio_set_number(record, 0, updated);
+	return yt_radio_set_number(record, 0, (float)(counter - 2U));
 }
 
 bool

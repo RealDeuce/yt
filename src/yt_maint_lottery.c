@@ -192,8 +192,8 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	if (!maintenance_copy_part(radio, sizeof(radio), &radio_length,
 	    (const uint8_t *)"!\a", 2U))
 		return false;
-	if (!yt_radio_append_maintenance_bytes(radio, radio_length, -2.0f,
-	    (float)player_record, error))
+	if (!yt_radio_append_maintenance_bytes(radio, radio_length, -2,
+	    (int8_t)player_record, error))
 		return false;
 	return true;
 }

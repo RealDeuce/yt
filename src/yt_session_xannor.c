@@ -209,14 +209,11 @@ yt_session_xannor_victory(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (!yt_news_append_bytes(banner, sizeof(banner), error))
 		return false;
-	if (!session_append_radio_bytes(banner, sizeof(banner), -2.0f,
-	    -2.0f, error))
+	if (!session_append_radio_bytes(banner, sizeof(banner), -2, -2, error))
 		return false;
-	if (!session_append_radio_bytes(winner, winner_length, -2.0f,
-	    -2.0f, error))
+	if (!session_append_radio_bytes(winner, winner_length, -2, -2, error))
 		return false;
-	if (!session_append_radio_bytes(banner, sizeof(banner), -2.0f,
-	    -2.0f, error))
+	if (!session_append_radio_bytes(banner, sizeof(banner), -2, -2, error))
 		return false;
 	if (!session_read_sector(session, 21, &sector, error))
 		return false;

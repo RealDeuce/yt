@@ -1,11 +1,31 @@
 #include "yt_session_internal.h"
 
-#include "qb.h"
 #include "yt_file.h"
 #include "yt_main_error.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
+
+static bool
+radio_generated_integer(const struct yt_radio_record *record, size_t offset,
+    int minimum, int maximum, int *result, struct yt_error *error)
+{
+	float value = yt_radio_get_number(record, offset);
+
+	if (isfinite(value) && value >= (float)minimum
+	    && value <= (float)maximum && floorf(value) == value) {
+		*result = (int)value;
+		return true;
+	}
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation),
+		    "%s", "radio generated integer");
+	}
+	return false;
+}
 
 static bool
 radio_name_bytes(struct yt_session *session, int record, uint8_t *dest,
@@ -144,9 +164,10 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 	    ++record_number) {
 		struct yt_radio_record record;
 		struct yt_radio_reader_decision decision;
-		float counter;
-		int recipient;
-		int sender;
+		uint8_t counter;
+		int8_t recipient;
+		int8_t sender;
+		int generated;
 
 		if (!yt_radio_file_get(&file, record_number, &record, NULL,
 		    error)) {
@@ -155,12 +176,20 @@ yt_session_radio_read(struct yt_session *session, bool log_mode,
 			    file.random.last_get_basic_error);
 			goto abort;
 		}
-		counter = yt_radio_get_number(&record, 0U);
-		recipient = (int)yt_radio_get_number(&record, 4U);
-		sender = (int)yt_radio_get_number(&record, 8U);
-		if (!yt_radio_reader_decide(counter, (float)recipient,
-		    (float)sender, (float)current_player,
-		    log_mode ? 1.0f : 0.0f, &decision, error))
+		if (!radio_generated_integer(&record, 0U, 0, 50,
+		    &generated, error))
+			goto abort;
+		counter = (uint8_t)generated;
+		if (!radio_generated_integer(&record, 4U, -2, 51,
+		    &generated, error))
+			goto abort;
+		recipient = (int8_t)generated;
+		if (!radio_generated_integer(&record, 8U, -2, 51,
+		    &generated, error))
+			goto abort;
+		sender = (int8_t)generated;
+		if (!yt_radio_reader_decide(counter, recipient, sender,
+		    (uint8_t)current_player, log_mode, &decision))
 			goto abort;
 		if (!decision.visible)
 			continue;

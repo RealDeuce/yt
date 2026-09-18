@@ -79,10 +79,10 @@ bool yt_radio_set_raw_number(struct yt_radio_record *record, size_t offset,
     const uint8_t raw[4]);
 void yt_radio_set_text(struct yt_radio_record *record, const uint8_t *text,
     size_t length, size_t field_width);
-bool yt_radio_reader_decide(float counter, float recipient, float sender,
-    float current_player, float reader_mode,
-    struct yt_radio_reader_decision *decision, struct yt_error *error);
-bool yt_radio_reader_mutate(struct yt_radio_record *record, float counter);
+bool yt_radio_reader_decide(uint8_t counter, int8_t recipient, int8_t sender,
+    uint8_t current_player, bool log_mode,
+    struct yt_radio_reader_decision *decision);
+bool yt_radio_reader_mutate(struct yt_radio_record *record, uint8_t counter);
 bool yt_radio_reader_header(const uint8_t *recipient,
     size_t recipient_length, const uint8_t *sender, size_t sender_length,
     uint8_t *header, size_t capacity, size_t *length);

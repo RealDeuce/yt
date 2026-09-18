@@ -161,7 +161,7 @@ yt_news_append_game_full(const char *date_text, const char *player_name,
 
 bool
 yt_radio_append_maintenance_bytes(const uint8_t *text, size_t length,
-    float sender, float recipient, struct yt_error *error)
+    int8_t sender, int8_t recipient, struct yt_error *error)
 {
 	struct yt_radio_file file;
 	struct yt_radio_record record;
@@ -170,9 +170,9 @@ yt_radio_append_maintenance_bytes(const uint8_t *text, size_t length,
 	if (text == NULL && length != 0U)
 		return false;
 	memset(&record, 0, sizeof(record));
-	yt_radio_set_number(&record, 0, recipient == -2.0f ? 20.0f : 1.0f);
-	yt_radio_set_number(&record, 4, recipient);
-	yt_radio_set_number(&record, 8, sender);
+	yt_radio_set_number(&record, 0, recipient == -2 ? 20.0f : 1.0f);
+	yt_radio_set_number(&record, 4, (float)recipient);
+	yt_radio_set_number(&record, 8, (float)sender);
 	yt_radio_set_text(&record, text, length, 72);
 	yt_radio_file_init(&file);
 	if (!yt_radio_file_open(&file, "YTRMSG.DAT", error))
@@ -191,7 +191,7 @@ fail:
 }
 
 bool
-yt_radio_append_maintenance(const char *text, float sender, float recipient,
+yt_radio_append_maintenance(const char *text, int8_t sender, int8_t recipient,
     struct yt_error *error)
 {
 	if (text == NULL)

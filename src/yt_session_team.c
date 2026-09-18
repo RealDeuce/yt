@@ -128,7 +128,7 @@ session_team_audit(struct yt_session *session, int team_id,
 
 		if (recipient != 0 && recipient != session_record(session)) {
 			if (!session_append_radio_bytes(message, message_length,
-			    -2.0f, (float)recipient, error))
+			    -2, (int8_t)recipient, error))
 				return false;
 		}
 	}

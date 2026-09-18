@@ -212,8 +212,8 @@ yt_session_attack_player(struct yt_session *session, int target_record,
 		if (!yt_direct_attack_radio_text(stored_name, name_length,
 		    defender_loss, radio, sizeof(radio), &radio_length))
 			return false;
-		if (!session_append_radio_bytes(radio, radio_length, -2.0f,
-		    (float)target_record, error))
+		if (!session_append_radio_bytes(radio, radio_length, -2,
+		    (int8_t)target_record, error))
 			return false;
 	}
 

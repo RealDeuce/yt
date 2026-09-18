@@ -506,8 +506,8 @@ purchase_accept(struct yt_session *session, int logical_port, int old_owner,
 		if (!session_buffer_append(message, sizeof(message), &length,
 		    radio_four, sizeof(radio_four) - 1U))
 			return false;
-		if (!session_append_radio_bytes(message, length, -2.0f,
-		    (float)old_owner, error))
+		if (!session_append_radio_bytes(message, length, -2,
+		    (int8_t)old_owner, error))
 			return false;
 		if (!session_read_port_physical(session, physical_port, &port, error))
 			return false;

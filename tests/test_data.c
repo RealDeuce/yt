@@ -122,7 +122,6 @@ test_record(void)
 	struct yt_radio_record mutated;
 	struct yt_radio_record before_mutation;
 	struct yt_radio_reader_decision decision;
-	struct yt_error error;
 	uint8_t header[64];
 	size_t header_length;
 	char name[64];
@@ -156,16 +155,16 @@ test_record(void)
 	CHECK(!yt_radio_set_raw_number(&radio, 12, radio_dirty_zero));
 	memset(&mutated, 0xaa, sizeof(mutated));
 	before_mutation = mutated;
-	CHECK(yt_radio_reader_mutate(&mutated, 30.0f));
+	CHECK(yt_radio_reader_mutate(&mutated, 30U));
 	CHECK(yt_radio_get_number(&mutated, 0) == 28.0f);
 	CHECK(memcmp(mutated.bytes + 4, before_mutation.bytes + 4,
 	    sizeof(mutated.bytes) - 4U) == 0);
-	CHECK(yt_radio_reader_mutate(&mutated, 2.0f));
+	CHECK(yt_radio_reader_mutate(&mutated, 2U));
 	CHECK(memcmp(mutated.bytes, "\0\0\0\0", 4) == 0);
-	CHECK(yt_radio_reader_mutate(&mutated, 1.0f));
+	CHECK(yt_radio_reader_mutate(&mutated, 1U));
 	CHECK(memcmp(mutated.bytes, radio_dirty_zero,
 	    sizeof(radio_dirty_zero)) == 0);
-	CHECK(yt_radio_reader_mutate(&mutated, 0.0f));
+	CHECK(yt_radio_reader_mutate(&mutated, 0U));
 	CHECK(memcmp(mutated.bytes, radio_dirty_zero,
 	    sizeof(radio_dirty_zero)) == 0);
 	CHECK(yt_radio_reader_header((const uint8_t *)"A\0da", 4,
@@ -177,59 +176,28 @@ test_record(void)
 	    (const uint8_t *)"Bob", 3, header, 26, &header_length));
 	CHECK(header_length == 0);
 
-	yt_error_clear(&error);
-	CHECK(yt_radio_reader_decide(2.0f, 9.0f, 8.0f, 7.0f, 0.0f,
-	    &decision, &error));
+	CHECK(yt_radio_reader_decide(2U, 9, 8, 7U, false, &decision));
 	CHECK(!decision.log_heading);
 	CHECK(decision.visible);
 	CHECK(decision.automatic_write);
-	CHECK(yt_radio_reader_decide(1.0f, 7.0f, 8.0f, 7.0f, 0.0f,
-	    &decision, &error));
+	CHECK(yt_radio_reader_decide(1U, 7, 8, 7U, false, &decision));
 	CHECK(decision.visible);
 	CHECK(decision.automatic_write);
-	CHECK(yt_radio_reader_decide(1.0f, 8.0f, 7.0f, 7.0f, 0.0f,
-	    &decision, &error));
+	CHECK(yt_radio_reader_decide(1U, 8, 7, 7U, false, &decision));
 	CHECK(!decision.visible);
 	CHECK(!decision.automatic_write);
-	CHECK(yt_radio_reader_decide(1.0f, 8.0f, 7.0f, 7.0f, 1.0f,
-	    &decision, &error));
+	CHECK(yt_radio_reader_decide(1U, 8, 7, 7U, true, &decision));
 	CHECK(decision.log_heading);
 	CHECK(decision.visible);
 	CHECK(!decision.automatic_write);
-	CHECK(yt_radio_reader_decide(0.0f, 8.0f, 9.0f, 7.0f, 1.0f,
-	    &decision, &error));
+	CHECK(yt_radio_reader_decide(0U, 8, 9, 7U, true, &decision));
 	CHECK(!decision.visible);
-	CHECK(yt_radio_reader_decide(0.0f, 7.0f, 9.0f, 7.0f, 1.0f,
-	    &decision, &error));
+	CHECK(yt_radio_reader_decide(0U, 7, 9, 7U, true, &decision));
 	CHECK(decision.log_heading && decision.visible
 	    && !decision.automatic_write);
-	CHECK(yt_radio_reader_decide(0.0f, 9.0f, 7.0f, 7.0f, 1.0f,
-	    &decision, &error));
+	CHECK(yt_radio_reader_decide(0U, 9, 7, 7U, true, &decision));
 	CHECK(decision.log_heading && decision.visible
 	    && !decision.automatic_write);
-	CHECK(yt_radio_reader_decide(0.0f, 0.0f, 0.0f, 0.0f, 2.0f,
-	    &decision, &error));
-	CHECK(decision.log_heading && decision.visible
-	    && !decision.automatic_write);
-	CHECK(yt_radio_reader_decide(1.0f, 7.0f, 8.0f, 7.0f, 0.49f,
-	    &decision, &error));
-	CHECK(decision.log_heading);
-	CHECK(decision.visible);
-	CHECK(!decision.automatic_write);
-	CHECK(yt_radio_reader_decide(1.0f, 8.0f, 7.0f, 7.0f, 0.49f,
-	    &decision, &error));
-	CHECK(decision.log_heading);
-	CHECK(!decision.visible);
-	CHECK(!decision.automatic_write);
-	CHECK(yt_radio_reader_decide(2.0f, 8.0f, 9.0f, 7.0f, 0.49f,
-	    &decision, &error));
-	CHECK(decision.log_heading && decision.visible
-	    && !decision.automatic_write);
-	yt_error_clear(&error);
-	CHECK(!yt_radio_reader_decide(1.0f, 7.0f, 8.0f, 7.0f,
-	    40000.0f, &decision, &error));
-	CHECK(error.status == YT_RANGE);
-	CHECK(strcmp(error.operation, "radio reader mode CINT") == 0);
 }
 
 struct scripted_clock {

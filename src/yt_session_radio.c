@@ -1,6 +1,5 @@
 #include "yt_session_internal.h"
 
-#include "qb.h"
 #include "yt_file.h"
 
 #include <stdio.h>
@@ -22,8 +21,7 @@ session_radio_body_key(struct yt_session *session)
 
 static bool
 radio_append_raw_bytes(const uint8_t *text, size_t length,
-    const uint8_t sender_raw[4], const uint8_t recipient_raw[4],
-    struct yt_error *error)
+    int8_t sender, int8_t recipient, struct yt_error *error)
 {
 	static const uint8_t personal_counter[4] = {0x00, 0x00, 0x00, 0x81};
 	static const uint8_t broadcast_counter[4] = {0x00, 0x00, 0x70, 0x85};
@@ -41,15 +39,15 @@ radio_append_raw_bytes(const uint8_t *text, size_t length,
 	if (!yt_radio_file_get(&file, basic_record, &record, NULL, error))
 		goto failed;
 	memset(&record, 0, sizeof(record));
-	counter_raw = qb_mbf32_decode(recipient_raw) == -2.0f
+	counter_raw = recipient == -2
 	    ? broadcast_counter : personal_counter;
 	if (text == NULL && length != 0U)
 		goto invalid_record;
 	if (!yt_radio_set_raw_number(&record, 0U, counter_raw))
 		goto invalid_record;
-	if (!yt_radio_set_raw_number(&record, 4U, recipient_raw))
+	if (!yt_radio_set_number(&record, 4U, (float)recipient))
 		goto invalid_record;
-	if (!yt_radio_set_raw_number(&record, 8U, sender_raw))
+	if (!yt_radio_set_number(&record, 8U, (float)sender))
 		goto invalid_record;
 	yt_radio_set_text(&record, text, length, 74U);
 	if (!yt_radio_file_put(&file, basic_record, &record, error))
@@ -71,25 +69,8 @@ failed:
 }
 
 bool
-session_append_radio_bytes(const uint8_t *text, size_t length, float sender,
-    float recipient, struct yt_error *error)
+session_append_radio_bytes(const uint8_t *text, size_t length, int8_t sender,
+    int8_t recipient, struct yt_error *error)
 {
-	uint8_t sender_raw[4];
-	uint8_t recipient_raw[4];
-
-	if (qb_mbf32_encode(sender, sender_raw) != QB_MBF_OK)
-		goto invalid_number;
-	if (qb_mbf32_encode(recipient, recipient_raw) != QB_MBF_OK)
-		goto invalid_number;
-	return radio_append_raw_bytes(text, length, sender_raw, recipient_raw,
-	    error);
-
-invalid_number:
-	if (error != NULL) {
-		error->status = YT_RANGE;
-		(void)snprintf(error->operation,
-		    sizeof(error->operation), "%s",
-		    "construct radio record");
-	}
-	return false;
+	return radio_append_raw_bytes(text, length, sender, recipient, error);
 }

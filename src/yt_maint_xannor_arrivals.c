@@ -606,8 +606,8 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 		    (double)player_fighter_losses);
 		snprintf(radio_line, sizeof(radio_line),
 		    "Ha! We kilt%s of yoor fyterz hoo-man slyme!", losses);
-		if (!yt_radio_append_maintenance(radio_line, -1.0f,
-		    (float)player_record, error))
+		if (!yt_radio_append_maintenance(radio_line, -1,
+		    (int8_t)player_record, error))
 			return false;
 	}
 	if (!yt_game_read_player(game, player_record, &player, error))
@@ -629,8 +629,8 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 		    (double)(original_shields - remaining_shields));
 		snprintf(radio_line, sizeof(radio_line),
 		    "Peh! Whee maik yoor wheak sheeldz%s unitz!", losses);
-		if (!yt_radio_append_maintenance(radio_line, -1.0f,
-		    (float)player_record, error))
+		if (!yt_radio_append_maintenance(radio_line, -1,
+		    (int8_t)player_record, error))
 			return false;
 	}
 	if (!yt_game_read_player(game, player_record, &player, error))
@@ -670,8 +670,8 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 		if (!yt_game_read_player(game, player_record, &player, error))
 			return false;
 		if (!yt_radio_append_maintenance(
-		    "HA! We kilt yoo yoo hoo-man slyme bull!", -1.0f,
-		    (float)player_record, error))
+		    "HA! We kilt yoo yoo hoo-man slyme bull!", -1,
+		    (int8_t)player_record, error))
 			return false;
 	}
 	return true;

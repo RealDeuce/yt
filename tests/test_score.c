@@ -13376,8 +13376,8 @@ check_maintenance_writers(void)
 	yt_text_free(&news);
 	memset(long_text, 'M', sizeof(long_text) - 1U);
 	long_text[sizeof(long_text) - 1U] = '\0';
-	if (!yt_radio_append_maintenance(long_text, -2.0f, 3.0f, &error)
-	    || !yt_radio_append_maintenance("all", -2.0f, -2.0f, &error))
+	if (!yt_radio_append_maintenance(long_text, -2, 3, &error)
+	    || !yt_radio_append_maintenance("all", -2, -2, &error))
 		goto done;
 	file = fopen("YTRMSG.DAT", "rb");
 	if (file == NULL)

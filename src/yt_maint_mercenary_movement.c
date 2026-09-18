@@ -192,7 +192,7 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 			if (!yt_news_append_bytes(line, line_length, error))
 				return false;
 			if (!yt_radio_append_maintenance_bytes(radio, radio_length,
-			    -2.0f, (float)original_owner, error))
+			    -2, (int8_t)original_owner, error))
 				return false;
 			if (!yt_game_read_sector(game, sector_number, &fresh, error))
 				return false;

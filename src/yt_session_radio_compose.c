@@ -570,8 +570,8 @@ yt_session_radio_compose(struct yt_session *session, struct yt_error *error)
 			}
 			if (!session_append_radio_bytes(
 			    (const uint8_t *)lines[body], length,
-			    (float)session_record(session),
-			    (float)recipients[index], error))
+			    (int8_t)session_record(session),
+			    (int8_t)recipients[index], error))
 				return false;
 		}
 	}

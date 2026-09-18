@@ -362,9 +362,9 @@ bool yt_maintenance_immediate_death(struct yt_game *game,
     int victim_record, int killer, struct yt_player *victim,
     struct yt_error *error);
 bool yt_radio_append_maintenance_bytes(const uint8_t *text, size_t length,
-    float sender, float recipient, struct yt_error *error);
-bool yt_radio_append_maintenance(const char *text, float sender,
-    float recipient, struct yt_error *error);
+    int8_t sender, int8_t recipient, struct yt_error *error);
+bool yt_radio_append_maintenance(const char *text, int8_t sender,
+    int8_t recipient, struct yt_error *error);
 bool yt_radio_compact(struct yt_error *error);
 bool yt_news_rotate(struct yt_error *error);
 bool yt_news_append(const char *text, struct yt_error *error);

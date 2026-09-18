@@ -362,7 +362,7 @@ yt_maintenance_players_run(struct maint_state *state,
 			    &date_value, true, false, &output))
 				return false;
 			if (!yt_radio_append_maintenance_bytes(output.radio_message,
-			    output.radio_length, -2.0f, (float)record, error))
+			    output.radio_length, -2, (int8_t)record, error))
 				return false;
 			continue;
 		}
