@@ -146,32 +146,42 @@ yt_session_trade_commodity(struct yt_session *session,
 		return false;
 	if (prompt_reached != NULL)
 		*prompt_reached = false;
-	if (!session_reload_player(session, error)
-	    || !commodity_prepare(market, &session->player, commodity,
+	if (!session_reload_player(session, error))
+		return false;
+	if (!commodity_prepare(market, &session->player, commodity,
 	    &terms, error))
 		return false;
 	if (terms.maximum == 0.0f)
 		return true;
-	if (qb_str_double(first, sizeof(first), terms.credits) < 0
-	    || qb_str_single(second, sizeof(second), terms.free_holds) < 0
-	    || !commodity_row(row, sizeof(row),
+	if (qb_str_double(first, sizeof(first), terms.credits) < 0)
+		return false;
+	if (qb_str_single(second, sizeof(second), terms.free_holds) < 0)
+		return false;
+	if (!commodity_row(row, sizeof(row),
 	    "You have%s credits and%s empty cargo holds.", first, second,
-	    error, "commodity trade status composition")
-	    || !session_present_paged_line(session, (const uint8_t *)row,
-	    strlen(row), "commodity trade player status", error)
-	    || qb_str_mbf64(first, sizeof(first),
-	    terms.floored_quantity_raw) < 0
-	    || qb_str_double(second, sizeof(second), terms.displayed_hold) < 0
-	    || !commodity_row(row, sizeof(row), terms.port_sells
+	    error, "commodity trade status composition"))
+		return false;
+	if (!session_present_paged_line(session, (const uint8_t *)row,
+	    strlen(row), "commodity trade player status", error))
+		return false;
+	if (qb_str_mbf64(first, sizeof(first),
+	    terms.floored_quantity_raw) < 0)
+		return false;
+	if (qb_str_double(second, sizeof(second), terms.displayed_hold) < 0)
+		return false;
+	if (!commodity_row(row, sizeof(row), terms.port_sells
 	    ? "We are selling up to%s.  You have%s in your holds."
 	    : "We are buying up to%s.  You have%s in your holds.",
-	    first, second, error, "commodity trade market composition")
-	    || !session_present_paged_line(session, (const uint8_t *)row,
+	    first, second, error, "commodity trade market composition"))
+		return false;
+	if (!session_present_paged_line(session, (const uint8_t *)row,
 	    strlen(row), "commodity trade market status", error))
 		return false;
 	for (;;) {
-		if (qb_str_single(first, sizeof(first), terms.maximum) < 0
-		    || snprintf(row, sizeof(row),
+		if (qb_str_single(first, sizeof(first), terms.maximum) < 0)
+			return commodity_error(error,
+			    "commodity trade quantity prompt composition");
+		if (snprintf(row, sizeof(row),
 		    "How many holds of %s do you want to %s [%s ]? ",
 		    names[commodity], terms.port_sells ? "buy" : "sell",
 		    first) < 0)
@@ -181,8 +191,9 @@ yt_session_trade_commodity(struct yt_session *session,
 			*prompt_reached = true;
 		if (!session_present_timed_paged_row(session,
 		    (const uint8_t *)row, strlen(row),
-		    "commodity trade quantity prompt", error)
-		    || !session_read_upper_command(session, response,
+		    "commodity trade quantity prompt", error))
+			return false;
+		if (!session_read_upper_command(session, response,
 		    sizeof(response)))
 			return false;
 		if (strlen(response) > 4U)
@@ -218,8 +229,9 @@ yt_session_trade_commodity(struct yt_session *session,
 
 			if (!session_present_alert(session, message,
 			    sizeof(message) - 1U,
-			    "commodity trade free-holds rejection", error)
-			    || !session_present_text(session, NULL, 0U,
+			    "commodity trade free-holds rejection", error))
+				return false;
+			if (!session_present_text(session, NULL, 0U,
 			    SESSION_PRESENT_LINE,
 			    "commodity trade free-holds retry blank", error))
 				return false;
@@ -272,16 +284,22 @@ yt_session_trade_commodity(struct yt_session *session,
 	}
 	total = floorf(qb_single_add(
 	    qb_single_multiply(terms.price, quantity), 0.5f));
-	if (qb_str_single(first, sizeof(first), quantity) < 0
-	    || snprintf(row, sizeof(row), "Agreed,%s units.", first) < 0
-	    || !session_present_paged_fragment(session, (const uint8_t *)row,
-	    strlen(row))
-	    || qb_str_single(first, sizeof(first), total) < 0
-	    || snprintf(row, sizeof(row), "We'll %s them for%s credits.",
-	    terms.port_sells ? "sell" : "buy", first) < 0
-	    || !session_present_paged_line(session, (const uint8_t *)row,
-	    strlen(row), "commodity trade offer row", error)
-	    || !session_confirm(session, confirmation,
+	if (qb_str_single(first, sizeof(first), quantity) < 0)
+		return false;
+	if (snprintf(row, sizeof(row), "Agreed,%s units.", first) < 0)
+		return false;
+	if (!session_present_paged_fragment(session, (const uint8_t *)row,
+	    strlen(row)))
+		return false;
+	if (qb_str_single(first, sizeof(first), total) < 0)
+		return false;
+	if (snprintf(row, sizeof(row), "We'll %s them for%s credits.",
+	    terms.port_sells ? "sell" : "buy", first) < 0)
+		return false;
+	if (!session_present_paged_line(session, (const uint8_t *)row,
+	    strlen(row), "commodity trade offer row", error))
+		return false;
+	if (!session_confirm(session, confirmation,
 	    sizeof(confirmation) - 1U, &answer, error))
 		return false;
 	if (answer == YT_YES_NO_NO)
@@ -309,13 +327,15 @@ yt_session_trade_commodity(struct yt_session *session,
 	direction = terms.factor > 0.0f ? 1.0f
 	    : terms.factor < 0.0f ? -1.0f : 0.0f;
 	if (!session_mutate_player_credits(session,
-	    -qb_single_multiply(total, direction), NULL, error)
-	    || !session_reload_player(session, error))
+	    -qb_single_multiply(total, direction), NULL, error))
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	yt_trade_holds_overlay(&session->player, commodity, quantity, direction);
 	if (!yt_database_write_durable(&session->door->game.database,
-	    (size_t)session_record(session), &session->player.record, error)
-	    || !session_read_port_physical(session, market->port_physical_record,
+	    (size_t)session_record(session), &session->player.record, error))
+		return false;
+	if (!session_read_port_physical(session, market->port_physical_record,
 	    &fresh_port, error))
 		return false;
 	if (qb_mbf32_encode(quantity, single_raw) == QB_MBF_OVERFLOW)
@@ -324,10 +344,12 @@ yt_session_trade_commodity(struct yt_session *session,
 	yt_port_mbf64_promote_single(single_raw, promoted_raw);
 	yt_port_mbf64_negate(promoted_raw);
 	if (qb_mbf64_add_raw(terms.selected_quantity_raw, promoted_raw,
-	    promoted_raw) != QB_MBF_OK
-	    || qb_mbf32_from_mbf64_raw(promoted_raw, single_raw)
-	    == QB_MBF_OVERFLOW
-	    || !yt_record_set_raw_number(&fresh_port.record,
+	    promoted_raw) != QB_MBF_OK)
+		return commodity_error(error, "commodity trade stock overlay");
+	if (qb_mbf32_from_mbf64_raw(promoted_raw, single_raw)
+	    == QB_MBF_OVERFLOW)
+		return commodity_error(error, "commodity trade stock overlay");
+	if (!yt_record_set_raw_number(&fresh_port.record,
 	    YT_F49 + commodity * 4U, single_raw))
 		return commodity_error(error, "commodity trade stock overlay");
 	fresh_port.stock[commodity] = qb_mbf32_decode(single_raw);
@@ -350,27 +372,30 @@ yt_session_ordinary_commerce(struct yt_session *session,
 	bool prompt_reached = false;
 	size_t index;
 
-	if (!yt_session_update_port(session, sector_number, NULL, &market, error)
-	    || !yt_session_port_report(session, market.logical_port,
+	if (!yt_session_update_port(session, sector_number, NULL, &market, error))
+		return false;
+	if (!yt_session_port_report(session, market.logical_port,
 	    &market, NULL, error))
 		return false;
 	for (index = 0U; index < 3U; ++index) {
 		bool reached = false;
 
-		if (market.port.factor[index] < 0.0f
-		    && !yt_session_trade_commodity(session, &market, index,
-		    &reached, error))
-			return false;
+		if (market.port.factor[index] < 0.0f) {
+			if (!yt_session_trade_commodity(session, &market, index,
+			    &reached, error))
+				return false;
+		}
 		if (reached)
 			prompt_reached = true;
 	}
 	for (index = 0U; index < 3U; ++index) {
 		bool reached = false;
 
-		if (market.port.factor[index] > 0.0f
-		    && !yt_session_trade_commodity(session, &market, index,
-		    &reached, error))
-			return false;
+		if (market.port.factor[index] > 0.0f) {
+			if (!yt_session_trade_commodity(session, &market, index,
+			    &reached, error))
+				return false;
+		}
 		if (reached)
 			prompt_reached = true;
 	}
@@ -381,10 +406,14 @@ yt_session_ordinary_commerce(struct yt_session *session,
 
 		session_set_foreground(session, 6);
 		if (!session_buffer_append(row, sizeof(row), &length, refusal_prefix,
-		    sizeof(refusal_prefix) - 1U)
-		    || !session_buffer_append(row, sizeof(row), &length, first_name,
-		    first_name_length)
-		    || !session_buffer_append(row, sizeof(row), &length, refusal_suffix,
+		    sizeof(refusal_prefix) - 1U))
+			return session_range_error(error,
+			    "ordinary commerce refusal composition");
+		if (!session_buffer_append(row, sizeof(row), &length, first_name,
+		    first_name_length))
+			return session_range_error(error,
+			    "ordinary commerce refusal composition");
+		if (!session_buffer_append(row, sizeof(row), &length, refusal_suffix,
 		    sizeof(refusal_suffix) - 1U))
 			return session_range_error(error,
 			    "ordinary commerce refusal composition");
@@ -399,8 +428,10 @@ yt_session_ordinary_commerce(struct yt_session *session,
 	free = qb_double_subtract(free, (double)session->player.organics);
 	free = qb_double_subtract(free, (double)session->player.equipment);
 	if (qb_str_double(credits, sizeof(credits),
-	    (double)session->player.credits) < 0
-	    || qb_str_double(free_holds, sizeof(free_holds), free) < 0)
+	    (double)session->player.credits) < 0)
+		return session_range_error(error,
+		    "ordinary commerce status formatting");
+	if (qb_str_double(free_holds, sizeof(free_holds), free) < 0)
 		return session_range_error(error,
 		    "ordinary commerce status formatting");
 	{
@@ -461,8 +492,9 @@ yt_session_command_trade(struct yt_session *session, bool *enter_sector,
 		return true;
 	}
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "port docking leading blank", error)
-	    || !session_present_timed_paged_row(session, docking,
+	    "port docking leading blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, docking,
 	    sizeof(docking) - 1U, "port docking prelude", error))
 		return false;
 	if (!yt_session_finalize_action(session, error)) {
