@@ -21,17 +21,13 @@ bribe_append(uint8_t *output, size_t capacity, size_t *position,
 static double
 bribe_double_add(double left, double right)
 {
-	volatile double result = left + right;
-
-	return result;
+	return left + right;
 }
 
 static double
 bribe_double_sub(double left, double right)
 {
-	volatile double result = left - right;
-
-	return result;
+	return left - right;
 }
 
 bool
@@ -41,9 +37,6 @@ test_hostile_bribe_accept_run(
     struct yt_error *error)
 {
 	static const uint8_t deal[] = "Good Deal! We join up with you!";
-	volatile double fighters;
-	volatile double credits;
-
 	if (state == NULL || ops == NULL || ops->present == NULL
 	    || ops->sound == NULL || ops->read_sector == NULL
 	    || ops->write_sector == NULL || ops->read_player == NULL
@@ -79,12 +72,10 @@ test_hostile_bribe_accept_run(
 	    &state->current, error))
 		return false;
 	state->player_read = true;
-	fighters = bribe_double_add((double)state->current.fighters,
-	    (double)state->cached_defenders);
-	credits = bribe_double_sub((double)state->current.credits,
-	    (double)state->offer);
-	state->persisted_fighters = (float)fighters;
-	state->persisted_credits = (float)credits;
+	state->persisted_fighters = (float)bribe_double_add(
+	    (double)state->current.fighters, (double)state->cached_defenders);
+	state->persisted_credits = (float)bribe_double_sub(
+	    (double)state->current.credits, (double)state->offer);
 	yt_bribe_player_overlay(&state->current, state->persisted_fighters,
 	    state->persisted_credits);
 	if (!ops->write_player(context, state->current_player_record,

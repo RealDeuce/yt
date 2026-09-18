@@ -8,25 +8,19 @@
 static float
 attack_single_add(float left, float right)
 {
-	volatile float result = left + right;
-
-	return result;
+	return left + right;
 }
 
 static double
 attack_double_add(double left, double right)
 {
-	volatile double result = left + right;
-
-	return result;
+	return left + right;
 }
 
 static double
 attack_double_sub(double left, double right)
 {
-	volatile double result = left - right;
-
-	return result;
+	return left - right;
 }
 
 static bool
@@ -185,8 +179,6 @@ test_hostile_attack_combat_run(
 		    state->commitment, state->attacker_loss);
 		double remaining_defender = attack_double_sub(
 		    state->old_count, state->defender_loss);
-		volatile double ratio;
-
 		state->quantum = yt_hostile_attack_quantum(remaining_attacker,
 		    remaining_defender);
 		if (remaining_defender == 0.0) {
@@ -198,9 +190,8 @@ test_hostile_attack_combat_run(
 			}
 			return false;
 		}
-		ratio = remaining_attacker / remaining_defender;
 		if (!state->surrender_checked && state->allow_surrender
-		    && ratio > 10.0) {
+		    && remaining_attacker / remaining_defender > 10.0) {
 			state->surrender = (struct test_hostile_surrender_state){
 				.current_player_record = state->current_player_record,
 				.old_owner = state->old_owner,

@@ -9,9 +9,7 @@
 static float
 single_mul(float left, float right)
 {
-	volatile float result = left * right;
-
-	return result;
+	return left * right;
 }
 
 static bool

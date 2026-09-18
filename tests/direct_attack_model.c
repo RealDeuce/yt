@@ -9,33 +9,25 @@
 static float
 test_direct_attack_single_add(float left, float right)
 {
-	volatile float result = left + right;
-
-	return result;
+	return left + right;
 }
 
 static float
 test_direct_attack_single_div(float left, float right)
 {
-	volatile float result = left / right;
-
-	return result;
+	return left / right;
 }
 
 static double
 test_direct_attack_double_add(double left, double right)
 {
-	volatile double result = left + right;
-
-	return result;
+	return left + right;
 }
 
 static double
 test_direct_attack_double_sub(double left, double right)
 {
-	volatile double result = left - right;
-
-	return result;
+	return left - right;
 }
 
 bool
@@ -59,10 +51,9 @@ test_direct_attack_attrition_run(
 		    - state->defender_loss;
 		double minimum = remaining_attacker < remaining_defender
 		    ? remaining_attacker : remaining_defender;
-		volatile double integral = floor(minimum / 20.0);
 		float sampled;
 
-		state->quantum = (float)integral;
+		state->quantum = (float)floor(minimum / 20.0);
 		if (state->quantum < 1.0f)
 			state->quantum = 1.0f;
 		if (!draw(context, &sampled, error))

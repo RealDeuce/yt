@@ -8,25 +8,19 @@
 static float
 plasma_single_add(float left, float right)
 {
-	volatile float result = left + right;
-
-	return result;
+	return left + right;
 }
 
 static float
 plasma_single_sub(float left, float right)
 {
-	volatile float result = left - right;
-
-	return result;
+	return left - right;
 }
 
 static float
 plasma_single_mul(float left, float right)
 {
-	volatile float result = left * right;
-
-	return result;
+	return left * right;
 }
 
 bool

@@ -20,8 +20,7 @@ struct maint_state {
 static inline float
 yt_maintenance_sint(float value)
 {
-	volatile float result = floorf(value);
-	return result;
+	return floorf(value);
 }
 
 bool maintenance_copy_part(uint8_t *dest, size_t capacity, size_t *length,

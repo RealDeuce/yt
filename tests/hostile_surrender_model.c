@@ -20,17 +20,13 @@ surrender_append(uint8_t *output, size_t capacity, size_t *position,
 static double
 surrender_double_add(double left, double right)
 {
-	volatile double result = left + right;
-
-	return result;
+	return left + right;
 }
 
 static double
 surrender_double_sub(double left, double right)
 {
-	volatile double result = left - right;
-
-	return result;
+	return left - right;
 }
 
 bool
