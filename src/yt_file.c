@@ -151,14 +151,16 @@ database_file_length(FILE *file, uint64_t *length)
 #ifdef _WIN32
 	struct _stat64 info;
 
-	if (_fstat64(yt_fileno(file), &info) != 0 || info.st_size < 0)
+	if (_fstat64(yt_fileno(file), &info) != 0)
 		return false;
 #else
 	struct stat info;
 
-	if (fstat(yt_fileno(file), &info) != 0 || info.st_size < 0)
+	if (fstat(yt_fileno(file), &info) != 0)
 		return false;
 #endif
+	if (info.st_size < 0)
+		return false;
 	*length = (uint64_t)info.st_size;
 	return true;
 }
@@ -195,7 +197,9 @@ database_parent_exists(const char *path)
 		return false;
 	memcpy(directory, path, length);
 	directory[length] = '\0';
-	return stat(directory, &info) == 0 && yt_stat_is_dir(info.st_mode);
+	if (stat(directory, &info) != 0)
+		return false;
+	return yt_stat_is_dir(info.st_mode);
 }
 
 static uint16_t
@@ -516,8 +520,9 @@ bool
 yt_database_write_durable(struct yt_database *database, size_t basic_record,
     const struct yt_record *record, struct yt_error *error)
 {
-	return yt_database_write(database, basic_record, record, error)
-	    && yt_database_flush(database, error);
+	if (!yt_database_write(database, basic_record, record, error))
+		return false;
+	return yt_database_flush(database, error);
 }
 
 static bool
@@ -607,16 +612,22 @@ yt_database_random_lof(struct yt_database *database, uint32_t *length,
 	}
 
 	database_prepare_io(database->file);
-	if (yt_fseeko(database->file, 0, SEEK_CUR) != 0
-	    || (position = yt_ftello(database->file)) < 0
-	    || (uint64_t)position > UINT32_MAX)
+	if (yt_fseeko(database->file, 0, SEEK_CUR) != 0)
+		return database_lof_fail(database, error);
+	position = yt_ftello(database->file);
+	if (position < 0)
+		return database_lof_fail(database, error);
+	if ((uint64_t)position > UINT32_MAX)
 		return database_lof_fail(database, error);
 	saved_position = (uint32_t)position;
 
 	database_prepare_io(database->file);
-	if (yt_fseeko(database->file, 0, SEEK_END) != 0
-	    || (position = yt_ftello(database->file)) < 0
-	    || (uint64_t)position > UINT32_MAX)
+	if (yt_fseeko(database->file, 0, SEEK_END) != 0)
+		return database_lof_fail(database, error);
+	position = yt_ftello(database->file);
+	if (position < 0)
+		return database_lof_fail(database, error);
+	if ((uint64_t)position > UINT32_MAX)
 		return database_lof_fail(database, error);
 	file_length = (uint32_t)position;
 
@@ -804,7 +815,9 @@ yt_radio_file_next_record(struct yt_radio_file *radio,
 	uint64_t length;
 	uint64_t record;
 
-	if (basic_record == NULL || !yt_radio_file_size(radio, &length, error))
+	if (basic_record == NULL)
+		return false;
+	if (!yt_radio_file_size(radio, &length, error))
 		return false;
 	if (length % YT_RADIO_RECORD_SIZE != 0U) {
 		set_error(error, YT_RANGE, "radio record number",
@@ -855,8 +868,9 @@ yt_file_rename(const char *old_path, const char *new_path,
 		return false;
 	}
 	if (!yt_resolve_case_path(old_path, false, resolved_old,
-	    sizeof(resolved_old), error)
-	    || !yt_resolve_case_path(new_path, true, resolved_new,
+	    sizeof(resolved_old), error))
+		return false;
+	if (!yt_resolve_case_path(new_path, true, resolved_new,
 	    sizeof(resolved_new), error))
 		return false;
 	if (path_exists(resolved_new)) {
@@ -880,7 +894,11 @@ yt_file_size(const char *path, size_t *size, struct yt_error *error)
 
 	if (!yt_resolve_case_path(path, false, resolved, sizeof(resolved), error))
 		return false;
-	if (stat(resolved, &info) != 0 || info.st_size < 0) {
+	if (stat(resolved, &info) != 0) {
+		set_error(error, YT_IO_ERROR, "file size", resolved);
+		return false;
+	}
+	if (info.st_size < 0) {
 		set_error(error, YT_IO_ERROR, "file size", resolved);
 		return false;
 	}

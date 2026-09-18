@@ -20,10 +20,12 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 	    || disruption_sectors == NULL || local_screen == NULL)
 		return false;
 	config = &game->config;
-	if (!yt_database_random_close(&game->database, error)
-	    || !yt_database_open(&game->database, path,
-	    YT_OPEN_UPDATE_CREATE, error)
-	    || !yt_config_load(&game->database, config, error))
+	if (!yt_database_random_close(&game->database, error))
+		return false;
+	if (!yt_database_open(&game->database, path,
+	    YT_OPEN_UPDATE_CREATE, error))
+		return false;
+	if (!yt_config_load(&game->database, config, error))
 		return false;
 	*local_screen = config->local_screen;
 	qb_compat_upper_n((uint8_t *)config->scoreboard,
@@ -35,8 +37,9 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 		};
 
 		if (!yt_record_set_raw_number(&config->record, YT_F117,
-		    headquarters_default)
-		    || !yt_database_write_durable(&game->database, 1U,
+		    headquarters_default))
+			return false;
+		if (!yt_database_write_durable(&game->database, 1U,
 		    &config->record, error))
 			return false;
 		config->headquarters = 733.0f;
@@ -84,8 +87,9 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 			player.cloak = 1.0f;
 			(void)yt_player_cache_set_cloak(player_cache, basic,
 			    player.cloak);
-			if (!yt_record_set_number(&player.record, YT_F125, 1.0f)
-			    || !yt_database_write_durable(&game->database,
+			if (!yt_record_set_number(&player.record, YT_F125, 1.0f))
+				return false;
+			if (!yt_database_write_durable(&game->database,
 			    (size_t)basic, &player.record, error))
 				return false;
 		}
