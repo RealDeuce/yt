@@ -53,8 +53,9 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 			if (opening_basic_error != 0U) {
 				if (!yt_shared_error_compose(
 				    (int16_t)opening_basic_error, 2710,
-				    &shared_error)
-				    || !session_commit_shared_terminal(session,
+				    &shared_error))
+					return false;
+				if (!session_commit_shared_terminal(session,
 				    &shared_error, error))
 					return false;
 			}
@@ -86,9 +87,10 @@ startup_pre_admission(struct yt_session *session, struct yt_error *error)
 		return false;
 	snprintf(welcome, sizeof(welcome), "Welcome %s!",
 	    session->door->identity.real_first);
-	if (!session_present_paged_line(session, (const uint8_t *)welcome, strlen(welcome),
-	    "startup welcome row", error)
-	    || !session_present_paged_fragment(session,
+	if (!session_present_paged_line(session, (const uint8_t *)welcome,
+	    strlen(welcome), "startup welcome row", error))
+		return false;
+	if (!session_present_paged_fragment(session,
 	    (const uint8_t *)"Searching my records for your name.",
 	    strlen("Searching my records for your name.")))
 		return false;
@@ -127,19 +129,31 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 		session_set_foreground(session, 2);
 		if (!session_present_paged_line(session,
 		    (const uint8_t *)"You are a new player.",
-		    strlen("You are a new player."), "new alias notice", error)
-		    || !session_present_paged_line(session,
+		    strlen("You are a new player."), "new alias notice", error)) {
+			yt_names_free(&names);
+			return false;
+		}
+		if (!session_present_paged_line(session,
 		    (const uint8_t *)
 		    "Enter the FULL alias you wish to use in the game.",
 		    strlen("Enter the FULL alias you wish to use in the game."),
-		    "new alias instruction", error)
-		    || !session_present_paged_line(session,
+		    "new alias instruction", error)) {
+			yt_names_free(&names);
+			return false;
+		}
+		if (!session_present_paged_line(session,
 		    (const uint8_t *)"Press [ENTER] to use your real name.",
 		    strlen("Press [ENTER] to use your real name."),
-		    "new alias real-name instruction", error)
-		    || !session_present_timed_paged_row(session, (const uint8_t *)"-+> ", 4,
-		    "new alias prompt", error)
-		    || !session_read_command(session, alias, sizeof(alias))) {
+		    "new alias real-name instruction", error)) {
+			yt_names_free(&names);
+			return false;
+		}
+		if (!session_present_timed_paged_row(session,
+		    (const uint8_t *)"-+> ", 4, "new alias prompt", error)) {
+			yt_names_free(&names);
+			return false;
+		}
+		if (!session_read_command(session, alias, sizeof(alias))) {
 			yt_names_free(&names);
 			return false;
 		}
@@ -192,10 +206,14 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 
 			snprintf(identity, sizeof(identity), "%s %s a.k.a. %s",
 			    first, last, display);
-			if (!session_present_paged_fragment(session, (const uint8_t *)identity,
-			    strlen(identity))
-			    || !session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE, "new alias confirmation blank", error)) {
+			if (!session_present_paged_fragment(session,
+			    (const uint8_t *)identity, strlen(identity))) {
+				yt_names_free(&names);
+				return false;
+			}
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE,
+			    "new alias confirmation blank", error)) {
 				yt_names_free(&names);
 				return false;
 			}
@@ -204,8 +222,12 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 		if (!session_present_timed_paged_row(session,
 		    (const uint8_t *)"Is this OK (Y/[N])? ",
 		    strlen("Is this OK (Y/[N])? "),
-		    "new alias confirmation prompt", error)
-		    || !session_read_upper_command(session, confirmation, sizeof(confirmation))) {
+		    "new alias confirmation prompt", error)) {
+			yt_names_free(&names);
+			return false;
+		}
+		if (!session_read_upper_command(session, confirmation,
+		    sizeof(confirmation))) {
 			yt_names_free(&names);
 			return false;
 		}
@@ -222,8 +244,11 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 		if (!session_present_alert(session,
 		    (const uint8_t *)"Your Alias has been recorded. Have fun!",
 		    strlen("Your Alias has been recorded. Have fun!"),
-		    "new alias accepted row", error)
-		    || !session_present_text(session, NULL, 0,
+		    "new alias accepted row", error)) {
+			yt_names_free(&names);
+			return false;
+		}
+		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "new alias final blank", error)) {
 			yt_names_free(&names);
 			return false;
@@ -241,8 +266,9 @@ construct_player_visible(struct yt_session *session, struct yt_error *error)
 	enum yt_player_constructor_failure failure;
 
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "player constructor blank", error)
-	    || !session_present_text(session,
+	    "player constructor blank", error))
+		return false;
+	if (!session_present_text(session,
 	    (const uint8_t *)"Your ship has been built.",
 	    strlen("Your ship has been built."), SESSION_PRESENT_LINE,
 	    "player constructor row", error))
@@ -313,9 +339,11 @@ yt_session_instruction_offer(struct yt_session *session,
 		if (!session_present_text(session,
 		    (const uint8_t *)session->io.text_workspace,
 		    sizeof(prompt) - 1U,
-		    SESSION_PRESENT_RAW, "instruction question", error)
-		    || !session_read_command(session, response, sizeof(response))
-		    || !yt_input_yes_no_candidate(session->io.editor_buffer,
+		    SESSION_PRESENT_RAW, "instruction question", error))
+			return false;
+		if (!session_read_command(session, response, sizeof(response)))
+			return false;
+		if (!yt_input_yes_no_candidate(session->io.editor_buffer,
 		    session->io.text_workspace, sizeof(session->io.text_workspace),
 		    &answer))
 			return false;
@@ -343,7 +371,9 @@ startup_retention(struct yt_session *session, struct yt_error *error)
 	size_t first_length;
 
 	if (!yt_database_read(&session->door->game.database, 1U, &record,
-	    error) || !yt_config_decode(&config, &record, error))
+	    error))
+		return false;
+	if (!yt_config_decode(&config, &record, error))
 		return false;
 	number_length = qb_str_single(number, sizeof(number),
 	    config.retention_days);
@@ -353,10 +383,13 @@ startup_retention(struct yt_session *session, struct yt_error *error)
 	memcpy(first, prefix, sizeof(prefix) - 1U);
 	memcpy(first + sizeof(prefix) - 1U, number, (size_t)number_length);
 	first_length = sizeof(prefix) - 1U + (size_t)number_length;
-	return session_present_paged_line(session, first, first_length,
-	    "new player retention first row", error)
-	    && session_present_paged_fragment(session, second, sizeof(second) - 1U)
-	    && session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	if (!session_present_paged_line(session, first, first_length,
+	    "new player retention first row", error))
+		return false;
+	if (!session_present_paged_fragment(session, second,
+	    sizeof(second) - 1U))
+		return false;
+	return session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "new player retention final blank", error);
 }
 
@@ -380,11 +413,13 @@ returning_daily_update(struct yt_session *session,
 	}
 	*previous_day = player.last_active;
 	same_day = *previous_day == today;
-	if (same_day && !session_present_text(session, row, sizeof(row) - 1U,
-	    SESSION_PRESENT_LINE, "returning same-day row", error)) {
-		if (error != NULL && error->basic_fault_valid)
-			(void)session_route_basic_fault(session, error);
-		return false;
+	if (same_day) {
+		if (!session_present_text(session, row, sizeof(row) - 1U,
+		    SESSION_PRESENT_LINE, "returning same-day row", error)) {
+			if (error != NULL && error->basic_fault_valid)
+				(void)session_route_basic_fault(session, error);
+			return false;
+		}
 	}
 	*killer = player.killed_by;
 
@@ -395,8 +430,9 @@ returning_daily_update(struct yt_session *session,
 		if (player.turns < turns_per_day)
 			player.turns = turns_per_day;
 		if (!yt_record_set_number_if_changed(&daily, YT_F49,
-		    player.turns)
-		    || !yt_record_set_number(&daily, YT_F105, 0.0f))
+		    player.turns))
+			return false;
+		if (!yt_record_set_number(&daily, YT_F105, 0.0f))
 			return false;
 	}
 	yt_player_decode(&player, &daily);
@@ -513,8 +549,9 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		}
 		if (!startup_retention(session, error))
 			return false;
-		if (!construct_player_visible(session, error)
-		    || !set_new_player_identity(session, vacant,
+		if (!construct_player_visible(session, error))
+			return false;
+		if (!set_new_player_identity(session, vacant,
 		    (const uint8_t *)full, strlen(full), error))
 			return false;
 		session->cached_player_name_length =
@@ -622,10 +659,12 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 				if (!yt_player_killer_row(&attacker, attacker_row,
 				    sizeof(attacker_row), &attacker_length, &emit, error))
 					return false;
-				if (emit && !session_present_text(session, attacker_row,
-				    attacker_length, SESSION_PRESENT_BOLD_LINE,
-				    "returning player death row", error))
-					return false;
+				if (emit) {
+					if (!session_present_text(session, attacker_row,
+					    attacker_length, SESSION_PRESENT_BOLD_LINE,
+					    "returning player death row", error))
+						return false;
+				}
 			}
 			if (self_kill
 			    && previous_day == startup_day) {
@@ -744,18 +783,21 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		return session.terminated;
 	session_set_foreground(&session, 6);
 	if (!session_present_text(&session, NULL, 0, SESSION_PRESENT_LINE,
-	    "startup pre-title blank", error)
-	    || !yt_session_registration(&session, error))
+	    "startup pre-title blank", error))
+		return session.terminated;
+	if (!yt_session_registration(&session, error))
 		return session.terminated;
 	if (!session.running)
 		return true;
-	if (!opening_and_date(&session, error)
-	    || !startup_pre_admission(&session, error))
+	if (!opening_and_date(&session, error))
+		return session.terminated;
+	if (!startup_pre_admission(&session, error))
 		return session.terminated;
 	if (!session.running)
 		return true;
-	if (!resolve_alias(&session, first, last, error)
-	    || !admit_player(&session, first, last, error))
+	if (!resolve_alias(&session, first, last, error))
+		return session.terminated;
+	if (!admit_player(&session, first, last, error))
 		return session.terminated;
 	if (!session.running)
 		return true;
