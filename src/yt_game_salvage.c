@@ -33,12 +33,16 @@ yt_salvage_header_row(const uint8_t *salvor, size_t salvor_length,
 	    || (victim == NULL && victim_length != 0U))
 		return false;
 	if (!salvage_append(row, capacity, &position, prefix,
-	    sizeof(prefix) - 1U)
-	    || !salvage_append(row, capacity, &position, salvor, salvor_length)
-	    || !salvage_append(row, capacity, &position, middle,
-	    sizeof(middle) - 1U)
-	    || !salvage_append(row, capacity, &position, victim, victim_length)
-	    || !salvage_append(row, capacity, &position, suffix,
+	    sizeof(prefix) - 1U))
+		return false;
+	if (!salvage_append(row, capacity, &position, salvor, salvor_length))
+		return false;
+	if (!salvage_append(row, capacity, &position, middle,
+	    sizeof(middle) - 1U))
+		return false;
+	if (!salvage_append(row, capacity, &position, victim, victim_length))
+		return false;
+	if (!salvage_append(row, capacity, &position, suffix,
 	    sizeof(suffix) - 1U))
 		return false;
 	*length = position;
@@ -65,12 +69,15 @@ yt_salvage_simple_row(enum yt_salvage_simple_kind kind, float amount,
 	    || kind > YT_SALVAGE_MINES)
 		return false;
 	number_length = qb_str_single(number, sizeof(number), amount);
-	if (number_length < 0
-	    || !salvage_append(row, capacity, &position, prefix,
-	    sizeof(prefix) - 1U)
-	    || !salvage_append(row, capacity, &position, labels[kind],
-	    strlen(labels[kind]))
-	    || !salvage_append(row, capacity, &position, number,
+	if (number_length < 0)
+		return false;
+	if (!salvage_append(row, capacity, &position, prefix,
+	    sizeof(prefix) - 1U))
+		return false;
+	if (!salvage_append(row, capacity, &position, labels[kind],
+	    strlen(labels[kind])))
+		return false;
+	if (!salvage_append(row, capacity, &position, number,
 	    (size_t)number_length))
 		return false;
 	*length = position;
@@ -97,15 +104,17 @@ yt_salvage_cargo_row(enum yt_salvage_cargo_kind kind, float amount,
 	    || kind > YT_SALVAGE_EQUIPMENT)
 		return false;
 	number_length = qb_str_single(number, sizeof(number), amount);
-	if (number_length < 0
-	    || !salvage_append(row, capacity, &position, prefix,
-	    sizeof(prefix) - 1U)
-	    || !salvage_append(row, capacity, &position, number,
-	    (size_t)number_length)
-	    || !salvage_append(row, capacity, &position, suffix[kind],
+	if (number_length < 0)
+		return false;
+	if (!salvage_append(row, capacity, &position, prefix,
+	    sizeof(prefix) - 1U))
+		return false;
+	if (!salvage_append(row, capacity, &position, number,
+	    (size_t)number_length))
+		return false;
+	if (!salvage_append(row, capacity, &position, suffix[kind],
 	    strlen(suffix[kind])))
 		return false;
 	*length = position;
 	return true;
 }
-
