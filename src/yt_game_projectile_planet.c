@@ -14,8 +14,9 @@ yt_projectile_planet_ground_overlay(struct yt_planet *planet,
 		return false;
 	planet->ground_forces = ground;
 	planet->owner = owner;
-	return yt_record_set_number(&planet->record, YT_F77, ground)
-	    && yt_record_set_number(&planet->record, YT_F73, (float)owner);
+	if (!yt_record_set_number(&planet->record, YT_F77, ground))
+		return false;
+	return yt_record_set_number(&planet->record, YT_F73, (float)owner);
 }
 
 bool
@@ -30,8 +31,9 @@ yt_projectile_planet_productivity_overlay(struct yt_planet *planet,
 		planet->production[index] = production[index];
 		planet->stock[index] = stock[index];
 		if (!yt_record_set_number(&planet->record, YT_F45 + index * 4U,
-		    production[index])
-		    || !yt_record_set_number(&planet->record,
+		    production[index]))
+			return false;
+		if (!yt_record_set_number(&planet->record,
 		    YT_F57 + index * 4U, stock[index]))
 			return false;
 	}
@@ -148,9 +150,11 @@ yt_projectile_planet_ground_row(float ground, uint8_t *row,
 
 	if (length != NULL)
 		*length = 0U;
-	if (!yt_game_row_append(&builder, prefix, sizeof(prefix) - 1U)
-	    || !yt_game_row_number(&builder, ground, false)
-	    || !yt_game_row_append(&builder, suffix, sizeof(suffix) - 1U))
+	if (!yt_game_row_append(&builder, prefix, sizeof(prefix) - 1U))
+		return false;
+	if (!yt_game_row_number(&builder, ground, false))
+		return false;
+	if (!yt_game_row_append(&builder, suffix, sizeof(suffix) - 1U))
 		return false;
 	if (length != NULL)
 		*length = builder.length;
@@ -168,12 +172,16 @@ yt_projectile_planet_productivity_row(float old_total, float new_total,
 
 	if (length != NULL)
 		*length = 0U;
-	if (!yt_game_row_append(&builder, prefix, sizeof(prefix) - 1U)
-	    || !yt_game_row_number(&builder,
-	    qb_single_subtract(old_total, new_total), false)
-	    || !yt_game_row_append(&builder, middle, sizeof(middle) - 1U)
-	    || !yt_game_row_number(&builder, new_total, false)
-	    || !yt_game_row_append(&builder, suffix, sizeof(suffix) - 1U))
+	if (!yt_game_row_append(&builder, prefix, sizeof(prefix) - 1U))
+		return false;
+	if (!yt_game_row_number(&builder,
+	    qb_single_subtract(old_total, new_total), false))
+		return false;
+	if (!yt_game_row_append(&builder, middle, sizeof(middle) - 1U))
+		return false;
+	if (!yt_game_row_number(&builder, new_total, false))
+		return false;
+	if (!yt_game_row_append(&builder, suffix, sizeof(suffix) - 1U))
 		return false;
 	if (length != NULL)
 		*length = builder.length;
