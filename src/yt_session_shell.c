@@ -23,8 +23,9 @@ session_quit_confirm(struct yt_session *session, bool *confirmed,
 		enum yt_yes_no_answer answer;
 
 		if (!session_present_text(session, prompt, sizeof(prompt) - 1U,
-		    SESSION_PRESENT_RAW, "hostile quit prompt", error)
-		    || !session_read_upper_command(session, response, sizeof(response)))
+		    SESSION_PRESENT_RAW, "hostile quit prompt", error))
+			return false;
+		if (!session_read_upper_command(session, response, sizeof(response)))
 			return false;
 		if (!yt_input_yes_no_candidate(response, session->io.text_workspace,
 		    sizeof(session->io.text_workspace), &answer))
@@ -76,8 +77,9 @@ show_help(struct yt_session *session, struct yt_error *error)
 
 	session_set_foreground(session, 6);
 	if (!session_present_paged_line(session, heading, sizeof(heading) - 1U,
-	    "main help heading", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "main help heading", error))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "main help table blank", error))
 		return false;
 	for (index = 0; index < sizeof(pairs) / sizeof(pairs[0]); ++index) {
@@ -122,13 +124,17 @@ yt_session_quit(struct yt_session *session, struct yt_error *error)
 	if (!session->door->game_open)
 		return true;
 	session_set_foreground(session, 1);
-	if (!yt_session_show_ship(session, error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "normal-exit post-Info blank", error)
-	    || !session_present_timed_paged_row(session, generating, sizeof(generating) - 1U,
-	    "normal-exit generating row", error)
-	    || !yt_session_generate_scoreboard(session, error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	if (!yt_session_show_ship(session, error))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "normal-exit post-Info blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, generating,
+	    sizeof(generating) - 1U, "normal-exit generating row", error))
+		return false;
+	if (!yt_session_generate_scoreboard(session, error))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "normal-exit post-generator blank", error))
 		return false;
 	session->pager.nonstop = true;
@@ -137,10 +143,12 @@ yt_session_quit(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (!session->registered) {
 		if (!session_attention_bytes(session, reminder, sizeof(reminder) - 1U,
-		    "normal-exit registration reminder", error)
-		    || !session_wait(session, 10.0,
-		    "normal-exit registration wait", error)
-		    || !session_present_text(session, NULL, 0,
+		    "normal-exit registration reminder", error))
+			return false;
+		if (!session_wait(session, 10.0,
+		    "normal-exit registration wait", error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "normal-exit reminder blank", error))
 			return false;
 	}
@@ -240,8 +248,9 @@ yt_session_command_shell(struct yt_session *session, struct yt_error *error)
 		case YT_MAIN_SHELL_INSTRUCTIONS:
 			if (!session_present_paged_fragment(session,
 			    (const uint8_t *)"<Instructions>",
-			    strlen("<Instructions>"))
-			    || !yt_session_instruction_offer(session, error))
+			    strlen("<Instructions>")))
+				return false;
+			if (!yt_session_instruction_offer(session, error))
 				return false;
 			continue;
 		case YT_MAIN_SHELL_HELP:
@@ -263,24 +272,27 @@ yt_session_command_shell(struct yt_session *session, struct yt_error *error)
 		case YT_MAIN_SHELL_MISSILE:
 			if (!yt_session_command_projectile(session, false, error))
 				return false;
-			if (!session->destroyed
-			    && !yt_session_display_sector(session, false, error))
-				return false;
+			if (!session->destroyed) {
+				if (!yt_session_display_sector(session, false, error))
+					return false;
+			}
 			break;
 		case YT_MAIN_SHELL_PLASMA:
 			if (!yt_session_command_projectile(session, true, error))
 				return false;
-			if (!session->destroyed
-			    && !yt_session_display_sector(session, false, error))
-				return false;
+			if (!session->destroyed) {
+				if (!yt_session_display_sector(session, false, error))
+					return false;
+			}
 			break;
 		case YT_MAIN_SHELL_ATTACK:
 			if (!yt_session_command_attack(session, &enter_sector, error))
 				return false;
 			break;
 		case YT_MAIN_SHELL_BUY_PORT:
-			if (!yt_session_command_buy_port(session, error)
-			    || !yt_session_display_current_sector_cached(session,
+			if (!yt_session_command_buy_port(session, error))
+				return false;
+			if (!yt_session_display_current_sector_cached(session,
 			    error))
 				return false;
 			break;
@@ -340,15 +352,17 @@ yt_session_command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			break;
 		case YT_MAIN_SHELL_RENAME_PORT:
-			if (!yt_session_command_rename_port(session, error)
-			    || !yt_session_display_current_sector_cached(session,
+			if (!yt_session_command_rename_port(session, error))
+				return false;
+			if (!yt_session_display_current_sector_cached(session,
 			    error))
 				return false;
 			break;
 		}
-		if (enter_sector && session->running && !session->destroyed
-		    && !yt_session_sector_entry(session, error))
-			return false;
+		if (enter_sector && session->running && !session->destroyed) {
+			if (!yt_session_sector_entry(session, error))
+				return false;
+		}
 	}
 	return true;
 }
