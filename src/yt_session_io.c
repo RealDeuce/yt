@@ -189,8 +189,9 @@ session_line(struct yt_session *session, char *text, size_t size)
 bool
 session_read_command(struct yt_session *session, char *text, size_t size)
 {
-	return session_line(session, text, size)
-	    && session_store_output_source(session, (const uint8_t *)text,
+	if (!session_line(session, text, size))
+		return false;
+	return session_store_output_source(session, (const uint8_t *)text,
 	    strlen(text));
 }
 
@@ -253,8 +254,9 @@ session_run_paged_row(struct yt_session *session, const uint8_t *text,
 	bool emit_notice;
 
 	od_kernel();
-	if (!yt_input_poll(&session->io.input, &sampled)
-	    || !yt_pager_apply_key(&sampled, &key_state))
+	if (!yt_input_poll(&session->io.input, &sampled))
+		return false;
+	if (!yt_pager_apply_key(&sampled, &key_state))
 		return false;
 	status = yt_present_paged_text(text, length, &session->presentation,
 	    &presentation);
@@ -270,14 +272,17 @@ session_run_paged_row(struct yt_session *session, const uint8_t *text,
 	if (yt_pager_advance(&session->pager, &session->presentation,
 	    &saved_foreground)) {
 		if (!session_run_paged_row(session, prompt,
-		    sizeof(prompt) - 1U)
-		    || !read_keyboard_line(session, response, sizeof(response)))
+		    sizeof(prompt) - 1U))
+			return false;
+		if (!read_keyboard_line(session, response, sizeof(response)))
 			return false;
 		emit_notice = yt_pager_accept_response(&session->pager, response,
 		    sizeof(response));
-		if (emit_notice && !session_run_paged_row(session, notice,
-		    sizeof(notice) - 1U))
-			return false;
+		if (emit_notice) {
+			if (!session_run_paged_row(session, notice,
+			    sizeof(notice) - 1U))
+				return false;
+		}
 		yt_pager_complete(&session->pager, &session->presentation,
 		    saved_foreground);
 	}
@@ -289,8 +294,9 @@ bool
 session_present_paged_row(struct yt_session *session, const uint8_t *text,
     size_t length)
 {
-	return session_store_output_source(session, text, length)
-	    && session_run_paged_row(session, text, length);
+	if (!session_store_output_source(session, text, length))
+		return false;
+	return session_run_paged_row(session, text, length);
 }
 
 void
@@ -474,9 +480,11 @@ session_drain_pending_input(struct yt_session *session)
 	for (;;) {
 		struct yt_input_value selected = {{0, 0}, 0, false};
 
-		if (!session->presentation.sound.local_mode
-		    && !yt_input_poll_source(&session->io.input, true, &selected))
-			return false;
+		if (!session->presentation.sound.local_mode) {
+			if (!yt_input_poll_source(&session->io.input, true,
+			    &selected))
+				return false;
+		}
 		reason = yt_input_drain_serial(&drain,
 		    session->presentation.sound.local_mode, &selected);
 		if (reason == YT_INPUT_DRAIN_ERROR)
@@ -502,10 +510,12 @@ session_press_any_key(struct yt_session *session, bool drain,
 	const char *failure_operation = "press any key presentation";
 	int saved_foreground;
 
-	if (drain && !session_drain_pending_input(session)) {
-		failure_status = YT_IO_ERROR;
-		failure_operation = "press any key input drain";
-		goto failed;
+	if (drain) {
+		if (!session_drain_pending_input(session)) {
+			failure_status = YT_IO_ERROR;
+			failure_operation = "press any key input drain";
+			goto failed;
+		}
 	}
 	status = yt_present_press_prompt(&session->presentation,
 	    &presentation, &saved_foreground);
@@ -612,8 +622,9 @@ session_display_game_file(struct yt_session *session, const char *path,
 	}
 	session->pager.key[0] = '\0';
 	if (!session_present_paged_line(session, notice, sizeof(notice) - 1U,
-	    "file viewer notice", active_error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "file viewer notice", active_error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "file viewer pre-open blank", active_error))
 		return false;
 	yt_text_input_init(&input);
@@ -669,19 +680,22 @@ done:
 
 		if (!yt_main_error_compose(53, 40000,
 		    (const uint8_t *)path, strlen(path), NULL, 0U, NULL, 0U,
-		    &handler)
-		    || handler.route != YT_MAIN_ERROR_MISSING_FILE
-		    || !session_present_forced_local_line(handler.debug,
+		    &handler))
+			return false;
+		if (handler.route != YT_MAIN_ERROR_MISSING_FILE)
+			return false;
+		if (!session_present_forced_local_line(handler.debug,
 		    handler.debug_length, "file viewer missing debug row",
 		    active_error))
 			return false;
 		yt_error_clear(active_error);
-		return yt_file_viewer_missing_row(path, row, sizeof(row),
-		    &row_length)
-		    && session_present_paged_line(session, row, row_length,
-		    "file viewer missing row", active_error)
-		    && yt_news_append_bytes(row, row_length,
-		    active_error);
+		if (!yt_file_viewer_missing_row(path, row, sizeof(row),
+		    &row_length))
+			return false;
+		if (!session_present_paged_line(session, row, row_length,
+		    "file viewer missing row", active_error))
+			return false;
+		return yt_news_append_bytes(row, row_length, active_error);
 	}
 	return ok;
 }
@@ -705,9 +719,12 @@ session_confirm(struct yt_session *session, const uint8_t *prompt,
 
 		if (!session_present_text(session, prompt_scratch,
 		    prompt_scratch_length,
-		    SESSION_PRESENT_RAW, "yes/no prompt", error)
-		    || !session_read_upper_command(session, response, sizeof(response))
-		    || !yt_input_confirmation(response, session->io.text_workspace,
+		    SESSION_PRESENT_RAW, "yes/no prompt", error))
+			return false;
+		if (!session_read_upper_command(session, response,
+		    sizeof(response)))
+			return false;
+		if (!yt_input_confirmation(response, session->io.text_workspace,
 		    sizeof(session->io.text_workspace), prompt_scratch,
 		    sizeof(prompt_scratch), &prompt_scratch_length, session->io.typeahead,
 		    sizeof(session->io.typeahead), &session->io.typeahead_position,
