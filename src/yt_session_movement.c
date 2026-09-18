@@ -41,8 +41,10 @@ danger_first_warning(struct yt_session *session, float target, bool finding,
 
 	if (finding)
 		return true;
-	if (!session_sound(session, YT_SOUND_CUE_DANGER, "danger warning sound", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	if (!session_sound(session, YT_SOUND_CUE_DANGER,
+	    "danger warning sound", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "danger leading blank", error))
 		return false;
 	session->presentation.blink = true;
@@ -50,15 +52,18 @@ danger_first_warning(struct yt_session *session, float target, bool finding,
 	    SESSION_PRESENT_BOLD_RAW, "danger warning header", error))
 		return false;
 	number_length = qb_str_single(number, sizeof(number), target);
-	if (number_length < 0
-	    || !danger_append(row, sizeof(row), &length, number,
-	    (size_t)number_length)
-	    || !danger_append(row, sizeof(row), &length, suffix,
+	if (number_length < 0)
+		return movement_range_error(error, "danger warning target row");
+	if (!danger_append(row, sizeof(row), &length, number,
+	    (size_t)number_length))
+		return movement_range_error(error, "danger warning target row");
+	if (!danger_append(row, sizeof(row), &length, suffix,
 	    sizeof(suffix) - 1U))
 		return movement_range_error(error, "danger warning target row");
-	return session_present_text(session, row, length,
-	    SESSION_PRESENT_BOLD_LINE, "danger warning target", error)
-	    && session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	if (!session_present_text(session, row, length,
+	    SESSION_PRESENT_BOLD_LINE, "danger warning target", error))
+		return false;
+	return session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "danger warning blank", error);
 }
 
@@ -97,8 +102,9 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 		return false;
 	if (target == (float)session->disruption_sectors[0]
 	    || target == (float)session->disruption_sectors[1]) {
-		if (!danger_first_warning(session, target, finding, error)
-		    || !session_present_text(session, disruption,
+		if (!danger_first_warning(session, target, finding, error))
+			return false;
+		if (!session_present_text(session, disruption,
 		    sizeof(disruption) - 1U, SESSION_PRESENT_BOLD_LINE,
 		    "danger disruption row", error))
 			return false;
@@ -111,12 +117,15 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 			return false;
 		number_length = qb_str_single(number, sizeof(number), sector.mines);
 		row_length = 0U;
-		if (number_length < 0
-		    || !danger_append(row, sizeof(row), &row_length, mine_prefix,
-		    sizeof(mine_prefix) - 1U)
-		    || !danger_append(row, sizeof(row), &row_length, number,
-		    (size_t)number_length)
-		    || !danger_append(row, sizeof(row), &row_length, mine_suffix,
+		if (number_length < 0)
+			return movement_range_error(error, "danger mines row");
+		if (!danger_append(row, sizeof(row), &row_length, mine_prefix,
+		    sizeof(mine_prefix) - 1U))
+			return movement_range_error(error, "danger mines row");
+		if (!danger_append(row, sizeof(row), &row_length, number,
+		    (size_t)number_length))
+			return movement_range_error(error, "danger mines row");
+		if (!danger_append(row, sizeof(row), &row_length, mine_suffix,
 		    sizeof(mine_suffix) - 1U))
 			return movement_range_error(error, "danger mines row");
 		if (!session_present_text(session, row, row_length,
@@ -131,12 +140,15 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 		    (double)sector.fighters);
 
 		row_length = 0U;
-		if (number_length < 0
-		    || !danger_append(row, sizeof(row), &row_length,
-		    fighter_prefix, sizeof(fighter_prefix) - 1U)
-		    || !danger_append(row, sizeof(row), &row_length, number,
-		    (size_t)number_length)
-		    || !danger_append(row, sizeof(row), &row_length,
+		if (number_length < 0)
+			return movement_range_error(error, "danger fighters row");
+		if (!danger_append(row, sizeof(row), &row_length,
+		    fighter_prefix, sizeof(fighter_prefix) - 1U))
+			return movement_range_error(error, "danger fighters row");
+		if (!danger_append(row, sizeof(row), &row_length, number,
+		    (size_t)number_length))
+			return movement_range_error(error, "danger fighters row");
+		if (!danger_append(row, sizeof(row), &row_length,
 		    fighter_middle, sizeof(fighter_middle) - 1U))
 			return movement_range_error(error, "danger fighters row");
 		if (owner == -1) {
@@ -173,12 +185,18 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 				session->player_reference.friendly = friendly;
 				number_length = qb_str_single(number, sizeof(number),
 				    (float)owner_player.team);
-				if (number_length < 1
-				    || !danger_append(row, sizeof(row), &row_length,
-				    team_prefix, sizeof(team_prefix) - 1U)
-				    || !danger_append(row, sizeof(row), &row_length,
-				    number + 1, (size_t)number_length - 1U)
-				    || !danger_append(row, sizeof(row), &row_length,
+				if (number_length < 1)
+					return movement_range_error(error,
+					    "danger team number row");
+				if (!danger_append(row, sizeof(row), &row_length,
+				    team_prefix, sizeof(team_prefix) - 1U))
+					return movement_range_error(error,
+					    "danger team number row");
+				if (!danger_append(row, sizeof(row), &row_length,
+				    number + 1, (size_t)number_length - 1U))
+					return movement_range_error(error,
+					    "danger team number row");
+				if (!danger_append(row, sizeof(row), &row_length,
 				    closing_bracket, sizeof(closing_bracket) - 1U))
 					return movement_range_error(error,
 					    "danger team number row");
@@ -188,10 +206,14 @@ yt_session_destination_is_dangerous(struct yt_session *session, float target,
 				if (team.name_length > 0U) {
 					if (!danger_append(row, sizeof(row), &row_length,
 					    team_name_prefix,
-					    sizeof(team_name_prefix) - 1U)
-					    || !danger_append(row, sizeof(row), &row_length,
-					    team.name, team.name_length)
-					    || !danger_append(row, sizeof(row), &row_length,
+					    sizeof(team_name_prefix) - 1U))
+						return movement_range_error(error,
+						    "danger team name row");
+					if (!danger_append(row, sizeof(row), &row_length,
+					    team.name, team.name_length))
+						return movement_range_error(error,
+						    "danger team name row");
+					if (!danger_append(row, sizeof(row), &row_length,
 					    closing_bracket,
 					    sizeof(closing_bracket) - 1U))
 						return movement_range_error(error,
@@ -245,8 +267,9 @@ yt_session_store_move(struct yt_session *session, int target,
 		return false;
 	yt_movement_player_overlay(&session->player, target);
 	if (!yt_database_write(&session->door->game.database,
-	    (size_t)player_record, &session->player.record, error)
-	    || !yt_database_flush(&session->door->game.database, error))
+	    (size_t)player_record, &session->player.record, error))
+		return false;
+	if (!yt_database_flush(&session->door->game.database, error))
 		return false;
 	return yt_player_cache_set_sector(&session->player_cache, player_record,
 	    target);
@@ -283,8 +306,9 @@ yt_session_command_move(struct yt_session *session, bool *moved,
 	    &row_length))
 		return movement_range_error(error, "movement warp row");
 	if (!session_present_paged_line(session, row, row_length,
-	    "movement warp row", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "movement warp row", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "movement post-warp blank", error))
 		return false;
 	for (;;) {
