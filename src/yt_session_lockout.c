@@ -74,9 +74,11 @@ yt_session_check_lockout(struct yt_session *session, struct yt_error *error)
 	    session->door->identity.sysop_last);
 	yt_text_input_init(&files.input);
 	if (!yt_database_open(&files.random, "LOCKOUT.DAT",
-	    YT_OPEN_UPDATE_CREATE, error)
-	    || !yt_database_random_lof(&files.random, &size, error)
-	    || !lockout_close_current(&files, error))
+	    YT_OPEN_UPDATE_CREATE, error))
+		goto done;
+	if (!yt_database_random_lof(&files.random, &size, error))
+		goto done;
+	if (!lockout_close_current(&files, error))
 		goto done;
 	if (size == 0U) {
 		result = true;
@@ -101,14 +103,17 @@ yt_session_check_lockout(struct yt_session *session, struct yt_error *error)
 		if (!matched)
 			continue;
 		if (!session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "lockout blank", error)
-		    || !session_present_text(session, revoked,
+		    SESSION_PRESENT_LINE, "lockout blank", error))
+			goto done;
+		if (!session_present_text(session, revoked,
 		    sizeof(revoked) - 1U, SESSION_PRESENT_BOLD_LINE,
-		    "lockout revoked row", error)
-		    || !session_present_text(session, (const uint8_t *)contact,
+		    "lockout revoked row", error))
+			goto done;
+		if (!session_present_text(session, (const uint8_t *)contact,
 		    strlen(contact), SESSION_PRESENT_BOLD_LINE,
-		    "lockout contact row", error)
-		    || !session_wait(session, 10.0, "lockout denial wait", error))
+		    "lockout contact row", error))
+			goto done;
+		if (!session_wait(session, 10.0, "lockout denial wait", error))
 			goto done;
 		result = lockout_close_current(&files, error);
 		session_close_game(session);
