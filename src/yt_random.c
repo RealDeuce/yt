@@ -46,12 +46,14 @@ yt_random_one_based_single(struct yt_random *random, float range,
 }
 
 bool
-yt_random_integer(struct yt_random *random, int range, int *value,
+yt_random_integer(struct yt_random *random, int range, uint16_t *value,
     struct yt_error *error)
 {
 	float selection;
+	volatile float product;
+	uint16_t integral;
 
-	if (range < 1) {
+	if (range < 1 || range > UINT16_MAX) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
 			(void)snprintf(error->operation, sizeof(error->operation),
@@ -59,10 +61,11 @@ yt_random_integer(struct yt_random *random, int range, int *value,
 		}
 		return false;
 	}
-	if (!yt_random_one_based_single(random, (float)range, &selection,
-	    error))
+	if (!yt_random_next(random, &selection, error))
 		return false;
-	*value = (int)selection;
+	product = selection * (float)range;
+	integral = (uint16_t)floorf(product);
+	*value = integral + 1U;
 	return true;
 }
 
@@ -113,12 +116,10 @@ yt_random_nested_single(struct yt_random *random, float count, float *range,
 
 bool
 yt_random_nested_integer(struct yt_random *random, int count, int range,
-    int *value, struct yt_error *error)
+    uint16_t *value, struct yt_error *error)
 {
-	float current;
-	float result;
-	bool produced;
-	bool succeeded;
+	uint16_t current;
+	int index;
 
 	if (value == NULL) {
 		if (error != NULL) {
@@ -128,13 +129,23 @@ yt_random_nested_integer(struct yt_random *random, int count, int range,
 		}
 		return false;
 	}
-	current = (float)range;
-	result = 0.0f;
-	succeeded = nested_single(random, (float)count, &current, &result,
-	    &produced, error);
-	if (produced)
-		*value = (int)result;
-	return succeeded;
+	if (count == 0 || range == 0)
+		return true;
+	if (count < 0 || range < 0 || range > UINT16_MAX) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "nested random integer range");
+		}
+		return false;
+	}
+	current = (uint16_t)range;
+	for (index = 0; index < count; ++index) {
+		if (!yt_random_integer(random, current, &current, error))
+			return false;
+		*value = current;
+	}
+	return true;
 }
 
 bool

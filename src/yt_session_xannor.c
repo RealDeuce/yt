@@ -57,10 +57,10 @@ yt_session_launch_xannor_retaliation(struct yt_session *session,
 	struct yt_sector headquarters;
 	float saved_cloak;
 	int saved_record;
-	int target_candidate;
+	uint16_t target_candidate;
 	float target;
 	float projectile_amount;
-	int amount;
+	uint16_t amount;
 	int ignored_counterattack = 0;
 	char amount_text[64];
 	char target_text[64];

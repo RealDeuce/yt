@@ -100,7 +100,7 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	struct yt_sector sector;
 	struct yt_planet planet;
 	int sector_count;
-	int logical;
+	uint16_t logical;
 	int removed_sector = 0;
 	int today;
 	size_t row;

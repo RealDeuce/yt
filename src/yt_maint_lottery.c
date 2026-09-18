@@ -56,10 +56,10 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	size_t line_length;
 	size_t radio_length;
 	size_t player_name_length;
-	int player_slot;
+	uint16_t player_slot;
 	int player_record;
-	int planet_number;
-	int sector_number;
+	uint16_t planet_number;
+	uint16_t sector_number;
 	int index;
 	int sector_length;
 	float gate;

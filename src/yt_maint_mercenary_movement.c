@@ -325,7 +325,7 @@ yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
 	for (origin = sector_count; origin >= 1; --origin) {
 		struct yt_sector sector;
 		struct yt_maintenance_output_result output;
-		int target;
+		uint16_t target;
 		int next;
 		int cursor;
 		int hops;

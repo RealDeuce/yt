@@ -43,7 +43,7 @@ yt_maintenance_xannor_roaming_split(struct yt_random *random,
 {
 	bool overflow;
 	int range;
-	int split;
+	uint16_t split;
 
 	if (random == NULL || group_one == NULL || group_size == NULL
 	    || group_location == NULL || skip_group == NULL
@@ -94,7 +94,7 @@ yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
 {
 	int sector_count;
 	int attempt_limit;
-	int initial_target;
+	uint16_t initial_target;
 	int discovery_target;
 	int attempt;
 
@@ -120,7 +120,7 @@ yt_maintenance_xannor_candidate_discovery(struct yt_game *game,
 	attempt_limit = revenge_live_sector != 0 ? 25 : 1;
 	for (attempt = 0; attempt < attempt_limit; ++attempt) {
 		struct yt_sector sector;
-		int candidate;
+		uint16_t candidate;
 		size_t player;
 
 		if (!yt_random_integer(&game->random, sector_count,
@@ -242,7 +242,7 @@ yt_maintenance_xannor_target(struct yt_random *random, int sector_count,
     int *hunt_player, int *target_sector,
     struct yt_error *error)
 {
-	int selected;
+	uint16_t selected;
 
 	if (random == NULL || hunt_player == NULL || target_sector == NULL
 	    || sector_count < 8) {
@@ -618,7 +618,7 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 	int planet_number;
 	int old_logical;
 	int sector_count;
-	int candidate;
+	uint16_t candidate;
 	bool triggered;
 
 	if (game == NULL || location == NULL || line_output == NULL

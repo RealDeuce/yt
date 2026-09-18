@@ -819,7 +819,7 @@ test_maintenance_random_helpers(void)
 	struct utility_random_script script = {draws, sizeof(draws), 0};
 	struct yt_random random;
 	struct yt_error error;
-	int value;
+	uint16_t value;
 
 	yt_error_clear(&error);
 	yt_random_init(&random);

@@ -136,7 +136,7 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
     struct yt_error *error)
 {
 	int linked_sector = 0;
-	int sector_number;
+	uint16_t sector_number;
 	struct yt_planet planet;
 	bool ground_changed;
 	bool bank_changed;
@@ -268,7 +268,7 @@ yt_maintenance_place_mercenary_fleets(struct yt_game *game,
 	if (strength <= 0.0f)
 		return true;
 	for (fleet = 0; fleet < 10; ++fleet) {
-		int sector_number;
+		uint16_t sector_number;
 		struct yt_sector sector;
 
 		do {
@@ -465,7 +465,7 @@ yt_maintenance_mercenary_mines(struct yt_game *game, int sector_number,
 	float survivors;
 	float losses;
 	bool killed;
-	int damage;
+	uint16_t damage;
 
 	if (game == NULL || sector_number < 1 || line_output == NULL
 	    || arrival_sector == NULL || moving_fighters == NULL) {
@@ -482,7 +482,7 @@ yt_maintenance_mercenary_mines(struct yt_game *game, int sector_number,
 	    error))
 		return false;
 	if ((float)damage > moving_before)
-		damage = (int)moving_before;
+		damage = (uint16_t)moving_before;
 	if (damage <= 0)
 		return true;
 	losses = (float)damage;

@@ -293,7 +293,7 @@ test_random(void)
 	float value;
 	float range;
 	float bases[3];
-	int integer = -1;
+	uint16_t integer = UINT16_MAX;
 
 	yt_random_init(&random);
 	yt_test_random_use_provider(&random, scripted_fill, &script);

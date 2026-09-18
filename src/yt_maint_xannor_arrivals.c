@@ -196,13 +196,13 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 	initial_group = *group_size;
 
 	while (sector->mines > 0.0f && *group_size > 0.0f) {
-		int damage;
+		uint16_t damage;
 
 		if (!yt_random_integer(&game->random, 1000,
 		    &damage, error))
 			return false;
 		if ((float)damage > *group_size)
-			damage = (int)*group_size;
+			damage = (uint16_t)*group_size;
 		*group_size = qb_single_subtract(*group_size, (float)damage);
 		sector->mines = qb_single_subtract(sector->mines, 1.0f);
 	}
