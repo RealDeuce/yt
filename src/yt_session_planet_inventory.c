@@ -27,11 +27,12 @@ yt_session_planet_inventory(struct yt_session *session, int logical_planet,
 	size_t name_length;
 	int index;
 
-	if (!session_reload_player(session, error)
-	    || !yt_session_update_planet(session, logical_planet, &planet,
-	    &economy, error)
-	    || !session_read_planet(session, logical_planet,
-	    &planet, error))
+	if (!session_reload_player(session, error))
+		return false;
+	if (!yt_session_update_planet(session, logical_planet, &planet,
+	    &economy, error))
+		return false;
+	if (!session_read_planet(session, logical_planet, &planet, error))
 		return false;
 	name_length = planet.name_length;
 	if (name_length > YT_TEXT_FIELD_SIZE)
@@ -52,11 +53,14 @@ yt_session_planet_inventory(struct yt_session *session, int logical_planet,
 	memcpy(title + title_length, planet.record.bytes, name_length);
 	title_length += name_length;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "planet inventory title blank", error)
-	    || !session_present_paged_fragment(session, title, title_length)
-	    || !session_present_paged_line(session, header, sizeof(header) - 1U,
-	    "planet inventory header", error)
-	    || !session_present_paged_fragment(session, rule, sizeof(rule) - 1U))
+	    "planet inventory title blank", error))
+		return false;
+	if (!session_present_paged_fragment(session, title, title_length))
+		return false;
+	if (!session_present_paged_line(session, header, sizeof(header) - 1U,
+	    "planet inventory header", error))
+		return false;
+	if (!session_present_paged_fragment(session, rule, sizeof(rule) - 1U))
 		return false;
 	for (index = 0; index < 9; ++index) {
 		char production[64];
@@ -69,9 +73,13 @@ yt_session_planet_inventory(struct yt_session *session, int logical_planet,
 			produced = (double)floorf(economy.production[index + 1]);
 			available = floor(economy.quantity[index + 1]);
 			if (qb_str_single(production, sizeof(production),
-			    (float)produced) < 0
-			    || qb_str_double(amount, sizeof(amount), available) < 0
-			    || qb_str_double(in_holds, sizeof(in_holds),
+			    (float)produced) < 0)
+				return session_range_error(error,
+				    "planet inventory numeric format");
+			if (qb_str_double(amount, sizeof(amount), available) < 0)
+				return session_range_error(error,
+				    "planet inventory numeric format");
+			if (qb_str_double(in_holds, sizeof(in_holds),
 			    held[index]) < 0)
 				return session_range_error(error,
 				    "planet inventory numeric format");
@@ -80,9 +88,13 @@ yt_session_planet_inventory(struct yt_session *session, int logical_planet,
 			produced = floor(qb_double_multiply(economy.quantity[7],
 			    0x1.47ae14p-7));
 			available = floor(economy.quantity[7]);
-			if (qb_str_double(production, sizeof(production), produced) < 0
-			    || qb_str_double(amount, sizeof(amount), available) < 0
-			    || qb_str_double(in_holds, sizeof(in_holds), held[index]) < 0)
+			if (qb_str_double(production, sizeof(production), produced) < 0)
+				return session_range_error(error,
+				    "planet inventory credit format");
+			if (qb_str_double(amount, sizeof(amount), available) < 0)
+				return session_range_error(error,
+				    "planet inventory credit format");
+			if (qb_str_double(in_holds, sizeof(in_holds), held[index]) < 0)
 				return session_range_error(error,
 				    "planet inventory credit format");
 		}
@@ -90,9 +102,13 @@ yt_session_planet_inventory(struct yt_session *session, int logical_planet,
 			produced = floor(qb_double_add(qb_double_multiply(economy.quantity[8],
 			    0x1.47ae14p-7), (double)economy.contribution[8]));
 			available = floor(economy.quantity[8]);
-			if (qb_str_double(production, sizeof(production), produced) < 0
-			    || qb_str_double(amount, sizeof(amount), available) < 0
-			    || qb_str_single(in_holds, sizeof(in_holds),
+			if (qb_str_double(production, sizeof(production), produced) < 0)
+				return session_range_error(error,
+				    "planet inventory force format");
+			if (qb_str_double(amount, sizeof(amount), available) < 0)
+				return session_range_error(error,
+				    "planet inventory force format");
+			if (qb_str_single(in_holds, sizeof(in_holds),
 			    (float)held[index]) < 0)
 				return session_range_error(error,
 				    "planet inventory force format");
@@ -101,23 +117,31 @@ yt_session_planet_inventory(struct yt_session *session, int logical_planet,
 			produced = (double)floorf(economy.production[9]);
 			available = floor(economy.quantity[9]);
 			if (qb_str_single(production, sizeof(production),
-			    (float)produced) < 0
-			    || qb_str_double(amount, sizeof(amount), available) < 0
-			    || qb_str_single(in_holds, sizeof(in_holds),
+			    (float)produced) < 0)
+				return session_range_error(error,
+				    "planet inventory plasma format");
+			if (qb_str_double(amount, sizeof(amount), available) < 0)
+				return session_range_error(error,
+				    "planet inventory plasma format");
+			if (qb_str_single(in_holds, sizeof(in_holds),
 			    (float)held[index]) < 0)
 				return session_range_error(error,
 				    "planet inventory plasma format");
 		}
 		if (!session_present_text(session, (const uint8_t *)labels[index],
 		    strlen(labels[index]), SESSION_PRESENT_RAW,
-		    "planet inventory label", error)
-		    || !session_right_aligned(session, production, 13.0f,
-		    "planet inventory production", error)
-		    || !session_right_aligned(session, amount, 11.0f,
-		    "planet inventory amount", error)
-		    || !session_right_aligned(session, in_holds, 12.0f,
-		    "planet inventory holds", error)
-		    || !session_present_text(session, NULL, 0,
+		    "planet inventory label", error))
+			return false;
+		if (!session_right_aligned(session, production, 13.0f,
+		    "planet inventory production", error))
+			return false;
+		if (!session_right_aligned(session, amount, 11.0f,
+		    "planet inventory amount", error))
+			return false;
+		if (!session_right_aligned(session, in_holds, 12.0f,
+		    "planet inventory holds", error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "planet inventory row ending", error))
 			return false;
 	}
@@ -152,15 +176,19 @@ yt_session_planet_take_one(struct yt_session *session, int logical_planet,
 	available = (float)floor(session->planet.economy.quantity[item]);
 	maximum = item <= 3 && free_holds < available
 	    ? free_holds : available;
-	if (qb_str_single(maximum_text, sizeof(maximum_text), maximum) < 0
-	    || snprintf(prompt, sizeof(prompt), "How much [%s ]? ",
+	if (qb_str_single(maximum_text, sizeof(maximum_text), maximum) < 0)
+		return session_range_error(error, "planet Take One prompt format");
+	if (snprintf(prompt, sizeof(prompt), "How much [%s ]? ",
 	    maximum_text) < 0)
 		return session_range_error(error, "planet Take One prompt format");
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "planet Take One prompt blank", error)
-	    || !session_present_timed_paged_row(session, (const uint8_t *)prompt, strlen(prompt),
-	    "planet Take One amount prompt", error)
-	    || !session_read_number_command(session, response, sizeof(response)))
+	    "planet Take One prompt blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session,
+	    (const uint8_t *)prompt, strlen(prompt),
+	    "planet Take One amount prompt", error))
+		return false;
+	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
 	if (response[0] == '\0')
 		quantity = maximum;
@@ -218,13 +246,15 @@ yt_session_planet_take_all(struct yt_session *session, int logical_planet,
 	int index;
 
 	if (!session_present_paged_line(session, title, sizeof(title) - 1U,
-	    "planet take-all title", error)
-	    || !session_reload_player(session, error))
+	    "planet take-all title", error))
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	yt_planet_take_all_weapon_player_overlay(&session->player,
 	    session->planet.economy.quantity, amount);
-	if (!session_write_player(session, error)
-	    || !session_present_paged_line(session, taking, sizeof(taking) - 1U,
+	if (!session_write_player(session, error))
+		return false;
+	if (!session_present_paged_line(session, taking, sizeof(taking) - 1U,
 	    "planet take-all taking", error))
 		return false;
 	for (index = 0; index < 4; ++index) {
@@ -234,8 +264,10 @@ yt_session_planet_take_all(struct yt_session *session, int logical_planet,
 
 		if ((index == 0
 		    ? qb_str_double(number, sizeof(number), amount[item])
-		    : qb_str_single(number, sizeof(number), (float)amount[item])) < 0
-		    || snprintf(row, sizeof(row), "%s%s", weapon_labels[index],
+		    : qb_str_single(number, sizeof(number), (float)amount[item])) < 0)
+			return session_range_error(error,
+			    "planet take-all weapon format");
+		if (snprintf(row, sizeof(row), "%s%s", weapon_labels[index],
 		    number) < 0)
 			return session_range_error(error,
 			    "planet take-all weapon format");
@@ -276,8 +308,10 @@ yt_session_planet_take_all(struct yt_session *session, int logical_planet,
 		if (!session_write_planet(session,
 		    logical_planet, &planet, error))
 			return false;
-		if (qb_str_single(number, sizeof(number), commodity_amount) < 0
-		    || snprintf(row, sizeof(row), "%s%s",
+		if (qb_str_single(number, sizeof(number), commodity_amount) < 0)
+			return session_range_error(error,
+			    "planet take-all commodity format");
+		if (snprintf(row, sizeof(row), "%s%s",
 		    commodity_labels[index - 1], number) < 0)
 			return session_range_error(error,
 			    "planet take-all commodity format");
