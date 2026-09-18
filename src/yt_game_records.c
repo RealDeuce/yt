@@ -309,8 +309,11 @@ yt_game_open(struct yt_game *game, enum yt_open_mode mode,
 	if (clock != NULL)
 		game->clock = *clock;
 	yt_random_init(&game->random);
-	if (!yt_database_open(&game->database, "YTDATA.DAT", mode, error)
-	    || !yt_config_load(&game->database, &game->config, error)) {
+	if (!yt_database_open(&game->database, "YTDATA.DAT", mode, error)) {
+		yt_game_close(game);
+		return false;
+	}
+	if (!yt_config_load(&game->database, &game->config, error)) {
 		yt_game_close(game);
 		return false;
 	}
@@ -458,29 +461,48 @@ yt_game_construct_player(struct yt_game *game, int basic_record,
 	*failure = YT_PLAYER_CONSTRUCTOR_NO_FAILURE;
 	constructed = player->record;
 	(void)yt_record_set_raw_number(&constructed, YT_F45, first_zero);
-	if (!yt_record_set_number(&constructed, YT_F41, today)
-	    || !yt_record_set_number(&constructed, YT_F49, turns)
-	    || !yt_record_set_number(&constructed, YT_F53, 100.0f)
-	    || !yt_record_set_number(&constructed, YT_F57, 1.0f)
-	    || !yt_record_set_number(&constructed, YT_F61,
-	    config.initial_fighters)
-	    || !yt_record_set_number(&constructed, YT_F65,
-	    config.initial_holds)
-	    || !yt_record_set_number(&constructed, YT_F69, 0.0f)
-	    || !yt_record_set_number(&constructed, YT_F73, 0.0f)
-	    || !yt_record_set_number(&constructed, YT_F77, 0.0f)
-	    || !yt_record_set_number(&constructed, YT_F81,
-	    config.initial_credits)
-	    || !yt_record_set_number(&constructed, YT_F89, 0.0f)
-	    || !yt_record_set_number(&constructed, YT_F93, 0.0f)
-	    || !yt_record_set_number(&constructed, YT_F97, 1.0f)
-	    || !yt_record_set_number(&constructed, YT_F101, 0.0f)
-	    || !yt_record_set_number(&constructed, YT_F105, 0.0f)
-	    || !yt_record_set_number(&constructed, YT_F113, 0.0f)
-	    || !yt_record_set_number(&constructed, YT_F117, 0.0f)
-	    || !yt_record_set_number(&constructed, YT_F121, 0.0f)
-	    || !yt_record_set_number(&constructed, YT_F125, 1.0f)
-	    || !yt_record_set_number(&constructed, YT_F129, 0.0f))
+	if (!yt_record_set_number(&constructed, YT_F41, today))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F49, turns))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F53, 100.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F57, 1.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F61,
+	    config.initial_fighters))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F65,
+	    config.initial_holds))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F69, 0.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F73, 0.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F77, 0.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F81,
+	    config.initial_credits))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F89, 0.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F93, 0.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F97, 1.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F101, 0.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F105, 0.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F113, 0.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F117, 0.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F121, 0.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F125, 1.0f))
+		return false;
+	if (!yt_record_set_number(&constructed, YT_F129, 0.0f))
 		return false;
 	yt_player_decode(player, &constructed);
 	*failure = YT_PLAYER_CONSTRUCTOR_PLAYER_PUT;
