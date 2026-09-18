@@ -90,11 +90,25 @@ The authoritative current subsystem ownership is:
 | Initializers | `src/yt_init.c`, `src/yt_init_files.c`, `src/yt_init_output.c`, and `src/yt_init_world.c` | `tests/test_clean_install.c::main`; `tests/test_utilities.c::main` |
 | Native error projection | `src/yt_main_error.c`; `src/yt_session_error.c`; executable entry points | `tests/test_presentation.c::main`; `tests/test_utilities.c::main` |
 
+The post-refactor floating-state inventory is audited in
+[`NUMERIC-TYPE-AUDIT.md`](NUMERIC-TYPE-AUDIT.md). The audit follows actual
+program producers rather than treating values injected by a unit test or an
+externally edited database as part of the supported domain. It found one
+bounded integral state value: the remembered low-time minute is produced only
+from the formatter's `uint16_t` whole-minute prefix and is now stored as
+`uint16_t`. It also removed the unused decoded `double` copy of commodity
+capacity while retaining the exact raw MBF64 carrier. Every surviving
+floating member either has a normal fractional producer or a valid integral
+producer whose range can exceed `int64_t`; disk record formats are unchanged.
+
 Older component narratives below may quote framebuffer hashes, process-cell
 addresses, provider cuts, or helper names from proof scaffolds removed by the
 refactor. Those quotations are historical verification notes, not current
-runtime architecture or extension points. The active executable uses typed
-native state and direct feature controllers. OpenDoors owns carrier detection,
+runtime architecture, supported input domains, or extension points. In
+particular, their fractional low-time fixtures directly inject text the live
+formatter cannot produce and do not establish the type of session state. The
+active executable uses typed native state and direct feature controllers.
+OpenDoors owns carrier detection,
 session and inactivity clocks, local SysOp time changes, chat, blocking waits,
 terminal delivery, and shutdown. Physical terminal coverage is owned only by
 the OpenDoors I/O row.

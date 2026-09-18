@@ -119,7 +119,7 @@ enum yt_present_status yt_present_radio_wrap_cleanup(int line_number,
 enum yt_present_status yt_present_format_remaining_seconds(
     struct yt_present_time_state *time, float remaining_seconds);
 enum yt_present_status yt_present_low_time(const uint8_t *text, size_t length,
-    float *remembered, struct yt_present_state *state,
+    uint16_t *remembered, struct yt_present_state *state,
     struct yt_present_result *result, bool *warned);
 uint8_t yt_present_pc_attribute(int foreground, int background);
 

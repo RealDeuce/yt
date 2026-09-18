@@ -301,6 +301,7 @@ test_scalar_options(void)
 	CHECK(yt_config_scalar_blank_unchanged(YT_CONFIG_SCALAR_TURNS));
 	CHECK(!yt_config_scalar_valid(YT_CONFIG_SCALAR_MAXIMUM_HOLDS, 4.0f));
 	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_MAXIMUM_HOLDS, 5.0f));
+	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_MAXIMUM_HOLDS, 5.9f));
 	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_MAXIMUM_HOLDS, 1000.0f));
 	CHECK(!yt_config_scalar_valid(YT_CONFIG_SCALAR_MAXIMUM_HOLDS, 1001.0f));
 	CHECK(!yt_config_scalar_valid(YT_CONFIG_SCALAR_TURNS, 99.0f));

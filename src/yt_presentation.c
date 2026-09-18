@@ -737,11 +737,13 @@ yt_present_format_remaining_seconds(struct yt_present_time_state *time,
 }
 
 static enum yt_present_status
-low_time_value(const uint8_t *text, size_t length, double old_value,
-    uint8_t narrowed[4], bool *changed)
+low_time_value(const uint8_t *text, size_t length, uint16_t old_value,
+    uint16_t *new_value, bool *changed)
 {
 	struct qb_val_result parsed;
 	enum qb_mbf_status status;
+	uint8_t narrowed[4];
+	float decoded;
 
 	*changed = false;
 	if (length > YT_PRESENT_EVENT_DATA
@@ -750,17 +752,21 @@ low_time_value(const uint8_t *text, size_t length, double old_value,
 	parsed = qb_val_n(text, length);
 	if (parsed.overflow)
 		return YT_PRESENT_OVERFLOW;
-	if (old_value == parsed.value)
+	if ((double)old_value == parsed.value)
 		return YT_PRESENT_OK;
 	status = qb_mbf32_from_mbf64_raw(parsed.mbf, narrowed);
 	if (status == QB_MBF_OVERFLOW || status == QB_MBF_DOMAIN)
 		return YT_PRESENT_OVERFLOW;
+	decoded = qb_mbf32_decode(narrowed);
+	if (decoded < 0.0f || decoded > (float)UINT16_MAX)
+		return YT_PRESENT_RANGE;
+	*new_value = (uint16_t)decoded;
 	*changed = true;
 	return YT_PRESENT_OK;
 }
 
 static enum yt_present_status
-low_time_warning(const uint8_t *text, size_t length, float remembered,
+low_time_warning(const uint8_t *text, size_t length, uint16_t remembered,
     struct yt_present_state *state, struct yt_present_result *result,
     bool *warned)
 {
@@ -769,7 +775,7 @@ low_time_warning(const uint8_t *text, size_t length, float remembered,
 	uint8_t warning[YT_PRESENT_EVENT_DATA];
 	enum yt_present_status status;
 
-	if (remembered >= 6.0f)
+	if (remembered >= 6U)
 		return YT_PRESENT_OK;
 	status = emit_line(NULL, 0, state, result);
 	if (status != YT_PRESENT_OK)
@@ -799,21 +805,21 @@ low_time_warning(const uint8_t *text, size_t length, float remembered,
 }
 
 enum yt_present_status
-yt_present_low_time(const uint8_t *text, size_t length, float *remembered,
+yt_present_low_time(const uint8_t *text, size_t length, uint16_t *remembered,
     struct yt_present_state *state, struct yt_present_result *result,
     bool *warned)
 {
-	uint8_t narrowed[4];
+	uint16_t new_value = 0U;
 	bool changed;
 	enum yt_present_status status;
 
 	memset(result, 0, sizeof(*result));
 	*warned = false;
-	status = low_time_value(text, length, (double)*remembered, narrowed,
+	status = low_time_value(text, length, *remembered, &new_value,
 	    &changed);
 	if (status != YT_PRESENT_OK || !changed)
 		return status;
-	*remembered = qb_mbf32_decode(narrowed);
+	*remembered = new_value;
 	return low_time_warning(text, length, *remembered, state, result,
 	    warned);
 }

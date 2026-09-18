@@ -3890,7 +3890,7 @@ test_time_helpers(void)
 	struct yt_present_result result;
 	uint8_t long_time[YT_PRESENT_EVENT_DATA - 9U];
 	bool warned;
-	float remembered = 6.0f;
+	uint16_t remembered = 6U;
 
 	memset(&time, 0, sizeof(time));
 	CHECK(yt_present_format_remaining_seconds(&time, 359.5f)
@@ -3901,7 +3901,7 @@ test_time_helpers(void)
 	current = state(true);
 	CHECK(yt_present_low_time((const uint8_t *)" 5:59  ", 7,
 	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
-	CHECK(warned && remembered == 5.0f);
+	CHECK(warned && remembered == 5U);
 	CHECK(result.event_count == 16);
 	CHECK(result.events[5].operation == YT_PRESENT_REMOTE_SEMI
 	    && result.events[5].length == 1
@@ -3916,7 +3916,7 @@ test_time_helpers(void)
 
 	current = state(false);
 	current.sound.local_mode = true;
-	remembered = 6.0f;
+	remembered = 6U;
 	CHECK(yt_present_low_time((const uint8_t *)" 5:59  ", 7,
 	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
 	CHECK(warned && result.event_count == 4);
@@ -3925,29 +3925,29 @@ test_time_helpers(void)
 
 	current = state(false);
 	current.sound.local_output = false;
-	remembered = 7.0f;
+	remembered = 7U;
 	CHECK(yt_present_low_time((const uint8_t *)" 6:00  ", 7,
 	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
-	CHECK(!warned && remembered == 6.0f && result.event_count == 0U
+	CHECK(!warned && remembered == 6U && result.event_count == 0U
 	    && result.remote_length == 0U);
-	remembered = 6.0f;
+	remembered = 6U;
 	CHECK(yt_present_low_time((const uint8_t *)"5.9999999", 9,
 	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
-	CHECK(!warned && remembered == 6.0f && result.event_count == 0U);
+	CHECK(!warned && remembered == 6U && result.event_count == 0U);
 
-	remembered = 6.0f;
+	remembered = 6U;
 	CHECK(yt_present_low_time((const uint8_t *)"5.9:00", 6,
 	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
-	CHECK(warned && remembered == (float)5.9
+	CHECK(warned && remembered == 5U
 	    && result.remote_length != 0U);
 	CHECK(yt_present_low_time((const uint8_t *)"5.9:00", 6,
 	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
-	CHECK(warned && remembered == (float)5.9
+	CHECK(warned && remembered == 5U
 	    && result.remote_length != 0U);
 
 	current = state(false);
 	current.sound.local_output = false;
-	remembered = 6.0f;
+	remembered = 6U;
 	memset(long_time, 'x', sizeof(long_time));
 	long_time[0] = '5';
 	CHECK(yt_present_low_time(long_time, sizeof(long_time), &remembered,
@@ -3958,7 +3958,7 @@ test_time_helpers(void)
 	    && memcmp(result.remote, "\r\n\a", 3U) == 0);
 
 	current = state(false);
-	remembered = 6.0f;
+	remembered = 6U;
 	CHECK(yt_present_low_time((const uint8_t *)"2E38", 4, &remembered,
 	    &current, &result, &warned) == YT_PRESENT_OVERFLOW);
 	CHECK(!warned && remembered == 6 && current.foreground == 2
@@ -5509,7 +5509,7 @@ test_commodity_trade_adapter_cuts(void)
 	struct yt_present_result result;
 	char paged_text[80];
 	float newline_flag;
-	float remembered;
+	uint16_t remembered;
 	bool handled;
 	bool warned;
 
@@ -5604,11 +5604,11 @@ test_commodity_trade_adapter_cuts(void)
 	commodity_trade_join_init(&join);
 	commodity_trade_join_0317(&join, status, sizeof(status) - 1U);
 	commodity_trade_join_0317(&join, selling, sizeof(selling) - 1U);
-	remembered = 6.0f;
+	remembered = 6U;
 	CHECK(yt_present_low_time((const uint8_t *)" 5:59  ", 7U,
 	    &remembered, &join.current, &result, &warned) == YT_PRESENT_OK);
 	pager_capture_result(&join.capture, &result);
-	CHECK(warned && remembered == 5.0f);
+	CHECK(warned && remembered == 5U);
 	commodity_trade_join_b05d(&join, prompt, sizeof(prompt) - 1U, true);
 	commodity_trade_join_input(&join, (const uint8_t *)"3", 1U);
 	commodity_trade_join_accepted_tail(&join, agreed, sizeof(agreed) - 1U,
@@ -10069,7 +10069,7 @@ test_computer_port_report_low_time_cycle_presentation(void)
 	struct yt_pager_state pager;
 	struct pager_capture capture;
 	char accumulator[80];
-	float remembered;
+	uint16_t remembered;
 	bool warned;
 	size_t index;
 	size_t pass;
@@ -10082,7 +10082,7 @@ test_computer_port_report_low_time_cycle_presentation(void)
 		pager.foreground = 1;
 		memset(&capture, 0, sizeof(capture));
 		memset(accumulator, 0, sizeof(accumulator));
-		remembered = 6.0f;
+		remembered = 6U;
 		CHECK(yt_present_line(NULL, 0U, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
@@ -10091,7 +10091,7 @@ test_computer_port_report_low_time_cycle_presentation(void)
 		CHECK(yt_present_low_time(time_text, sizeof(time_text) - 1U,
 		    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		CHECK(warned && remembered == (float)5.9);
+		CHECK(warned && remembered == 5U);
 		pager.newline_flag = true;
 		pager_fixture_b05d(&pager, &current, sector_prompt,
 		    sizeof(sector_prompt) - 1U, &capture);
@@ -10147,7 +10147,7 @@ test_computer_port_report_low_time_cycle_presentation(void)
 		CHECK(yt_present_low_time(time_text, sizeof(time_text) - 1U,
 		    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		CHECK(warned && remembered == (float)5.9);
+		CHECK(warned && remembered == 5U);
 		pager.newline_flag = true;
 		pager_fixture_b05d(&pager, &current, computer_prompt,
 		    sizeof(computer_prompt) - 1U, &capture);
@@ -10289,7 +10289,7 @@ test_computer_port_report_low_time_retry_cycle_presentation(void)
 	struct yt_pager_state pager;
 	struct pager_capture capture;
 	char accumulator[80];
-	float remembered;
+	uint16_t remembered;
 	bool warned;
 	size_t pass;
 
@@ -10301,7 +10301,7 @@ test_computer_port_report_low_time_retry_cycle_presentation(void)
 		pager.foreground = 1;
 		memset(&capture, 0, sizeof(capture));
 		memset(accumulator, 0, sizeof(accumulator));
-		remembered = 6.0f;
+		remembered = 6U;
 
 		CHECK(yt_present_line(NULL, 0U, &current, &result)
 		    == YT_PRESENT_OK);
@@ -10358,7 +10358,7 @@ test_computer_port_report_low_time_retry_cycle_presentation(void)
 		CHECK(yt_present_low_time(time_text, sizeof(time_text) - 1U,
 		    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		CHECK(warned && remembered == (float)5.9);
+		CHECK(warned && remembered == 5U);
 		pager.newline_flag = true;
 		pager_fixture_b05d(&pager, &current, computer_prompt,
 		    sizeof(computer_prompt) - 1U, &capture);
@@ -12975,7 +12975,7 @@ computer_newspaper_low_time_cycle_run(struct physical_viewer_join *viewer,
 	static const uint8_t accepted[] = "T";
 	struct viewer_pager_join *join = &viewer->join;
 	struct yt_present_result result;
-	float remembered = 6.0f;
+	uint16_t remembered = 6U;
 	size_t attempt;
 	size_t attempts = invalid_first ? 2U : 1U;
 
@@ -13601,7 +13601,7 @@ struct normal_exit_body_observation {
 static bool
 normal_exit_body_run_info(struct physical_viewer_join *viewer,
     struct viewer_file_fixture *stream, bool evaluation,
-    const uint8_t *time_text, size_t time_length, float remembered,
+    const uint8_t *time_text, size_t time_length, uint16_t remembered,
     const struct normal_exit_info_values *info,
     struct normal_exit_body_observation *observation)
 {
@@ -13666,7 +13666,7 @@ normal_exit_body_run_info(struct physical_viewer_join *viewer,
 static bool
 normal_exit_body_run(struct physical_viewer_join *viewer,
     struct viewer_file_fixture *stream, bool evaluation,
-    const uint8_t *time_text, size_t time_length, float remembered,
+    const uint8_t *time_text, size_t time_length, uint16_t remembered,
     struct normal_exit_body_observation *observation)
 {
 	return normal_exit_body_run_info(viewer, stream, evaluation, time_text,

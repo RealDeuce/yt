@@ -103,7 +103,7 @@ struct yt_session {
 	struct session_earth_state earth;
 	struct session_spy_state spies;
 	bool destroyed;
-	float low_time_remembered;
+	uint16_t low_time_remembered;
 	struct session_player_reference_state player_reference;
 	struct yt_player player;
 	struct session_combat_state combat;

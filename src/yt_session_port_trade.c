@@ -11,7 +11,6 @@
 struct commodity_trade_terms {
 	uint8_t selected_quantity_raw[8];
 	uint8_t floored_quantity_raw[8];
-	double selected_quantity;
 	double displayed_hold;
 	double credits;
 	int8_t factor;
@@ -58,8 +57,6 @@ commodity_prepare(const struct yt_port_market_state *market,
 	memset(terms, 0, sizeof(*terms));
 	memcpy(terms->selected_quantity_raw, market->capacity_raw[commodity],
 	    sizeof(terms->selected_quantity_raw));
-	terms->selected_quantity = qb_mbf64_decode(
-	    terms->selected_quantity_raw);
 	if (qb_mbf64_floor_raw(terms->selected_quantity_raw,
 	    terms->floored_quantity_raw) != QB_MBF_OK)
 		return commodity_error(error,
