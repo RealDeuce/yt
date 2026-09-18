@@ -1,5 +1,6 @@
 #include "yt_door.h"
 #include "yt_input.h"
+#include "yt_patch_cli.h"
 
 #include "OpenDoor.h"
 
@@ -40,8 +41,17 @@ od_parse_cmd_line(char *command_line)
 void ODCALL
 od_parse_cmd_line(int argc, char **argv)
 {
-	(void)argc;
-	(void)argv;
+	int index;
+
+	for (index = 1; index < argc; ++index) {
+		if ((strcmp(argv[index], "-PATCH") == 0
+		    || strcmp(argv[index], "/PATCH") == 0)
+		    && od_control.od_cmd_line_handler != NULL) {
+			char *value = index + 1 < argc ? argv[++index] : (char *)"";
+
+			od_control.od_cmd_line_handler(argv[index - 1], value);
+		}
+	}
 	command_line_parsed = true;
 }
 #endif
@@ -106,11 +116,33 @@ queue_character(char value, BOOL transport_remote)
 }
 
 static void
+test_patch_parser(void)
+{
+	struct yt_patch_selection selection;
+	struct yt_error error;
+	char *invalid[] = {(char *)"yt", (char *)"-PATCH", (char *)"3.6B2"};
+	char *repeated[] = {
+		(char *)"yt", (char *)"-PATCH", (char *)"3.6C",
+		(char *)"-PATCH", (char *)"3.6f"
+	};
+
+	memset(&od_control, 0, sizeof(od_control));
+	yt_error_clear(&error);
+	CHECK(!yt_patch_parse_command_line(3, invalid, &selection, &error));
+	CHECK(error.status == YT_INVALID && strcmp(error.path, "3.6B2") == 0);
+	memset(&od_control, 0, sizeof(od_control));
+	yt_error_clear(&error);
+	CHECK(yt_patch_parse_command_line(5, repeated, &selection, &error));
+	CHECK(selection.seen && selection.profile == yt_patch_get(YT_PATCH_36F));
+}
+
+static void
 test_open_doors_runtime_policy(void)
 {
 	struct yt_error error;
 	char *remote_argv[] = {(char *)"yt", (char *)"DORINFO1.DEF"};
-	char *local_argv[] = {(char *)"yt", (char *)"-l"};
+	char *local_argv[] = {(char *)"yt", (char *)"-l",
+	    (char *)"-PATCH", (char *)"3.6G"};
 
 	memset(&od_control, 0, sizeof(od_control));
 	command_line_parsed = false;
@@ -134,14 +166,19 @@ test_open_doors_runtime_policy(void)
 	CHECK(!test_door.identity.local && test_door.identity.ansi);
 	CHECK(strcmp(test_door.identity.real_first, "Test") == 0);
 	CHECK(strcmp(test_door.identity.real_last, "User") == 0);
+	CHECK(test_door.patch == yt_patch_default());
+	CHECK(strcmp(od_control.od_prog_version, "3.6") == 0);
+	CHECK(strcmp(test_door.rmt_handoff_path, "DORINFO1.DEF") == 0);
 
 	memset(&od_control, 0, sizeof(od_control));
 	command_line_parsed = false;
 	mock_local = true;
 	yt_error_clear(&error);
-	CHECK(yt_door_start(&test_door, 2, local_argv, &error));
+	CHECK(yt_door_start(&test_door, 4, local_argv, &error));
 	CHECK(init_maxtime == 180U);
 	CHECK(test_door.identity.local);
+	CHECK(test_door.patch == yt_patch_get(YT_PATCH_36G));
+	CHECK(strcmp(od_control.od_prog_version, "3.6G") == 0);
 	CHECK(od_control.od_inactivity == 0);
 	exit_calls = 0U;
 	exit_noexit = FALSE;
@@ -226,6 +263,7 @@ test_open_doors_relative_pause(void)
 int
 main(void)
 {
+	test_patch_parser();
 	test_open_doors_runtime_policy();
 	test_forced_local_stdio_origin();
 	test_remote_origin_stays_remote();

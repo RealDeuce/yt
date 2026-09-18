@@ -24,8 +24,10 @@ WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line,
 	if (!yt_platform_executable_path(executable, sizeof(executable), NULL,
 	    &error))
 		return EXIT_FAILURE;
-	if (!yt_door_start(&door, command_line, &error))
+	if (!yt_door_start(&door, command_line, &error)) {
+		yt_cli_error("YT", &error);
 		return EXIT_FAILURE;
+	}
 	ok = yt_session_run(&door, executable, &error);
 	if (!ok)
 		yt_cli_error("YT", &error);
@@ -45,8 +47,10 @@ main(int argc, char **argv)
 	if (!yt_platform_executable_path(executable, sizeof(executable),
 	    argc > 0 ? argv[0] : NULL, &error))
 		return EXIT_FAILURE;
-	if (!yt_door_start(&door, argc, argv, &error))
+	if (!yt_door_start(&door, argc, argv, &error)) {
+		yt_cli_error("YT", &error);
 		return EXIT_FAILURE;
+	}
 	ok = yt_session_run(&door, executable, &error);
 	if (!ok)
 		yt_cli_error("YT", &error);

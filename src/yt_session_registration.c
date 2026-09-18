@@ -241,12 +241,11 @@ registration_beep(struct yt_error *error)
 static bool
 registration_title(struct yt_session *session, struct yt_error *error)
 {
-	static const char *const centered[] = {
-		"Yankee Trader",
-		"(c)Alan Davenport",
-		"Prices & Xannor fix, Anticloak, Spies, Missiles disabled  ",
-		"Strategy Guide: www.starflt.com/yt.html      ",
-		"Version 3.6g * YT * Mod 02/09/2024  ",
+	const struct yt_patch_profile *patch = session_patch(session);
+	const char *const centered[] = {
+		"Yankee Trader", patch->registration_author,
+		patch->registration_description, patch->registration_contact,
+		patch->registration_banner,
 	};
 	size_t index;
 

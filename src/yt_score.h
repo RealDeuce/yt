@@ -22,6 +22,7 @@ struct yt_scoreboard {
 	int sector_count;
 	double xannor;
 	double mercenaries;
+	float plasma_score_weight;
 	struct yt_score_player players[YT_DEFAULT_PLAYER_COUNT];
 	struct yt_score_team teams[YT_DEFAULT_PLAYER_COUNT];
 };
@@ -29,7 +30,8 @@ struct yt_scoreboard {
 bool yt_score_generate(struct yt_game *game, struct yt_error *error);
 bool yt_scoreboard_prepare(struct yt_scoreboard *scoreboard,
     struct yt_game *game, int sector_record_offset,
-    int port_record_offset, struct yt_error *error);
+    int port_record_offset, float plasma_score_weight,
+    struct yt_error *error);
 bool yt_scoreboard_load_players(struct yt_scoreboard *scoreboard,
     struct yt_error *error);
 bool yt_scoreboard_score_sectors(struct yt_scoreboard *scoreboard,

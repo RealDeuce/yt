@@ -43,17 +43,18 @@ yt_clearance_percentage(float discount)
 }
 
 void
-yt_earth_prices(const float discount[4], uint8_t price[4])
+yt_earth_prices(const float discount[4],
+    const struct yt_patch_profile *patch, uint32_t price[4])
 {
-	if (discount == NULL || price == NULL)
+	if (discount == NULL || patch == NULL || price == NULL)
 		return;
-	price[0] = (uint8_t)floorf((250.0f -
-	    (250.0f * discount[0])));
-	price[1] = (uint8_t)floorf((50.0f -
-	    (50.0f * discount[1])));
-	price[2] = (uint8_t)floorf((50.0f *
+	price[0] = (uint32_t)floorf((patch->cargo_hold_coefficient -
+	    (patch->cargo_hold_coefficient * discount[0])));
+	price[1] = (uint32_t)floorf((patch->fighter_coefficient -
+	    (patch->fighter_coefficient * discount[1])));
+	price[2] = (uint32_t)floorf((patch->fighter_coefficient *
 	    (1.0f - discount[2])));
-	price[3] = (uint8_t)floorf((200.5f *
+	price[3] = (uint32_t)floorf((patch->ground_force_coefficient *
 	    (1.0f - discount[3])));
 }
 
@@ -91,23 +92,23 @@ yt_earth_receipt_amount(int owner, int buyer_record, float cost)
 }
 
 uint8_t
-yt_earth_cloak_points(float cloak)
+yt_earth_cloak_points(float cloak, float scale)
 {
-	return (uint8_t)floorf((50.0f * cloak));
+	return (uint8_t)floorf((scale * cloak));
 }
 
 uint8_t
-yt_earth_cloak_default(uint8_t deficit, float credits)
+yt_earth_cloak_default(uint8_t deficit, float credits, float unit_cost)
 {
-	if (((float)deficit * 1000.0f) > credits)
-		return (uint8_t)yt_earth_affordable(credits, 1000U);
+	if (((float)deficit * unit_cost) > credits)
+		return (uint8_t)floorf(credits / unit_cost);
 	return deficit;
 }
 
 float
-yt_earth_cloak_overlay(uint8_t points, uint8_t quantity)
+yt_earth_cloak_overlay(uint8_t points, uint8_t quantity, float scale)
 {
-	return ((float)(points + quantity) / 50.0f);
+	return ((float)(points + quantity) / scale);
 }
 
 void

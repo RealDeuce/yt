@@ -318,7 +318,8 @@ hostile_attack_tail_run(struct yt_session *session,
 		    sizeof(state->current.name), "%s", cached_player_name);
 		state->ship_fighters = (double)state->current.fighters;
 		bonus = yt_xannor_attack_bonus(state->defender_loss,
-		    state->current.turns, state->turns_per_day);
+		    state->current.turns, state->turns_per_day,
+		    yt_patch_xannor_turn_divisor(session_patch(session)));
 		if (bonus >= 1.0f) {
 			state->current.turns = (state->current.turns +
 			    bonus);

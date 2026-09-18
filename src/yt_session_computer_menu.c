@@ -117,7 +117,8 @@ yt_session_computer_menu(struct yt_session *session, bool *enter_sector,
 				return false;
 			continue;
 		}
-		if (strcmp(command, "!") == 0) {
+		if (command[0] == session_patch(session)->computer_credit_key
+		    && command[1] == '\0') {
 			if (!yt_session_treasury(session, true, error))
 				return false;
 			continue;

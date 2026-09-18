@@ -32,6 +32,28 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 	    &session->presentation.sound.local_output,
 	    error);
 	session->door->game_open = game->database.file != NULL;
+	if (ok) {
+		uint16_t sector_count = game->config.port_offset
+		    - game->config.sector_offset;
+		const struct yt_patch_profile *patch = session->door->patch;
+
+		if (patch == NULL)
+			patch = yt_patch_default();
+		if (!yt_patch_sector_count_matches(patch, sector_count)) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				error->system_error = 0;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation),
+				    "validate %s universe; expected %u sector records",
+				    patch->name,
+				    (unsigned)patch->initializer_sector_count);
+				(void)snprintf(error->path, sizeof(error->path),
+				    "YTDATA.DAT has %u", (unsigned)sector_count);
+			}
+			ok = false;
+		}
+	}
 	return ok;
 }
 

@@ -227,7 +227,8 @@ main(void)
 		goto done;
 	}
 	if (snprintf(command, sizeof(command),
-	    "\"%s\" < input.txt > output.txt 2>&1", YT_INIT_EXE) < 0) {
+	    "\"%s\" -PATCH 3.6G < input.txt > output.txt 2>&1",
+	    YT_INIT_EXE) < 0) {
 		failure = "cannot format yt-init command";
 		goto done;
 	}

@@ -190,9 +190,9 @@ yt_xannor_attack_reward_rows(const uint8_t *name, size_t name_length,
 
 float
 yt_xannor_attack_bonus(double defenders_destroyed, float turns,
-    float turns_per_day)
+    float turns_per_day, double divisor)
 {
-	float bonus = (float)qb_int(defenders_destroyed / 256000.0);
+	float bonus = (float)qb_int(defenders_destroyed / divisor);
 
 	if (turns + bonus > turns_per_day)
 		bonus = turns_per_day - turns;

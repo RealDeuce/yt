@@ -199,7 +199,8 @@ yt_session_command_shell(struct yt_session *session, struct yt_error *error)
 		response_length = strlen(command);
 		memcpy(session->io.text_workspace, command,
 		    response_length + 1U);
-		route = yt_main_shell_dispatch(command);
+		route = yt_main_shell_dispatch(command,
+		    session_patch(session)->missile_key);
 		switch (route) {
 		case YT_MAIN_SHELL_DISPLAY:
 			if (!session_present_paged_line(session,

@@ -143,7 +143,7 @@ yt_session_computer_port_report(struct yt_session *session,
 		    "computer port unavailable", error);
 	if (sector.port == 1) {
 		struct yt_port earth;
-		uint8_t price[4];
+		uint32_t price[4];
 
 		if (!session_earth_report(session, &earth, price, error))
 			return false;

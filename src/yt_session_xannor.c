@@ -157,8 +157,14 @@ bool
 yt_session_xannor_victory(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t pause[] = "[PAUSE]";
-	static const uint8_t bonus[] =
+	static const uint8_t bonus_one_million[] =
+	    "Collect 1,000,000 credit bonus!";
+	static const uint8_t bonus_sixteen_million[] =
 	    "Collect 16,000,000 credit bonus!";
+	const struct yt_patch_profile *patch = session_patch(session);
+	const uint8_t *bonus = patch->xannor_headquarters_award
+	    == 16000000.0f ? bonus_sixteen_million : bonus_one_million;
+	size_t bonus_length = strlen((const char *)bonus);
 	uint8_t player_name[YT_TEXT_FIELD_SIZE];
 	uint8_t winner[128];
 	uint8_t banner[79];
@@ -180,12 +186,13 @@ yt_session_xannor_victory(struct yt_session *session, struct yt_error *error)
 	    "Xannor victory post-wait blank", error))
 		return false;
 	session->presentation.blink = true;
-	if (!session_present_text(session, bonus, sizeof(bonus) - 1U,
+	if (!session_present_text(session, bonus, bonus_length,
 	    SESSION_PRESENT_BOLD_LINE, "Xannor victory bonus", error))
 		return false;
 	session_clear_queue(session);
 
-	if (!session_mutate_player_credits(session, 16000000.0f,
+	if (!session_mutate_player_credits(session,
+	    patch->xannor_headquarters_award,
 	    &credit_hydrated, error))
 		return false;
 	if (!credit_hydrated)

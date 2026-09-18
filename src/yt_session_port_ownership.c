@@ -375,11 +375,11 @@ yt_session_command_rename_port(struct yt_session *session,
 
 static bool
 purchase_report(struct yt_session *session, int logical_port, bool earth,
-    struct yt_port *early_port, struct yt_port *terminal_port,
-    float production[3], struct yt_error *error)
+	struct yt_port *early_port, struct yt_port *terminal_port,
+	float production[3], struct yt_error *error)
 {
 	if (earth) {
-		uint8_t earth_prices[4];
+		uint32_t earth_prices[4];
 
 		if (!session_earth_report(session, early_port, earth_prices, error))
 			return false;
@@ -612,7 +612,7 @@ yt_session_command_buy_port(struct yt_session *session,
 		return false;
 	old_owner = early_port.owner;
 	if (earth) {
-		price = 1000000000.0;
+		price = session_patch(session)->earth_purchase_price;
 		memcpy(old_name, earth_name, sizeof(earth_name) - 1U);
 		old_name_length = sizeof(earth_name) - 1U;
 	}

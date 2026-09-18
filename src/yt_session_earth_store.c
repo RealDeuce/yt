@@ -36,7 +36,8 @@ session_earth_credit_error(struct yt_session *session, const char *text,
 
 static bool
 earth_purchase_holds(struct yt_session *session,
-    const struct yt_port *cached_earth, uint8_t price, struct yt_error *error)
+    const struct yt_port *cached_earth, uint32_t price,
+    struct yt_error *error)
 {
 	static const char prompt[] = "Buy how many holds? [0]? ";
 	char amount[64];
@@ -83,7 +84,7 @@ earth_purchase_holds(struct yt_session *session,
 
 static bool
 earth_purchase_supply(struct yt_session *session,
-    const struct yt_port *cached_earth, int choice, uint8_t price,
+    const struct yt_port *cached_earth, int choice, uint32_t price,
     struct yt_error *error)
 {
 	const char *prompt;
@@ -139,10 +140,13 @@ earth_purchase_cloak(struct yt_session *session,
 		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "Earth Cloak leading blank", error))
 			return false;
-		points = yt_earth_cloak_points(session->player.cloak);
-		deficit = (uint8_t)(50U - points);
+		points = yt_earth_cloak_points(session->player.cloak,
+		    session_patch(session)->fighter_coefficient);
+		deficit = (uint8_t)(
+		    (uint8_t)session_patch(session)->fighter_coefficient - points);
 		default_quantity = yt_earth_cloak_default(deficit,
-		    session->player.credits);
+		    session->player.credits,
+		    session_patch(session)->cloak_energy_cost);
 		if (qb_str_single(deficit_text, sizeof(deficit_text),
 		    (float)deficit) < 0)
 			return session_range_error(error,
@@ -170,18 +174,21 @@ earth_purchase_cloak(struct yt_session *session,
 		    : yt_earth_purchase_quantity(requested);
 		if (quantity_value < 1.0f)
 			return true;
-		if (((float)points + quantity_value) > 50.0f) {
+		if (((float)points + quantity_value)
+		    > session_patch(session)->fighter_coefficient) {
 			if (!session_earth_credit_error(session,
 			    "You can't have over 100% cloak!", error))
 				return false;
 			continue;
 		}
 		quantity = (uint8_t)quantity_value;
-		cost = ((float)quantity * 1000.0f);
+		cost = ((float)quantity
+		    * session_patch(session)->cloak_energy_cost);
 		if (cost > session->player.credits)
 			return session_earth_credit_error(session,
 			    "You do not have enough credits!", error);
-		session->player.cloak = yt_earth_cloak_overlay(points, quantity);
+		session->player.cloak = yt_earth_cloak_overlay(points, quantity,
+		    session_patch(session)->fighter_coefficient);
 		if (!session_write_player(session, error))
 			return false;
 		return session_earth_receipt(session, cached_earth, cost, error);
@@ -326,11 +333,6 @@ static bool
 earth_anti_cloak(struct yt_session *session, float price,
     struct yt_error *error)
 {
-	static const uint8_t activation[] =
-	    "ti-Cloaking device activated!\xd4" "D";
-	static const uint8_t waves[] =
-	    "Waves of electromagnetic disruption flood the galaxy..."
-	    "\xd4\x0e\x00\x86\xc1" " is uncl";
 	static const uint8_t uncloaked[] = " is uncloaked!";
 	static const uint8_t none[] = "Too bad noone was cloaked anyhow!";
 	static const uint8_t fade[] = "...the effect fades.";
@@ -340,9 +342,14 @@ earth_anti_cloak(struct yt_session *session, float price,
 	int player_record;
 	bool field_loaded = false;
 	bool reported = false;
+	const uint8_t *activation = session_patch(session)->anti_cloak_activation;
+	size_t activation_length =
+	    session_patch(session)->anti_cloak_activation_length;
+	const uint8_t *waves = session_patch(session)->anti_cloak_waves;
+	size_t waves_length = session_patch(session)->anti_cloak_waves_length;
 
 	if (!session_present_text(session, activation,
-	    sizeof(activation) - 1U, SESSION_PRESENT_LINE,
+	    activation_length, SESSION_PRESENT_LINE,
 	    "anti-cloak transaction row", error))
 		return false;
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
@@ -350,7 +357,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 		return false;
 	if (session->presentation.foreground != 2)
 		session_set_color(session, 2);
-	if (!session_present_text(session, waves, sizeof(waves) - 1U,
+	if (!session_present_text(session, waves, waves_length,
 	    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error))
 		return false;
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
@@ -462,12 +469,12 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 		char line[80];
 		char credits_text[64];
 		char prompt[160];
-		uint8_t price[4];
+		uint32_t price[4];
 		int choice;
-		uint8_t holds_price;
-		uint8_t fighters_price;
-		uint8_t shields_price;
-		uint8_t ground_price;
+		uint32_t holds_price;
+		uint32_t fighters_price;
+		uint32_t shields_price;
+		uint32_t ground_price;
 
 		if (!session_earth_report(session, &earth, price, error))
 			return false;
@@ -577,7 +584,8 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (choice == 5) {
-			if (!earth_purchase_scanner(session, &earth, 500000U,
+			if (!earth_purchase_scanner(session, &earth,
+			    session_patch(session)->danger_scanner_cost,
 			    error))
 				return false;
 			continue;
@@ -594,7 +602,8 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 			    SESSION_PRESENT_LINE, "Earth Anti-Cloak leading blank",
 			    error))
 				return false;
-			if (session->player.credits < 1000000000.0f) {
+			if (session->player.credits
+			    < session_patch(session)->anti_cloak_cost) {
 				if (!session_earth_credit_error(session,
 				    "You do not have enough credits!", error))
 					return false;
@@ -609,7 +618,8 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 			    SESSION_PRESENT_LINE, "Earth Anti-Cloak accepted blank",
 			    error))
 				return false;
-			if (!earth_anti_cloak(session, 1000000000.0f, error))
+			if (!earth_anti_cloak(session,
+			    session_patch(session)->anti_cloak_cost, error))
 				return false;
 			session->earth.anti_cloak_enabled = true;
 			if (!session_present_text(session, NULL, 0,
@@ -623,7 +633,8 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (choice == 9) {
-			if (!earth_purchase_spies(session, &earth, 1000000000U,
+			if (!earth_purchase_spies(session, &earth,
+			    session_patch(session)->spy_cost,
 			    error))
 				return false;
 			continue;
@@ -637,7 +648,7 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 				return false;
 		}
 		else if (choice == 3 || choice == 7 || choice == 8) {
-			uint8_t selected_price = choice == 3 ? fighters_price
+			uint32_t selected_price = choice == 3 ? fighters_price
 			    : choice == 7 ? ground_price : shields_price;
 
 			if (!earth_purchase_supply(session, &earth, choice,

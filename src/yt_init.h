@@ -2,6 +2,7 @@
 #define YT_INIT_H
 
 #include "yt_game.h"
+#include "yt_patch.h"
 #include "yt_startup.h"
 
 struct yt_name_file;
@@ -90,18 +91,21 @@ struct yt_initializer_options {
 	const struct yt_rmt_presenter *rmt_presenter;
 	const struct yt_init_presenter *yt_presenter;
 	bool prepared_yt;
+	uint16_t sector_count;
 	struct yt_database *bound_database;
 };
 
 bool yt_initializer_confirm_response(const char *response);
 void yt_initializer_layout_yt(
-	struct yt_initializer_preparation *preparation);
+	struct yt_initializer_preparation *preparation,
+	const struct yt_patch_profile *patch);
 bool yt_init_present_confirmation_prefix(
 	const struct yt_init_presenter *presenter, struct yt_error *error);
 bool yt_init_present_opening(const struct yt_init_presenter *presenter,
 	struct yt_error *error);
 bool yt_initializer_prepare_yt(const struct yt_clock *clock,
     struct yt_random *random,
+	const struct yt_patch_profile *patch,
 	struct yt_initializer_preparation *preparation,
 	struct yt_error *error);
 bool yt_init_present_prepared_configuration(

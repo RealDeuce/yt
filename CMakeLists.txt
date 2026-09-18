@@ -67,6 +67,7 @@ set(YT_CORE_SOURCES
     src/yt_command_input.c
 	    src/yt_main_error.c
     src/yt_pager.c
+    src/yt_patch.c
     src/yt_platform.c
     src/yt_presentation.c
     src/yt_random.c
@@ -141,6 +142,7 @@ target_link_libraries(yt_game PUBLIC yt_core)
 
 set(YT_RUNTIME_SOURCES
     src/yt_door.c
+    src/yt_patch_cli.c
     src/yt_input.c
     src/yt_output.c
     src/yt_session.c
@@ -213,6 +215,8 @@ endfunction()
 yt_add_utility(ytmaint src/main_ytmaint.c)
 yt_add_utility(ytconfig src/main_ytconfig.c)
 yt_add_utility(yt-init src/main_yt_init.c)
+target_sources(yt-init PRIVATE src/yt_patch_cli.c)
+target_link_libraries(yt-init PRIVATE OpenDoors::Static)
 yt_add_utility(rmt-init src/main_rmt_init.c)
 target_sources(rmt-init PRIVATE src/yt_rmt_door.c)
 target_link_libraries(rmt-init PRIVATE OpenDoors::Static)
@@ -285,7 +289,7 @@ if(BUILD_TESTING)
     target_link_libraries(test_output PRIVATE yt_game)
     add_test(NAME test_output COMMAND test_output)
     add_executable(test_input_adapter tests/test_input_adapter.c src/yt_input.c
-        src/yt_door.c)
+        src/yt_door.c src/yt_patch_cli.c)
     yt_configure_target(test_input_adapter)
     target_compile_definitions(test_input_adapter PRIVATE YT_TESTING)
     target_include_directories(test_input_adapter PRIVATE

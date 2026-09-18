@@ -2,6 +2,7 @@
 
 #include "OpenDoor.h"
 #include "qb.h"
+#include "yt_patch_cli.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -200,33 +201,13 @@ yt_door_start(struct yt_door *door, int argc, char **argv,
     struct yt_error *error)
 #endif
 {
+	struct yt_patch_selection patch_selection;
 
 	if (door == NULL) {
 		set_error(error, YT_INVALID, "door startup", "");
 		return false;
 	}
 	memset(door, 0, sizeof(*door));
-#ifdef ODPLAT_WIN32
-	copy_text(door->command_line, sizeof(door->command_line),
-	    command_line);
-#else
-	{
-		size_t used = 0;
-		int index;
-
-		for (index = 1; index < argc; ++index) {
-			int written = snprintf(door->command_line + used,
-			    sizeof(door->command_line) - used, "%s%s",
-			    index == 1 ? "" : " ", argv[index]);
-
-			if (written < 0
-			    || (size_t)written
-			    >= sizeof(door->command_line) - used)
-				break;
-			used += (size_t)written;
-		}
-	}
-#endif
 	current_door = door;
 	if (!cleanup_registered) {
 		if (atexit(yt_door_cleanup) != 0) {
@@ -241,8 +222,9 @@ yt_door_start(struct yt_door *door, int argc, char **argv,
 	od_control.od_always_clear = FALSE;
 	copy_text(od_control.od_prog_name, sizeof(od_control.od_prog_name),
 	    "Yankee Trader");
-	copy_text(od_control.od_prog_version, sizeof(od_control.od_prog_version),
-	    "3.6g");
+	copy_text(od_control.od_prog_version,
+	    sizeof(od_control.od_prog_version),
+	    yt_patch_default()->open_doors_version);
 #ifdef ODPLAT_WIN32
 	prefill_legacy_path(command_line);
 #else
@@ -250,15 +232,22 @@ yt_door_start(struct yt_door *door, int argc, char **argv,
 #endif
 	/* Must be called exactly once, and before od_init(). */
 #ifdef ODPLAT_WIN32
-	od_parse_cmd_line(command_line);
+	if (!yt_patch_parse_command_line(command_line, &patch_selection, error))
+		return false;
 #else
-	od_parse_cmd_line(argc, argv);
+	if (!yt_patch_parse_command_line(argc, argv, &patch_selection, error))
+		return false;
 #endif
+	door->patch = patch_selection.profile;
+	copy_text(od_control.od_prog_version, sizeof(od_control.od_prog_version),
+	    door->patch->open_doors_version);
 	od_control.od_maxtime = 180;
 	/* Exact mode keeps CP437 bytes and disables RA/QBBS substitutions. */
 	od_control.od_cp437_to_utf8_out = FALSE;
 	od_control.od_no_ra_codes = TRUE;
 	od_init();
+	copy_text(door->rmt_handoff_path, sizeof(door->rmt_handoff_path),
+	    od_control.info_path);
 	/* Initialization installs OpenDoors defaults after command parsing. */
 	od_control.od_always_clear = FALSE;
 	od_control.od_status_on = FALSE;

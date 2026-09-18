@@ -1240,7 +1240,13 @@ test_yt_init_pre_input_presentation(void)
 	struct yt_error error;
 
 	yt_error_clear(&error);
-	yt_initializer_layout_yt(&preparation);
+	yt_initializer_layout_yt(&preparation, yt_patch_default());
+	if (preparation.config.sector_offset != 51.0f
+	    || preparation.config.port_offset != 3055.0f
+	    || preparation.config.planet_offset != 4055.0f
+	    || preparation.config.total_records != 4155.0f)
+		return false;
+	yt_initializer_layout_yt(&preparation, yt_patch_get(YT_PATCH_36G));
 	if (preparation.config.sector_offset != 51.0f
 	    || preparation.config.port_offset != 2055.0f
 	    || preparation.config.planet_offset != 3055.0f
@@ -1267,7 +1273,8 @@ test_yt_init_pre_input_presentation(void)
 	yt_random_init(&random);
 	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	yt_error_clear(&error);
-	if (!yt_initializer_prepare_yt(&clock_source, &random, &preparation,
+	if (!yt_initializer_prepare_yt(&clock_source, &random,
+	    yt_patch_get(YT_PATCH_36G), &preparation,
 	    &error)) {
 		return false;
 	}
@@ -1297,7 +1304,8 @@ test_yt_init_pre_input_presentation(void)
 	yt_error_clear(&error);
 	return !yt_init_present_confirmation_prefix(&presenter, &error)
 	    && error.status == YT_IO_ERROR && capture.calls == 4U
-	    && !yt_initializer_prepare_yt(NULL, NULL, &preparation, &error)
+	    && !yt_initializer_prepare_yt(NULL, NULL,
+	    yt_patch_get(YT_PATCH_36G), &preparation, &error)
 	    && !yt_init_present_prepared_configuration(NULL, &presenter,
 	    &error);
 }
@@ -1394,7 +1402,8 @@ test_yt_init_presented_world(void)
 	ok = yt_init_present_confirmation_prefix(&presenter, &error)
 	    && yt_init_present_opening(&presenter, &error)
 	    && yt_initialize_begin_yt(&error)
-	    && yt_initializer_prepare_yt(&clock_source, &random, &preparation,
+	    && yt_initializer_prepare_yt(&clock_source, &random,
+	    yt_patch_get(YT_PATCH_36G), &preparation,
 	    &error)
 	    && yt_init_present_prepared_configuration(&preparation,
 	    &presenter, &error)
@@ -1439,7 +1448,7 @@ test_yt_init_presentation_before_first_record(void)
 	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	initialized = yt_initialize_begin_yt(&error)
 	    && yt_initializer_prepare_yt(&utility_fixed_clock_source, &random,
-	    &preparation, &error)
+	    yt_patch_get(YT_PATCH_36G), &preparation, &error)
 	    && yt_initialize_yt_prepared_bound(NULL, &preparation,
 	    "YTSCORE.ASC", &utility_fixed_clock_source, &random,
 	    &presenter, &error);
@@ -1473,7 +1482,7 @@ test_yt_init_presentation_after_config_record(void)
 	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	initialized = yt_initialize_begin_yt(&error)
 	    && yt_initializer_prepare_yt(&utility_fixed_clock_source, &random,
-	    &preparation, &error)
+	    yt_patch_get(YT_PATCH_36G), &preparation, &error)
 	    && yt_initialize_yt_prepared_bound(NULL, &preparation,
 	    "YTSCORE.ASC", &utility_fixed_clock_source, &random,
 	    &presenter, &error);
@@ -1588,6 +1597,7 @@ initialize_unprepared_yt(const char *scoreboard, const struct yt_clock *clock,
 		.family = YT_INITIALIZER_YT,
 		.clock = clock,
 		.scoreboard = scoreboard,
+		.sector_count = 2004U,
 		.yt_presenter = &discard_yt_presenter,
 	};
 
@@ -1941,7 +1951,8 @@ test_yt_clock_boundaries(void)
 	yt_random_init(&random);
 	yt_test_random_use_provider(&random, utility_lcg_fill, &lcg);
 	ok = yt_initialize_begin_yt(&error)
-	    && yt_initializer_prepare_yt(&clock, &random, &preparation, &error)
+	    && yt_initializer_prepare_yt(&clock, &random,
+	    yt_patch_get(YT_PATCH_36G), &preparation, &error)
 	    && yt_initialize_yt_prepared_bound(NULL, &preparation,
 	    "YTSCORE.ASC", &clock, &random,
 	    &discard_yt_presenter, &error);

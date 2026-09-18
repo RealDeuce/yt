@@ -104,12 +104,12 @@ static bool
 genesis_handoff(struct yt_session *session, struct yt_error *error)
 {
 	struct yt_text_output output;
-	uint8_t line[sizeof(session->door->command_line) + 2U];
+	uint8_t line[sizeof(session->door->rmt_handoff_path) + 2U];
 	size_t line_length;
 	bool result;
 
-	line_length = strlen(session->door->command_line) + 2U;
-	memcpy(line, session->door->command_line, line_length - 2U);
+	line_length = strlen(session->door->rmt_handoff_path) + 2U;
+	memcpy(line, session->door->rmt_handoff_path, line_length - 2U);
 	line[line_length - 2U] = '\r';
 	line[line_length - 1U] = '\n';
 	yt_text_output_init(&output);

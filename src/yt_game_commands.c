@@ -76,9 +76,9 @@ yt_hostile_menu_dispatch(const char *response)
 }
 
 enum yt_main_shell_route
-yt_main_shell_dispatch(const char *response)
+yt_main_shell_dispatch(const char *response, char missile_key)
 {
-	static const char dispatch[] = "W)+ABCFLMPQTD$GN";
+	char dispatch[] = "W)+ABCFLMPQTD$GN";
 	static const enum yt_main_shell_route routes[] = {
 		YT_MAIN_SHELL_WARP,
 		YT_MAIN_SHELL_MISSILE,
@@ -98,6 +98,8 @@ yt_main_shell_dispatch(const char *response)
 		YT_MAIN_SHELL_RENAME_PORT,
 	};
 	const char *position;
+
+	dispatch[1] = missile_key;
 
 	if (response == NULL || response[0] == '\0')
 		return YT_MAIN_SHELL_DISPLAY;
@@ -175,4 +177,3 @@ yt_computer_newspaper_select(const char *response)
 		return YT_COMPUTER_NEWSPAPER_YESTERDAY;
 	return YT_COMPUTER_NEWSPAPER_NONE;
 }
-

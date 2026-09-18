@@ -364,7 +364,7 @@ test_hostile_attack_tail_run(struct test_hostile_attack_tail_state *state,
 			return false;
 		state->ship_fighters = (double)state->current.fighters;
 		bonus = yt_xannor_attack_bonus(state->defender_loss,
-		    state->current.turns, state->turns_per_day);
+		    state->current.turns, state->turns_per_day, 256000.0);
 		if (bonus >= 1.0f) {
 			state->current.turns = (
 			    state->current.turns + bonus);

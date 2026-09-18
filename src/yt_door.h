@@ -3,6 +3,7 @@
 
 #include "OpenDoor.h"
 #include "yt_game.h"
+#include "yt_patch.h"
 
 struct yt_identity {
 	char system[256];
@@ -18,7 +19,8 @@ struct yt_identity {
 struct yt_door {
 	struct yt_identity identity;
 	struct yt_game game;
-	char command_line[1024];
+	const struct yt_patch_profile *patch;
+	char rmt_handoff_path[1024];
 	bool game_open;
 	bool open_doors_initialized;
 };

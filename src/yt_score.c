@@ -162,7 +162,7 @@ score_read_sector(struct yt_game *game, int sector_record_offset,
 }
 
 static double
-base_score(const struct yt_player *player)
+base_score(const struct yt_player *player, float plasma_score_weight)
 {
 	float score = 0;
 
@@ -181,7 +181,7 @@ base_score(const struct yt_player *player)
 	score = (score + (player->mines * 2500.0f));
 	score = (score + player->credits);
 	return (double)score
-	    + (double)(player->plasma * 16000000.0f)
+	    + (double)(player->plasma * plasma_score_weight)
 	    + (player->danger_scanner != 0 ? 250000.0 : 0.0);
 }
 
@@ -226,6 +226,7 @@ sort_teams(struct yt_score_team *teams, size_t count)
 bool
 yt_scoreboard_prepare(struct yt_scoreboard *scoreboard, struct yt_game *game,
     int sector_record_offset, int port_record_offset,
+    float plasma_score_weight,
     struct yt_error *error)
 {
 	int index;
@@ -237,6 +238,7 @@ yt_scoreboard_prepare(struct yt_scoreboard *scoreboard, struct yt_game *game,
 	scoreboard->sector_record_offset = sector_record_offset;
 	scoreboard->player_count = sector_record_offset - 1;
 	scoreboard->sector_count = port_record_offset - sector_record_offset;
+	scoreboard->plasma_score_weight = plasma_score_weight;
 	if (scoreboard->player_count < 0
 	    || scoreboard->player_count > YT_DEFAULT_PLAYER_COUNT) {
 		if (error != NULL)
@@ -266,7 +268,8 @@ yt_scoreboard_load_players(struct yt_scoreboard *scoreboard,
 			return false;
 		player->occupied = player->player.name_length != 0;
 		if (player->occupied)
-			player->score = base_score(&player->player);
+			player->score = base_score(&player->player,
+			    scoreboard->plasma_score_weight);
 	}
 	return true;
 }
@@ -481,7 +484,8 @@ yt_score_generate(struct yt_game *game, struct yt_error *error)
 	struct yt_scoreboard scoreboard;
 
 	if (!yt_scoreboard_prepare(&scoreboard, game,
-	    (int)game->config.sector_offset, (int)game->config.port_offset, error))
+	    (int)game->config.sector_offset, (int)game->config.port_offset,
+	    16000000.0f, error))
 		return false;
 	if (!yt_scoreboard_load_players(&scoreboard, error))
 		return false;

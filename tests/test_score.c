@@ -12638,6 +12638,151 @@ check_clearance_model(void)
 }
 
 static bool
+check_patch_profiles(void)
+{
+	static const char *const names[] = {
+		"3.6", "3.6A", "3.6C", "3.6D", "3.6E", "3.6F", "3.6G"
+	};
+	static const double divisors[] = {
+		200.0, 200.0, 8000.0, 8000.0,
+		-1.7013858731203996e38, -1.7013858731203996e38, 256000.0
+	};
+	static const double earth_prices[] = {
+		1000000.0, 4096000000.0, 4096000000.0, 4096000000.0,
+		1000000000.0, 1000000000.0, 1000000000.0
+	};
+	static const float plasma_weights[] = {
+		1000000.0f, 1000000.0f, 16000000.0f, 1000000.0f,
+		1000000.0f, 16000000.0f, 16000000.0f
+	};
+	static const float cloak_costs[] = {
+		1000.0f, 1000.0f, 1000.0f, 1000.0f,
+		8000.0f, 1000.0f, 1000.0f
+	};
+	static const uint32_t scanner_costs[] = {
+		250000U, 250000U, 250000U, 250000U,
+		500000U, 500000U, 500000U
+	};
+	static const float hold_coefficients[] = {
+		500.0f, 500.0f, 500.0f, 500.0f, 250.0f, 250.0f, 250.0f
+	};
+	static const float fighter_coefficients[] = {
+		100.0f, 100.0f, 100.0f, 100.0f, 50.0f, 50.0f, 50.0f
+	};
+	static const float anti_cloak_costs[] = {
+		500000.0f, 80000000.0f, 1000000000.0f, 1000000000.0f,
+		1000000000.0f, 1000000000.0f, 1000000000.0f
+	};
+	static const float ground_coefficients[] = {
+		750.0f, 750.0f, 750.0f, 750.0f, 200.5f, 200.5f, 200.5f
+	};
+	static const uint32_t spy_costs[] = {
+		333000U, 333000U, 333000U, 333000U,
+		1000000000U, 1000000000U, 1000000000U
+	};
+	static const char missile_keys[] = {'!', '!', '!', ')', ')', ')', ')'};
+	static const char credit_keys[] = {'$', '$', '$', '$', '!', '!', '!'};
+	static const uint8_t negative_raw[8] = {
+		0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff
+	};
+	static const uint8_t ground_forces[] = "[7] Ground Forces";
+	static const uint8_t malformed_ground_forces[] =
+	    "[7] Ground Forces\xd4";
+	static const uint8_t anti_cloak_activation[] =
+	    "Anti-Cloaking device activated!";
+	static const uint8_t malformed_anti_cloak_activation[] =
+	    "ti-Cloaking device activated!\xd4" "D";
+	static const uint8_t anti_cloak_waves[] =
+	    "Waves of electromagnetic disruption flood the galaxy...";
+	static const uint8_t malformed_anti_cloak_waves[] =
+	    "Waves of electromagnetic disruption flood the galaxy..."
+	    "\xd4\x0e\x00\x86\xc1" " is uncl";
+	size_t index;
+	uint32_t price[4];
+	float discount[4] = {0};
+
+	if (yt_patch_default() != yt_patch_get(YT_PATCH_36)
+	    || yt_patch_find("3.6g") != yt_patch_get(YT_PATCH_36G)
+	    || yt_patch_find("3.6B2") != NULL || yt_patch_find(NULL) != NULL)
+		return false;
+	for (index = 0U; index < YT_PATCH_LEVEL_COUNT; ++index) {
+		const struct yt_patch_profile *patch =
+		    yt_patch_get((enum yt_patch_level)index);
+		const uint8_t *ground = index == YT_PATCH_36A
+		    ? malformed_ground_forces : ground_forces;
+		size_t ground_length = index == YT_PATCH_36A
+		    ? sizeof(malformed_ground_forces) - 1U
+		    : sizeof(ground_forces) - 1U;
+		const uint8_t *activation = index == YT_PATCH_36
+		    ? anti_cloak_activation : malformed_anti_cloak_activation;
+		size_t activation_length = index == YT_PATCH_36
+		    ? sizeof(anti_cloak_activation) - 1U
+		    : sizeof(malformed_anti_cloak_activation) - 1U;
+		const uint8_t *waves = index == YT_PATCH_36
+		    ? anti_cloak_waves : malformed_anti_cloak_waves;
+		size_t waves_length = index == YT_PATCH_36
+		    ? sizeof(anti_cloak_waves) - 1U
+		    : sizeof(malformed_anti_cloak_waves) - 1U;
+
+		if (patch == NULL || strcmp(patch->name, names[index]) != 0
+		    || patch->xannor_turn_divisor != divisors[index]
+		    || patch->earth_purchase_price != earth_prices[index]
+		    || patch->plasma_score_weight != plasma_weights[index]
+		    || patch->xannor_headquarters_award != plasma_weights[index]
+		    || patch->cloak_energy_cost != cloak_costs[index]
+		    || patch->danger_scanner_cost != scanner_costs[index]
+		    || patch->cargo_hold_coefficient != hold_coefficients[index]
+		    || patch->fighter_coefficient != fighter_coefficients[index]
+		    || patch->anti_cloak_cost != anti_cloak_costs[index]
+		    || patch->ground_force_coefficient != ground_coefficients[index]
+		    || patch->spy_cost != spy_costs[index]
+		    || patch->missile_key != missile_keys[index]
+		    || patch->computer_credit_key != credit_keys[index]
+		    || patch->initializer_sector_count
+		    != (index == YT_PATCH_36G ? 2004U : 3004U)
+		    || patch->ground_forces_label_length != ground_length
+		    || memcmp(patch->ground_forces_label, ground,
+		    ground_length) != 0
+		    || patch->anti_cloak_activation_length != activation_length
+		    || memcmp(patch->anti_cloak_activation, activation,
+		    activation_length) != 0
+		    || patch->anti_cloak_waves_length != waves_length
+		    || memcmp(patch->anti_cloak_waves, waves,
+		    waves_length) != 0)
+			return false;
+	}
+	if (memcmp(yt_patch_get(YT_PATCH_36E)->xannor_turn_divisor_raw,
+	    negative_raw, sizeof(negative_raw)) != 0
+	    || memcmp(yt_patch_get(YT_PATCH_36F)->xannor_turn_divisor_raw,
+	    negative_raw, sizeof(negative_raw)) != 0)
+		return false;
+	if (strcmp(yt_patch_get(YT_PATCH_36)->registration_author,
+	    "By Alan Davenport") != 0
+	    || strcmp(yt_patch_get(YT_PATCH_36A)->registration_description,
+	    "Copyright (c) 1989,1990,1991,1992,1993,1994 Alan Davenport") != 0
+	    || strcmp(yt_patch_get(YT_PATCH_36A)->registration_contact,
+	    "BBS Number 1-717-686-3037 -=- Fidonet 1:13/75") != 0)
+		return false;
+	if (!yt_patch_sector_count_matches(yt_patch_get(YT_PATCH_36), 3004U)
+	    || yt_patch_sector_count_matches(yt_patch_get(YT_PATCH_36), 2004U)
+	    || !yt_patch_sector_count_matches(yt_patch_get(YT_PATCH_36G), 2004U)
+	    || yt_patch_sector_count_matches(yt_patch_get(YT_PATCH_36G), 3004U))
+		return false;
+	if (yt_main_shell_dispatch("!", '!') != YT_MAIN_SHELL_MISSILE
+	    || yt_main_shell_dispatch(")", '!') != YT_MAIN_SHELL_INVALID
+	    || yt_main_shell_dispatch(")", ')') != YT_MAIN_SHELL_MISSILE
+	    || yt_main_shell_dispatch("!", ')') != YT_MAIN_SHELL_INVALID)
+		return false;
+	yt_earth_prices(discount, yt_patch_get(YT_PATCH_36), price);
+	return price[0] == 500U && price[1] == 100U
+	    && price[2] == 100U && price[3] == 750U
+	    && yt_earth_cloak_points(0.5f, 100.0f) == 50U
+	    && yt_xannor_attack_bonus(1.0, 1.0f, 100.0f,
+	    yt_patch_xannor_turn_divisor(
+	    yt_patch_get(YT_PATCH_36E))) == -1.0f;
+}
+
+static bool
 check_earth_report_model(void)
 {
 	struct yt_player player;
@@ -12645,9 +12790,9 @@ check_earth_report_model(void)
 	const char ticket[6] = {'1', '1', '1', '1', '1', '1'};
 	bool matched[6];
 	float discount[4] = {0};
-	uint8_t price[4];
+	uint32_t price[4];
 
-	yt_earth_prices(discount, price);
+	yt_earth_prices(discount, yt_patch_get(YT_PATCH_36G), price);
 	if (price[0] != 250U || price[1] != 50U
 	    || price[2] != 50U || price[3] != 200U)
 		return false;
@@ -12655,7 +12800,7 @@ check_earth_report_model(void)
 	discount[1] = 0.10000000149011612f;
 	discount[2] = 0.10000000149011612f;
 	discount[3] = 0.10000000149011612f;
-	yt_earth_prices(discount, price);
+	yt_earth_prices(discount, yt_patch_get(YT_PATCH_36G), price);
 	if (price[0] != 225U || price[1] != 45U
 	    || price[2] != 45U || price[3] != 180U)
 		return false;
@@ -12663,7 +12808,7 @@ check_earth_report_model(void)
 	discount[1] = 0.25f;
 	discount[2] = 0.25f;
 	discount[3] = 0.5f;
-	yt_earth_prices(discount, price);
+	yt_earth_prices(discount, yt_patch_get(YT_PATCH_36G), price);
 	if (price[0] != 125U || price[1] != 37U
 	    || price[2] != 37U || price[3] != 100U)
 		return false;
@@ -12671,7 +12816,7 @@ check_earth_report_model(void)
 	discount[1] = 0.9800000190734863f;
 	discount[2] = 0.800000011920929f;
 	discount[3] = 0.8999999761581421f;
-	yt_earth_prices(discount, price);
+	yt_earth_prices(discount, yt_patch_get(YT_PATCH_36G), price);
 	if (price[0] != 12U || price[1] != 1U
 	    || price[2] != 9U || price[3] != 20U)
 		return false;
@@ -12689,10 +12834,10 @@ check_earth_report_model(void)
 	    || yt_earth_receipt_amount(3, 2, 250.0f) != 250.0f
 	    || yt_earth_receipt_amount(2, 2, 250.0f) != 2.0f
 	    || yt_earth_receipt_amount(2, 2, 50.0f) != 0.0f
-	    || yt_earth_cloak_points(0.5f) != 25U
-	    || yt_earth_cloak_default(25U, 12345.0f) != 12U
-	    || yt_earth_cloak_default(25U, 25000.0f) != 25U
-	    || yt_earth_cloak_overlay(25U, 1U)
+	    || yt_earth_cloak_points(0.5f, 50.0f) != 25U
+	    || yt_earth_cloak_default(25U, 12345.0f, 1000.0f) != 12U
+	    || yt_earth_cloak_default(25U, 25000.0f, 1000.0f) != 25U
+	    || yt_earth_cloak_overlay(25U, 1U, 50.0f)
 	    != 0.5199999809265137f)
 		return false;
 	memset(&player, 0, sizeof(player));
@@ -12869,34 +13014,34 @@ check_hostile_menu_front(void)
 	    || yt_hostile_menu_dispatch("A ") != YT_HOSTILE_MENU_INVALID
 	    || yt_hostile_menu_dispatch("SI") != YT_HOSTILE_MENU_INVALID)
 		return false;
-	if (yt_main_shell_dispatch(NULL) != YT_MAIN_SHELL_DISPLAY
-	    || yt_main_shell_dispatch("") != YT_MAIN_SHELL_DISPLAY
-	    || yt_main_shell_dispatch("X") != YT_MAIN_SHELL_SOUND
-	    || yt_main_shell_dispatch("XJUNK") != YT_MAIN_SHELL_INVALID
-	    || yt_main_shell_dispatch("S") != YT_MAIN_SHELL_SENSORS
-	    || yt_main_shell_dispatch("SJUNK") != YT_MAIN_SHELL_INVALID
-	    || yt_main_shell_dispatch("WJUNK") != YT_MAIN_SHELL_WARP
-	    || yt_main_shell_dispatch(")") != YT_MAIN_SHELL_MISSILE
-	    || yt_main_shell_dispatch("+") != YT_MAIN_SHELL_PLASMA
-	    || yt_main_shell_dispatch("AJUNK") != YT_MAIN_SHELL_ATTACK
-	    || yt_main_shell_dispatch("BJUNK") != YT_MAIN_SHELL_BUY_PORT
-	    || yt_main_shell_dispatch("CJUNK") != YT_MAIN_SHELL_COMPUTER
-	    || yt_main_shell_dispatch("FJUNK") != YT_MAIN_SHELL_FIGHTERS
-	    || yt_main_shell_dispatch("LJUNK") != YT_MAIN_SHELL_LAND
-	    || yt_main_shell_dispatch("MJUNK") != YT_MAIN_SHELL_MOVE
-	    || yt_main_shell_dispatch("PJUNK") != YT_MAIN_SHELL_TRADE
-	    || yt_main_shell_dispatch("QJUNK") != YT_MAIN_SHELL_QUIT
-	    || yt_main_shell_dispatch("TJUNK") != YT_MAIN_SHELL_TEAM
-	    || yt_main_shell_dispatch("DJUNK") != YT_MAIN_SHELL_MINES
-	    || yt_main_shell_dispatch("$JUNK") != YT_MAIN_SHELL_COLLECT
-	    || yt_main_shell_dispatch("GJUNK") != YT_MAIN_SHELL_GENESIS
-	    || yt_main_shell_dispatch("NJUNK") != YT_MAIN_SHELL_RENAME_PORT
-	    || yt_main_shell_dispatch("VJUNK") != YT_MAIN_SHELL_VERSION
-	    || yt_main_shell_dispatch("IJUNK") != YT_MAIN_SHELL_INFO
-	    || yt_main_shell_dispatch("ZJUNK") != YT_MAIN_SHELL_INSTRUCTIONS
-	    || yt_main_shell_dispatch("?JUNK") != YT_MAIN_SHELL_HELP
-	    || yt_main_shell_dispatch("!") != YT_MAIN_SHELL_INVALID
-	    || yt_main_shell_dispatch("_") != YT_MAIN_SHELL_INVALID)
+	if (yt_main_shell_dispatch(NULL, ')') != YT_MAIN_SHELL_DISPLAY
+	    || yt_main_shell_dispatch("", ')') != YT_MAIN_SHELL_DISPLAY
+	    || yt_main_shell_dispatch("X", ')') != YT_MAIN_SHELL_SOUND
+	    || yt_main_shell_dispatch("XJUNK", ')') != YT_MAIN_SHELL_INVALID
+	    || yt_main_shell_dispatch("S", ')') != YT_MAIN_SHELL_SENSORS
+	    || yt_main_shell_dispatch("SJUNK", ')') != YT_MAIN_SHELL_INVALID
+	    || yt_main_shell_dispatch("WJUNK", ')') != YT_MAIN_SHELL_WARP
+	    || yt_main_shell_dispatch(")", ')') != YT_MAIN_SHELL_MISSILE
+	    || yt_main_shell_dispatch("+", ')') != YT_MAIN_SHELL_PLASMA
+	    || yt_main_shell_dispatch("AJUNK", ')') != YT_MAIN_SHELL_ATTACK
+	    || yt_main_shell_dispatch("BJUNK", ')') != YT_MAIN_SHELL_BUY_PORT
+	    || yt_main_shell_dispatch("CJUNK", ')') != YT_MAIN_SHELL_COMPUTER
+	    || yt_main_shell_dispatch("FJUNK", ')') != YT_MAIN_SHELL_FIGHTERS
+	    || yt_main_shell_dispatch("LJUNK", ')') != YT_MAIN_SHELL_LAND
+	    || yt_main_shell_dispatch("MJUNK", ')') != YT_MAIN_SHELL_MOVE
+	    || yt_main_shell_dispatch("PJUNK", ')') != YT_MAIN_SHELL_TRADE
+	    || yt_main_shell_dispatch("QJUNK", ')') != YT_MAIN_SHELL_QUIT
+	    || yt_main_shell_dispatch("TJUNK", ')') != YT_MAIN_SHELL_TEAM
+	    || yt_main_shell_dispatch("DJUNK", ')') != YT_MAIN_SHELL_MINES
+	    || yt_main_shell_dispatch("$JUNK", ')') != YT_MAIN_SHELL_COLLECT
+	    || yt_main_shell_dispatch("GJUNK", ')') != YT_MAIN_SHELL_GENESIS
+	    || yt_main_shell_dispatch("NJUNK", ')') != YT_MAIN_SHELL_RENAME_PORT
+	    || yt_main_shell_dispatch("VJUNK", ')') != YT_MAIN_SHELL_VERSION
+	    || yt_main_shell_dispatch("IJUNK", ')') != YT_MAIN_SHELL_INFO
+	    || yt_main_shell_dispatch("ZJUNK", ')') != YT_MAIN_SHELL_INSTRUCTIONS
+	    || yt_main_shell_dispatch("?JUNK", ')') != YT_MAIN_SHELL_HELP
+	    || yt_main_shell_dispatch("!", ')') != YT_MAIN_SHELL_INVALID
+	    || yt_main_shell_dispatch("_", ')') != YT_MAIN_SHELL_INVALID)
 		return false;
 	if (yt_hostile_attack_admit(0.0f, 99.0f)
 	    != YT_HOSTILE_ATTACK_NO_FIGHTERS
@@ -12929,10 +13074,14 @@ check_hostile_menu_front(void)
 	    != YT_HOSTILE_SURRENDER_XANNOR
 	    || yt_hostile_surrender_route(-2)
 	    != YT_HOSTILE_SURRENDER_MERCENARY
-	    || yt_xannor_attack_bonus(512000.0, 98.0f, 100.0f) != 2.0f
-	    || yt_xannor_attack_bonus(1280000.0, 99.0f, 100.0f) != 1.0f
-	    || yt_xannor_attack_bonus(1280000.0, 100.0f, 100.0f) != 0.0f
-	    || yt_xannor_attack_bonus(255999.0, 0.0f, 100.0f) != 0.0f)
+	    || yt_xannor_attack_bonus(512000.0, 98.0f, 100.0f,
+	    256000.0) != 2.0f
+	    || yt_xannor_attack_bonus(1280000.0, 99.0f, 100.0f,
+	    256000.0) != 1.0f
+	    || yt_xannor_attack_bonus(1280000.0, 100.0f, 100.0f,
+	    256000.0) != 0.0f
+	    || yt_xannor_attack_bonus(255999.0, 0.0f, 100.0f,
+	    256000.0) != 0.0f)
 		return false;
 	{
 		double fighters = 101.0;
@@ -14807,6 +14956,8 @@ main(void)
 		return fail("planet Productivity overlay arithmetic differs");
 	if (!check_clearance_model())
 		return fail("clearance-sale predicate arithmetic differs");
+	if (!check_patch_profiles())
+		return fail("patch profile matrix differs");
 	if (!check_earth_report_model())
 		return fail("Earth report arithmetic or selector differs");
 	if (!check_port_owner_row_model())
@@ -15162,7 +15313,8 @@ main(void)
 		goto close;
 	game.config.sector_offset = 99.0f;
 	game.config.port_offset = 100.0f;
-	if (!yt_scoreboard_prepare(&scoreboard, &game, 3, 5, &error)
+	if (!yt_scoreboard_prepare(&scoreboard, &game, 3, 5, 16000000.0f,
+	    &error)
 	    || !yt_scoreboard_load_players(&scoreboard, &error)
 	    || !yt_scoreboard_score_sectors(&scoreboard, &error))
 		goto close;

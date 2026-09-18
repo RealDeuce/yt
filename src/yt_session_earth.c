@@ -135,7 +135,8 @@ yt_session_clearance(struct yt_session *session, bool create,
 }
 
 static bool
-earth_report_row(struct yt_session *session, const char *label,
+earth_report_row(struct yt_session *session, const uint8_t *label,
+    size_t label_length,
     uint32_t price, bool lottery_price, struct yt_error *error)
 {
 	char price_text[64];
@@ -144,8 +145,7 @@ earth_report_row(struct yt_session *session, const char *label,
 	char tail[96];
 	double affordable;
 
-	if (!session_fixed_width_bytes(session, (const uint8_t *)label,
-	    strlen(label), 22U,
+	if (!session_fixed_width_bytes(session, label, label_length, 22U,
 	    "Earth report item field", error))
 		return false;
 	if (lottery_price)
@@ -176,7 +176,7 @@ earth_report_row(struct yt_session *session, const char *label,
 
 bool
 session_earth_report(struct yt_session *session, struct yt_port *earth,
-    uint8_t price[4], struct yt_error *error)
+    uint32_t price[4], struct yt_error *error)
 {
 	static const uint8_t separator[] =
 	    "----------------------*--------*------------";
@@ -219,7 +219,7 @@ session_earth_report(struct yt_session *session, struct yt_port *earth,
 	    error))
 		return false;
 	memcpy(discount, session->earth.clearance_discounts, sizeof(discount));
-	yt_earth_prices(discount, price);
+	yt_earth_prices(discount, session_patch(session), price);
 	if (!session->earth.report_seen) {
 		if (!yt_session_clearance(session, false, error))
 			return false;
@@ -239,11 +239,13 @@ session_earth_report(struct yt_session *session, struct yt_port *earth,
 	    sizeof(separator) - 1U))
 		return false;
 	for (index = 0; index < 9U; ++index) {
+		const uint8_t *label = (const uint8_t *)item_label[index];
+		size_t label_length = strlen(item_label[index]);
 		uint32_t item_price;
 		bool lottery_price = index == 3U;
 
 		if (index == 0U)
-			item_price = 1000U;
+			item_price = (uint32_t)session_patch(session)->cloak_energy_cost;
 		else if (index == 1U)
 			item_price = price[0];
 		else if (index == 2U)
@@ -251,14 +253,21 @@ session_earth_report(struct yt_session *session, struct yt_port *earth,
 		else if (index == 3U)
 			item_price = 5U;
 		else if (index == 4U)
-			item_price = 500000U;
+			item_price = session_patch(session)->danger_scanner_cost;
 		else if (index == 5U || index == 8U)
-			item_price = 1000000000U;
+			item_price = index == 5U
+			    ? (uint32_t)session_patch(session)->anti_cloak_cost
+			    : session_patch(session)->spy_cost;
 		else if (index == 6U)
 			item_price = price[3];
 		else
 			item_price = price[2];
-		if (!earth_report_row(session, item_label[index], item_price,
+		if (index == 6U) {
+			label = session_patch(session)->ground_forces_label;
+			label_length =
+			    session_patch(session)->ground_forces_label_length;
+		}
+		if (!earth_report_row(session, label, label_length, item_price,
 		    lottery_price, error))
 			return false;
 	}

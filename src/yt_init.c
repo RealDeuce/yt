@@ -9,7 +9,6 @@
 #include <string.h>
 
 #define YT_INIT_PLAYERS 50
-#define YT_INIT_SECTORS 2004
 #define YT_INIT_PORTS 1000
 #define YT_INIT_PLANETS 100
 
@@ -104,14 +103,17 @@ yt_initializer_confirm_response(const char *response)
 }
 
 void
-yt_initializer_layout_yt(struct yt_initializer_preparation *preparation)
+yt_initializer_layout_yt(struct yt_initializer_preparation *preparation,
+    const struct yt_patch_profile *patch)
 {
 	if (preparation == NULL)
 		return;
+	if (patch == NULL)
+		patch = yt_patch_default();
 	memset(preparation, 0, sizeof(*preparation));
 	preparation->config.sector_offset = YT_INIT_PLAYERS + 1;
 	preparation->config.port_offset = preparation->config.sector_offset
-	    + YT_INIT_SECTORS;
+	    + patch->initializer_sector_count;
 	preparation->config.planet_offset = preparation->config.port_offset
 	    + YT_INIT_PORTS;
 	preparation->config.total_records = preparation->config.planet_offset
@@ -121,6 +123,7 @@ yt_initializer_layout_yt(struct yt_initializer_preparation *preparation)
 bool
 yt_initializer_prepare_yt(const struct yt_clock *clock,
     struct yt_random *random,
+    const struct yt_patch_profile *patch,
     struct yt_initializer_preparation *preparation, struct yt_error *error)
 {
 	struct yt_clock_value epoch_date;
@@ -131,7 +134,7 @@ yt_initializer_prepare_yt(const struct yt_clock *clock,
 		set_error(error, YT_INVALID, "YT-INIT preparation", "");
 		return false;
 	}
-	yt_initializer_layout_yt(preparation);
+	yt_initializer_layout_yt(preparation, patch);
 	if (!yt_clock_read(clock, &epoch_date, error))
 		return false;
 	if (!yt_clock_read(clock, &maintenance_date, error))
@@ -155,7 +158,8 @@ yt_initializer_prepare_yt(const struct yt_clock *clock,
 	preparation->config.last_maintenance =
 	    (uint16_t)(preparation->today - 1);
 	preparation->config.headquarters = (float)((int)floorf((sample *
-	    (float)(YT_INIT_SECTORS - 7))) + 1);
+	    (float)((int)preparation->config.port_offset
+	    - (int)preparation->config.sector_offset - 7))) + 1);
 	return true;
 }
 
@@ -771,7 +775,11 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			config.epoch_year = (uint8_t)(current.year % 100);
 			config.turns_per_day = 500.0f;
 			config.sector_offset = YT_INIT_PLAYERS + 1;
-			config.port_offset = config.sector_offset + YT_INIT_SECTORS;
+			world.sectors = options->sector_count != 0U
+			    ? (int)options->sector_count
+			    : (int)yt_patch_default()->initializer_sector_count;
+			config.port_offset = (uint16_t)(
+			    (int)config.sector_offset + world.sectors);
 			config.planet_offset = config.port_offset + YT_INIT_PORTS;
 			config.initial_fighters = 25.0f;
 			config.initial_credits = 1005.0f;
@@ -784,7 +792,6 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			config.maximum_holds = 1000.0f;
 			config.marker = 6324U;
 			config.maximum_planets = 0U;
-			world.sectors = YT_INIT_SECTORS;
 			world.ports = YT_INIT_PORTS;
 		}
 		if (world.sectors < 7 || world.ports < 4) {

@@ -4,6 +4,7 @@
 #include "qb.h"
 #include "yt_config.h"
 #include "yt_player_cache.h"
+#include "yt_patch.h"
 #include "yt_random.h"
 
 struct yt_game;
@@ -340,7 +341,8 @@ bool yt_port_owner_compose(enum yt_port_owner_kind kind, float treasury,
 bool yt_hostile_menu_row(double ship_fighters, double deployed_fighters,
     uint8_t *row, size_t capacity, size_t *length);
 enum yt_hostile_menu_route yt_hostile_menu_dispatch(const char *response);
-enum yt_main_shell_route yt_main_shell_dispatch(const char *response);
+enum yt_main_shell_route yt_main_shell_dispatch(const char *response,
+    char missile_key);
 bool yt_main_prompt_row(const uint8_t *time_text, size_t time_text_length,
 	uint8_t *row, size_t capacity, size_t *length);
 bool yt_computer_prompt_row(const uint8_t *time_text,
@@ -364,7 +366,7 @@ bool yt_xannor_attack_reward_rows(const uint8_t *name, size_t name_length,
     uint8_t *display, size_t display_capacity, size_t *display_length,
     uint8_t *news, size_t news_capacity, size_t *news_length);
 float yt_xannor_attack_bonus(double defenders_destroyed, float turns,
-    float turns_per_day);
+    float turns_per_day, double divisor);
 bool yt_bribe_ordinary_forces(int owner, double defenders,
     double ship_fighters, float draw);
 bool yt_bribe_mercenary_forces(double defenders, double ship_fighters,
@@ -654,14 +656,16 @@ bool yt_clearance_candidate_needed(size_t item, float trigger_draw,
 bool yt_clearance_normalize(size_t item, float *discount);
 uint8_t yt_clearance_percentage(float discount);
 
-void yt_earth_prices(const float discount[4], uint8_t price[4]);
+void yt_earth_prices(const float discount[4],
+    const struct yt_patch_profile *patch, uint32_t price[4]);
 double yt_earth_affordable(float credits, uint32_t price);
 int yt_earth_selector_position(const char *command);
 float yt_earth_purchase_quantity(double value);
 float yt_earth_receipt_amount(int owner, int buyer_record, float cost);
-uint8_t yt_earth_cloak_points(float cloak);
-uint8_t yt_earth_cloak_default(uint8_t deficit, float credits);
-float yt_earth_cloak_overlay(uint8_t points, uint8_t quantity);
+uint8_t yt_earth_cloak_points(float cloak, float scale);
+uint8_t yt_earth_cloak_default(uint8_t deficit, float credits,
+    float unit_cost);
+float yt_earth_cloak_overlay(uint8_t points, uint8_t quantity, float scale);
 void yt_earth_supply_overlay(struct yt_player *player, int choice,
     float quantity);
 int yt_lottery_match_count(const int winning[6], const char ticket[6],

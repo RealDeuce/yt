@@ -1,5 +1,6 @@
 #include "yt_cli.h"
 #include "yt_init.h"
+#include "yt_patch_cli.h"
 #include "yt_platform.h"
 
 #include <stdio.h>
@@ -84,6 +85,7 @@ main(int argc, char **argv)
 	struct yt_random random;
 	struct yt_initializer_preparation preparation;
 	struct yt_database database = {0};
+	struct yt_patch_selection patch_selection;
 	struct console_output console = {stdout, 0U};
 	const struct yt_init_presenter presenter = {
 	    .context = &console,
@@ -95,10 +97,21 @@ main(int argc, char **argv)
 	char maintenance[1024];
 	char *maintenance_argv[2];
 
-	(void)argc;
 	yt_error_clear(&error);
+	(void)snprintf(od_control.od_prog_name, sizeof(od_control.od_prog_name),
+	    "Yankee Trader Initialization");
+	(void)snprintf(od_control.od_prog_version,
+	    sizeof(od_control.od_prog_version), "%s",
+	    yt_patch_default()->open_doors_version);
+	if (!yt_patch_parse_command_line(argc, argv, &patch_selection, &error)) {
+		yt_cli_error("YT-INIT", &error);
+		return EXIT_FAILURE;
+	}
+	(void)snprintf(od_control.od_prog_version,
+	    sizeof(od_control.od_prog_version), "%s",
+	    patch_selection.profile->open_doors_version);
 	yt_random_init(&random);
-	yt_initializer_layout_yt(&preparation);
+	yt_initializer_layout_yt(&preparation, patch_selection.profile);
 	if (!yt_init_present_confirmation_prefix(&presenter, &error)) {
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;
@@ -119,7 +132,8 @@ main(int argc, char **argv)
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;
 	}
-	if (!yt_initializer_prepare_yt(NULL, &random, &preparation, &error)) {
+	if (!yt_initializer_prepare_yt(NULL, &random, patch_selection.profile,
+	    &preparation, &error)) {
 		yt_database_close(&database);
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;

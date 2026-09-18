@@ -124,6 +124,15 @@ struct yt_session {
 	struct yt_team_cache team_cache;
 };
 
+static inline const struct yt_patch_profile *
+session_patch(const struct yt_session *session)
+{
+	if (session != NULL && session->door != NULL
+	    && session->door->patch != NULL)
+		return session->door->patch;
+	return yt_patch_default();
+}
+
 int session_record(const struct yt_session *session);
 bool session_current_date_serial(struct yt_session *session, int *serial,
     int *adjusted_year, struct yt_error *error);
@@ -322,7 +331,7 @@ bool session_port_owner_row_capture(struct yt_session *session,
     size_t captured_capacity, size_t *captured_length,
     struct yt_error *error);
 bool session_earth_report(struct yt_session *session, struct yt_port *earth,
-    uint8_t price[4], struct yt_error *error);
+	uint32_t price[4], struct yt_error *error);
 bool yt_session_salvage_player(struct yt_session *session, int victim_record,
     int killer_record, struct yt_error *error);
 bool yt_session_kill_player(struct yt_session *session, int victim_record,
