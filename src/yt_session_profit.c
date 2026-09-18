@@ -81,8 +81,9 @@ profit_project(struct yt_session *session, const struct profit_report *report,
 		return false;
 	timer_seconds = (float)yt_clock_timer(&session->door->game.clock);
 	if (!profit_single(timer_seconds, &timer_seconds, error,
-	    "profit TIMER")
-	    || !yt_nearest_market_project(market, port, report->base_price,
+	    "profit TIMER"))
+		return false;
+	if (!yt_nearest_market_project(market, port, report->base_price,
 	    current_day, timer_seconds, error))
 		return false;
 	prices[0] = 0.0f;
@@ -185,14 +186,18 @@ profit_compose_row(struct yt_session *session, float source_number,
 	size_t length = 0U;
 
 	if (!profit_sub(source_price[source_index], target_price[source_index],
-	    &source_leg, error, "profit source leg")
-	    || !profit_single(fabsf(source_leg), &source_leg, error,
-	    "profit source ABS")
-	    || !profit_sub(target_price[target_index], source_price[target_index],
-	    &target_leg, error, "profit target leg")
-	    || !profit_single(fabsf(target_leg), &target_leg, error,
-	    "profit target ABS")
-	    || !profit_add(source_leg, target_leg, &profit, error,
+	    &source_leg, error, "profit source leg"))
+		return false;
+	if (!profit_single(fabsf(source_leg), &source_leg, error,
+	    "profit source ABS"))
+		return false;
+	if (!profit_sub(target_price[target_index], source_price[target_index],
+	    &target_leg, error, "profit target leg"))
+		return false;
+	if (!profit_single(fabsf(target_leg), &target_leg, error,
+	    "profit target ABS"))
+		return false;
+	if (!profit_add(source_leg, target_leg, &profit, error,
 	    "profit spread"))
 		return false;
 	profit_pair_color(session, source_port->commodity_class,
@@ -295,9 +300,10 @@ profit_emit_pair(struct yt_session *session, struct profit_report *report,
 	    SESSION_PRESENT_LINE, "global profit row ending", error)) {
 		return false;
 	}
-	if (report->result_count % 44U == 0U
-	    && !profit_page(session, keep_going, error))
-		return false;
+	if (report->result_count % 44U == 0U) {
+		if (!profit_page(session, keep_going, error))
+			return false;
+	}
 	return true;
 }
 
@@ -324,12 +330,15 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 
 	session_set_foreground(session, 7);
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "profit leading blank", error)
-	    || !session_present_text(session, title, sizeof(title) - 1U,
-	    SESSION_PRESENT_BOLD_LINE, "adjacent profit title", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "adjacent profit title blank", error)
-	    || !yt_database_read(&session->door->game.database,
+	    "profit leading blank", error))
+		return false;
+	if (!session_present_text(session, title, sizeof(title) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "adjacent profit title", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "adjacent profit title blank", error))
+		return false;
+	if (!yt_database_read(&session->door->game.database,
 	    (size_t)current_sector_record, &raw, error))
 		return false;
 	yt_sector_decode(&sector, &raw);
@@ -373,8 +382,9 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 		if (target_port.commodity_class == source_port.commodity_class)
 			continue;
 		if (!profit_project(session, report, &target_port,
-		    &target_market, target_prices, error)
-		    || !profit_emit_pair(session, report, display_source, target,
+		    &target_market, target_prices, error))
+			return false;
+		if (!profit_emit_pair(session, report, display_source, target,
 		    &source_port, &target_port, source_prices, target_prices,
 		    &keep_going, error))
 			return false;
@@ -452,8 +462,9 @@ profit_global(struct yt_session *session, struct profit_report *report,
 			    == source_port.commodity_class)
 				continue;
 			if (!profit_project(session, report, &target_port,
-			    &target_market, target_prices, error)
-			    || !profit_emit_pair(session, report, (float)source,
+			    &target_market, target_prices, error))
+				return false;
+			if (!profit_emit_pair(session, report, (float)source,
 			    target, &source_port, &target_port, source_prices,
 			    target_prices, &keep_going, error))
 				return false;
