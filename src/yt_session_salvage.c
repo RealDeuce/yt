@@ -23,8 +23,9 @@ salvage_save_player(struct yt_session *session, int player_record,
     struct yt_player *player, struct yt_error *error)
 {
 	if (!yt_game_write_player(&session->door->game, player_record, player,
-	    error)
-	    || !yt_database_flush(&session->door->game.database, error))
+	    error))
+		return false;
+	if (!yt_database_flush(&session->door->game.database, error))
 		return false;
 	if (player_record == session_record(session))
 		session->player = *player;
@@ -70,14 +71,18 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 		return true;
 	victim_name_length = yt_player_stored_name(&victim, victim_name);
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "salvage result row", error)
-	    || !session_present_text(session, title, sizeof(title) - 1U,
-	    SESSION_PRESENT_BOLD_LINE, "salvage title", error)
-	    || !yt_salvage_header_row((const uint8_t *)session->player.name,
+	    "salvage result row", error))
+		return false;
+	if (!session_present_text(session, title, sizeof(title) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "salvage title", error))
+		return false;
+	if (!yt_salvage_header_row((const uint8_t *)session->player.name,
 	    strlen(session->player.name), victim_name, victim_name_length,
-	    row, sizeof(row), &row_length)
-	    || !yt_news_append_bytes(row, row_length, error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    row, sizeof(row), &row_length))
+		return false;
+	if (!yt_news_append_bytes(row, row_length, error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "salvage result row", error))
 		return false;
 
@@ -97,8 +102,9 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 		}
 		awards[index] = floorf(qb_single_multiply(draw, stock));
 	}
-	if (!session_wait(session, 1.0, "ship salvage wait", error)
-	    || !salvage_load_player(session, killer_record, &killer, error))
+	if (!session_wait(session, 1.0, "ship salvage wait", error))
+		return false;
+	if (!salvage_load_player(session, killer_record, &killer, error))
 		return false;
 
 	simple_fields[0] = &killer.credits;
@@ -114,9 +120,11 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 		emitted = true;
 		if (!yt_salvage_simple_row(
 		    (enum yt_salvage_simple_kind)(index - 1U), awards[index],
-		    row, sizeof(row), &row_length)
-		    || !yt_news_append_bytes(row, row_length, error)
-		    || !session_present_text(session, row, row_length,
+		    row, sizeof(row), &row_length))
+			return false;
+		if (!yt_news_append_bytes(row, row_length, error))
+			return false;
+		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "salvage result row", error))
 			return false;
 		*simple_fields[index - 1U] = qb_single_add(
@@ -181,8 +189,9 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 		killer.organics = qb_single_add(killer.organics, cargo_awards[1]);
 		killer.equipment = qb_single_add(killer.equipment,
 		    cargo_awards[2]);
-		if (!salvage_save_player(session, killer_record, &killer, error)
-		    || !session_wait(session, 0.5, "ship salvage wait", error))
+		if (!salvage_save_player(session, killer_record, &killer, error))
+			return false;
+		if (!session_wait(session, 0.5, "ship salvage wait", error))
 			return false;
 		for (index = 0U; index < YT_ARRAY_LEN(cargo_order); ++index) {
 			size_t award = cargo_order[index];
@@ -190,20 +199,25 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 			if ((award == 3U && cargo_awards[award] <= 0.0f)
 			    || (award != 3U && cargo_awards[award] == 0.0f))
 				continue;
-			if (!session_wait(session, 0.5, "ship salvage wait", error)
-			    || !yt_salvage_cargo_row(cargo_kind[index],
-			    cargo_awards[award], row, sizeof(row), &row_length)
-			    || !yt_news_append_bytes(row, row_length, error)
-			    || !session_present_text(session, row, row_length,
+			if (!session_wait(session, 0.5, "ship salvage wait", error))
+				return false;
+			if (!yt_salvage_cargo_row(cargo_kind[index],
+			    cargo_awards[award], row, sizeof(row), &row_length))
+				return false;
+			if (!yt_news_append_bytes(row, row_length, error))
+				return false;
+			if (!session_present_text(session, row, row_length,
 			    SESSION_PRESENT_LINE, "salvage result row", error))
 				return false;
 		}
 	}
 	if (!emitted) {
-		if (!session_wait(session, 0.5, "ship salvage wait", error)
-		    || !yt_news_append_bytes(nothing,
-		    sizeof(nothing) - 1U, error)
-		    || !session_present_text(session, nothing,
+		if (!session_wait(session, 0.5, "ship salvage wait", error))
+			return false;
+		if (!yt_news_append_bytes(nothing,
+		    sizeof(nothing) - 1U, error))
+			return false;
+		if (!session_present_text(session, nothing,
 		    sizeof(nothing) - 1U, SESSION_PRESENT_LINE,
 		    "salvage result row", error))
 			return false;
