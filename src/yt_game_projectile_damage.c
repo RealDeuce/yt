@@ -119,12 +119,15 @@ yt_projectile_survivor_overlay(struct yt_player *player, float shields,
 	player->shields = shields;
 	player->fighters = (float)fighters;
 	player->danger_scanner = scanner_disabled ? 0 : scanner;
-	return yt_record_set_number(&player->record, YT_F53, shields)
-	    && yt_record_set_number(&player->record, YT_F61,
-	    player->fighters)
-	    && (scanner_disabled
-	    ? yt_record_set_raw_number(&player->record, YT_F93, scanner_zero)
-	    : yt_record_set_number(&player->record, YT_F93, (float)scanner));
+	if (!yt_record_set_number(&player->record, YT_F53, shields))
+		return false;
+	if (!yt_record_set_number(&player->record, YT_F61,
+	    player->fighters))
+		return false;
+	if (scanner_disabled)
+		return yt_record_set_raw_number(&player->record, YT_F93,
+		    scanner_zero);
+	return yt_record_set_number(&player->record, YT_F93, (float)scanner);
 }
 
 bool

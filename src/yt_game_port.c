@@ -343,8 +343,9 @@ yt_port_purchase_seller_overlay(struct yt_player *seller, float treasury,
 	seller->credits = yt_port_purchase_seller_credit(treasury,
 	    seller->credits, price);
 	--seller->ports_owned;
-	return yt_record_set_number(&seller->record, YT_F81, seller->credits)
-	    && yt_record_set_number(&seller->record, YT_F117,
+	if (!yt_record_set_number(&seller->record, YT_F81, seller->credits))
+		return false;
+	return yt_record_set_number(&seller->record, YT_F117,
 	    (float)seller->ports_owned);
 }
 
@@ -355,9 +356,10 @@ yt_port_purchase_title_overlay(struct yt_port *port, int buyer_record)
 		return false;
 	port->owner = buyer_record;
 	port->treasury = 0.0f;
-	return yt_record_set_number(&port->record, YT_F97,
-	    (float)port->owner)
-	    && yt_record_set_number(&port->record, YT_F89, 0.0f);
+	if (!yt_record_set_number(&port->record, YT_F97,
+	    (float)port->owner))
+		return false;
+	return yt_record_set_number(&port->record, YT_F89, 0.0f);
 }
 
 bool
@@ -367,7 +369,8 @@ yt_port_purchase_buyer_overlay(struct yt_player *buyer, double price)
 		return false;
 	buyer->credits = yt_port_purchase_buyer_credit(buyer->credits, price);
 	++buyer->ports_owned;
-	return yt_record_set_number(&buyer->record, YT_F81, buyer->credits)
-	    && yt_record_set_number(&buyer->record, YT_F117,
+	if (!yt_record_set_number(&buyer->record, YT_F81, buyer->credits))
+		return false;
+	return yt_record_set_number(&buyer->record, YT_F117,
 	    (float)buyer->ports_owned);
 }
