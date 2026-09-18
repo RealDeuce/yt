@@ -377,8 +377,6 @@ write_rmt_completion(struct rmt_output_context *context,
 		if (!written)
 			return false;
 	}
-	if (completion.returns_to_bbs)
-		yt_rmt_completion_delay();
 	return true;
 }
 

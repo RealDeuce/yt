@@ -393,16 +393,6 @@ yt_rmt_completion_compose(bool local_mode, const char *credited_name,
 	return true;
 }
 
-void
-yt_rmt_completion_delay(void)
-{
-	/* RMT-INIT:2305..232D: FOR scratch = 1 TO 2222, with no body. */
-	volatile uint16_t scratch = 1U;
-
-	while (scratch <= 2222U)
-		++scratch;
-}
-
 bool
 yt_rmt_standalone_prompt_compose(struct yt_rmt_standalone_output *output)
 {

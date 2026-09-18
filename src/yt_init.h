@@ -115,7 +115,6 @@ bool yt_rmt_output_compose_state(enum yt_rmt_output_entry entry,
     struct yt_rmt_output_state *final_state);
 bool yt_rmt_completion_compose(bool local_mode, const char *credited_name,
     struct yt_rmt_completion_result *result);
-void yt_rmt_completion_delay(void);
 bool yt_rmt_standalone_prompt_compose(
     struct yt_rmt_standalone_output *output);
 bool yt_rmt_standalone_response_compose(const uint8_t *response,
