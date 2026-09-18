@@ -383,8 +383,9 @@ yt_session_show_ship(struct yt_session *session, struct yt_error *error)
 		(void)snprintf(right, sizeof(right), "%s", " FAIL");
 	else {
 		cloak_percent = floorf(qb_single_multiply(session->player.cloak, 100.0f));
-		if (qb_str_single(right, sizeof(right), cloak_percent) < 0
-		    || strlen(right) + 1U >= sizeof(right))
+		if (qb_str_single(right, sizeof(right), cloak_percent) < 0)
+			return false;
+		if (strlen(right) + 1U >= sizeof(right))
 			return false;
 		strcat(right, "%");
 	}

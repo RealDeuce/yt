@@ -371,7 +371,9 @@ yt_planet_assault_failure_row(float defenders, bool news,
 
 	if (!landing_join_number(prefix, sizeof(prefix) - 1U,
 	    floorf(defenders), suffix, sizeof(suffix) - 1U,
-	    screen, sizeof(screen), &screen_length) || length == NULL)
+	    screen, sizeof(screen), &screen_length))
+		return false;
+	if (length == NULL)
 		return false;
 	*length = 0U;
 	if (screen_length + (news ? sizeof(marker) - 1U : 0U) > capacity

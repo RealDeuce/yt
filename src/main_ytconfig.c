@@ -170,7 +170,9 @@ edit_genesis(struct yt_game *game, struct yt_error *error)
 		return false;
 	if (!write_output(&output, error))
 		return false;
-	if (!yt_cli_line(line, sizeof(line)) || line[0] == '\0')
+	if (!yt_cli_line(line, sizeof(line)))
+		return true;
+	if (line[0] == '\0')
 		return true;
 	parsed = qb_val(line);
 	threshold = (float)(parsed.valid ? parsed.value : 0.0);
@@ -214,7 +216,9 @@ edit_maintenance(struct yt_game *game, struct yt_error *error)
 			return false;
 		if (!write_output(&output, error))
 			return false;
-		if (!yt_cli_line(line, sizeof(line)) || line[0] == '\0')
+		if (!yt_cli_line(line, sizeof(line)))
+			return true;
+		if (line[0] == '\0')
 			return true;
 		if (((unsigned char)line[0] & 0xdfU) == 'Y'
 		    || ((unsigned char)line[0] & 0xdfU) == 'N')
@@ -321,7 +325,9 @@ edit_headquarters(struct yt_game *game, struct yt_error *error)
 		return false;
 	if (!write_output(&output, error))
 		return false;
-	if (!yt_cli_line(line, sizeof(line)) || line[0] == '\0')
+	if (!yt_cli_line(line, sizeof(line)))
+		return true;
+	if (line[0] == '\0')
 		return true;
 	parsed = qb_val(line);
 	raw = (float)(parsed.valid ? parsed.value : 0.0);
