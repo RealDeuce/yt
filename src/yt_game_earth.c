@@ -90,25 +90,24 @@ yt_earth_receipt_amount(int owner, int buyer_record, float cost)
 	return cost;
 }
 
-float
+uint8_t
 yt_earth_cloak_points(float cloak)
 {
-	return floorf(qb_single_multiply(50.0f, cloak));
+	return (uint8_t)floorf(qb_single_multiply(50.0f, cloak));
 }
 
-float
-yt_earth_cloak_default(float deficit, float credits)
+uint8_t
+yt_earth_cloak_default(uint8_t deficit, float credits)
 {
-	if (qb_single_multiply(deficit, 1000.0f) > credits)
-		return (float)yt_earth_affordable(credits, 1000.0f);
+	if (qb_single_multiply((float)deficit, 1000.0f) > credits)
+		return (uint8_t)yt_earth_affordable(credits, 1000.0f);
 	return deficit;
 }
 
 float
-yt_earth_cloak_overlay(float points, float quantity)
+yt_earth_cloak_overlay(uint8_t points, uint8_t quantity)
 {
-	return qb_single_divide(floorf(qb_single_add(points, quantity)),
-	    50.0f);
+	return qb_single_divide((float)(points + quantity), 50.0f);
 }
 
 void
@@ -155,13 +154,13 @@ yt_lottery_match_count(const int winning[6], const char ticket[6],
 	return matches;
 }
 
-float
+uint32_t
 yt_lottery_award(int matches)
 {
-	static const float awards[6] = {
-		100.0f, 1000.0f, 10000.0f, 100000.0f,
-		1000000.0f, 100000000.0f
+	static const uint32_t awards[6] = {
+		100U, 1000U, 10000U, 100000U,
+		1000000U, 100000000U
 	};
 
-	return matches < 1 || matches > 6 ? 0.0f : awards[matches - 1];
+	return matches < 1 || matches > 6 ? 0U : awards[matches - 1];
 }

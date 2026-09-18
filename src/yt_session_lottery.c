@@ -28,7 +28,7 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 	bool matched_winning[6] = {0};
 	int matches = 0;
 	int index;
-	float award = 0.0f;
+	uint32_t award = 0U;
 
 	memcpy(cached_name, session->player.name, sizeof(cached_name));
 	if (!session_reload_player(session, error))
@@ -276,7 +276,7 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 		if (!yt_news_append(news, error))
 			return false;
 	}
-	if (!session_mutate_player_credits(session, award, NULL, error))
+	if (!session_mutate_player_credits(session, (float)award, NULL, error))
 		return false;
 	if (!session_wait(session, 3.0, "lottery award wait", error))
 		return false;

@@ -12623,10 +12623,10 @@ check_earth_report_model(void)
 	    || yt_earth_receipt_amount(3, 2, 250.0f) != 250.0f
 	    || yt_earth_receipt_amount(2, 2, 250.0f) != 2.0f
 	    || yt_earth_receipt_amount(2, 2, 50.0f) != 0.0f
-	    || yt_earth_cloak_points(0.5f) != 25.0f
-	    || yt_earth_cloak_default(25.0f, 12345.0f) != 12.0f
-	    || yt_earth_cloak_default(25.0f, 25000.0f) != 25.0f
-	    || yt_earth_cloak_overlay(25.0f, 1.0f)
+	    || yt_earth_cloak_points(0.5f) != 25U
+	    || yt_earth_cloak_default(25U, 12345.0f) != 12U
+	    || yt_earth_cloak_default(25U, 25000.0f) != 25U
+	    || yt_earth_cloak_overlay(25U, 1U)
 	    != 0.5199999809265137f)
 		return false;
 	memset(&player, 0, sizeof(player));
@@ -12642,14 +12642,14 @@ check_earth_report_model(void)
 	if (yt_lottery_match_count(winning, ticket, matched) != 2
 	    || !matched[0] || !matched[1] || matched[2] || matched[3]
 	    || matched[4] || matched[5]
-	    || yt_lottery_award(0) != 0.0f
-	    || yt_lottery_award(1) != 100.0f
-	    || yt_lottery_award(2) != 1000.0f
-	    || yt_lottery_award(3) != 10000.0f
-	    || yt_lottery_award(4) != 100000.0f
-	    || yt_lottery_award(5) != 1000000.0f
-	    || yt_lottery_award(6) != 100000000.0f
-	    || yt_lottery_award(7) != 0.0f)
+	    || yt_lottery_award(0) != 0U
+	    || yt_lottery_award(1) != 100U
+	    || yt_lottery_award(2) != 1000U
+	    || yt_lottery_award(3) != 10000U
+	    || yt_lottery_award(4) != 100000U
+	    || yt_lottery_award(5) != 1000000U
+	    || yt_lottery_award(6) != 100000000U
+	    || yt_lottery_award(7) != 0U)
 		return false;
 	return yt_earth_selector_position("") == 1
 	    && yt_earth_selector_position("L") == 1

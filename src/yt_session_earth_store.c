@@ -129,10 +129,11 @@ earth_purchase_cloak(struct yt_session *session,
 		char row[128];
 		char prompt[192];
 		double requested;
-		float points;
-		float deficit;
-		float default_quantity;
-		float quantity;
+		uint8_t points;
+		uint8_t deficit;
+		uint8_t default_quantity;
+		float quantity_value;
+		uint8_t quantity;
 		float cost;
 		bool blank;
 
@@ -140,14 +141,15 @@ earth_purchase_cloak(struct yt_session *session,
 		    SESSION_PRESENT_LINE, "Earth Cloak leading blank", error))
 			return false;
 		points = yt_earth_cloak_points(session->player.cloak);
-		deficit = qb_single_subtract(50.0f, points);
+		deficit = (uint8_t)(50U - points);
 		default_quantity = yt_earth_cloak_default(deficit,
 		    session->player.credits);
-		if (qb_str_single(deficit_text, sizeof(deficit_text), deficit) < 0)
+		if (qb_str_single(deficit_text, sizeof(deficit_text),
+		    (float)deficit) < 0)
 			return session_range_error(error,
 			    "Earth Cloak row formatting");
 		if (qb_str_single(default_text, sizeof(default_text),
-		    default_quantity) < 0)
+		    (float)default_quantity) < 0)
 			return session_range_error(error,
 			    "Earth Cloak row formatting");
 		if (snprintf(row, sizeof(row),
@@ -165,17 +167,18 @@ earth_purchase_cloak(struct yt_session *session,
 		if (!earth_quantity_input(session, prompt, &requested, &blank,
 		    error))
 			return false;
-		quantity = blank ? default_quantity
+		quantity_value = blank ? (float)default_quantity
 		    : yt_earth_purchase_quantity(requested);
-		if (quantity < 1.0f)
+		if (quantity_value < 1.0f)
 			return true;
-		if (qb_single_add(points, quantity) > 50.0f) {
+		if (qb_single_add((float)points, quantity_value) > 50.0f) {
 			if (!session_earth_credit_error(session,
 			    "You can't have over 100% cloak!", error))
 				return false;
 			continue;
 		}
-		cost = qb_single_multiply(quantity, 1000.0f);
+		quantity = (uint8_t)quantity_value;
+		cost = qb_single_multiply((float)quantity, 1000.0f);
 		if (cost > session->player.credits)
 			return session_earth_credit_error(session,
 			    "You do not have enough credits!", error);

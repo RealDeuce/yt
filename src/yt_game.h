@@ -655,14 +655,14 @@ double yt_earth_affordable(float credits, float price);
 int yt_earth_selector_position(const char *command);
 float yt_earth_purchase_quantity(double value);
 float yt_earth_receipt_amount(int owner, int buyer_record, float cost);
-float yt_earth_cloak_points(float cloak);
-float yt_earth_cloak_default(float deficit, float credits);
-float yt_earth_cloak_overlay(float points, float quantity);
+uint8_t yt_earth_cloak_points(float cloak);
+uint8_t yt_earth_cloak_default(uint8_t deficit, float credits);
+float yt_earth_cloak_overlay(uint8_t points, uint8_t quantity);
 void yt_earth_supply_overlay(struct yt_player *player, int choice,
     float quantity);
 int yt_lottery_match_count(const int winning[6], const char ticket[6],
     bool matched_winning[6]);
-float yt_lottery_award(int matches);
+uint32_t yt_lottery_award(int matches);
 bool yt_player_name_matches(const struct yt_player *player,
     const uint8_t *name, size_t length);
 size_t yt_player_stored_name(const struct yt_player *player,
