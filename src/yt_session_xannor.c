@@ -87,8 +87,9 @@ yt_session_launch_xannor_retaliation(struct yt_session *session,
 		goto done;
 	}
 	if (!yt_random_nested_integer(&session->door->game.random, 3, 100,
-	    &amount, error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    &amount, error))
+		goto done;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "Xannor retaliation blank", error))
 		goto done;
 
@@ -114,16 +115,19 @@ yt_session_launch_xannor_retaliation(struct yt_session *session,
 	target = (float)target_candidate;
 	if (session->projectile.pending_xannor_provoker != 0)
 		target = (float)saved_player.sector;
-	if (qb_str_single(amount_text, sizeof(amount_text), (float)amount) < 0
-	    || qb_str_single(target_text, sizeof(target_text), target) < 0
-	    || snprintf(row, sizeof(row),
+	if (qb_str_single(amount_text, sizeof(amount_text), (float)amount) < 0)
+		goto done;
+	if (qb_str_single(target_text, sizeof(target_text), target) < 0)
+		goto done;
+	if (snprintf(row, sizeof(row),
 	    "The Xannor have launched%s missiles at sector%s!",
 	    amount_text, target_text) < 0)
 		goto done;
 	projectile_amount = (float)amount;
 	if (!session_present_text(session, (const uint8_t *)row, strlen(row),
-	    SESSION_PRESENT_BOLD_LINE, "Xannor retaliation row", error)
-	    || !session_launch_projectile(session,
+	    SESSION_PRESENT_BOLD_LINE, "Xannor retaliation row", error))
+		goto done;
+	if (!session_launch_projectile(session,
 	    &session->door->game.config.headquarters, &target,
 	    &projectile_amount, false, &ignored_counterattack,
 	    &session->projectile.pending_xannor_provoker, error))
@@ -165,11 +169,14 @@ yt_session_xannor_victory(struct yt_session *session, struct yt_error *error)
 	unsigned ordinal;
 
 	session_set_foreground(session, 7);
-	if (!xannor_victory_file(session, "XANNORHQ.TXT", error)
-	    || !session_present_text(session, pause, sizeof(pause) - 1U,
-	    SESSION_PRESENT_RAW, "Xannor victory pause", error)
-	    || !session_wait(session, 99.0, "Xannor victory wait", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	if (!xannor_victory_file(session, "XANNORHQ.TXT", error))
+		return false;
+	if (!session_present_text(session, pause, sizeof(pause) - 1U,
+	    SESSION_PRESENT_RAW, "Xannor victory pause", error))
+		return false;
+	if (!session_wait(session, 99.0, "Xannor victory wait", error))
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "Xannor victory post-wait blank", error))
 		return false;
 	session->presentation.blink = true;
@@ -185,7 +192,8 @@ yt_session_xannor_victory(struct yt_session *session, struct yt_error *error)
 		return xannor_victory_failure(error,
 		    "Xannor victory credit hydrate");
 	for (ordinal = 0U; ordinal < 3U; ++ordinal) {
-		if (!session_sound(session, YT_SOUND_CUE_ATTACK, "Xannor victory sound", error))
+		if (!session_sound(session, YT_SOUND_CUE_ATTACK,
+		    "Xannor victory sound", error))
 			return false;
 	}
 
@@ -193,17 +201,24 @@ yt_session_xannor_victory(struct yt_session *session, struct yt_error *error)
 	player_name_length = yt_player_stored_name(&session->player,
 	    player_name);
 	if (!yt_xannor_victory_winner(player_name, player_name_length,
-	    winner, sizeof(winner), &winner_length)
-	    || !yt_news_append_bytes(banner, sizeof(banner), error)
-	    || !yt_news_append_bytes(winner, winner_length, error)
-	    || !yt_news_append_bytes(banner, sizeof(banner), error)
-	    || !session_append_radio_bytes(banner, sizeof(banner), -2.0f,
-	    -2.0f, error)
-	    || !session_append_radio_bytes(winner, winner_length, -2.0f,
-	    -2.0f, error)
-	    || !session_append_radio_bytes(banner, sizeof(banner), -2.0f,
-	    -2.0f, error)
-	    || !session_read_sector(session, 21, &sector, error))
+	    winner, sizeof(winner), &winner_length))
+		return false;
+	if (!yt_news_append_bytes(banner, sizeof(banner), error))
+		return false;
+	if (!yt_news_append_bytes(winner, winner_length, error))
+		return false;
+	if (!yt_news_append_bytes(banner, sizeof(banner), error))
+		return false;
+	if (!session_append_radio_bytes(banner, sizeof(banner), -2.0f,
+	    -2.0f, error))
+		return false;
+	if (!session_append_radio_bytes(winner, winner_length, -2.0f,
+	    -2.0f, error))
+		return false;
+	if (!session_append_radio_bytes(banner, sizeof(banner), -2.0f,
+	    -2.0f, error))
+		return false;
+	if (!session_read_sector(session, 21, &sector, error))
 		return false;
 	sector.metadata = (float)session_record(session);
 	return session_write_sector(session, 21, &sector, error);
