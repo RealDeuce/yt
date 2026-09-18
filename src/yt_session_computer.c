@@ -98,10 +98,12 @@ yt_session_computer_port_report(struct yt_session *session,
 		enum yt_computer_port_selection_route route;
 
 		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "computer port sector blank", error)
-		    || !session_present_timed_paged_row(session, prompt,
-		    sizeof(prompt) - 1U, "computer port sector prompt", error)
-		    || !session_read_command(session, response, sizeof(response)))
+		    SESSION_PRESENT_LINE, "computer port sector blank", error))
+			return false;
+		if (!session_present_timed_paged_row(session, prompt,
+		    sizeof(prompt) - 1U, "computer port sector prompt", error))
+			return false;
+		if (!session_read_command(session, response, sizeof(response)))
 			return false;
 		if (!yt_computer_port_select(response, maximum, &selected,
 		    &route, error))
@@ -114,10 +116,12 @@ yt_session_computer_port_report(struct yt_session *session,
 			char number[64];
 			char notice[128];
 
-			if (qb_str_single(number, sizeof(number), maximum) < 0
-			    || snprintf(notice, sizeof(notice),
-			    "Invalid sector number! Range is 1 -%s", number) < 0
-			    || !session_present_alert(session,
+			if (qb_str_single(number, sizeof(number), maximum) < 0)
+				return false;
+			if (snprintf(notice, sizeof(notice),
+			    "Invalid sector number! Range is 1 -%s", number) < 0)
+				return false;
+			if (!session_present_alert(session,
 			    (const uint8_t *)notice, strlen(notice),
 			    "computer port invalid sector", error))
 				return false;
@@ -146,9 +150,10 @@ yt_session_computer_port_report(struct yt_session *session,
 	{
 		struct yt_port_market_state market;
 
-		return yt_session_update_port(session, sector_number, NULL,
-		    &market, error)
-		    && yt_session_port_report(session, market.logical_port,
+		if (!yt_session_update_port(session, sector_number, NULL,
+		    &market, error))
+			return false;
+		return yt_session_port_report(session, market.logical_port,
 		    &market, NULL, error);
 	}
 }
@@ -184,8 +189,9 @@ yt_session_computer_planet_report(struct yt_session *session,
 		if (denied)
 			return true;
 		if (!session_present_timed_paged_row(session, prompt,
-		    sizeof(prompt) - 1U, "computer planet sector prompt", error)
-		    || !session_read_number_command(session, response,
+		    sizeof(prompt) - 1U, "computer planet sector prompt", error))
+			return false;
+		if (!session_read_number_command(session, response,
 		    sizeof(response)))
 			return false;
 		parsed = qb_val(response);
@@ -199,10 +205,12 @@ yt_session_computer_planet_report(struct yt_session *session,
 			char number[64];
 			char notice[128];
 
-			if (qb_str_single(number, sizeof(number), maximum) < 0
-			    || snprintf(notice, sizeof(notice),
-			    "Valid sector numbers are from 1 to%s.", number) < 0
-			    || !session_present_alert(session,
+			if (qb_str_single(number, sizeof(number), maximum) < 0)
+				return false;
+			if (snprintf(notice, sizeof(notice),
+			    "Valid sector numbers are from 1 to%s.", number) < 0)
+				return false;
+			if (!session_present_alert(session,
 			    (const uint8_t *)notice, strlen(notice),
 			    "computer planet invalid sector", error))
 				return false;
