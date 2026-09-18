@@ -111,26 +111,31 @@ bool
 yt_init_present_confirmation_prefix(const struct yt_init_presenter *presenter,
     struct yt_error *error)
 {
-	return yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "            Yankee Trader Initialization Program", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "                     By Alan Davenport", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
+	    "            Yankee Trader Initialization Program", error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
+	    "                     By Alan Davenport", error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "This program will initialize Yankee Trader. You must run this program at",
-	    error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
+	    error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "least once when you start up the game. If this program is run on an",
-	    error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
+	    error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "existing game, the old game will be wiped out and be replaced by a new one.",
-	    error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	return yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
 	    "Continue (Y/N)? ", error);
 }
 
@@ -138,9 +143,9 @@ bool
 yt_init_present_opening(const struct yt_init_presenter *presenter,
     struct yt_error *error)
 {
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
 	return yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "Creating main data file: YTDATA.DAT", error);
 }
 
@@ -251,8 +256,9 @@ rmt_render_value(uint8_t *dest, size_t capacity, size_t *length,
 		*column = 0U;
 	}
 	if (!rmt_append_payload(dest, capacity, length, column, prefix,
-	    prefix_length)
-	    || !rmt_append_payload(dest, capacity, length, column, payload,
+	    prefix_length))
+		return false;
+	if (!rmt_append_payload(dest, capacity, length, column, payload,
 	    payload_length))
 		return false;
 	if (punctuation == RMT_PUNCTUATION_NEWLINE) {
@@ -364,8 +370,9 @@ yt_rmt_completion_compose(bool local_mode, const char *credited_name,
 		credited_length = strlen(credited_name);
 		length = sizeof(prefix) - 1U + credited_length
 		    + sizeof(suffix) - 1U;
-		if (length > sizeof(congratulations)
-		    || !rmt_completion_add(result, NULL, 0U))
+		if (length > sizeof(congratulations))
+			return false;
+		if (!rmt_completion_add(result, NULL, 0U))
 			return false;
 		memcpy(congratulations, prefix, sizeof(prefix) - 1U);
 		memcpy(congratulations + sizeof(prefix) - 1U, credited_name,
@@ -378,9 +385,11 @@ yt_rmt_completion_compose(bool local_mode, const char *credited_name,
 		}
 	}
 	result->returns_to_bbs = !local_mode;
-	if (result->returns_to_bbs
-	    && !rmt_completion_add(result, returning, sizeof(returning) - 1U))
-		return false;
+	if (result->returns_to_bbs) {
+		if (!rmt_completion_add(result, returning,
+		    sizeof(returning) - 1U))
+			return false;
+	}
 	return true;
 }
 
@@ -568,63 +577,89 @@ yt_init_present_prepared_configuration(
 		return false;
 	}
 	config = &preparation->config;
-	return yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
-	    "Starting year:", error)
-	    && yt_init_present_number(presenter, config->epoch_year,
-	    YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "Starting player info:", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
-	    "  # of fighters at start:", error)
-	    && yt_init_present_number(presenter, config->initial_fighters,
-	    YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
-	    "  # of credits at start:", error)
-	    && yt_init_present_number(presenter, config->initial_credits,
-	    YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
-	    "  # of cargo holds at start:", error)
-	    && yt_init_present_number(presenter, config->initial_holds,
-	    YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
-	    "  # of days inactivity until an dead player is deleted:", error)
-	    && yt_init_present_number(presenter, config->retention_days,
-	    YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "  Last day maintenance run: Yesterday", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
-	    "  # of turns per day:", error)
-	    && yt_init_present_number(presenter, config->turns_per_day,
-	    YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
-	    "  # of times per day a user may play the lottery:", error)
-	    && yt_init_present_number(presenter, config->lottery_plays,
-	    YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
-	    "  Xannor Headquarters placed in sector:", error)
-	    && yt_init_present_print_number(presenter, config->headquarters,
-	    YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "  Ports needed to initiate Genesis: 450", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
-	    "  Maximum Cargo holds set to:", error)
-	    && yt_init_present_print_number(presenter, config->maximum_holds,
-	    YT_INIT_OUTPUT_LINE, error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "  Local screen on with remote callers: On", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "Starting year:", error))
+		return false;
+	if (!yt_init_present_number(presenter, config->epoch_year,
+	    YT_INIT_OUTPUT_LINE, error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
+	    "Starting player info:", error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "  # of fighters at start:", error))
+		return false;
+	if (!yt_init_present_number(presenter, config->initial_fighters,
+	    YT_INIT_OUTPUT_LINE, error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "  # of credits at start:", error))
+		return false;
+	if (!yt_init_present_number(presenter, config->initial_credits,
+	    YT_INIT_OUTPUT_LINE, error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "  # of cargo holds at start:", error))
+		return false;
+	if (!yt_init_present_number(presenter, config->initial_holds,
+	    YT_INIT_OUTPUT_LINE, error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "  # of days inactivity until an dead player is deleted:", error))
+		return false;
+	if (!yt_init_present_number(presenter, config->retention_days,
+	    YT_INIT_OUTPUT_LINE, error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
+	    "  Last day maintenance run: Yesterday", error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "  # of turns per day:", error))
+		return false;
+	if (!yt_init_present_number(presenter, config->turns_per_day,
+	    YT_INIT_OUTPUT_LINE, error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "  # of times per day a user may play the lottery:", error))
+		return false;
+	if (!yt_init_present_number(presenter, config->lottery_plays,
+	    YT_INIT_OUTPUT_LINE, error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "  Xannor Headquarters placed in sector:", error))
+		return false;
+	if (!yt_init_present_print_number(presenter, config->headquarters,
+	    YT_INIT_OUTPUT_LINE, error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
+	    "  Ports needed to initiate Genesis: 450", error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
+	    "  Maximum Cargo holds set to:", error))
+		return false;
+	if (!yt_init_present_print_number(presenter, config->maximum_holds,
+	    YT_INIT_OUTPUT_LINE, error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
+	    "  Local screen on with remote callers: On", error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "If at any time you wish to change these settings, run YTCONFIG.",
-	    error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
-	    "Please input filename for the Scoreboard Bulletin.", error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
+	    error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE, "", error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
+	    "Please input filename for the Scoreboard Bulletin.", error))
+		return false;
+	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,
 	    "Include FULL PATH and NAME of file! ([ENTER] for YTSCORE.ASC) : ",
-	    error)
-	    && yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE, "-=> ", error);
+	    error))
+		return false;
+	return yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE, "-=> ",
+	    error);
 }
