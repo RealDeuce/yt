@@ -182,7 +182,7 @@ yt_session_command_genesis(struct yt_session *session, struct yt_error *error)
 		    sizeof(declined) - 1U, "Genesis declined row", error);
 	if ((float)session->player.ports_owned < required_ports) {
 		if (!yt_genesis_insufficient_rows(required_ports,
-		    (float)session->player.ports_owned, first, sizeof(first),
+		    session->player.ports_owned, first, sizeof(first),
 		    &first_length,
 		    second, sizeof(second), &second_length))
 			return session_range_error(error,

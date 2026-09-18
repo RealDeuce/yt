@@ -45,7 +45,7 @@ bool yt_maintenance_xannor_run(struct maint_state *state,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error);
 bool yt_maintenance_xannor_route_arrivals(struct maint_state *state,
-    int group, int target, float top_player_target, float location[21],
+	int group, int target, uint16_t top_player_target, float location[21],
     float size[21], yt_maintenance_score_line_fn line_output,
     void *line_context, bool *reached_target,
     struct yt_error *error);

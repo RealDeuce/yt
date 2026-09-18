@@ -191,9 +191,10 @@ yt_maintenance_xannor_route_complete(float group_location,
 
 bool
 yt_maintenance_xannor_bypass_initial_arrival(int group_number,
-    float group_location, float top_player_target)
+	float group_location, uint16_t top_player_target)
 {
-	return group_number == 20 && group_location == top_player_target;
+	return group_number == 20
+	    && group_location == (float)top_player_target;
 }
 
 bool

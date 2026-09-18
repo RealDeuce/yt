@@ -716,7 +716,7 @@ xannor_attack_players(struct maint_state *state, int group,
 
 bool
 yt_maintenance_xannor_route_arrivals(struct maint_state *state, int group,
-    int target, float top_player_target, float location[21], float size[21],
+	int target, uint16_t top_player_target, float location[21], float size[21],
     yt_maintenance_score_line_fn line_output, void *line_context,
     bool *reached_target,
     struct yt_error *error)
@@ -964,7 +964,7 @@ yt_maintenance_xannor_roaming_groups(struct maint_state *state, float score,
 				    line_context, error))
 					return false;
 				if (!yt_maintenance_xannor_route_arrivals(state, group,
-				    target, (float)top_target, location, size,
+				    target, (uint16_t)top_target, location, size,
 				    line_output, line_context, &reached_target, error))
 					return false;
 				if (!yt_maintenance_xannor_target_finish(&state->game,

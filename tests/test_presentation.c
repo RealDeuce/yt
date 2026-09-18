@@ -31056,7 +31056,7 @@ main_genesis_cycle_run(struct main_genesis_cycle_fixture *fixture, bool ansi,
 	}
 	else if ((float)player.ports_owned < fixture->required_ports) {
 		if (!yt_genesis_insufficient_rows(fixture->required_ports,
-		    (float)player.ports_owned, first, sizeof(first), &first_length,
+		    player.ports_owned, first, sizeof(first), &first_length,
 		    second, sizeof(second), &second_length)
 		    || !main_genesis_present(fixture, first, first_length,
 		    MAIN_GENESIS_INSUFFICIENT_FIRST, NULL)

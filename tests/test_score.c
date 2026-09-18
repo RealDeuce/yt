@@ -1588,7 +1588,7 @@ check_port_name_editor_model(void)
 	    "You are not up to the challenge. You must own 299.5 ports before "
 	    "you are powerful";
 	static const uint8_t expected_genesis_second[] =
-	    "enough to initiate Genesis. You are .25 short of fulfilling the "
+	    "enough to initiate Genesis. You are .5 short of fulfilling the "
 	    "prophesy.";
 	static const uint8_t embedded[] = {'N', 0, 'M'};
 	struct yt_port port;
@@ -1623,7 +1623,7 @@ check_port_name_editor_model(void)
 	    sizeof(row), &length)
 	    || length != sizeof(expected_genesis_prompt) - 1U
 	    || memcmp(row, expected_genesis_prompt, length) != 0
-	    || !yt_genesis_insufficient_rows(299.5f, 299.25f,
+	    || !yt_genesis_insufficient_rows(299.5f, 299U,
 	    row, sizeof(row), &length, second_row, sizeof(second_row),
 	    &second_length)
 	    || length != sizeof(expected_genesis_first) - 1U
@@ -8207,7 +8207,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	if (!yt_maintenance_xannor_target_override(2, 4, 99.0f, 200000.0f,
 	    3, 0, 0, &target, &error) || target != 3
 	    || !yt_maintenance_xannor_route_arrivals(&state, 2, target,
-	    (float)target, location, size, maintenance_stdout_line, NULL,
+	    (uint16_t)target, location, size, maintenance_stdout_line, NULL,
 	    &reached_target, &error)
 	    || !reached_target
 	    || location[2] != 3.0f || size[2] != 9.0f
@@ -8279,7 +8279,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 		    && planet.record.bytes[offset] != planet_before.bytes[offset])
 			goto done;
 	}
-	if (!yt_maintenance_xannor_route_arrivals(&state, 2, 4, 4.0f,
+	if (!yt_maintenance_xannor_route_arrivals(&state, 2, 4, 4,
 	    location, size, maintenance_stdout_line, NULL, &reached_target,
 	    &error)
 	    || reached_target
@@ -8287,7 +8287,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 		goto done;
 	location[2] = 1.0f;
 	size[2] = 0.0f;
-	if (!yt_maintenance_xannor_route_arrivals(&state, 2, 3, 3.0f,
+	if (!yt_maintenance_xannor_route_arrivals(&state, 2, 3, 3,
 	    location, size, maintenance_stdout_line, NULL, &reached_target,
 	    &error)
 	    || reached_target
@@ -8295,7 +8295,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 		goto done;
 	location[2] = 0.6f;
 	size[2] = 10.0f;
-	if (!yt_maintenance_xannor_route_arrivals(&state, 2, 3, 3.0f,
+	if (!yt_maintenance_xannor_route_arrivals(&state, 2, 3, 3,
 	    location, size, maintenance_stdout_line, NULL, &reached_target,
 	    &error)
 	    || reached_target
@@ -8740,10 +8740,9 @@ check_maintenance_xannor_roaming_split(void)
 	    || !yt_maintenance_xannor_route_complete(7.0f, 7)
 	    || yt_maintenance_xannor_route_complete(6.999f, 7)
 	    || yt_maintenance_xannor_route_complete(8.0f, 7)
-	    || yt_maintenance_xannor_bypass_initial_arrival(19, 9.0f, 9.0f)
-	    || yt_maintenance_xannor_bypass_initial_arrival(20, 8.999f, 9.0f)
-	    || !yt_maintenance_xannor_bypass_initial_arrival(20, 9.0f, 9.0f)
-	    || !yt_maintenance_xannor_bypass_initial_arrival(20, 9.25f, 9.25f)
+	    || yt_maintenance_xannor_bypass_initial_arrival(19, 9.0f, 9)
+	    || yt_maintenance_xannor_bypass_initial_arrival(20, 8.999f, 9)
+	    || !yt_maintenance_xannor_bypass_initial_arrival(20, 9.0f, 9)
 	    || yt_maintenance_xannor_should_attack_hunt_player(19, 2)
 	    || yt_maintenance_xannor_should_attack_hunt_player(20, 0)
 	    || !yt_maintenance_xannor_should_attack_hunt_player(20, 2)

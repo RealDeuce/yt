@@ -426,7 +426,7 @@ bool yt_port_purchase_buyer_overlay(struct yt_player *buyer,
 	double price);
 bool yt_genesis_confirmation_prompt(const uint8_t *trader,
     size_t trader_length, uint8_t *prompt, size_t capacity, size_t *length);
-bool yt_genesis_insufficient_rows(float required, float owned,
+bool yt_genesis_insufficient_rows(float required, uint16_t owned,
     uint8_t *first, size_t first_capacity, size_t *first_length,
     uint8_t *second, size_t second_capacity, size_t *second_length);
 bool yt_main_fighters_sector_overlay(struct yt_sector *sector,
