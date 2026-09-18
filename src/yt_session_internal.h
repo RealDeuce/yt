@@ -190,7 +190,7 @@ bool session_present_timed_paged_row(struct yt_session *session,
     const uint8_t *text, size_t length, const char *operation,
     struct yt_error *error);
 bool session_right_aligned(struct yt_session *session, const char *text,
-    float width, const char *operation, struct yt_error *error);
+	uint8_t width, const char *operation, struct yt_error *error);
 bool session_wait(struct yt_session *session, double seconds,
     const char *operation, struct yt_error *error);
 void session_close_game(struct yt_session *session);
@@ -397,8 +397,8 @@ bool yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 bool yt_session_command_land(struct yt_session *session, bool *enter_sector,
     struct yt_error *error);
 bool session_fixed_width_bytes(struct yt_session *session,
-    const uint8_t *text, size_t text_length, float width,
-    const char *operation, struct yt_error *error);
+	const uint8_t *text, size_t text_length, uint8_t width,
+	const char *operation, struct yt_error *error);
 
 bool yt_session_computer_owned_fighters(struct yt_session *session,
     struct yt_error *error);

@@ -357,7 +357,7 @@ yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
 		    route_cache, origin, target, &next, error))
 			return false;
 		if (!yt_maintenance_compose_mercenary_movement((double)moving,
-		    (float)origin, &output))
+		    (uint16_t)origin, &output))
 			return false;
 		if (!maintenance_emit_output_row(&output,
 		    YT_MAINT_ROW_MERCENARY_MOVEMENT,

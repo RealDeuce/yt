@@ -176,7 +176,7 @@ bool yt_maintenance_compose_mercenary_phase(const uint8_t *blank,
     size_t blank_length, float tax_pool, bool rebuilt_base,
     float hired_fighters, struct yt_maintenance_output_result *result);
 bool yt_maintenance_compose_mercenary_movement(double moving_fighters,
-    float origin_sector, struct yt_maintenance_output_result *result);
+	uint16_t origin_sector, struct yt_maintenance_output_result *result);
 bool yt_maintenance_collect_mercenary_tax(struct yt_game *game,
     int port_count, float *tax_pool, float *fleet_strength,
     struct yt_error *error);
@@ -264,8 +264,9 @@ bool yt_maintenance_compose_xannor_roaming(const uint8_t *blank,
     size_t blank_length, struct yt_maintenance_output_result *result);
 bool yt_maintenance_compose_xannor_group(int group_number, float group_size,
     struct yt_maintenance_output_result *result);
-bool yt_maintenance_compose_xannor_path_error(float source, float target,
-    struct yt_maintenance_output_result *result);
+bool yt_maintenance_compose_xannor_path_error(uint16_t source,
+	uint16_t target,
+	struct yt_maintenance_output_result *result);
 bool yt_maintenance_xannor_hunt(struct yt_game *game,
     const int *player_sector, const float *player_cloak, size_t cache_count,
     const uint8_t *blank, size_t blank_length,

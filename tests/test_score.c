@@ -1352,15 +1352,15 @@ check_projectile_parent_model(void)
 	size_t news_length;
 	size_t defense_length;
 
-	if (!yt_projectile_target_prompt(false, 5.0f, 2004.0f,
+	if (!yt_projectile_target_prompt(false, 5.0f, 2004U,
 	    prompt, sizeof(prompt), &length)
 	    || length != sizeof(missile) - 1U
 	    || memcmp(prompt, missile, length) != 0
-	    || !yt_projectile_target_prompt(true, 5.0f, 2004.0f,
+	    || !yt_projectile_target_prompt(true, 5.0f, 2004U,
 	    prompt, sizeof(prompt), &length)
 	    || length != sizeof(plasma) - 1U
 	    || memcmp(prompt, plasma, length) != 0
-	    || yt_projectile_target_prompt(false, 5.0f, 2004.0f,
+	    || yt_projectile_target_prompt(false, 5.0f, 2004U,
 	    prompt, 8U, &length))
 		return false;
 	memset(&debit, 0, sizeof(debit));
@@ -2007,7 +2007,7 @@ check_planet_creation_model(void)
 	    before.bytes + YT_RECORD_TAIL_OFFSET, YT_RECORD_TAIL_SIZE) != 0)
 		return false;
 	before = planet.record;
-	yt_planet_creation_timestamp_overlay(&planet, 321, 60.0f);
+	yt_planet_creation_timestamp_overlay(&planet, 321, 60U);
 	if (yt_record_get_number(&planet.record, YT_F41) != 321.0f
 	    || yt_record_get_number(&planet.record, YT_F89) != 60.0f)
 		return false;
@@ -3135,13 +3135,13 @@ check_maintenance_mercenary_output(void)
 	    || output.rows[2].id != YT_MAINT_ROW_MERCENARY_PHASE_BLANK
 	    || output.rows[5].id != YT_MAINT_ROW_MERCENARY_BASE_CHECK)
 		return false;
-	if (!yt_maintenance_compose_mercenary_movement(10.0, 8.0f, &output)
+	if (!yt_maintenance_compose_mercenary_movement(10.0, 8U, &output)
 	    || output.row_count != 1U
 	    || output.rows[0].id != YT_MAINT_ROW_MERCENARY_MOVEMENT
 	    || MAINT_OUTPUT(output)->length != sizeof(movement) - 1U
 	    || memcmp(MAINT_OUTPUT(output)->bytes, movement, sizeof(movement) - 1U) != 0
 	    || MAINT_OUTPUT(output)->final_column != 0U
-	    || yt_maintenance_compose_mercenary_movement(10.0, 8.0f, NULL))
+	    || yt_maintenance_compose_mercenary_movement(10.0, 8U, NULL))
 		return false;
 	return !yt_maintenance_compose_mercenary_phase(NULL, 1U, 0.0f,
 	    false, 0.0f, &output)
@@ -8722,14 +8722,14 @@ check_maintenance_xannor_roaming_split(void)
 	    || memcmp(MAINT_OUTPUT(output)->bytes, expected_group_sixteen,
 	    sizeof(expected_group_sixteen) - 1U) != 0
 	    || yt_maintenance_compose_xannor_group(1, 1.0f, &output)
-	    || !yt_maintenance_compose_xannor_path_error(1.0f, 5.0f, &output)
+	    || !yt_maintenance_compose_xannor_path_error(1U, 5U, &output)
 	    || output.row_count != 1U
 	    || output.rows[0].id != YT_MAINT_ROW_XANNOR_PATH_ERROR
 	    || MAINT_OUTPUT(output)->length != sizeof(expected_path_error) - 1U
 	    || MAINT_OUTPUT(output)->final_column != 0U
 	    || memcmp(MAINT_OUTPUT(output)->bytes, expected_path_error,
 	    sizeof(expected_path_error) - 1U) != 0
-	    || yt_maintenance_compose_xannor_path_error(1.0f, 5.0f, NULL)
+	    || yt_maintenance_compose_xannor_path_error(1U, 5U, NULL)
 	    || yt_maintenance_xannor_should_retarget(-1.0f, 1.0f)
 	    || yt_maintenance_xannor_should_retarget(0.0f, 1.0f)
 	    || !yt_maintenance_xannor_should_retarget(0.5f, 1.0f)
@@ -13819,9 +13819,9 @@ check_computer_path_numeric_boundary(void)
 			return false;
 	}
 	if (!yt_computer_path_append_hop(scratch, sizeof(scratch),
-	    &scratch_length, 2.0f, &hops, NULL)
+	    &scratch_length, 2U, &hops, NULL)
 	    || !yt_computer_path_append_hop(scratch, sizeof(scratch),
-	    &scratch_length, 12.0f, &hops, NULL)
+	    &scratch_length, 12U, &hops, NULL)
 	    || scratch_length != 12U
 	    || memcmp(scratch, "1\rM\r 2\rM\r 12", 13U) != 0
 	    || hops != 2U
@@ -14334,7 +14334,7 @@ projectile_command_fixture(struct projectile_command_tape *tape,
 	(void)qb_mbf32_encode(3.0f, tape->counterattack_raw);
 	(void)qb_mbf32_encode(4.0f, tape->xannor_raw);
 	state->current_player_record = 2;
-	state->maximum_sector = 2004.0f;
+	state->maximum_sector = 2004U;
 	state->displayed = 9.0f;
 	state->destroyed = destroyed;
 }

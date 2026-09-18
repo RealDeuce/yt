@@ -28,7 +28,7 @@ enum test_projectile_command_output_kind {
 
 struct test_projectile_command_state {
 	int current_player_record;
-	float maximum_sector;
+	uint16_t maximum_sector;
 	bool plasma;
 	float displayed;
 	struct yt_player first_hydration;

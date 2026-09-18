@@ -132,13 +132,13 @@ yt_session_planet_inventory(struct yt_session *session, int logical_planet,
 		    strlen(labels[index]), SESSION_PRESENT_RAW,
 		    "planet inventory label", error))
 			return false;
-		if (!session_right_aligned(session, production, 13.0f,
+		if (!session_right_aligned(session, production, 13U,
 		    "planet inventory production", error))
 			return false;
-		if (!session_right_aligned(session, amount, 11.0f,
+		if (!session_right_aligned(session, amount, 11U,
 		    "planet inventory amount", error))
 			return false;
-		if (!session_right_aligned(session, in_holds, 12.0f,
+		if (!session_right_aligned(session, in_holds, 12U,
 		    "planet inventory holds", error))
 			return false;
 		if (!session_present_text(session, NULL, 0,

@@ -286,7 +286,7 @@ yt_maintenance_compose_mercenary_phase(const uint8_t *blank,
 
 bool
 yt_maintenance_compose_mercenary_movement(double moving_fighters,
-    float origin_sector, struct yt_maintenance_output_result *result)
+    uint16_t origin_sector, struct yt_maintenance_output_result *result)
 {
 	static const uint8_t prefix[] = "  - ";
 	static const uint8_t label[] = "Mercenaries moving from sector";
@@ -302,7 +302,8 @@ yt_maintenance_compose_mercenary_movement(double moving_fighters,
 	memset(result, 0, sizeof(*result));
 	moving_length = qb_print_double(moving, sizeof(moving),
 	    moving_fighters);
-	origin_length = qb_print_single(origin, sizeof(origin), origin_sector);
+	origin_length = qb_print_single(origin, sizeof(origin),
+	    (float)origin_sector);
 	if (moving_length < 0 || origin_length < 0)
 		return false;
 	if (!maintenance_copy_part(line, sizeof(line), &length,
@@ -817,7 +818,7 @@ yt_maintenance_compose_xannor_group(int group_number, float group_size,
 }
 
 bool
-yt_maintenance_compose_xannor_path_error(float source, float target,
+yt_maintenance_compose_xannor_path_error(uint16_t source, uint16_t target,
     struct yt_maintenance_output_result *result)
 {
 	static const uint8_t prefix[] =
@@ -834,7 +835,7 @@ yt_maintenance_compose_xannor_path_error(float source, float target,
 	if (!maintenance_copy_part(line, sizeof(line), &length, prefix,
 	    sizeof(prefix) - 1U))
 		return false;
-	number_length = qb_str_single(number, sizeof(number), source);
+	number_length = qb_str_single(number, sizeof(number), (float)source);
 	if (number_length < 0)
 		return false;
 	if (!maintenance_copy_part(line, sizeof(line), &length,
@@ -843,7 +844,7 @@ yt_maintenance_compose_xannor_path_error(float source, float target,
 	if (!maintenance_copy_part(line, sizeof(line), &length, infix,
 	    sizeof(infix) - 1U))
 		return false;
-	number_length = qb_str_single(number, sizeof(number), target);
+	number_length = qb_str_single(number, sizeof(number), (float)target);
 	if (number_length < 0)
 		return false;
 	if (!maintenance_copy_part(line, sizeof(line), &length,

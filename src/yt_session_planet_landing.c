@@ -187,7 +187,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	uint32_t sector_physical;
 	int selected_logical;
 	uint32_t scan;
-	float minute;
+	uint16_t minute;
 	int logical;
 	int today;
 	int adjusted_year;
@@ -269,7 +269,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 		return false;
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
-	minute = floorf(qb_single_divide((float)yt_clock_timer(
+	minute = (uint16_t)floorf(qb_single_divide((float)yt_clock_timer(
 	    &session->door->game.clock), 60.0f));
 	if (!read_planet_physical(session, selected_physical, &planet, error))
 		return false;

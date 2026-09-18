@@ -191,9 +191,8 @@ planet_move_hop(struct yt_session *session, int source_number,
 		return true;
 	}
 	if (moving_planet == 1) {
-		float maximum = qb_single_subtract(
-		    (float)session_port_offset(session),
-		    (float)session_sector_offset(session));
+		uint16_t maximum = (uint16_t)(session_port_offset(session)
+		    - session_sector_offset(session));
 
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "planet move Wanderer blank", error))
@@ -208,7 +207,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 			    error))
 				return false;
 			actual_destination = (int)(floorf(qb_single_multiply(draw,
-			    maximum)) + 1.0f);
+			    (float)maximum)) + 1.0f);
 			if (!session_read_sector(session, actual_destination,
 			    &target, error))
 				return false;

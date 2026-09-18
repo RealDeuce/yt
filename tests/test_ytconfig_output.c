@@ -215,7 +215,7 @@ test_headquarters_editor(void)
 	    "That sector is already occupied!\r";
 	struct yt_config_output_result result;
 
-	CHECK(yt_config_compose_hq_prompt(85.0f, 2001.0f, 0U, &result));
+	CHECK(yt_config_compose_hq_prompt(85.0f, 2001U, 0U, &result));
 	CHECK(result.output_length == sizeof(prompt) - 1U);
 	CHECK(memcmp(result.output, prompt, sizeof(prompt) - 1U) == 0);
 	CHECK(result.final_column == 29U);
@@ -228,10 +228,10 @@ test_headquarters_editor(void)
 	    &result));
 	CHECK(result.output_length == sizeof(occupied) - 1U);
 	CHECK(memcmp(result.output, occupied, sizeof(occupied) - 1U) == 0);
-	CHECK(!yt_config_hq_in_range(7.9999995f, 2001.0f));
-	CHECK(yt_config_hq_in_range(8.0f, 2001.0f));
-	CHECK(yt_config_hq_in_range(2001.0f, 2001.0f));
-	CHECK(!yt_config_hq_in_range(2001.0001f, 2001.0f));
+	CHECK(!yt_config_hq_in_range(7.9999995f, 2001U));
+	CHECK(yt_config_hq_in_range(8.0f, 2001U));
+	CHECK(yt_config_hq_in_range(2001.0f, 2001U));
+	CHECK(!yt_config_hq_in_range(2001.0001f, 2001U));
 	return true;
 }
 

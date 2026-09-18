@@ -49,7 +49,7 @@ computer_help(struct yt_session *session, struct yt_error *error)
 		return false;
 	for (index = 0; index < 8U; ++index) {
 		if (!session_fixed_width_bytes(session,
-		    (const uint8_t *)left[index], strlen(left[index]), 40.0f,
+		    (const uint8_t *)left[index], strlen(left[index]), 40U,
 		    "computer help left cell", error))
 			return false;
 		if (!session_present_paged_fragment(session, right[index],

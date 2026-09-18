@@ -827,7 +827,7 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 
 static bool
 maintenance_write_xannor_rebuild(struct yt_game *game, int logical,
-    struct yt_planet *planet, int today, float minute,
+    struct yt_planet *planet, int today, uint16_t minute,
     struct yt_error *error)
 {
 	static const size_t production_offsets[] = {YT_F45, YT_F49, YT_F53};
@@ -854,7 +854,7 @@ maintenance_write_xannor_rebuild(struct yt_game *game, int logical,
 		goto range;
 	if (!yt_record_set_number(&planet->record, YT_F85, 8.0f))
 		goto range;
-	if (!yt_record_set_number(&planet->record, YT_F89, minute))
+	if (!yt_record_set_number(&planet->record, YT_F89, (float)minute))
 		goto range;
 	if (!yt_record_set_number(&planet->record, YT_F117, planet->bank))
 		goto range;
@@ -916,7 +916,7 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	struct yt_sector sector;
 	struct yt_planet planet;
 	float sample;
-	float minute;
+	uint16_t minute;
 	bool rebuilt;
 	int sector_count;
 	int planet_count;
@@ -970,7 +970,7 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 			return false;
 		if (!yt_game_read_planet(game, planet_count, &planet, error))
 			return false;
-		minute = yt_maintenance_sint(qb_single_divide(
+		minute = (uint16_t)yt_maintenance_sint(qb_single_divide(
 		    (float)yt_clock_timer(&game->clock), 60.0f));
 		if (!yt_random_next(&game->random, &sample, error))
 			return false;

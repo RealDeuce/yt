@@ -128,7 +128,7 @@ yt_config_headquarters_relocate(struct yt_database *database,
 	float candidate_planet;
 	float candidate_fighter_owner;
 	float merged_fighters;
-	float planet_link;
+	uint8_t planet_link;
 
 	if (database == NULL || config == NULL || route == NULL || result == NULL)
 		return config_hq_error(error, YT_INVALID,
@@ -188,15 +188,14 @@ yt_config_headquarters_relocate(struct yt_database *database,
 	    (size_t)yt_sector_basic_record(config, candidate_logical), &field,
 	    error))
 		return false;
-	planet_link = qb_single_subtract((float)config->total_records,
-	    (float)config->planet_offset);
+	planet_link = (uint8_t)(config->total_records - config->planet_offset);
 	if (!yt_record_set_number(&field, YT_F85, -1.0f))
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters candidate overlay");
 	if (!yt_record_set_number(&field, YT_F81, merged_fighters))
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters candidate overlay");
-	if (!yt_record_set_number(&field, YT_F93, planet_link))
+	if (!yt_record_set_number(&field, YT_F93, (float)planet_link))
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters candidate overlay");
 	if (!yt_database_write(database,

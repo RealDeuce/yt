@@ -484,7 +484,7 @@ test_projectile_parent_presentation(void)
 	memset(&pager, 0, sizeof(pager));
 	memset(&capture, 0, sizeof(capture));
 	pager.foreground = 2;
-	CHECK(yt_projectile_target_prompt(false, 5.0f, 2004.0f,
+	CHECK(yt_projectile_target_prompt(false, 5.0f, 2004U,
 	    prompt, sizeof(prompt), &prompt_length));
 	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
@@ -540,7 +540,7 @@ projectile_ordinary_cycle_fixture(bool ansi, struct yt_present_state *current,
 		CHECK(prime_color(current, &result) == YT_PRESENT_OK);
 		memset(&capture, 0, sizeof(capture));
 	}
-	CHECK(yt_projectile_target_prompt(false, 9.0f, 20.0f,
+	CHECK(yt_projectile_target_prompt(false, 9.0f, 20U,
 	    target_prompt, sizeof(target_prompt), &target_prompt_length));
 
 	pager_capture_line(&capture, current, NULL, 0U);
@@ -751,7 +751,7 @@ test_projectile_refusal_presentation(void)
 	current = state(false);
 	memset(&pager, 0, sizeof(pager));
 	memset(&capture, 0, sizeof(capture));
-	CHECK(yt_projectile_target_prompt(false, 3.0f, 2004.0f,
+	CHECK(yt_projectile_target_prompt(false, 3.0f, 2004U,
 	    prompt, sizeof(prompt), &prompt_length));
 	pager_capture_line(&capture, &current, NULL, 0U);
 	pager.newline_flag = true;

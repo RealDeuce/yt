@@ -221,7 +221,7 @@ yt_session_computer_planet_report(struct yt_session *session,
 			return false;
 		link = sector.planet;
 		{
-			uint16_t maximum_planet = (uint16_t)(
+			uint8_t maximum_planet = (uint8_t)(
 			    (int)session->door->game.config.total_records
 			    - session_planet_offset(session));
 

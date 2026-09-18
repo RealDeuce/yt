@@ -7,7 +7,7 @@
 #include <string.h>
 
 bool
-yt_projectile_target_prompt(bool plasma, float displayed, float maximum,
+yt_projectile_target_prompt(bool plasma, float displayed, uint16_t maximum,
     uint8_t *prompt, size_t capacity, size_t *length)
 {
 	const char *label = plasma ? " plasma bolt " : " cruise missile ";
@@ -20,7 +20,8 @@ yt_projectile_target_prompt(bool plasma, float displayed, float maximum,
 	if (qb_str_single(displayed_text, sizeof(displayed_text), displayed)
 	    < 0)
 		return false;
-	if (qb_str_single(maximum_text, sizeof(maximum_text), maximum) < 0)
+	if (qb_str_single(maximum_text, sizeof(maximum_text),
+	    (float)maximum) < 0)
 		return false;
 	written = snprintf((char *)prompt, capacity,
 	    "You have%s. Send your%sto what sector? [ 1 to%s ] ?",

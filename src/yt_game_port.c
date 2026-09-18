@@ -76,7 +76,7 @@ yt_computer_path_parse(const char *response, float *selected,
 
 bool
 yt_computer_path_append_hop(char *scratch, size_t capacity,
-    size_t *length, float next_sector, uint16_t *hop_count,
+    size_t *length, uint16_t next_sector, uint16_t *hop_count,
     struct yt_error *error)
 {
 	char number[64];
@@ -87,7 +87,8 @@ yt_computer_path_append_hop(char *scratch, size_t capacity,
 	    || hop_count == NULL)
 		return yt_game_error(error, YT_INVALID,
 		    "computer path scratch arguments");
-	number_length = qb_str_single(number, sizeof(number), next_sector);
+	number_length = qb_str_single(number, sizeof(number),
+	    (float)next_sector);
 	if (number_length < 0 || (size_t)number_length + 3U
 	    >= capacity - *length)
 		return yt_game_error(error, YT_RANGE,

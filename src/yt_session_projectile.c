@@ -623,7 +623,7 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 	double integral;
 	float displayed = plasma ? session->player.plasma
 	    : session->player.missiles;
-	float maximum_sector = (float)session_sector_count(session);
+	uint16_t maximum_sector = (uint16_t)session_sector_count(session);
 	float available;
 	float target;
 	float amount;
@@ -671,7 +671,7 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 			return projectile_command_error(error, YT_RANGE,
 			    "projectile target CSNG");
 		target = qb_mbf32_decode(target_raw);
-		if (target >= 1.0f && target <= maximum_sector)
+		if (target >= 1.0f && target <= (float)maximum_sector)
 			break;
 		if (!session_present_alert(session, invalid_sector,
 		    sizeof(invalid_sector) - 1U, "projectile invalid sector",

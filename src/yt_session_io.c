@@ -547,7 +547,7 @@ failed:
 
 bool
 session_fixed_width_bytes(struct yt_session *session, const uint8_t *text,
-    size_t text_length, float width, const char *operation,
+    size_t text_length, uint8_t width, const char *operation,
     struct yt_error *error)
 {
 	uint8_t mutable[256];
@@ -563,7 +563,7 @@ session_fixed_width_bytes(struct yt_session *session, const uint8_t *text,
 		if (length != 0)
 			memcpy(mutable, text, length);
 		status = yt_present_fixed_width(mutable, &length,
-		    sizeof(mutable), width, &session->presentation,
+		    sizeof(mutable), (float)width, &session->presentation,
 		    &presentation);
 		if (status == YT_PRESENT_OK)
 			yt_out_present_result(&presentation);
@@ -580,13 +580,13 @@ session_fixed_width_bytes(struct yt_session *session, const uint8_t *text,
 
 bool
 session_right_aligned(struct yt_session *session, const char *text,
-    float width, const char *operation, struct yt_error *error)
+    uint8_t width, const char *operation, struct yt_error *error)
 {
 	struct yt_present_result presentation;
 	enum yt_present_status status;
 
 	status = yt_present_right_aligned((const uint8_t *)text, strlen(text),
-	    width, &session->presentation, &presentation);
+	    (float)width, &session->presentation, &presentation);
 	if (status == YT_PRESENT_OK)
 		yt_out_present_result(&presentation);
 	if (status == YT_PRESENT_OK)

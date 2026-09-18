@@ -741,7 +741,7 @@ yt_maintenance_xannor_route_arrivals(struct maint_state *state, int group,
 				struct yt_maintenance_output_result output;
 
 				if (!yt_maintenance_compose_xannor_path_error(
-				    (float)source, (float)target, &output))
+				    (uint16_t)source, (uint16_t)target, &output))
 					return false;
 				if (!maintenance_emit_output_row(&output,
 				    YT_MAINT_ROW_XANNOR_PATH_ERROR, line_output,

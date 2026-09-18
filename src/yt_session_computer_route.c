@@ -158,7 +158,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 			return false;
 		if (!yt_computer_path_append_hop(programmed_moves,
 		    sizeof(programmed_moves), &programmed_moves_length,
-		    (float)cursor, &hop_count, error))
+		    (uint16_t)cursor, &hop_count, error))
 			return false;
 		yt_out_cursor_position(&ignored_row, &column);
 		if (yt_computer_path_wrap_required(column)) {

@@ -388,7 +388,7 @@ bool yt_computer_port_select(const char *response, uint16_t maximum,
 bool yt_computer_path_parse(const char *response, float *selected,
 	struct yt_error *error);
 bool yt_computer_path_append_hop(char *scratch, size_t capacity,
-	size_t *length, float next_sector, uint16_t *hop_count,
+	size_t *length, uint16_t next_sector, uint16_t *hop_count,
 	struct yt_error *error);
 bool yt_computer_path_wrap_required(int local_column);
 enum yt_computer_avoid_selection_route {
@@ -486,7 +486,7 @@ bool yt_planet_creation_credit_row(double credits, uint8_t *row,
 void yt_planet_creation_overlay(struct yt_planet *planet,
     int current_player_record);
 void yt_planet_creation_timestamp_overlay(struct yt_planet *planet,
-    int16_t day, float minute);
+	int16_t day, uint16_t minute);
 bool yt_planet_creation_news(const uint8_t *trader_name,
     size_t trader_name_length, const uint8_t *planet_name,
     size_t planet_name_length, uint8_t *row, size_t capacity,
@@ -827,7 +827,7 @@ void yt_bribe_player_overlay(struct yt_player *player, float fighters,
 bool yt_player_killer_row(const struct yt_player *player, uint8_t *row,
     size_t capacity, size_t *length, bool *emit, struct yt_error *error);
 bool yt_projectile_target_prompt(bool plasma, float displayed,
-    float maximum, uint8_t *prompt, size_t capacity, size_t *length);
+	uint16_t maximum, uint8_t *prompt, size_t capacity, size_t *length);
 void yt_projectile_debit_overlay(struct yt_player *player, bool plasma,
     float amount);
 float yt_counterlaunch_score_count(double cached_score, float retained);

@@ -203,7 +203,7 @@ info_panel_cell(uint8_t *cell, size_t capacity, size_t *length,
 
 static bool
 info_panel_fixed(struct yt_session *session, const uint8_t *text,
-    size_t length, float width, struct yt_error *error)
+    size_t length, uint8_t width, struct yt_error *error)
 {
 	return session_fixed_width_bytes(session, text, length, width,
 	    "Info fixed-width presentation", error);
@@ -227,9 +227,9 @@ info_panel_ordinary(struct yt_session *session,
 	if (!info_panel_cell(right, sizeof(right), &right_length, right_label,
 	    right_value))
 		return false;
-	if (!info_panel_fixed(session, left, left_length, 26.0f, error))
+	if (!info_panel_fixed(session, left, left_length, 26U, error))
 		return false;
-	if (!info_panel_fixed(session, right, right_length, 23.0f, error))
+	if (!info_panel_fixed(session, right, right_length, 23U, error))
 		return false;
 	return info_line(session, &bar, 1U, error);
 }
@@ -256,9 +256,9 @@ info_panel_commodity(struct yt_session *session,
 	if (!info_panel_cell(right, sizeof(right), &right_length,
 	    right_label, ""))
 		return false;
-	if (!info_panel_fixed(session, left, left_length, 26.0f, error))
+	if (!info_panel_fixed(session, left, left_length, 26U, error))
 		return false;
-	if (!info_panel_fixed(session, right, right_length, 17.0f, error))
+	if (!info_panel_fixed(session, right, right_length, 17U, error))
 		return false;
 	if (right_value != 0.0f) {
 		session->presentation.bold = true;
@@ -266,7 +266,7 @@ info_panel_commodity(struct yt_session *session,
 		session->presentation.background = 4;
 	}
 	if (!info_panel_fixed(session, (const uint8_t *)number,
-	    (size_t)number_length, 6.0f, error))
+	    (size_t)number_length, 6U, error))
 		return false;
 	session_set_foreground(session, 2);
 	session->presentation.background = 0;
@@ -306,7 +306,7 @@ yt_session_show_ship(struct yt_session *session, struct yt_error *error)
 	session_set_foreground(session, 2);
 	if (!info_line(session, NULL, 0U, error))
 		return false;
-	if (!info_panel_fixed(session, NULL, 0U, 20.0f, error))
+	if (!info_panel_fixed(session, NULL, 0U, 20U, error))
 		return false;
 	if (!info_line(session, title, sizeof(title) - 1U, error))
 		return false;

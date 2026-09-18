@@ -145,7 +145,7 @@ earth_report_row(struct yt_session *session, const char *label, float price,
 	double affordable;
 
 	if (!session_fixed_width_bytes(session, (const uint8_t *)label,
-	    strlen(label), 22.0f,
+	    strlen(label), 22U,
 	    "Earth report item field", error))
 		return false;
 	if (lottery_price)
@@ -159,7 +159,7 @@ earth_report_row(struct yt_session *session, const char *label, float price,
 			    "Earth report price format");
 	}
 	if (!session_fixed_width_bytes(session, (const uint8_t *)cost,
-	    strlen(cost), 9.0f,
+	    strlen(cost), 9U,
 	    "Earth report cost field", error))
 		return false;
 	affordable = yt_earth_affordable(session->player.credits, price);

@@ -48,7 +48,7 @@ test_projectile_command_run(struct test_projectile_command_state *state,
 	double integral;
 
 	if (state == NULL || ops == NULL || state->destroyed == NULL
-	    || state->current_player_record < 1 || state->maximum_sector < 1.0f
+	    || state->current_player_record < 1 || state->maximum_sector < 1U
 	    || ops->hydrate == NULL || ops->present == NULL
 	    || ops->input == NULL || ops->finalize == NULL
 	    || ops->write_player == NULL || ops->flush == NULL
@@ -151,7 +151,7 @@ test_projectile_command_run(struct test_projectile_command_state *state,
 		state->target = qb_mbf32_decode(state->target_raw);
 		state->target_stored = true;
 		if (state->target >= 1.0f
-		    && state->target <= state->maximum_sector)
+		    && state->target <= (float)state->maximum_sector)
 			break;
 		if (!ops->present(context, invalid_sector,
 		    sizeof(invalid_sector) - 1U,

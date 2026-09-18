@@ -67,7 +67,6 @@ profit_project(struct yt_session *session, const struct profit_report *report,
 	int today;
 	int adjusted_year;
 	int16_t current_day;
-	float current_day_single;
 	float timer_seconds;
 
 	if (!yt_current_date_serial(&session->door->game.clock,
@@ -76,11 +75,7 @@ profit_project(struct yt_session *session, const struct profit_report *report,
 		return false;
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
-	current_day_single = (float)today;
-	if (!profit_single(current_day_single, &current_day_single, error,
-	    "profit current day"))
-		return false;
-	current_day = (int16_t)current_day_single;
+	current_day = (int16_t)today;
 	timer_seconds = (float)yt_clock_timer(&session->door->game.clock);
 	if (!profit_single(timer_seconds, &timer_seconds, error,
 	    "profit TIMER"))

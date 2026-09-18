@@ -167,7 +167,7 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 		    sizeof(text), error, "treasury sector field"))
 			return false;
 		if (!session_fixed_width_bytes(session, (const uint8_t *)text,
-		    strlen(text), 14.0f, "treasury sector field", error))
+		    strlen(text), 14U, "treasury sector field", error))
 			return false;
 		{
 			size_t name_length = port.name_length;
@@ -175,14 +175,14 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 			if (name_length > YT_TEXT_FIELD_SIZE)
 				name_length = YT_TEXT_FIELD_SIZE;
 			if (!session_fixed_width_bytes(session, port.record.bytes,
-			    name_length, 25.0f, "treasury port-name field", error))
+			    name_length, 25U, "treasury port-name field", error))
 				return false;
 		}
 		if (!treasury_format_single(" Credits:", port.treasury, text,
 		    sizeof(text), error, "treasury credit field"))
 			return false;
 		if (!session_fixed_width_bytes(session, (const uint8_t *)text,
-		    strlen(text), 20.0f, "treasury credit field", error))
+		    strlen(text), 20U, "treasury credit field", error))
 			return false;
 		if (!treasury_format_double(" Total:", total, NULL, text,
 		    sizeof(text), error, "treasury row total"))

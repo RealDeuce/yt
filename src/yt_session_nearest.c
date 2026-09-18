@@ -323,14 +323,6 @@ nearest_scan_run(struct yt_session *session, int selector,
 				session->door->game.adjusted_year = adjusted_year;
 				scan.current_day = (int16_t)today;
 			}
-			{
-				float current_day = (float)scan.current_day;
-
-				if (!nearest_single(current_day, &current_day,
-				    error, "nearest current day"))
-					goto done;
-				scan.current_day = (int16_t)current_day;
-			}
 			if (!yt_database_read(&session->door->game.database,
 			    (size_t)session_port_basic_record(session, logical_port),
 			    &raw, error))

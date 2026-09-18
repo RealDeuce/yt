@@ -58,14 +58,14 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 		    session->navigation.avoided_sectors[row + 20]))
 			return false;
 		if (!session_fixed_width_bytes(session,
-		    (const uint8_t *)first, strlen(first), 20.0f,
+		    (const uint8_t *)first, strlen(first), 20U,
 		    "avoid first cell", error))
 			return false;
 		if (!computer_avoid_cell(middle, sizeof(middle), row + 11,
 		    session->navigation.avoided_sectors[row + 10]))
 			return false;
 		if (!session_fixed_width_bytes(session,
-		    (const uint8_t *)middle, strlen(middle), 20.0f,
+		    (const uint8_t *)middle, strlen(middle), 20U,
 		    "avoid middle cell", error))
 			return false;
 		if (!session_present_paged_fragment(session,
@@ -195,7 +195,7 @@ yt_session_computer_owned_fighters(struct yt_session *session,
 			    "owned-fighter heading blank", error))
 				return false;
 			if (!session_fixed_width_bytes(session, sector_heading,
-			    sizeof(sector_heading) - 1U, 10.0f,
+			    sizeof(sector_heading) - 1U, 10U,
 			    "owned-fighter heading sector", error))
 				return false;
 			if (!session_present_paged_fragment(session, amount_heading,
@@ -212,7 +212,7 @@ yt_session_computer_owned_fighters(struct yt_session *session,
 			return session_computer_error(error, YT_RANGE,
 			    "owned-fighter sector format");
 		if (!session_fixed_width_bytes(session,
-		    (const uint8_t *)number, (size_t)number_length, 9.0f,
+		    (const uint8_t *)number, (size_t)number_length, 9U,
 		    "owned-fighter sector field", error))
 			return false;
 		number_length = qb_str_single(number, sizeof(number),
