@@ -1,6 +1,33 @@
 #include "yt_game.h"
 
+#include <math.h>
 #include <string.h>
+
+static bool
+record_generated_u16(const struct yt_record *record, size_t offset,
+    uint16_t *result)
+{
+	float value = yt_record_get_number(record, offset);
+
+	if (!isfinite(value) || value < 0.0f || value > (float)UINT16_MAX
+	    || floorf(value) != value)
+		return false;
+	*result = (uint16_t)value;
+	return true;
+}
+
+static bool
+record_generated_i16(const struct yt_record *record, size_t offset,
+    int16_t *result)
+{
+	float value = yt_record_get_number(record, offset);
+
+	if (!isfinite(value) || value < (float)INT16_MIN
+	    || value > (float)INT16_MAX || floorf(value) != value)
+		return false;
+	*result = (int16_t)value;
+	return true;
+}
 
 bool
 yt_current_player_hydrate(struct yt_player *player,
@@ -45,7 +72,7 @@ yt_player_decode(struct yt_player *player, const struct yt_record *record)
 	memset(player, 0, sizeof(*player));
 	player->record = *record;
 	yt_record_get_text(record, player->name, sizeof(player->name));
-	player->last_active = yt_record_get_number(record, YT_F41);
+	(void)record_generated_u16(record, YT_F41, &player->last_active);
 	player->killed_by = (int)yt_record_get_number(record, YT_F45);
 	player->turns = yt_record_get_number(record, YT_F49);
 	player->shields = yt_record_get_number(record, YT_F53);
@@ -75,8 +102,14 @@ yt_player_encode(struct yt_player *player)
 	yt_record_set_text_if_changed(&player->record,
 	    (const uint8_t *)player->name,
 	    strlen(player->name));
-	yt_record_set_number_if_changed(&player->record, YT_F41,
-	    player->last_active);
+	{
+		uint16_t stored;
+
+		if (record_generated_u16(&player->record, YT_F41, &stored)
+		    && stored != player->last_active)
+			yt_record_set_number_if_changed(&player->record, YT_F41,
+			    (float)player->last_active);
+	}
 	yt_record_set_number_if_changed(&player->record, YT_F45,
 	    (float)player->killed_by);
 	yt_record_set_number_if_changed(&player->record, YT_F49, player->turns);
@@ -194,7 +227,7 @@ yt_port_decode(struct yt_port *port, const struct yt_record *record)
 	port->record = *record;
 	yt_record_get_text(record, port->name, sizeof(port->name));
 	port->commodity_class = (int)yt_record_get_number(record, YT_F41);
-	port->last_day = yt_record_get_number(record, YT_F45);
+	(void)record_generated_i16(record, YT_F45, &port->last_day);
 	for (index = 0; index < 3; ++index) {
 		port->stock[index] = yt_record_get_number(record, YT_F49 + index * 4U);
 		port->production[index] =
@@ -217,7 +250,14 @@ yt_port_encode(struct yt_port *port)
 	    strlen(port->name));
 	yt_record_set_number_if_changed(&port->record, YT_F41,
 	    (float)port->commodity_class);
-	yt_record_set_number_if_changed(&port->record, YT_F45, port->last_day);
+	{
+		int16_t stored;
+
+		if (record_generated_i16(&port->record, YT_F45, &stored)
+		    && stored != port->last_day)
+			yt_record_set_number_if_changed(&port->record, YT_F45,
+			    (float)port->last_day);
+	}
 	for (index = 0; index < 3; ++index) {
 		yt_record_set_number_if_changed(&port->record,
 		    YT_F49 + index * 4U,
@@ -248,7 +288,7 @@ yt_planet_decode(struct yt_planet *planet, const struct yt_record *record)
 	memset(planet, 0, sizeof(*planet));
 	planet->record = *record;
 	yt_record_get_text(record, planet->name, sizeof(planet->name));
-	planet->last_day = yt_record_get_number(record, YT_F41);
+	(void)record_generated_i16(record, YT_F41, &planet->last_day);
 	for (index = 0; index < 3; ++index) {
 		planet->production[index] =
 		    yt_record_get_number(record, YT_F45 + index * 4U);
@@ -273,8 +313,14 @@ yt_planet_encode(struct yt_planet *planet)
 	yt_record_set_text_if_changed(&planet->record,
 	    (const uint8_t *)planet->name,
 	    strlen(planet->name));
-	yt_record_set_number_if_changed(&planet->record, YT_F41,
-	    planet->last_day);
+	{
+		int16_t stored;
+
+		if (record_generated_i16(&planet->record, YT_F41, &stored)
+		    && stored != planet->last_day)
+			yt_record_set_number_if_changed(&planet->record, YT_F41,
+			    (float)planet->last_day);
+	}
 	for (index = 0; index < 3; ++index) {
 		yt_record_set_number_if_changed(&planet->record,
 		    YT_F45 + index * 4U,
@@ -436,7 +482,7 @@ yt_game_write_planet(struct yt_game *game, int logical_planet,
 
 bool
 yt_game_construct_player(struct yt_game *game, int basic_record,
-    float today, float turns,
+    uint16_t today, float turns,
     struct yt_player *player, enum yt_player_constructor_failure *failure,
     struct yt_error *error)
 {
@@ -462,7 +508,7 @@ yt_game_construct_player(struct yt_game *game, int basic_record,
 	*failure = YT_PLAYER_CONSTRUCTOR_NO_FAILURE;
 	constructed = player->record;
 	(void)yt_record_set_raw_number(&constructed, YT_F45, first_zero);
-	if (!yt_record_set_number(&constructed, YT_F41, today))
+	if (!yt_record_set_number(&constructed, YT_F41, (float)today))
 		return false;
 	if (!yt_record_set_number(&constructed, YT_F49, turns))
 		return false;

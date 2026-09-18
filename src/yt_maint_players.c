@@ -321,7 +321,7 @@ yt_maintenance_players_run(struct maint_state *state,
 		name.length = player.name_length < YT_TEXT_FIELD_SIZE
 		    ? player.name_length : YT_TEXT_FIELD_SIZE;
 		if (!yt_maintenance_age_player(&player.cloak, player.last_active,
-		    player.killed_by, (float)state->today,
+		    player.killed_by, (uint16_t)state->today,
 		    state->game.config.retention_days, &cached_cloak, &action))
 			return false;
 		state->player_sector[record] = player.sector;
@@ -388,8 +388,8 @@ yt_maintenance_players_run(struct maint_state *state,
 }
 
 bool
-yt_maintenance_age_player(float *cloak, float last_active,
-    int killer_status, float today, float retention_days,
+yt_maintenance_age_player(float *cloak, uint16_t last_active,
+    int killer_status, uint16_t today, float retention_days,
     float *cached_cloak, enum yt_maintenance_player_action *action)
 {
 	static const float cloak_charge = -0.05000000074505806f;
@@ -411,9 +411,9 @@ yt_maintenance_age_player(float *cloak, float last_active,
 		if (working == 0.0f)
 			*action = YT_MAINTENANCE_PLAYER_CLOAK_EXPIRED;
 	}
-	cutoff = qb_single_subtract(today, retention_days);
+	cutoff = qb_single_subtract((float)today, retention_days);
 	if (*action != YT_MAINTENANCE_PLAYER_CLOAK_EXPIRED
-	    && last_active <= cutoff && killer_status != 0)
+	    && (float)last_active <= cutoff && killer_status != 0)
 		*action = YT_MAINTENANCE_PLAYER_DELETE;
 	return true;
 }

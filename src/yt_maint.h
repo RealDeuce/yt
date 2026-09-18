@@ -205,8 +205,8 @@ bool yt_maintenance_super_lottery(struct yt_game *game, int player_count,
     void *line_context, struct yt_error *error);
 bool yt_maintenance_store_final_marker(struct yt_game *game, uint16_t serial,
     struct yt_error *error);
-bool yt_maintenance_age_player(float *cloak, float last_active,
-    int killer_status, float today, float retention_days,
+bool yt_maintenance_age_player(float *cloak, uint16_t last_active,
+    int killer_status, uint16_t today, float retention_days,
     float *cached_cloak, enum yt_maintenance_player_action *action);
 bool yt_maintenance_compose_player_aging(
     const struct yt_maintenance_text *name,
@@ -214,7 +214,7 @@ bool yt_maintenance_compose_player_aging(
     const struct yt_maintenance_text *date_text, bool cloak_expired,
     bool delete_player, struct yt_maintenance_player_output_result *result);
 bool yt_maintenance_update_port(struct yt_random *random,
-    struct yt_port *port, float current_day, float current_minute,
+    struct yt_port *port, int16_t current_day, float current_minute,
     bool *plagued, struct yt_error *error);
 bool yt_maintenance_maintain_ports(struct yt_game *game,
     const uint8_t *blank, size_t blank_length,
@@ -225,7 +225,7 @@ bool yt_maintenance_compose_planet_phase(const uint8_t *blank,
     const struct yt_maintenance_planet_result *mutation,
     struct yt_maintenance_output_result *result);
 bool yt_maintenance_update_planet(struct yt_random *random,
-    struct yt_planet *planet, float current_day, float current_minute,
+    struct yt_planet *planet, int16_t current_day, float current_minute,
     struct yt_maintenance_planet_result *result, struct yt_error *error);
 bool yt_maintenance_maintain_planets(struct yt_game *game,
     const uint8_t *blank, size_t blank_length,

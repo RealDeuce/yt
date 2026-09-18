@@ -21,7 +21,7 @@ struct nearest_scan {
 	struct yt_nearest_market market;
 	int current_team;
 	int display_sector;
-	float current_day;
+	int16_t current_day;
 	float timer_seconds;
 	int page_count;
 	int current_sector;
@@ -321,11 +321,16 @@ nearest_scan_run(struct yt_session *session, int selector,
 					goto done;
 				session->door->game.today = today;
 				session->door->game.adjusted_year = adjusted_year;
-				scan.current_day = (float)today;
+				scan.current_day = (int16_t)today;
 			}
-			if (!nearest_single(scan.current_day, &scan.current_day,
-			    error, "nearest current day"))
-				goto done;
+			{
+				float current_day = (float)scan.current_day;
+
+				if (!nearest_single(current_day, &current_day,
+				    error, "nearest current day"))
+					goto done;
+				scan.current_day = (int16_t)current_day;
+			}
 			if (!yt_database_read(&session->door->game.database,
 			    (size_t)session_port_basic_record(session, logical_port),
 			    &raw, error))

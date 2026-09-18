@@ -55,7 +55,7 @@ test_port_update(void)
 	sector.port = 2;
 	yt_sector_encode(&sector);
 	yt_record_blank(&port.record);
-	port.last_day = (float)today;
+	port.last_day = (int16_t)today;
 	port.last_minute = 0.0f;
 	for (index = 0U; index < 3U; ++index) {
 		port.stock[index] = (float)(100U * (index + 1U));
@@ -74,7 +74,7 @@ test_port_update(void)
 	CHECK(yt_session_update_port(&session, 7, NULL, &market, &error));
 	CHECK(market.logical_port == 2);
 	CHECK(market.port_physical_record == 2057U);
-	CHECK(market.current_day == (float)today);
+	CHECK(market.current_day == (int16_t)today);
 	CHECK(yt_database_read(&door.game.database, 2057U, &persisted,
 	    &error));
 	CHECK(memcmp(persisted.bytes, market.port.record.bytes,
@@ -234,7 +234,7 @@ test_owned_port_purchase(void)
 	yt_record_blank(&port.record);
 	(void)snprintf(port.name, sizeof(port.name), "%s", "Old Port");
 	port.name_length = 8U;
-	port.last_day = (float)today;
+	port.last_day = (int16_t)today;
 	port.last_minute = qb_single_divide((float)yt_clock_timer(
 	    &door.game.clock),
 	    60.0f);

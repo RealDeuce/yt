@@ -274,7 +274,7 @@ construct_player_visible(struct yt_session *session, struct yt_error *error)
 	    "player constructor row", error))
 		return false;
 	if (yt_game_construct_player(&session->door->game,
-	    session_record(session), (float)session->door->game.today,
+	    session_record(session), (uint16_t)session->door->game.today,
 	    session->door->game.config.turns_per_day, &session->player,
 	    &failure, error))
 		return true;
@@ -395,8 +395,8 @@ startup_retention(struct yt_session *session, struct yt_error *error)
 
 static bool
 returning_daily_update(struct yt_session *session,
-    float today, float turns_per_day,
-    float *previous_day, int *killer, struct yt_error *error)
+    uint16_t today, float turns_per_day,
+    uint16_t *previous_day, int *killer, struct yt_error *error)
 {
 	static const uint8_t row[] = "You have been on today.";
 	struct yt_player player;
@@ -424,7 +424,7 @@ returning_daily_update(struct yt_session *session,
 	*killer = player.killed_by;
 
 	daily = player.record;
-	if (!yt_record_set_number(&daily, YT_F41, today))
+	if (!yt_record_set_number(&daily, YT_F41, (float)today))
 		return false;
 	if (!same_day) {
 		if (player.turns < turns_per_day)
@@ -572,19 +572,19 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 	    "returning player blank", error))
 		return false;
 	{
-		float previous_day;
+		uint16_t previous_day;
 		int killer;
-		float startup_day;
+		uint16_t startup_day;
 		bool self_kill;
 
 		if (!returning_daily_update(session,
-		    (float)session->door->game.today,
+		    (uint16_t)session->door->game.today,
 		    session->door->game.config.turns_per_day,
 		    &previous_day, &killer, error))
 			return false;
 		if (!yt_database_flush(&session->door->game.database, error))
 			return false;
-		startup_day = (float)session->door->game.today;
+		startup_day = (uint16_t)session->door->game.today;
 		self_kill = killer == session_record(session);
 		if (!yt_clock_read(&session->door->game.clock, &now, error))
 			return false;

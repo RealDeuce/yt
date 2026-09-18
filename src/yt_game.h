@@ -11,7 +11,7 @@ struct yt_game;
 struct yt_player {
 	struct yt_record record;
 	char name[42];
-	float last_active;
+	uint16_t last_active;
 	int killed_by;
 	float turns;
 	float shields;
@@ -67,7 +67,7 @@ struct yt_port {
 	struct yt_record record;
 	char name[42];
 	int commodity_class;
-	float last_day;
+	int16_t last_day;
 	float stock[3];
 	float production[3];
 	float factor[3];
@@ -81,7 +81,7 @@ struct yt_port {
 struct yt_planet {
 	struct yt_record record;
 	char name[42];
-	float last_day;
+	int16_t last_day;
 	float production[3];
 	float stock[3];
 	float missiles;
@@ -285,7 +285,7 @@ void yt_planet_decode(struct yt_planet *planet, const struct yt_record *record);
 void yt_planet_encode(struct yt_planet *planet);
 
 struct yt_planet_economy {
-	float current_day;
+	int16_t current_day;
 	float current_minute;
 	float elapsed;
 	float production[10];
@@ -294,7 +294,7 @@ struct yt_planet_economy {
 };
 
 bool yt_planet_update_record(struct yt_record *record,
-    float current_day, float timer_seconds,
+    int16_t current_day, float timer_seconds,
     struct yt_planet_economy *economy, struct yt_error *error);
 
 bool yt_game_open(struct yt_game *game, enum yt_open_mode mode,
@@ -325,7 +325,7 @@ enum yt_player_constructor_failure {
 	YT_PLAYER_CONSTRUCTOR_PLAYER_PUT,
 };
 bool yt_game_construct_player(struct yt_game *game, int basic_record,
-    float today, float turns,
+    uint16_t today, float turns,
     struct yt_player *player, enum yt_player_constructor_failure *failure,
     struct yt_error *error);
 enum yt_sector_force_route yt_sector_force_route(float fighters, int owner,
@@ -486,7 +486,7 @@ bool yt_planet_creation_credit_row(double credits, uint8_t *row,
 void yt_planet_creation_overlay(struct yt_planet *planet,
     int current_player_record);
 void yt_planet_creation_timestamp_overlay(struct yt_planet *planet,
-    float day, float minute);
+    int16_t day, float minute);
 bool yt_planet_creation_news(const uint8_t *trader_name,
     size_t trader_name_length, const uint8_t *planet_name,
     size_t planet_name_length, uint8_t *row, size_t capacity,
@@ -562,7 +562,7 @@ struct yt_port_market_state {
 	struct yt_port port;
 	int logical_port;
 	uint32_t port_physical_record;
-	float current_day;
+	int16_t current_day;
 	float timer_seconds;
 	float base_price[3];
 	uint8_t capacity_raw[3][8];
@@ -856,14 +856,14 @@ struct yt_nearest_market {
 	float stock[3];
 	float production[3];
 	float factor[3];
-	float stored_day;
+	int16_t stored_day;
 	float stored_minute;
 	float price[3];
 };
 
 bool yt_nearest_market_project(struct yt_nearest_market *market,
 	const struct yt_port *port, const float base_price[3],
-	float current_day, float timer_seconds, struct yt_error *error);
+	int16_t current_day, float timer_seconds, struct yt_error *error);
 
 bool yt_current_player_hydrate(struct yt_player *player,
     const struct yt_player *fresh, int player_record,

@@ -210,13 +210,13 @@ check_current_player_cache_model(void)
 	memset(&player, 0, sizeof(player));
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Cached Name");
 	player.name_length = 11U;
-	player.last_active = 71.0f;
+	player.last_active = 71U;
 	player.killed_by = 72;
 	player.lottery_plays = 73;
 	memset(&fresh, 0, sizeof(fresh));
 	(void)snprintf(fresh.name, sizeof(fresh.name), "%s", "Field Name");
 	fresh.name_length = 10U;
-	fresh.last_active = 1.0f;
+	fresh.last_active = 1U;
 	fresh.killed_by = 2;
 	fresh.lottery_plays = 3;
 	fresh.turns = 4.0f;
@@ -244,7 +244,7 @@ check_current_player_cache_model(void)
 	if (!yt_current_player_hydrate(&player, &fresh, 2, 51, false,
 	    &current_sector, &player_cache)
 	    || strcmp(player.name, "Cached Name") != 0
-	    || player.name_length != 11U || player.last_active != 71.0f
+	    || player.name_length != 11U || player.last_active != 71U
 	    || player.killed_by != 72 || player.lottery_plays != 73
 	    || player.turns != 4.0f || player.shields != 5.0f
 	    || player.sector != 6 || player.fighters != 7.0f
@@ -2007,7 +2007,7 @@ check_planet_creation_model(void)
 	    before.bytes + YT_RECORD_TAIL_OFFSET, YT_RECORD_TAIL_SIZE) != 0)
 		return false;
 	before = planet.record;
-	yt_planet_creation_timestamp_overlay(&planet, 321.0f, 60.0f);
+	yt_planet_creation_timestamp_overlay(&planet, 321, 60.0f);
 	if (yt_record_get_number(&planet.record, YT_F41) != 321.0f
 	    || yt_record_get_number(&planet.record, YT_F89) != 60.0f)
 		return false;
@@ -3049,19 +3049,19 @@ check_maintenance_port_model(void)
 	port.factor[1] = -1.0f;
 	port.factor[2] = -1.0f;
 	port.commodity_class = 3;
-	port.last_day = 100.0f;
+	port.last_day = 100;
 	port.last_minute = 720.0f;
 	yt_random_init(&random);
 	yt_test_random_use_provider(&random, score_random_fill, &script);
 	yt_error_clear(&error);
-	if (!yt_maintenance_update_port(&random, &port, 105.0f, 720.0f,
+	if (!yt_maintenance_update_port(&random, &port, 105, 720.0f,
 	    &plagued, &error) || plagued || TEST_DRAWS(random) != 0U
 	    || port.stock[0] != 9000.0f || port.stock[1] != 15000.0f
 	    || port.stock[2] != 30000.0f
 	    || port.production[0] != 900.0f
 	    || port.production[1] != 1500.0f
 	    || port.production[2] != 3000.0f
-	    || port.last_day != 105.0f || port.last_minute != 720.0f)
+	    || port.last_day != 105 || port.last_minute != 720.0f)
 		return false;
 
 	memset(&port, 0, sizeof(port));
@@ -3075,10 +3075,10 @@ check_maintenance_port_model(void)
 	port.factor[1] = 3.0f;
 	port.factor[2] = -4.0f;
 	port.commodity_class = 1;
-	port.last_day = 1.0f;
+	port.last_day = 1;
 	script.position = 0U;
 	yt_test_random_use_provider(&random, score_random_fill, &script);
-	if (!yt_maintenance_update_port(&random, &port, 1.0f, 0.0f,
+	if (!yt_maintenance_update_port(&random, &port, 1, 0.0f,
 	    &plagued, &error) || !plagued || TEST_DRAWS(random) != 3U
 	    || script.position != sizeof(draws)
 	    || port.production[0] != 2500500.0f
@@ -3091,7 +3091,7 @@ check_maintenance_port_model(void)
 	    || port.factor[0] != 2.0f || port.factor[1] != -3.0f
 	    || port.factor[2] != -4.0f)
 		return false;
-	return !yt_maintenance_update_port(NULL, &port, 1.0f, 0.0f,
+	return !yt_maintenance_update_port(NULL, &port, 1, 0.0f,
 	    &plagued, &error);
 }
 
@@ -3595,11 +3595,11 @@ check_maintenance_planet_model(void)
 	planet.production[0] = 100.0f;
 	planet.production[1] = 200.0f;
 	planet.production[2] = 300.0f;
-	planet.last_day = 1.0f;
+	planet.last_day = 1;
 	yt_random_init(&random);
 	yt_test_random_use_provider(&random, score_random_fill, &script);
 	yt_error_clear(&error);
-	if (!yt_maintenance_update_planet(&random, &planet, 2.0f, 0.0f,
+	if (!yt_maintenance_update_planet(&random, &planet, 2, 0.0f,
 	    &mutation, &error)
 	    || mutation.event != YT_MAINTENANCE_PLANET_NO_EVENT
 	    || planet.production[0] != 101.0f
@@ -3619,12 +3619,12 @@ check_maintenance_planet_model(void)
 	planet.stock[2] = 3000.0f;
 	planet.bank = 1000000.0f;
 	planet.ground_forces = 20000000.0f;
-	planet.last_day = 1.0f;
+	planet.last_day = 1;
 	script = (struct score_random_script){
 		civil_draws, sizeof(civil_draws), 0U
 	};
 	yt_test_random_use_provider(&random, score_random_fill, &script);
-	if (!yt_maintenance_update_planet(&random, &planet, 1.0f, 0.0f,
+	if (!yt_maintenance_update_planet(&random, &planet, 1, 0.0f,
 	    &mutation, &error)
 	    || mutation.event != YT_MAINTENANCE_PLANET_CIVIL_WAR
 	    || mutation.old_event_total != 600.0f
@@ -3645,12 +3645,12 @@ check_maintenance_planet_model(void)
 	planet.production[0] = 10000000.0f;
 	planet.production[1] = 5000000.0f;
 	planet.production[2] = 2000000.0f;
-	planet.last_day = 1.0f;
+	planet.last_day = 1;
 	script = (struct score_random_script){
 		plague_draws, sizeof(plague_draws), 0U
 	};
 	yt_test_random_use_provider(&random, score_random_fill, &script);
-	if (!yt_maintenance_update_planet(&random, &planet, 1.0f, 0.0f,
+	if (!yt_maintenance_update_planet(&random, &planet, 1, 0.0f,
 	    &mutation, &error)
 	    || mutation.event != YT_MAINTENANCE_PLANET_PLAGUE
 	    || mutation.emit_ground_line
@@ -3667,7 +3667,7 @@ check_maintenance_planet_model(void)
 	    sizeof("  -  A PLAGUE") - 1U) != 0
 	    || output.rows[4].id != YT_MAINT_ROW_PLANET_EVENT_PRODUCTION)
 		return false;
-	return !yt_maintenance_update_planet(NULL, &planet, 1.0f, 0.0f,
+	return !yt_maintenance_update_planet(NULL, &planet, 1, 0.0f,
 	    &mutation, &error);
 }
 
@@ -3953,25 +3953,25 @@ check_maintenance_player_aging(void)
 	float cloak;
 
 	cloak = 0.0f;
-	if (!yt_maintenance_age_player(&cloak, 100.0f, 0, 204.0f,
+	if (!yt_maintenance_age_player(&cloak, 100U, 0, 204U,
 	    14.0f, &cached_cloak, &action)
 	    || cached_cloak != 0.0f || cloak != 0.0f
 	    || action != YT_MAINTENANCE_PLAYER_UNCHANGED)
 		return false;
 	cloak = 0.02f;
-	if (!yt_maintenance_age_player(&cloak, 190.0f, -1, 204.0f,
+	if (!yt_maintenance_age_player(&cloak, 190U, -1, 204U,
 	    14.0f, &cached_cloak, &action)
 	    || cached_cloak != 0.02f || cloak != 0.0f
 	    || action != YT_MAINTENANCE_PLAYER_CLOAK_EXPIRED)
 		return false;
 	cloak = -4.0f;
-	if (!yt_maintenance_age_player(&cloak, 191.0f, -1, 204.0f,
+	if (!yt_maintenance_age_player(&cloak, 191U, -1, 204U,
 	    14.0f, &cached_cloak, &action)
 	    || cached_cloak != 1.0f || fabsf(cloak - 0.95f) > 0.000001f
 	    || action != YT_MAINTENANCE_PLAYER_UNCHANGED)
 		return false;
 	cloak = 0.0f;
-	if (!yt_maintenance_age_player(&cloak, 190.0f, -1, 204.0f,
+	if (!yt_maintenance_age_player(&cloak, 190U, -1, 204U,
 	    14.0f, &cached_cloak, &action)
 	    || action != YT_MAINTENANCE_PLAYER_DELETE
 	    || !yt_maintenance_compose_player_aging(&name, &time_text,
@@ -3997,7 +3997,7 @@ check_maintenance_player_aging(void)
 	return yt_maintenance_compose_player_aging(&name, &time_text,
 	    &date_text, false, false, &output)
 	    && output.screen.row_count == 0U && output.radio_length == 0U
-	    && !yt_maintenance_age_player(NULL, 0.0f, 0, 0.0f, 0.0f,
+	    && !yt_maintenance_age_player(NULL, 0U, 0, 0U, 0.0f,
 	    &cached_cloak, &action)
 	    && !yt_maintenance_compose_player_aging(NULL, &time_text,
 	    &date_text, false, false, &output);
@@ -4241,7 +4241,7 @@ check_maintenance_player_pass(void)
 		yt_record_blank(&seed);
 		yt_player_decode(&player, &seed);
 		player.sector = record * 11;
-		player.last_active = record == 4 ? 0.0f : 204.0f;
+		player.last_active = record == 4 ? 0U : 204U;
 		player.killed_by = record >= 4 ? -1 : 0;
 		player.cloak = record == 2 ? 9.0f : record == 3 ? 0.0f
 		    : record == 4 ? 0.02f : -4.0f;
@@ -12664,7 +12664,7 @@ check_earth_report_model(void)
 }
 
 static bool
-construct_player_values(struct yt_game *game, int basic_record, float today,
+construct_player_values(struct yt_game *game, int basic_record, uint16_t today,
     float turns, struct yt_player *player,
     enum yt_player_constructor_failure *failure, struct yt_error *error)
 {
@@ -12719,7 +12719,7 @@ check_player_constructor_failures(void)
 	    || failure != YT_PLAYER_CONSTRUCTOR_PLAYER_PUT
 	    || strcmp(player.name, "Keep Name") != 0
 	    || player.name_length != 9U || player.score != 88.0f
-	    || player.team != 0 || player.last_active != 77.0f
+	    || player.team != 0 || player.last_active != 77U
 	    || player.turns != 123.0f || player.fighters != 45.0f
 	    || player.credits != 678.0f || player.holds != 9.0f)
 		goto close;
@@ -13648,7 +13648,7 @@ check_datetime_format(void)
 }
 
 static void
-port_market_fixture(struct yt_port_market_state *state, float stored_day,
+port_market_fixture(struct yt_port_market_state *state, int16_t stored_day,
     const float stock[3], const float production[3])
 {
 	struct yt_record record;
@@ -13659,7 +13659,7 @@ port_market_fixture(struct yt_port_market_state *state, float stored_day,
 	memset(record.bytes, 0x6d, sizeof(record.bytes));
 	memset(record.bytes, ' ', YT_TEXT_FIELD_SIZE);
 	memcpy(record.bytes, "Argus", 5U);
-	(void)yt_record_set_number(&record, YT_F45, stored_day);
+	(void)yt_record_set_number(&record, YT_F45, (float)stored_day);
 	for (index = 0U; index < 3U; ++index) {
 		(void)yt_record_set_number(&record, YT_F49 + index * 4U,
 		    stock[index]);
@@ -13674,7 +13674,7 @@ port_market_fixture(struct yt_port_market_state *state, float stored_day,
 	(void)yt_record_set_number(&record, YT_F97, 2.0f);
 	(void)yt_record_set_number(&record, YT_F101, 600.0f);
 	yt_port_decode(&state->port, &record);
-	state->current_day = 1000.0f;
+	state->current_day = 1000;
 	state->timer_seconds = 36000.0f;
 	state->base_price[0] = 20.0f;
 	state->base_price[1] = 30.0f;
@@ -13695,7 +13695,7 @@ check_port_market_update(void)
 	uint8_t exact_capacity[8];
 	size_t index;
 
-	port_market_fixture(&state, 999.0f, stock, production);
+	port_market_fixture(&state, 999, stock, production);
 	expected = state.port.record;
 	(void)yt_record_set_number(&expected, YT_F45, 1000.0f);
 	(void)yt_record_set_number(&expected, YT_F101, 600.0f);
@@ -13717,7 +13717,7 @@ check_port_market_update(void)
 			return false;
 	}
 
-	port_market_fixture(&state, 999.0f, stock, production);
+	port_market_fixture(&state, 999, stock, production);
 	expected = state.port.record;
 	(void)yt_record_set_number(&expected, YT_F49, 16777216.0f);
 	(void)yt_record_set_number(&expected, YT_F61, 1.0f);
@@ -13728,7 +13728,7 @@ check_port_market_update(void)
 	    sizeof(exact_capacity)) != 0)
 		return false;
 
-	port_market_fixture(&state, 999.0f, stock, production);
+	port_market_fixture(&state, 999, stock, production);
 	expected = state.port.record;
 	(void)yt_record_set_number(&expected, YT_F49, 0.0f);
 	(void)yt_record_set_number(&expected, YT_F61, 0.0f);
@@ -13739,12 +13739,12 @@ check_port_market_update(void)
 	    sizeof(expected.bytes)) != 0)
 		return false;
 
-	port_market_fixture(&state, 900.0f, stock, production);
+	port_market_fixture(&state, 900, stock, production);
 	if (!yt_port_market_update(&state, NULL)
 	    || state.port.stock[0] != 150.0f
 	    || state.port.production[0] != 15.0f)
 		return false;
-	port_market_fixture(&state, 1001.0f, stock, production);
+	port_market_fixture(&state, 1001, stock, production);
 	return yt_port_market_update(&state, NULL)
 	    && state.port.stock[0] == 150.0f
 	    && state.port.production[0] == 15.0f;
@@ -14883,12 +14883,12 @@ main(void)
 	    || qb_mbf32_encode(45.0f, constructor_fighters_raw) != QB_MBF_OK
 	    || qb_mbf32_encode(678.0f, constructor_credits_raw) != QB_MBF_OK
 	    || qb_mbf32_encode(9.0f, constructor_holds_raw) != QB_MBF_OK
-	    || !yt_game_construct_player(&game, 2, 321.0f, 500.0f,
+	    || !yt_game_construct_player(&game, 2, 321U, 500.0f,
 	    &player, NULL, &error)
 	    || !yt_game_read_player(&game, 2, &player, &error)
 	    || strcmp(player.name, "Old Trader") != 0
 	    || player.name_length != 10U || player.score != 77.5f
-	    || player.last_active != 321.0f || player.killed_by != 0
+	    || player.last_active != 321U || player.killed_by != 0
 	    || player.turns != 500.0f || player.fighters != 45.0f
 	    || player.credits != 678.0f || player.holds != 9.0f
 	    || player.team != 0

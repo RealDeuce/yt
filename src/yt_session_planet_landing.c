@@ -273,7 +273,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	    &session->door->game.clock), 60.0f));
 	if (!read_planet_physical(session, selected_physical, &planet, error))
 		return false;
-	yt_planet_creation_timestamp_overlay(&planet, (float)today, minute);
+	yt_planet_creation_timestamp_overlay(&planet, (int16_t)today, minute);
 	if (!session_write_planet_physical(session, selected_physical, &planet,
 	    false, error))
 		return false;

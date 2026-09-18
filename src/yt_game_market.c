@@ -71,12 +71,13 @@ yt_port_market_update(struct yt_port_market_state *state,
 		    "ordinary port constants");
 	minute = qb_single_divide(state->timer_seconds, 60.0f);
 	elapsed = qb_single_add(
-	    qb_single_subtract(state->current_day, state->port.last_day),
+	    qb_single_subtract((float)state->current_day,
+	    (float)state->port.last_day),
 	    qb_single_divide(qb_single_subtract(minute,
 	    state->port.last_minute), 1440.0f));
 	if (elapsed > 10.0f || elapsed < 0.0f)
 		elapsed = 10.0f;
-	if (!market_encode_single(state->current_day, current_day_raw, error,
+	if (!market_encode_single((float)state->current_day, current_day_raw, error,
 	    "ordinary port current day"))
 		return false;
 	if (!market_encode_single(minute, current_minute_raw, error,

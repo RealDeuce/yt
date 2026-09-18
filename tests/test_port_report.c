@@ -43,7 +43,7 @@ market_fixture(struct yt_port_market_state *market)
 	set_number(&record, YT_F97, 2.0f);
 	set_number(&record, YT_F101, 600.0f);
 	yt_port_decode(&market->port, &record);
-	market->current_day = 1000.0f;
+	market->current_day = 1000;
 	market->timer_seconds = 36000.0f;
 	market->base_price[0] = 20.0f;
 	market->base_price[1] = 30.0f;

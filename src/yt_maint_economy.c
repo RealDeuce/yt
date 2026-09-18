@@ -21,7 +21,7 @@ set_error(struct yt_error *error, enum yt_status status,
 }
 
 static bool
-current_day_minute(struct yt_game *game, float *day, float *minute,
+current_day_minute(struct yt_game *game, int16_t *day, float *minute,
     struct yt_error *error)
 {
 	int serial;
@@ -30,15 +30,16 @@ current_day_minute(struct yt_game *game, float *day, float *minute,
 	    (float)game->config.epoch_year, &serial,
 	    NULL, error))
 		return false;
-	*day = (float)serial;
+	*day = (int16_t)serial;
 	*minute = (float)(yt_clock_timer(&game->clock) / 60.0);
 	return true;
 }
 
 static float
-elapsed_days(float day, float minute, float old_day, float old_minute)
+elapsed_days(int16_t day, float minute, int16_t old_day, float old_minute)
 {
-	float elapsed = qb_single_add(qb_single_subtract(day, old_day),
+	float elapsed = qb_single_add(qb_single_subtract((float)day,
+	    (float)old_day),
 	    qb_single_divide(qb_single_subtract(minute, old_minute), 1440.0f));
 
 	if (elapsed > 10.0f || elapsed < 0.0f)
@@ -48,7 +49,7 @@ elapsed_days(float day, float minute, float old_day, float old_minute)
 
 bool
 yt_maintenance_update_port(struct yt_random *random, struct yt_port *port,
-    float current_day, float current_minute,
+    int16_t current_day, float current_minute,
     bool *plagued, struct yt_error *error)
 {
 	double stock[3];
@@ -121,7 +122,8 @@ maintenance_write_port(struct yt_game *game, int logical,
 		set_error(error, YT_RANGE, "encode maintained port", "YTDATA.DAT");
 		return false;
 	}
-	if (!yt_record_set_number(&port->record, YT_F45, port->last_day)) {
+	if (!yt_record_set_number(&port->record, YT_F45,
+	    (float)port->last_day)) {
 		set_error(error, YT_RANGE, "encode maintained port", "YTDATA.DAT");
 		return false;
 	}
@@ -191,7 +193,7 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 	}
 	for (logical = 1; logical <= port_count; ++logical) {
 		struct yt_port port;
-		float day;
+		int16_t day;
 		float minute;
 		bool port_plagued;
 
@@ -228,7 +230,7 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 
 bool
 yt_maintenance_update_planet(struct yt_random *random,
-    struct yt_planet *planet, float day, float minute,
+    struct yt_planet *planet, int16_t day, float minute,
     struct yt_maintenance_planet_result *result, struct yt_error *error)
 {
 	const float one_percent = 0.009999999776482582f;
@@ -389,7 +391,8 @@ maintenance_write_planet(struct yt_game *game, int logical,
 	static const size_t stock_offsets[] = {YT_F57, YT_F61, YT_F65};
 	int index;
 
-	if (!yt_record_set_number(&planet->record, YT_F41, planet->last_day))
+	if (!yt_record_set_number(&planet->record, YT_F41,
+	    (float)planet->last_day))
 		goto range;
 	for (index = 0; index < 3; ++index) {
 		if (!yt_record_set_number(&planet->record,
@@ -460,7 +463,7 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 		struct yt_maintenance_planet_result mutation;
 		struct yt_maintenance_text name;
 		struct yt_planet planet;
-		float day;
+		int16_t day;
 		float minute;
 		size_t row;
 

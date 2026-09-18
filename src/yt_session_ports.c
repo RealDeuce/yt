@@ -53,7 +53,7 @@ yt_session_update_port(struct yt_session *session, int sector_number,
 		return false;
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
-	market->current_day = (float)today;
+	market->current_day = (int16_t)today;
 	if (!read_database_record_at_fault(session,
 	    market->port_physical_record, &record,
 	    YT_BASIC_FAULT_PORT_UPDATER_PORT_GET, error))

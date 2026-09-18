@@ -130,7 +130,7 @@ nearest_market_copy(struct yt_nearest_market *market,
 bool
 yt_nearest_market_project(struct yt_nearest_market *market,
     const struct yt_port *port, const float base_price[3],
-    float current_day, float timer_seconds, struct yt_error *error)
+    int16_t current_day, float timer_seconds, struct yt_error *error)
 {
 	float day_delta;
 	float minute_delta;
@@ -151,7 +151,8 @@ yt_nearest_market_project(struct yt_nearest_market *market,
 	if (!nearest_div(timer_seconds, 60.0f, &market->minute, error,
 	    "nearest market minute"))
 		return false;
-	if (!nearest_sub(current_day, market->stored_day, &day_delta, error,
+	if (!nearest_sub((float)current_day, (float)market->stored_day,
+	    &day_delta, error,
 	    "nearest market day delta"))
 		return false;
 	if (!nearest_sub(market->minute, market->stored_minute, &minute_delta,

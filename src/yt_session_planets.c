@@ -55,7 +55,7 @@ yt_session_update_planet_physical(struct yt_session *session,
 	    (size_t)physical_record, &record, error))
 		return false;
 	timer_seconds = (float)yt_clock_timer(&session->door->game.clock);
-	if (!yt_planet_update_record(&record, (float)today,
+	if (!yt_planet_update_record(&record, (int16_t)today,
 	    timer_seconds, &updated_economy, error))
 		return false;
 	if (!yt_database_write(&session->door->game.database,

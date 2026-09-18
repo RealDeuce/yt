@@ -57,7 +57,7 @@ test_self_owned_planet(void)
 	CHECK(yt_current_date_serial(&door.game.clock,
 	    (float)door.game.config.epoch_year, &today,
 	    &adjusted_year, &error));
-	planet.last_day = (float)today;
+	planet.last_day = (int16_t)today;
 	planet.owner = 2;
 	planet.ground_forces = 5.0f;
 	yt_record_blank(&planet.record);
@@ -76,7 +76,7 @@ test_self_owned_planet(void)
 	CHECK(yt_session_planet_permission(&session, 1, &denied, &error));
 	CHECK(!denied);
 	CHECK(TEST_DRAWS(door.game.random) == 0U);
-	CHECK(session.planet.economy.current_day == (float)today);
+	CHECK(session.planet.economy.current_day == (int16_t)today);
 	CHECK(yt_database_read(&door.game.database, 4U, &persisted, &error));
 	CHECK(yt_record_get_number(&persisted, YT_F41) == (float)today);
 	CHECK(yt_record_get_number(&persisted, YT_F73) == 2.0f);
@@ -140,7 +140,7 @@ test_land_and_leave_owned_planet(void)
 	yt_record_blank(&planet.record);
 	(void)snprintf(planet.name, sizeof(planet.name), "%s", "Home");
 	planet.name_length = 4U;
-	planet.last_day = (float)today;
+	planet.last_day = (int16_t)today;
 	planet.owner = 2;
 	planet.ground_forces = 5.0f;
 	yt_planet_encode(&planet);

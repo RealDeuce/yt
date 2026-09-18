@@ -68,13 +68,13 @@ yt_planet_creation_overlay(struct yt_planet *planet,
 
 void
 yt_planet_creation_timestamp_overlay(struct yt_planet *planet,
-    float day, float minute)
+    int16_t day, float minute)
 {
 	if (planet == NULL)
 		return;
 	planet->last_day = day;
 	planet->last_minute = minute;
-	(void)yt_record_set_number(&planet->record, YT_F41, day);
+	(void)yt_record_set_number(&planet->record, YT_F41, (float)day);
 	(void)yt_record_set_number(&planet->record, YT_F89, minute);
 }
 

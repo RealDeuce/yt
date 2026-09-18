@@ -243,7 +243,7 @@ updater_prepare_production(const struct yt_record *record,
 
 bool
 yt_planet_update_record(struct yt_record *record,
-    float current_day, float timer_seconds,
+    int16_t current_day, float timer_seconds,
     struct yt_planet_economy *economy, struct yt_error *error)
 {
 	static const size_t quantity_offsets[9] = {
@@ -270,6 +270,7 @@ yt_planet_update_record(struct yt_record *record,
 	uint8_t float_residue[4];
 	float production[10] = {0};
 	float contribution[10] = {0};
+	float current_day_single;
 	float current_minute;
 	float stored_day;
 	float stored_minute;
@@ -282,11 +283,11 @@ yt_planet_update_record(struct yt_record *record,
 		    "planet updater arguments");
 	if (!updater_prepare_production(record, production, error))
 		return false;
-	if (!updater_encode_single(current_day, work.current_day, error,
+	if (!updater_encode_single((float)current_day, work.current_day, error,
 	    "planet updater current day MBF32"))
 		return false;
-	current_day = qb_mbf32_decode(work.current_day);
-	if (current_day < 0.0f || timer_seconds < 0.0f)
+	current_day_single = qb_mbf32_decode(work.current_day);
+	if (current_day_single < 0.0f || timer_seconds < 0.0f)
 		return updater_error(error, YT_RANGE,
 		    "planet updater clock domain");
 	field = *record;
@@ -314,7 +315,7 @@ yt_planet_update_record(struct yt_record *record,
 	stored_day = yt_record_get_number(&field, YT_F41);
 	stored_minute = yt_record_get_number(&field, YT_F89);
 	elapsed = qb_single_add(
-	    qb_single_subtract(current_day, stored_day),
+	    qb_single_subtract(current_day_single, stored_day),
 	    qb_single_divide(qb_single_subtract(current_minute, stored_minute),
 	    qb_mbf32_decode(updater_minutes_per_day_s)));
 	if (elapsed > qb_mbf32_decode(updater_ten_s) || elapsed < 0.0f)

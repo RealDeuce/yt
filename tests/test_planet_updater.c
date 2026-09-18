@@ -69,7 +69,7 @@ decode_hex(const char *hex, uint8_t *raw, size_t length)
 }
 
 static bool
-update_record(struct yt_record *record, float current_day,
+update_record(struct yt_record *record, int16_t current_day,
     float timer_seconds, struct yt_planet_economy *economy,
     struct yt_error *error)
 {
@@ -94,7 +94,7 @@ test_exact_record(void)
 	planet_fixture(&original);
 	CHECK(decode_hex(expected_hex, expected.bytes, sizeof(expected.bytes)));
 	yt_error_clear(&error);
-	CHECK(update_record(&original, 101.0f, 7200.0f,
+	CHECK(update_record(&original, 101, 7200.0f,
 	    &economy, &error));
 	CHECK(memcmp(original.bytes, expected.bytes, sizeof(expected.bytes)) == 0);
 	CHECK(economy.elapsed == 1.04166662693023681640625f);
@@ -109,7 +109,7 @@ test_zero_elapsed(void)
 
 	planet_fixture(&record);
 	yt_error_clear(&error);
-	CHECK(update_record(&record, 100.0f, 3600.0f,
+	CHECK(update_record(&record, 100, 3600.0f,
 	    &economy, &error));
 	CHECK(economy.elapsed == 0.0f);
 	CHECK(memcmp(record.bytes + YT_F69, "\0\0\x20\0", 4U) == 0);
@@ -127,11 +127,11 @@ test_fractional_quantities(void)
 	set_number(&record, YT_F77, 0.6f);
 	set_number(&record, YT_F117, 0.6f);
 	yt_error_clear(&error);
-	CHECK(update_record(&record, 100.0f, 3600.0f,
+	CHECK(update_record(&record, 100, 3600.0f,
 	    &economy, &error));
 	CHECK(memcmp(record.bytes + YT_F77, "\x9a\x99\x19\0", 4U) == 0);
 	CHECK(memcmp(record.bytes + YT_F117, "\x9a\x99\x19\0", 4U) == 0);
-	CHECK(update_record(&record, 100.0f, 3600.0f,
+	CHECK(update_record(&record, 100, 3600.0f,
 	    &economy, &error));
 	CHECK(memcmp(record.bytes + YT_F77, "\x9a\x99\x19\0", 4U) == 0);
 	CHECK(memcmp(record.bytes + YT_F117, "\x9a\x99\x19\0", 4U) == 0);
@@ -157,11 +157,11 @@ test_growth_boundaries(void)
 	set_number(&record, YT_F117, 0.0f);
 	set_number(&record, YT_F129, 0.0f);
 	yt_error_clear(&error);
-	CHECK(update_record(&record, 100.0f, 3600.0f,
+	CHECK(update_record(&record, 100, 3600.0f,
 	    &economy, &error));
 	CHECK(yt_record_get_number(&record, YT_F45) == 10.0f);
 	set_number(&record, YT_F57, 101.0f);
-	CHECK(update_record(&record, 100.0f, 3600.0f,
+	CHECK(update_record(&record, 100, 3600.0f,
 	    &economy, &error));
 	CHECK(yt_record_get_number(&record, YT_F45) == 10.1f);
 
@@ -177,7 +177,7 @@ test_growth_boundaries(void)
 	set_number(&record, YT_F113, 0.0f);
 	set_number(&record, YT_F117, 0.0f);
 	set_number(&record, YT_F129, 0.0f);
-	CHECK(update_record(&record, 110.0f, 0.0f,
+	CHECK(update_record(&record, 110, 0.0f,
 	    &economy, &error));
 	CHECK(economy.elapsed == 10.0f);
 	CHECK(memcmp(record.bytes + YT_F69, "\0\0\x20\0", 4U) == 0);

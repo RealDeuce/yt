@@ -62,7 +62,8 @@ maintenance_write_mercenary_rebuild(struct yt_game *game,
 
 	yt_record_set_text(&planet->record,
 	    (const uint8_t *)"Mercenary Base", 14U);
-	if (!yt_record_set_number(&planet->record, YT_F41, planet->last_day))
+	if (!yt_record_set_number(&planet->record, YT_F41,
+	    (float)planet->last_day))
 		goto range;
 	for (index = 0; index < 3; ++index) {
 		if (!yt_record_set_number(&planet->record,
@@ -170,7 +171,7 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 		    (const uint8_t *)"Mercenary Base", 14);
 		strcpy(planet.name, "Mercenary Base");
 		planet.name_length = 14U;
-		planet.last_day = (float)(today - 10);
+		planet.last_day = (int16_t)(today - 10);
 		planet.production[0] = 100000.0f;
 		planet.production[1] = 100000.0f;
 		planet.production[2] = 100000.0f;
