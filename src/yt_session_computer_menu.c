@@ -8,9 +8,11 @@ computer_activate(struct yt_session *session, struct yt_error *error)
 	static const uint8_t notice[] = "<Computer activated>";
 
 	session_set_foreground(session, 1);
-	return session_present_paged_line(session, notice, sizeof(notice) - 1U,
-	    "computer activation notice", error)
-	    && session_sound(session, YT_SOUND_CUE_ACTION, "computer activation sound", error);
+	if (!session_present_paged_line(session, notice, sizeof(notice) - 1U,
+	    "computer activation notice", error))
+		return false;
+	return session_sound(session, YT_SOUND_CUE_ACTION,
+	    "computer activation sound", error);
 }
 
 static bool
@@ -40,15 +42,17 @@ computer_help(struct yt_session *session, struct yt_error *error)
 
 	session->pager.line_count = 0;
 	if (!session_present_paged_line(session, heading, sizeof(heading) - 1U,
-	    "computer help heading", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "computer help heading", error))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "computer help blank", error))
 		return false;
 	for (index = 0; index < 8U; ++index) {
 		if (!session_fixed_width_bytes(session,
 		    (const uint8_t *)left[index], strlen(left[index]), 40.0f,
-		    "computer help left cell", error)
-		    || !session_present_paged_fragment(session, right[index],
+		    "computer help left cell", error))
+			return false;
+		if (!session_present_paged_fragment(session, right[index],
 		    strlen((const char *)right[index])))
 			return false;
 	}
@@ -63,18 +67,21 @@ computer_menu_prompt(struct yt_session *session, char *command,
 	size_t prompt_length;
 	size_t response_length;
 
-	if (command == NULL || capacity < 3U
-	    || !session_reload_player(session, error))
+	if (command == NULL || capacity < 3U)
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "computer prompt leading blank", error))
 		return false;
 	session_set_foreground(session, 1);
 	if (!yt_computer_prompt_row((const uint8_t *)session->time.text,
-	    session->time.text_length, prompt, sizeof(prompt), &prompt_length)
-	    || !session_present_timed_paged_row(session, prompt, prompt_length,
-	    "computer prompt", error)
-	    || !session_read_upper_command(session, command, capacity))
+	    session->time.text_length, prompt, sizeof(prompt), &prompt_length))
+		return false;
+	if (!session_present_timed_paged_row(session, prompt, prompt_length,
+	    "computer prompt", error))
+		return false;
+	if (!session_read_upper_command(session, command, capacity))
 		return false;
 	response_length = strlen(command);
 	if (response_length == 0U) {
@@ -268,8 +275,9 @@ yt_session_computer_menu(struct yt_session *session, bool *enter_sector,
 
 			if (!session_present_paged_line(session, warning,
 			    sizeof(warning) - 1U,
-			    "computer reactivation warning", error)
-			    || !computer_activate(session, error))
+			    "computer reactivation warning", error))
+				return false;
+			if (!computer_activate(session, error))
 				return false;
 			continue;
 		}
