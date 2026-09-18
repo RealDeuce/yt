@@ -40,10 +40,12 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	if (!autopilot) {
 		session->navigation.reuse_route_start = true;
 		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "path start blank", error)
-		    || !session_present_timed_paged_row(session, start_prompt,
-		    sizeof(start_prompt) - 1U, "path start prompt", error)
-		    || !session_read_number_command(session, response,
+		    SESSION_PRESENT_LINE, "path start blank", error))
+			return false;
+		if (!session_present_timed_paged_row(session, start_prompt,
+		    sizeof(start_prompt) - 1U, "path start prompt", error))
+			return false;
+		if (!session_read_number_command(session, response,
 		    sizeof(response)))
 			return false;
 		if (response[0] == '\0')
@@ -57,10 +59,12 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		    (float)session->player.sector;
 	start_value = session->navigation.route_start_sector;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "path destination blank", error)
-	    || !session_present_timed_paged_row(session, destination_prompt,
-	    sizeof(destination_prompt) - 1U, "path destination prompt", error)
-	    || !session_read_number_command(session, response, sizeof(response)))
+	    "path destination blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, destination_prompt,
+	    sizeof(destination_prompt) - 1U, "path destination prompt", error))
+		return false;
+	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
 	if (response[0] == '\0')
 		return true;
@@ -72,8 +76,9 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		char number[64];
 		char notice[128];
 
-		if (qb_str_single(number, sizeof(number), maximum) < 0
-		    || snprintf(notice, sizeof(notice),
+		if (qb_str_single(number, sizeof(number), maximum) < 0)
+			return false;
+		if (snprintf(notice, sizeof(notice),
 		    "Valid sector numbers are from 1 to%s!", number) < 0)
 			return false;
 		return session_present_alert(session, (const uint8_t *)notice,
@@ -83,8 +88,9 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		return session_present_alert(session, same, sizeof(same) - 1U,
 		    "path equal endpoint", error);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "path working blank", error)
-	    || !session_present_timed_paged_row(session, working,
+	    "path working blank", error))
+		return false;
+	if (!session_present_timed_paged_row(session, working,
 	    sizeof(working) - 1U, "path working prompt", error))
 		return false;
 	if (!yt_session_build_route(session, start_value, destination_value,
@@ -99,15 +105,19 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		char destination_text[64];
 		char heading[192];
 
-		if (qb_str_single(start_text, sizeof(start_text), start_value) < 0
-		    || qb_str_single(destination_text, sizeof(destination_text),
-		    destination_value) < 0
-		    || snprintf(heading, sizeof(heading),
+		if (qb_str_single(start_text, sizeof(start_text), start_value) < 0)
+			return false;
+		if (qb_str_single(destination_text, sizeof(destination_text),
+		    destination_value) < 0)
+			return false;
+		if (snprintf(heading, sizeof(heading),
 		    "The shortest path from sector%s to sector%s is:",
-		    start_text, destination_text) < 0
-		    || !session_present_paged_fragment(session,
-		    (const uint8_t *)heading, strlen(heading))
-		    || !session_present_text(session, NULL, 0,
+		    start_text, destination_text) < 0)
+			return false;
+		if (!session_present_paged_fragment(session,
+		    (const uint8_t *)heading, strlen(heading)))
+			return false;
+		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "path route blank", error))
 			return false;
 	}
@@ -119,8 +129,9 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	{
 		char number[64];
 
-		if (qb_str_single(number, sizeof(number), (float)start) < 0
-		    || !session_present_timed_paged_row(session,
+		if (qb_str_single(number, sizeof(number), (float)start) < 0)
+			return false;
+		if (!session_present_timed_paged_row(session,
 		    (const uint8_t *)number, strlen(number),
 		    "path start token", error))
 			return false;
@@ -136,10 +147,12 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		if (next == 0)
 			break;
 		cursor = next;
-		if (qb_str_single(number, sizeof(number), (float)cursor) < 0
-		    || snprintf(token, sizeof(token), "%s%s", number,
-		    cursor == destination ? "" : ",") < 0
-		    || !session_present_timed_paged_row(session,
+		if (qb_str_single(number, sizeof(number), (float)cursor) < 0)
+			return false;
+		if (snprintf(token, sizeof(token), "%s%s", number,
+		    cursor == destination ? "" : ",") < 0)
+			return false;
+		if (!session_present_timed_paged_row(session,
 		    (const uint8_t *)token, strlen(token),
 		    "path route token", error))
 			return false;
@@ -148,10 +161,11 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		    (float)cursor, &hop_count, error))
 			return false;
 		yt_out_cursor_position(&ignored_row, &column);
-		if (yt_computer_path_wrap_required(column)
-		    && !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "path route wrap", error))
-			return false;
+		if (yt_computer_path_wrap_required(column)) {
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "path route wrap", error))
+				return false;
+		}
 	}
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "path token terminator", error))
@@ -160,10 +174,12 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		char hop_text[64];
 		char course[128];
 
-		if (qb_str_single(hop_text, sizeof(hop_text), hop_count) < 0
-		    || snprintf(course, sizeof(course),
-		    "Course will take%s turns.", hop_text) < 0
-		    || !session_present_paged_line(session,
+		if (qb_str_single(hop_text, sizeof(hop_text), hop_count) < 0)
+			return false;
+		if (snprintf(course, sizeof(course),
+		    "Course will take%s turns.", hop_text) < 0)
+			return false;
+		if (!session_present_paged_line(session,
 		    (const uint8_t *)course, strlen(course),
 		    "path course row", error))
 			return false;
@@ -183,18 +199,22 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		char turns[64];
 		char row[128];
 
-		if (qb_str_single(turns, sizeof(turns), session->player.turns) < 0
-		    || snprintf(row, sizeof(row), "You have%s turns left.",
-		    turns) < 0
-		    || !session_present_paged_fragment(session,
-		    (const uint8_t *)row, strlen(row))
-		    || !session_confirm(session, confirmation,
+		if (qb_str_single(turns, sizeof(turns), session->player.turns) < 0)
+			return false;
+		if (snprintf(row, sizeof(row), "You have%s turns left.",
+		    turns) < 0)
+			return false;
+		if (!session_present_paged_fragment(session,
+		    (const uint8_t *)row, strlen(row)))
+			return false;
+		if (!session_confirm(session, confirmation,
 		    sizeof(confirmation) - 1U, &answer, error))
 			return false;
 		if (answer == YT_YES_NO_YES) {
 			if (!session_present_paged_line(session, engaged,
-			    sizeof(engaged) - 1U, "autopilot engaged row", error)
-			    || !session_present_paged_line(session, stop_notice,
+			    sizeof(engaged) - 1U, "autopilot engaged row", error))
+				return false;
+			if (!session_present_paged_line(session, stop_notice,
 			    sizeof(stop_notice) - 1U,
 			    "autopilot stop row", error))
 				return false;
