@@ -35,20 +35,27 @@ mercenary_destination_attack_line(double moving, double defenders,
 	int second_length = qb_str_double(second, sizeof(second), defenders);
 
 	*line_length = 0U;
-	return first_length >= 0 && second_length >= 0
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, prefix, sizeof(prefix) - 1U)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, (const uint8_t *)first, (size_t)first_length)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, attack, sizeof(attack) - 1U)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, (const uint8_t *)second, (size_t)second_length)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, belonging, sizeof(belonging) - 1U)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, owner, owner_length)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	if (first_length < 0 || second_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, prefix, sizeof(prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, (const uint8_t *)first, (size_t)first_length))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, attack, sizeof(attack) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, (const uint8_t *)second, (size_t)second_length))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, belonging, sizeof(belonging) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, owner, owner_length))
+		return false;
+	return maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
 	    line_length, (const uint8_t *)"!", 1U);
 }
 
@@ -71,28 +78,39 @@ mercenary_destination_join_lines(double moving, int sector_number,
 
 	*line_length = 0U;
 	*radio_length = 0U;
-	return count_length >= 0 && sector_length >= 0
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, prefix, sizeof(prefix) - 1U)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, (const uint8_t *)count, (size_t)count_length)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, joined, sizeof(joined) - 1U)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, owner, owner_length)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, defense, sizeof(defense) - 1U)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, (const uint8_t *)sector, (size_t)sector_length)
-	    && maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    line_length, (const uint8_t *)"!", 1U)
-	    && maintenance_copy_part(radio, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    radio_length, (const uint8_t *)count, (size_t)count_length)
-	    && maintenance_copy_part(radio, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    radio_length, radio_middle, sizeof(radio_middle) - 1U)
-	    && maintenance_copy_part(radio, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
-	    radio_length, (const uint8_t *)sector, (size_t)sector_length)
-	    && maintenance_copy_part(radio, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	if (count_length < 0 || sector_length < 0)
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, prefix, sizeof(prefix) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, (const uint8_t *)count, (size_t)count_length))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, joined, sizeof(joined) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, owner, owner_length))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, defense, sizeof(defense) - 1U))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, (const uint8_t *)sector, (size_t)sector_length))
+		return false;
+	if (!maintenance_copy_part(line, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    line_length, (const uint8_t *)"!", 1U))
+		return false;
+	if (!maintenance_copy_part(radio, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    radio_length, (const uint8_t *)count, (size_t)count_length))
+		return false;
+	if (!maintenance_copy_part(radio, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    radio_length, radio_middle, sizeof(radio_middle) - 1U))
+		return false;
+	if (!maintenance_copy_part(radio, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
+	    radio_length, (const uint8_t *)sector, (size_t)sector_length))
+		return false;
+	return maintenance_copy_part(radio, YT_MAINTENANCE_OUTPUT_ROW_SIZE,
 	    radio_length, (const uint8_t *)"!", 1U);
 }
 
@@ -169,11 +187,14 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 				    "compose Mercenary join", "YTDATA.DAT");
 				return false;
 			}
-			if (!line_output(line_context, line, line_length, error)
-			    || !yt_news_append_bytes(line, line_length, error)
-			    || !yt_radio_append_maintenance_bytes(radio, radio_length,
-			    -2.0f, (float)original_owner, error)
-			    || !yt_game_read_sector(game, sector_number, &fresh, error))
+			if (!line_output(line_context, line, line_length, error))
+				return false;
+			if (!yt_news_append_bytes(line, line_length, error))
+				return false;
+			if (!yt_radio_append_maintenance_bytes(radio, radio_length,
+			    -2.0f, (float)original_owner, error))
+				return false;
+			if (!yt_game_read_sector(game, sector_number, &fresh, error))
 				return false;
 			fresh.fighters = (float)((double)fresh.fighters + moving);
 			if (!yt_game_write_sector(game, sector_number, &fresh, error))
@@ -189,8 +210,9 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 		set_error(error, YT_RANGE, "compose Mercenary attack", "YTDATA.DAT");
 		return false;
 	}
-	if (!line_output(line_context, line, line_length, error)
-	    || !yt_news_append_bytes(line, line_length, error))
+	if (!line_output(line_context, line, line_length, error))
+		return false;
+	if (!yt_news_append_bytes(line, line_length, error))
 		return false;
 	while (defenders > 0.0 && moving > 0.0) {
 		float sample;
@@ -209,9 +231,11 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 		size_t result_length = moving > 0.0
 		    ? sizeof(won) - 1U : sizeof(lost) - 1U;
 
-		if (!line_output(line_context, result_line, result_length, error)
-		    || !yt_news_append_bytes(result_line, result_length, error)
-		    || !yt_game_read_sector(game, sector_number, &fresh, error))
+		if (!line_output(line_context, result_line, result_length, error))
+			return false;
+		if (!yt_news_append_bytes(result_line, result_length, error))
+			return false;
+		if (!yt_game_read_sector(game, sector_number, &fresh, error))
 			return false;
 	}
 	if (defenders > 0.0) {
@@ -330,10 +354,13 @@ yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
 				return false;
 		} while (target == origin);
 		if (!yt_maintenance_route_next_hop(game,
-		    route_cache, origin, target, &next, error)
-		    || !yt_maintenance_compose_mercenary_movement((double)moving,
-		    (float)origin, &output)
-		    || !maintenance_emit_output_row(&output, YT_MAINT_ROW_MERCENARY_MOVEMENT,
+		    route_cache, origin, target, &next, error))
+			return false;
+		if (!yt_maintenance_compose_mercenary_movement((double)moving,
+		    (float)origin, &output))
+			return false;
+		if (!maintenance_emit_output_row(&output,
+		    YT_MAINT_ROW_MERCENARY_MOVEMENT,
 		    line_output, line_context, error))
 			return false;
 		if (route_cache->successors == NULL) {
