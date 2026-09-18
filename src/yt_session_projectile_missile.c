@@ -428,7 +428,6 @@ missile_mines:
 		struct yt_sector mine_sector;
 		double observed_mines;
 		float destroyed;
-		float missiles_after;
 		uint8_t row[256];
 		size_t row_length;
 
@@ -478,8 +477,7 @@ missile_mines:
 		    (size_t)session_sector_basic_record(session,
 		    sector_number), &mine_sector.record, error))
 			return false;
-		missiles_after = *remaining - destroyed;
-		*remaining = missiles_after;
+		*remaining -= destroyed;
 		if (*remaining < 1.0f)
 			return true;
 	}

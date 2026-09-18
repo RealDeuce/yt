@@ -289,8 +289,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	while ((stale_ore > 0.0f || production[1] > 0.0f
 	    || production[2] > 0.0f) && *energy > 0.0) {
 		float draw;
-		double product = *energy * 0.000004;
-		float quantity = (float)product;
+		float quantity = (float)(*energy * 0.000004);
 
 		remaining_ground = qb_single_subtract(remaining_ground, quantity);
 		for (index = 0U; index < 3U; ++index)
@@ -525,10 +524,9 @@ plasma_reload_sector:
 			return false;
 		while (*energy > 0.0 && (double)destroyed < original_mines) {
 			float draw;
-			double quantum = floor(*energy * 0.000001);
-			double accumulated = (double)destroyed + quantum;
 
-			destroyed = (float)(accumulated + 1.0);
+			destroyed = (float)((double)destroyed
+			    + floor(*energy * 0.000001) + 1.0);
 			if (!yt_random_next(&session->door->game.random, &draw, error))
 				return false;
 			*energy -= (double)qb_single_multiply(draw, 25000.0f);
@@ -598,10 +596,9 @@ plasma_reload_sector:
 			while (*energy > 0.0
 			    && destroyed_fighters < original_fighters) {
 				float draw;
-				double quantum = floor(*energy / 5000.0);
-				double accumulated = destroyed_fighters + quantum;
 
-				destroyed_fighters = accumulated + 1.0;
+				destroyed_fighters +=
+				    floor(*energy / 5000.0) + 1.0;
 				if (!yt_random_next(&session->door->game.random, &draw, error))
 					return false;
 				*energy -= (double)qb_single_multiply(draw, 25000.0f);
@@ -609,11 +606,9 @@ plasma_reload_sector:
 			while (*energy > 0.0
 			    && destroyed_shields < original_shields) {
 				float draw;
-				double quantum = floor(*energy / 10000.0);
-				double accumulated =
-				    (double)destroyed_shields + quantum;
 
-				destroyed_shields = (float)(accumulated + 1.0);
+				destroyed_shields = (float)((double)destroyed_shields
+				    + floor(*energy / 10000.0) + 1.0);
 				if (!yt_random_next(&session->door->game.random, &draw, error))
 					return false;
 				*energy -= (double)qb_single_multiply(draw, 25000.0f);

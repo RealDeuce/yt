@@ -386,13 +386,10 @@ yt_computer_selector_position(const char *command)
 void
 yt_trade_treasury_overlay(struct yt_port *port, float receipt)
 {
-	float updated;
-
 	if (port == NULL)
 		return;
-	updated = port->treasury + receipt;
-	port->treasury = updated;
-	(void)yt_record_set_number(&port->record, YT_F89, updated);
+	port->treasury += receipt;
+	(void)yt_record_set_number(&port->record, YT_F89, port->treasury);
 }
 
 void
@@ -400,16 +397,13 @@ yt_trade_holds_overlay(struct yt_player *player, size_t commodity,
 	float quantity, int8_t direction)
 {
 	float *selected;
-	float single_delta;
-	double updated;
 
 	if (player == NULL || commodity >= 3U)
 		return;
 	selected = commodity == 0U ? &player->ore
 	    : commodity == 1U ? &player->organics : &player->equipment;
-	single_delta = quantity * (float)direction;
-	updated = (double)*selected + (double)single_delta;
-	*selected = (float)updated;
+	*selected = (float)((double)*selected
+	    + (double)(quantity * (float)direction));
 	(void)yt_record_set_number(&player->record, YT_F69, player->ore);
 	(void)yt_record_set_number(&player->record, YT_F73, player->organics);
 	(void)yt_record_set_number(&player->record, YT_F77, player->equipment);

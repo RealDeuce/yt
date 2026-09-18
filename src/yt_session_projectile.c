@@ -538,16 +538,11 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	if (session->projectile.retained_counterlaunch_missiles > available
 	    || session->projectile.retained_counterlaunch_missiles == 0.0f) {
 		float draw;
-		float product;
-		float integral;
-		float selected;
 
 		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
-		product = draw * available;
-		integral = floorf(product);
-		selected = integral + 1.0f;
-		session->projectile.retained_counterlaunch_missiles = selected;
+		session->projectile.retained_counterlaunch_missiles =
+		    floorf(draw * available) + 1.0f;
 	}
 	if (!yt_game_read_player(&session->door->game, *counterattacker,
 	    &debit_player, error))

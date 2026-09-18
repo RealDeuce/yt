@@ -10,10 +10,7 @@ float
 yt_planet_landing_attrition(float first_draw, float second_draw,
     float cached_ground_forces)
 {
-	float product = first_draw * second_draw;
-	float scaled = product * cached_ground_forces;
-
-	return floorf(scaled);
+	return floorf(first_draw * second_draw * cached_ground_forces);
 }
 
 void
@@ -192,60 +189,49 @@ yt_planet_landing_unrest_row(float reduced, float original,
 void
 yt_planet_assault_player_overlay(struct yt_player *player, float commitment)
 {
-	float remaining;
-
 	if (player == NULL)
 		return;
-	remaining = player->ground_forces - commitment;
-	player->ground_forces = remaining;
-	(void)yt_record_set_number(&player->record, YT_F121, remaining);
+	player->ground_forces -= commitment;
+	(void)yt_record_set_number(&player->record, YT_F121,
+	    player->ground_forces);
 }
 
 void
 yt_planet_assault_victory_overlay(struct yt_planet *planet, int owner,
     float attackers)
 {
-	float integral = floorf(attackers);
-
 	if (planet == NULL)
 		return;
 	planet->owner = owner;
-	planet->ground_forces = integral;
+	planet->ground_forces = floorf(attackers);
 	(void)yt_record_set_number(&planet->record, YT_F73, (float)owner);
-	(void)yt_record_set_number(&planet->record, YT_F77, integral);
+	(void)yt_record_set_number(&planet->record, YT_F77,
+	    planet->ground_forces);
 }
 
 void
 yt_planet_assault_failure_overlay(struct yt_planet *planet, float defenders)
 {
-	float integral = floorf(defenders);
-
 	if (planet == NULL)
 		return;
-	planet->ground_forces = integral;
-	(void)yt_record_set_number(&planet->record, YT_F77, integral);
+	planet->ground_forces = floorf(defenders);
+	(void)yt_record_set_number(&planet->record, YT_F77,
+	    planet->ground_forces);
 }
 
 void
 yt_planet_assault_round(bool attacker_damage, float amount,
     float *attackers, float *defenders)
 {
-	float product;
-	float reduced;
-
 	if (attackers == NULL || defenders == NULL)
 		return;
 	if (attacker_damage) {
-		product = amount * *defenders;
-		reduced = *attackers - product;
-		*attackers = floorf(reduced);
+		*attackers = floorf(*attackers - amount * *defenders);
 		if (*attackers < 0.0f)
 			*attackers = 0.0f;
 	}
 	else {
-		product = amount * *attackers;
-		reduced = *defenders - product;
-		*defenders = floorf(reduced);
+		*defenders = floorf(*defenders - amount * *attackers);
 		if (*defenders < 0.0f)
 			*defenders = 0.0f;
 	}

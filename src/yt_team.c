@@ -170,25 +170,21 @@ void
 yt_team_transfer_apply_sector(struct yt_sector *sector,
     double initial_fighters, float amount)
 {
-	float updated;
-
 	if (sector == NULL)
 		return;
-	updated = (float)(initial_fighters + (double)amount);
-	sector->fighters = updated;
-	(void)yt_record_set_number(&sector->record, YT_F81, updated);
+	sector->fighters = (float)(initial_fighters + (double)amount);
+	(void)yt_record_set_number(&sector->record, YT_F81,
+	    sector->fighters);
 }
 
 void
 yt_team_transfer_apply_player(struct yt_player *player, float amount)
 {
-	float updated;
-
 	if (player == NULL)
 		return;
-	updated = (float)((double)player->fighters - (double)amount);
-	player->fighters = updated;
-	(void)yt_record_set_number(&player->record, YT_F61, updated);
+	player->fighters = (float)((double)player->fighters - (double)amount);
+	(void)yt_record_set_number(&player->record, YT_F61,
+	    player->fighters);
 }
 
 void

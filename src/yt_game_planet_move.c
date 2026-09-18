@@ -46,27 +46,22 @@ yt_planet_move_explosion_overlay(struct yt_planet *planet)
 void
 yt_planet_move_fighter_overlay(struct yt_player *player, float loss)
 {
-	float remaining;
-
 	if (player == NULL)
 		return;
-	remaining = player->fighters - loss;
-	player->fighters = remaining;
-	(void)yt_record_set_number(&player->record, YT_F61, remaining);
+	player->fighters -= loss;
+	(void)yt_record_set_number(&player->record, YT_F61,
+	    player->fighters);
 }
 
 void
 yt_planet_move_success_overlay(struct yt_player *player,
     int destination)
 {
-	float remaining;
-
 	if (player == NULL)
 		return;
-	remaining = player->turns + -10.0f;
-	player->turns = remaining;
+	player->turns -= 10.0f;
 	player->sector = destination;
-	(void)yt_record_set_number(&player->record, YT_F49, remaining);
+	(void)yt_record_set_number(&player->record, YT_F49, player->turns);
 	(void)yt_record_set_number(&player->record, YT_F57,
 	    (float)destination);
 }

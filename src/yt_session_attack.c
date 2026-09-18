@@ -76,7 +76,6 @@ direct_attack_finish_kill(struct yt_session *session, int target_record,
 	size_t saved_name_length;
 	size_t warning_length;
 	float saved_mines;
-	float deployed;
 	bool terminal;
 
 	if (target_shields > 0.0f)
@@ -101,8 +100,7 @@ direct_attack_finish_kill(struct yt_session *session, int target_record,
 		return true;
 	if (!session_read_sector(session, current_sector, &sector, error))
 		return false;
-	deployed = sector.mines + saved_mines;
-	yt_sector_mine_sector_overlay(&sector, deployed);
+	yt_sector_mine_sector_overlay(&sector, sector.mines + saved_mines);
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)yt_sector_basic_record(&session->door->game.config,
 	    current_sector),
@@ -136,8 +134,7 @@ direct_attack_attrition(struct yt_session *session, double committed,
 		double remaining_defender = defenders - *defender_loss;
 		double minimum = remaining_attacker < remaining_defender
 		    ? remaining_attacker : remaining_defender;
-		double integral = floor(minimum / 20.0);
-		float quantum = (float)integral;
+		float quantum = (float)floor(minimum / 20.0);
 		float sampled;
 
 		if (quantum < 1.0f)

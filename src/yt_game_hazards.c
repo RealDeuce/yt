@@ -11,21 +11,16 @@
 float
 yt_sector_mine_batch(float mines_before)
 {
-	float quotient;
-
 	if (!(mines_before > 19.0f))
 		return 1.0f;
-	quotient = mines_before / 10.0f;
-	return floorf(quotient);
+	return floorf(mines_before / 10.0f);
 }
 
 float
 yt_sector_mine_shield_result(float shields, float batch, float draw)
 {
-	float product = draw * 1001.0f;
-	uint16_t quantum = (uint16_t)floorf(product);
-	float loss = (float)quantum * batch;
-	float result = shields - loss;
+	uint16_t quantum = (uint16_t)floorf(draw * 1001.0f);
+	float result = shields - (float)quantum * batch;
 
 	return result < 1.0f ? 0.0f : result;
 }
@@ -33,10 +28,7 @@ yt_sector_mine_shield_result(float shields, float batch, float draw)
 float
 yt_sector_mine_cloak_loss(float cloak, float batch, float draw)
 {
-	float first = draw * batch;
-	float scaled = first * 100.0f;
-	float integral = floorf(scaled);
-	float loss = integral / 100.0f;
+	float loss = floorf(draw * batch * 100.0f) / 100.0f;
 
 	return loss > cloak ? cloak : loss;
 }
@@ -44,9 +36,7 @@ yt_sector_mine_cloak_loss(float cloak, float batch, float draw)
 float
 yt_sector_mine_missile_loss(float missiles, float batch, float draw)
 {
-	float range = batch * missiles;
-	float product = draw * range;
-	float loss = floorf(product) + 1.0f;
+	float loss = floorf(draw * batch * missiles) + 1.0f;
 
 	return loss > missiles ? missiles : loss;
 }
@@ -54,14 +44,10 @@ yt_sector_mine_missile_loss(float missiles, float batch, float draw)
 float
 yt_sector_mine_empty_holds(const struct yt_player *player)
 {
-	float empty;
-
 	if (player == NULL)
 		return 0.0f;
-	empty = player->holds - player->equipment;
-	empty = empty - player->organics;
-	empty = empty - player->ore;
-	return empty;
+	return player->holds - player->equipment - player->organics
+	    - player->ore;
 }
 
 void
@@ -228,18 +214,13 @@ yt_direct_fighter_mine_warning(const uint8_t *victim_name,
 float
 yt_emergency_warp_duration(float first, float second)
 {
-	float first_part = first * 70.0f;
-	float second_part = second * 70.0f;
-	float result = first_part + second_part;
-
-	return result;
+	return first * 70.0f + second * 70.0f;
 }
 
 uint16_t
 yt_emergency_warp_destination(float draw, uint16_t sector_count)
 {
-	float product = draw * (float)sector_count;
-	uint16_t selected = (uint16_t)floorf(product);
+	uint16_t selected = (uint16_t)floorf(draw * (float)sector_count);
 
 	return selected + 1U;
 }
@@ -247,8 +228,7 @@ yt_emergency_warp_destination(float draw, uint16_t sector_count)
 float
 yt_emergency_warp_cost(uint8_t heat, float draw, float turns, bool meltdown)
 {
-	float jitter_product = draw * 4.0f;
-	uint8_t jitter = (uint8_t)floorf(jitter_product);
+	uint8_t jitter = (uint8_t)floorf(draw * 4.0f);
 	uint16_t calculated = (uint16_t)heat * 4U + jitter;
 	float result = (float)calculated;
 
@@ -263,16 +243,13 @@ void
 yt_emergency_warp_player_overlay(struct yt_player *player,
     int destination, float cost)
 {
-	float remaining;
-
 	if (player == NULL)
 		return;
-	remaining = player->turns - cost;
 	player->sector = destination;
-	player->turns = remaining;
+	player->turns -= cost;
 	(void)yt_record_set_number(&player->record, YT_F57,
 	    (float)destination);
-	(void)yt_record_set_number(&player->record, YT_F49, remaining);
+	(void)yt_record_set_number(&player->record, YT_F49, player->turns);
 }
 
 bool

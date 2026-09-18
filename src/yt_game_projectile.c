@@ -36,13 +36,8 @@ void
 yt_projectile_plasma_opening_values(float bolts, double *energy,
     float *hop_loss)
 {
-	double quotient;
-	float rounded;
-
 	*energy = (double)qb_single_multiply(2500000.0f, bolts);
-	quotient = *energy / 50.0;
-	rounded = (float)quotient;
-	*hop_loss = rounded;
+	*hop_loss = (float)(*energy / 50.0);
 }
 
 bool
@@ -92,22 +87,20 @@ void
 yt_projectile_debit_overlay(struct yt_player *player, bool plasma,
     float amount)
 {
-	float remaining;
 	size_t offset;
 
 	if (player == NULL)
 		return;
 	if (plasma) {
-		remaining = player->plasma - amount;
-		player->plasma = remaining;
+		player->plasma -= amount;
 		offset = YT_F113;
 	}
 	else {
-		remaining = player->missiles - amount;
-		player->missiles = remaining;
+		player->missiles -= amount;
 		offset = YT_F97;
 	}
-	(void)yt_record_set_number(&player->record, offset, remaining);
+	(void)yt_record_set_number(&player->record, offset,
+	    plasma ? player->plasma : player->missiles);
 }
 
 float
@@ -116,29 +109,21 @@ yt_counterlaunch_score_count(double cached_score, float retained)
 	static const uint8_t score_factor_raw[8] = {
 		0x84, 0x47, 0x1b, 0x47, 0xac, 0xc5, 0x27, 0x70
 	};
-	double product;
-	double integral;
-	double result;
-
 	if (cached_score <= 0.0)
 		return retained;
-	product = cached_score * qb_mbf64_decode(score_factor_raw);
-	integral = floor(product);
-	result = integral + 1.0;
-	return (float)result;
+	return (float)(floor(cached_score
+	    * qb_mbf64_decode(score_factor_raw)) + 1.0);
 }
 
 void
 yt_counterlaunch_debit_overlay(struct yt_player *fresh_target,
     float first_available, float selected_count)
 {
-	float remaining;
-
 	if (fresh_target == NULL)
 		return;
-	remaining = first_available - selected_count;
-	fresh_target->missiles = remaining;
-	(void)yt_record_set_number(&fresh_target->record, YT_F97, remaining);
+	fresh_target->missiles = first_available - selected_count;
+	(void)yt_record_set_number(&fresh_target->record, YT_F97,
+	    fresh_target->missiles);
 }
 
 bool

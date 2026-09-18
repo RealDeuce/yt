@@ -22,8 +22,7 @@ yt_hostile_attack_quantum(double remaining_attacker,
 {
 	double minimum = remaining_attacker < remaining_defender
 	    ? remaining_attacker : remaining_defender;
-	double divided = minimum / 20.0;
-	float quantum = (float)qb_int(divided);
+	float quantum = (float)qb_int(minimum / 20.0);
 
 	return quantum < 1.0f ? 1.0f : quantum;
 }
@@ -31,10 +30,7 @@ yt_hostile_attack_quantum(double remaining_attacker,
 bool
 yt_hostile_attack_loses_attacker(float cloak, float draw)
 {
-	float cloak_term = cloak / 10.0f;
-	float total = cloak_term + draw;
-
-	return total < 0.44999998807907104f;
+	return cloak / 10.0f + draw < 0.44999998807907104f;
 }
 
 enum yt_hostile_surrender_route
@@ -58,16 +54,10 @@ yt_fighter_shield_spill_step(double *fighters, float *shields, float draw)
 	    || *fighters <= 0.0 || *shields <= 0.0f)
 		return false;
 	quantum = *fighters > 100.0 && *shields > 100.0f ? 100U : 1U;
-	if (draw >= 0.5f) {
-		double reduced = *fighters - (double)quantum;
-
-		*fighters = reduced;
-	}
-	else {
-		float reduced = *shields - (float)quantum;
-
-		*shields = reduced;
-	}
+	if (draw >= 0.5f)
+		*fighters -= (double)quantum;
+	else
+		*shields -= (float)quantum;
 	return true;
 }
 
@@ -202,15 +192,10 @@ float
 yt_xannor_attack_bonus(double defenders_destroyed, float turns,
     float turns_per_day)
 {
-	double quotient = defenders_destroyed / 256000.0;
-	float bonus = (float)qb_int(quotient);
-	float sum = turns + bonus;
+	float bonus = (float)qb_int(defenders_destroyed / 256000.0);
 
-	if (sum > turns_per_day) {
-		float clamped = turns_per_day - turns;
-
-		bonus = clamped;
-	}
+	if (turns + bonus > turns_per_day)
+		bonus = turns_per_day - turns;
 	return bonus;
 }
 
@@ -234,11 +219,7 @@ yt_bribe_mercenary_forces(double defenders, double ship_fighters,
 double
 yt_bribe_offer_threshold(double defenders, float draw)
 {
-	double product = defenders * (double)draw;
-	double doubled = product * 2.0;
-	double threshold = doubled + defenders;
-
-	return threshold;
+	return defenders * (double)draw * 2.0 + defenders;
 }
 
 bool

@@ -76,39 +76,30 @@ static bool
 nearest_add(float left, float right, float *result, struct yt_error *error,
     const char *operation)
 {
-	float value = left + right;
-
-	return nearest_single(value, result, error, operation);
+	return nearest_single(left + right, result, error, operation);
 }
 
 static bool
 nearest_sub(float left, float right, float *result, struct yt_error *error,
     const char *operation)
 {
-	float value = left - right;
-
-	return nearest_single(value, result, error, operation);
+	return nearest_single(left - right, result, error, operation);
 }
 
 static bool
 nearest_mul(float left, float right, float *result, struct yt_error *error,
     const char *operation)
 {
-	float value = left * right;
-
-	return nearest_single(value, result, error, operation);
+	return nearest_single(left * right, result, error, operation);
 }
 
 static bool
 nearest_div(float left, float right, float *result, struct yt_error *error,
     const char *operation)
 {
-	float value;
-
 	if (right == 0.0f)
 		return nearest_error(error, operation);
-	value = left / right;
-	return nearest_single(value, result, error, operation);
+	return nearest_single(left / right, result, error, operation);
 }
 
 static void

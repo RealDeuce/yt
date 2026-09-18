@@ -475,8 +475,6 @@ bool
 yt_maintenance_xannor_regeneration(float top_score, float size[21],
     double *regeneration)
 {
-	float converted;
-	float regeneration_single;
 	float total = 0.0f;
 	float ceiling;
 	int group;
@@ -485,15 +483,13 @@ yt_maintenance_xannor_regeneration(float top_score, float size[21],
 		return false;
 	for (group = 1; group <= 20; ++group)
 		total = qb_single_add(total, size[group]);
-	regeneration_single = yt_maintenance_sint(
+	*regeneration = (double)yt_maintenance_sint(
 	    qb_single_divide(top_score, 500.0f));
-	*regeneration = (double)regeneration_single;
 	ceiling = yt_maintenance_sint(
 	    qb_single_divide(top_score, 100.0f));
 	if (total > ceiling)
 		*regeneration = 0.0;
-	converted = (float)((double)size[1] + *regeneration);
-	size[1] = converted;
+	size[1] = (float)((double)size[1] + *regeneration);
 	return true;
 }
 
@@ -581,9 +577,8 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 			goto encode_error;
 	}
 	else {
-		float remaining = (float)defenders;
-
-		if (!yt_record_set_number(&host.record, YT_F81, remaining))
+		if (!yt_record_set_number(&host.record, YT_F81,
+		    (float)defenders))
 			goto encode_error;
 	}
 	if (!yt_database_write(&game->database,

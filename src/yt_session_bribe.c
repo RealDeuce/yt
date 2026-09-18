@@ -28,8 +28,6 @@ bribe_accept(struct yt_session *session, double cached_defenders,
 	static const uint8_t deal[] = "Good Deal! We join up with you!";
 	struct yt_sector sector;
 	struct yt_player current;
-	double fighters;
-	double credits;
 	int current_sector = session->player.sector;
 	int player_record = session_record(session);
 
@@ -49,10 +47,9 @@ bribe_accept(struct yt_session *session, double cached_defenders,
 	if (!session_reload_player(session, error))
 		return false;
 	current = session->player;
-	fighters = qb_double_add((double)current.fighters,
-	    cached_defenders);
-	credits = qb_double_subtract((double)current.credits, (double)offer);
-	yt_bribe_player_overlay(&current, (float)fighters, (float)credits);
+	yt_bribe_player_overlay(&current,
+	    (float)qb_double_add((double)current.fighters, cached_defenders),
+	    (float)qb_double_subtract((double)current.credits, (double)offer));
 	return yt_database_write(&session->door->game.database,
 	    (size_t)player_record, &current.record, error);
 }

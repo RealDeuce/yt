@@ -32,16 +32,9 @@ yt_random_one_based_single(struct yt_random *random, float range,
     float *value, struct yt_error *error)
 {
 	float selection;
-	float product;
-	float integral;
-	float result;
-
 	if (!yt_random_next(random, &selection, error))
 		return false;
-	product = selection * range;
-	integral = floorf(product);
-	result = integral + 1.0f;
-	*value = result;
+	*value = floorf(selection * range) + 1.0f;
 	return true;
 }
 
@@ -50,7 +43,6 @@ yt_random_integer(struct yt_random *random, int range, uint16_t *value,
     struct yt_error *error)
 {
 	float selection;
-	float product;
 	uint16_t integral;
 
 	if (range < 1 || range > UINT16_MAX) {
@@ -63,8 +55,7 @@ yt_random_integer(struct yt_random *random, int range, uint16_t *value,
 	}
 	if (!yt_random_next(random, &selection, error))
 		return false;
-	product = selection * (float)range;
-	integral = (uint16_t)floorf(product);
+	integral = (uint16_t)floorf(selection * (float)range);
 	*value = integral + 1U;
 	return true;
 }
@@ -91,15 +82,11 @@ nested_single(struct yt_random *random, float count, float *range,
 	for (index = 1.0f; index <= terminal;
 	    index = qb_single_add(index, 1.0f)) {
 		float selection;
-		float integral;
-		float result;
-
 		if (!yt_random_next(random, &selection, error))
 			return false;
-		integral = floorf(qb_single_multiply(selection, *range));
-		result = qb_single_add(integral, 1.0f);
-		*value = result;
-		*range = result;
+		*value = qb_single_add(floorf(qb_single_multiply(selection,
+		    *range)), 1.0f);
+		*range = *value;
 		*produced = true;
 	}
 	return true;

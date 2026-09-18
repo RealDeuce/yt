@@ -434,8 +434,6 @@ yt_session_attack_deployed(struct yt_session *session,
 		    attacker_loss);
 		double remaining_defender = qb_double_subtract(old_count,
 		    defender_loss);
-		double ratio;
-
 		quantum = yt_hostile_attack_quantum(remaining_attacker,
 		    remaining_defender);
 		if (remaining_defender == 0.0) {
@@ -447,8 +445,8 @@ yt_session_attack_deployed(struct yt_session *session,
 			}
 			return false;
 		}
-		ratio = remaining_attacker / remaining_defender;
-		if (!surrender_checked && allow_surrender && ratio > 10.0) {
+		if (!surrender_checked && allow_surrender
+		    && remaining_attacker / remaining_defender > 10.0) {
 			surrender = (struct hostile_surrender){
 				.current_player_record = current_player_record,
 				.old_owner = old_owner,
