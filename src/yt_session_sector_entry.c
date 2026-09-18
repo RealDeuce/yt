@@ -30,8 +30,9 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 		return session_present_alert(session, none, sizeof(none) - 1U,
 		    "hostile Attack no fighters", error);
 	if (!session_present_timed_paged_row(session, prompt, sizeof(prompt) - 1U,
-	    "hostile Attack amount prompt", error)
-	    || !session_read_number_command(session, response, sizeof(response)))
+	    "hostile Attack amount prompt", error))
+		return false;
+	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
 	if (response[0] == '\0') {
 		memset(&parsed, 0, sizeof(parsed));
@@ -62,8 +63,9 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 	    commitment);
 	if (admission == YT_HOSTILE_ATTACK_TOO_MANY) {
 		if (qb_str_double(available, sizeof(available),
-		    cached_ship_fighters) < 0
-		    || snprintf(row, sizeof(row), "You only have%s!", available) < 0)
+		    cached_ship_fighters) < 0)
+			return false;
+		if (snprintf(row, sizeof(row), "You only have%s!", available) < 0)
 			return false;
 		return session_present_alert(session, (const uint8_t *)row, strlen(row),
 		    "hostile Attack too many", error);
@@ -91,8 +93,9 @@ hostile_menu_help(struct yt_session *session, struct yt_error *error)
 	size_t index;
 
 	if (!session_present_paged_line(session, heading, sizeof(heading) - 1U,
-	    "hostile help heading", error)
-	    || !session_present_paged_line(session, attack, sizeof(attack) - 1U,
+	    "hostile help heading", error))
+		return false;
+	if (!session_present_paged_line(session, attack, sizeof(attack) - 1U,
 	    "hostile help attack row", error))
 		return false;
 	for (index = 0; index < YT_ARRAY_LEN(rows); ++index) {
@@ -116,14 +119,16 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 		struct yt_sector sector;
 		bool friendly;
 
-		if (!yt_session_display_sector(session, false, error)
-		    || !session_reload_player(session, error))
+		if (!yt_session_display_sector(session, false, error))
+			return false;
+		if (!session_reload_player(session, error))
 			return false;
 		if (session_is_disruption_sector(session,
 		    session->player.sector)) {
 			if (!session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE, "black hole leading blank", error)
-			    || !session_attention_bytes(session, black_hole,
+			    SESSION_PRESENT_LINE, "black hole leading blank", error))
+				return false;
+			if (!session_attention_bytes(session, black_hole,
 			    sizeof(black_hole) - 1U, "black hole attention", error))
 				return false;
 			session_clear_queue(session);
@@ -193,8 +198,9 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 
 				if (!session_present_timed_paged_row(session, hostile_prompt,
 				    sizeof(hostile_prompt) - 1U,
-				    "hostile option prompt", error)
-				    || !session_read_upper_command(session, response,
+				    "hostile option prompt", error))
+					return false;
+				if (!session_read_upper_command(session, response,
 				    sizeof(response)))
 					return false;
 				if (response[0] == '\0')
@@ -217,8 +223,9 @@ yt_session_sector_entry(struct yt_session *session, struct yt_error *error)
 					if (!session_present_alert(session,
 					    (const uint8_t *)"Invalid command.",
 					    strlen("Invalid command."),
-					    "hostile invalid command", error)
-					    || !session_present_text(session, NULL, 0,
+					    "hostile invalid command", error))
+						return false;
+					if (!session_present_text(session, NULL, 0,
 					    SESSION_PRESENT_LINE,
 					    "hostile invalid trailing blank", error))
 						return false;
