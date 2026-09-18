@@ -152,8 +152,8 @@ bool
 yt_random_market_bases(struct yt_random *random, float bases[3],
     struct yt_error *error)
 {
-	static const float center[3] = {20.0f, 30.0f, 40.0f};
-	static const float span[3] = {5.0f, 7.0f, 10.0f};
+	static const uint8_t center[3] = {20U, 30U, 40U};
+	static const uint8_t span[3] = {5U, 7U, 10U};
 	size_t commodity;
 
 	for (commodity = 0; commodity < 3; ++commodity) {

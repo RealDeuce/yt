@@ -26,8 +26,8 @@ bool
 yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t cloak_expired[] = " WARNING! CLOAK EXPIRED!";
-	static const float cloak_display_scale = 50.0f;
-	static const float turn_divisor = 25.0f;
+	static const uint8_t cloak_display_scale = 50U;
+	static const uint8_t turn_divisor = 25U;
 	static const float xannor_threshold = 0.99f;
 	static const uint8_t cloak_dirty_zero[4] = {0x00, 0x00, 0xa3, 0x00};
 	int xannor_provoker;
