@@ -151,20 +151,24 @@ nearest_stock_cell(const struct yt_nearest_market *market, uint8_t result[7],
 	size_t source_length;
 
 	if (!nearest_add(market->stock[0], market->stock[1], &total, error,
-	    "nearest stock total one")
-	    || !nearest_add(total, market->stock[2], &total, error,
-	    "nearest stock total two")
-	    || !nearest_div(total, 10000.0f, &scaled, error,
-	    "nearest stock scale")
-	    || !nearest_add(scaled, 0.5f, &rounded, error,
+	    "nearest stock total one"))
+		return false;
+	if (!nearest_add(total, market->stock[2], &total, error,
+	    "nearest stock total two"))
+		return false;
+	if (!nearest_div(total, 10000.0f, &scaled, error,
+	    "nearest stock scale"))
+		return false;
+	if (!nearest_add(scaled, 0.5f, &rounded, error,
 	    "nearest stock rounding"))
 		return false;
 	rounded = floorf(rounded);
 	if (!nearest_single(rounded, &rounded, error, "nearest stock INT"))
 		return false;
 	length = qb_str_double(number, sizeof(number), (double)rounded);
-	if (length < 0 || snprintf(source, sizeof(source), "      %sK  ",
-	    number) < 0)
+	if (length < 0)
+		return nearest_session_error(error, "nearest stock formatting");
+	if (snprintf(source, sizeof(source), "      %sK  ", number) < 0)
 		return nearest_session_error(error, "nearest stock formatting");
 	source_length = strlen(source);
 	if (source_length < 7U)
@@ -251,17 +255,20 @@ nearest_scan_run(struct yt_session *session, int selector,
 		goto done;
 	session_set_foreground(session, 3);
 	if (!session_present_text(session, scanning, sizeof(scanning) - 1U,
-	    SESSION_PRESENT_BOLD_LINE, "nearest-port scanning row", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    SESSION_PRESENT_BOLD_LINE, "nearest-port scanning row", error))
+		goto done;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "nearest-port scanning blank", error))
 		goto done;
 	session_set_foreground(session, 7);
 	if (!session_present_text(session, instruction,
 	    sizeof(instruction) - 1U, SESSION_PRESENT_BOLD_LINE,
-	    "nearest-port ownership row", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "nearest-port ownership blank", error)
-	    || !yt_database_read(&session->door->game.database,
+	    "nearest-port ownership row", error))
+		goto done;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "nearest-port ownership blank", error))
+		goto done;
+	if (!yt_database_read(&session->door->game.database,
 	    (size_t)scan.actor_number, &raw, error))
 		goto done;
 	yt_player_decode(&scan.player, &raw);
@@ -317,8 +324,9 @@ nearest_scan_run(struct yt_session *session, int selector,
 				scan.current_day = (float)today;
 			}
 			if (!nearest_single(scan.current_day, &scan.current_day,
-			    error, "nearest current day")
-			    || !yt_database_read(&session->door->game.database,
+			    error, "nearest current day"))
+				goto done;
+			if (!yt_database_read(&session->door->game.database,
 			    (size_t)session_port_basic_record(session, logical_port),
 			    &raw, error))
 				goto done;
@@ -340,8 +348,9 @@ nearest_scan_run(struct yt_session *session, int selector,
 			scan.timer_seconds = (float)yt_clock_timer(
 			    &session->door->game.clock);
 			if (!nearest_single(scan.timer_seconds, &scan.timer_seconds,
-			    error, "nearest TIMER")
-			    || !yt_nearest_market_project(&scan.market, &scan.port,
+			    error, "nearest TIMER"))
+				goto done;
+			if (!yt_nearest_market_project(&scan.market, &scan.port,
 			    scan.base_price, scan.current_day, scan.timer_seconds,
 			    error))
 				goto done;
@@ -541,14 +550,18 @@ yt_session_computer_nearest_ports(struct yt_session *session,
 	uint8_t direction = 0U;
 	int selector;
 
-	if (!session_reload_player(session, error)
-	    || !session_present_paged_line(session, first_line,
-	    sizeof(first_line) - 1U, "nearest-port first filter row", error)
-	    || !session_present_paged_fragment(session, second_line,
-	    sizeof(second_line) - 1U)
-	    || !session_present_timed_paged_row(session, filter_prompt,
-	    sizeof(filter_prompt) - 1U, "nearest-port filter prompt", error)
-	    || !session_read_upper_command(session, response, sizeof(response)))
+	if (!session_reload_player(session, error))
+		return false;
+	if (!session_present_paged_line(session, first_line,
+	    sizeof(first_line) - 1U, "nearest-port first filter row", error))
+		return false;
+	if (!session_present_paged_fragment(session, second_line,
+	    sizeof(second_line) - 1U))
+		return false;
+	if (!session_present_timed_paged_row(session, filter_prompt,
+	    sizeof(filter_prompt) - 1U, "nearest-port filter prompt", error))
+		return false;
+	if (!session_read_upper_command(session, response, sizeof(response)))
 		return false;
 	response_length = strlen(response);
 	selector = yt_nearest_filter_selector((const uint8_t *)response,
@@ -577,8 +590,10 @@ yt_session_computer_nearest_ports(struct yt_session *session,
 			return false;
 		}
 		if (!session_present_timed_paged_row(session, direction_prompt,
-		    direction_prompt_length, "nearest-port direction prompt", error)
-		    || !session_read_upper_command(session, response,
+		    direction_prompt_length,
+		    "nearest-port direction prompt", error))
+			return false;
+		if (!session_read_upper_command(session, response,
 		    sizeof(response)))
 			return false;
 		response_length = strlen(response);
