@@ -46,8 +46,9 @@ yt_config_load(struct yt_database *database, struct yt_config *config,
 {
 	struct yt_record record;
 
-	return yt_database_read(database, 1, &record, error)
-	    && yt_config_decode(config, &record, error);
+	if (!yt_database_read(database, 1, &record, error))
+		return false;
+	return yt_config_decode(config, &record, error);
 }
 
 static bool
@@ -136,32 +137,40 @@ yt_config_headquarters_relocate(struct yt_database *database,
 	(void)yt_record_set_raw_number(&field, YT_F85, raw_clear);
 	(void)yt_record_set_raw_number(&field, YT_F81, raw_clear);
 	if (!yt_database_write(database,
-	    (size_t)yt_sector_basic_record(config, old_logical), &field, error)
-	    || !yt_database_read(database,
+	    (size_t)yt_sector_basic_record(config, old_logical), &field, error))
+		return false;
+	if (!yt_database_read(database,
 	    (size_t)yt_sector_basic_record(config, candidate_logical), &field,
 	    error))
 		return false;
 	planet_link = qb_single_subtract(config->total_records,
 	    config->planet_offset);
-	if (!yt_record_set_number(&field, YT_F85, -1.0f)
-	    || !yt_record_set_number(&field, YT_F81, merged_fighters)
-	    || !yt_record_set_number(&field, YT_F93, planet_link))
+	if (!yt_record_set_number(&field, YT_F85, -1.0f))
+		return config_hq_error(error, YT_RANGE,
+		    "YTCONFIG Headquarters candidate overlay");
+	if (!yt_record_set_number(&field, YT_F81, merged_fighters))
+		return config_hq_error(error, YT_RANGE,
+		    "YTCONFIG Headquarters candidate overlay");
+	if (!yt_record_set_number(&field, YT_F93, planet_link))
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters candidate overlay");
 	if (!yt_database_write(database,
 	    (size_t)yt_sector_basic_record(config, candidate_logical), &field,
-	    error)
-	    || !yt_database_read(database,
+	    error))
+		return false;
+	if (!yt_database_read(database,
 	    (size_t)yt_sector_basic_record(config, 1), &field, error))
 		return false;
 	(void)yt_record_set_raw_number(&field, YT_F105, candidate_raw);
 	if (!yt_database_write(database,
-	    (size_t)yt_sector_basic_record(config, 1), &field, error)
-	    || !yt_database_read(database, 1U, &field, error))
+	    (size_t)yt_sector_basic_record(config, 1), &field, error))
+		return false;
+	if (!yt_database_read(database, 1U, &field, error))
 		return false;
 	(void)yt_record_set_raw_number(&field, YT_F117, candidate_raw);
-	if (!yt_database_write(database, 1U, &field, error)
-	    || !yt_database_flush(database, error))
+	if (!yt_database_write(database, 1U, &field, error))
+		return false;
+	if (!yt_database_flush(database, error))
 		return false;
 	*result = field;
 	*route = YT_CONFIG_HQ_ROUTE_RELOCATED;
@@ -186,8 +195,9 @@ yt_config_toggle_local_screen(struct yt_database *database,
 	    *toggled ? -1.0f : 0.0f))
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG local-screen overlay");
-	if (!yt_database_write(database, 1U, &field, error)
-	    || !yt_database_flush(database, error))
+	if (!yt_database_write(database, 1U, &field, error))
+		return false;
+	if (!yt_database_flush(database, error))
 		return false;
 	*result = field;
 	return true;
@@ -231,9 +241,11 @@ yt_config_apply_overlays(struct yt_database *database,
 	if (!yt_database_read(database, 1U, &field, error))
 		return false;
 	if (!config_apply_overlay_values(&field, overlays, overlay_count,
-	    "YTCONFIG overlay range", error)
-	    || !yt_database_write(database, 1U, &field, error)
-	    || !yt_database_flush(database, error))
+	    "YTCONFIG overlay range", error))
+		return false;
+	if (!yt_database_write(database, 1U, &field, error))
+		return false;
+	if (!yt_database_flush(database, error))
 		return false;
 	*result = field;
 	return true;
@@ -253,9 +265,11 @@ yt_config_apply_loaded_overlays(struct yt_database *database,
 		    "YTCONFIG loaded overlay transaction");
 	updated = *field;
 	if (!config_apply_overlay_values(&updated, overlays, overlay_count,
-	    "YTCONFIG loaded overlay range", error)
-	    || !yt_database_write(database, 1U, &updated, error)
-	    || !yt_database_flush(database, error))
+	    "YTCONFIG loaded overlay range", error))
+		return false;
+	if (!yt_database_write(database, 1U, &updated, error))
+		return false;
+	if (!yt_database_flush(database, error))
 		return false;
 	*result = updated;
 	return true;
@@ -279,8 +293,9 @@ yt_config_redraw_repairs(struct yt_database *database,
 			return config_hq_error(error, YT_RANGE,
 			    "YTCONFIG redraw holds repair");
 		(void)yt_record_set_raw_number(&updated, YT_F73, raw);
-		if (!yt_database_write(database, 1U, &updated, error)
-		    || !yt_database_flush(database, error))
+		if (!yt_database_write(database, 1U, &updated, error))
+			return false;
+		if (!yt_database_flush(database, error))
 			return false;
 	}
 	if (!yt_database_read(database, 1U, &updated, error))
@@ -290,8 +305,9 @@ yt_config_redraw_repairs(struct yt_database *database,
 			return config_hq_error(error, YT_RANGE,
 			    "YTCONFIG redraw Headquarters repair");
 		(void)yt_record_set_raw_number(&updated, YT_F117, raw);
-		if (!yt_database_write(database, 1U, &updated, error)
-		    || !yt_database_flush(database, error))
+		if (!yt_database_write(database, 1U, &updated, error))
+			return false;
+		if (!yt_database_flush(database, error))
 			return false;
 		if (!yt_database_read(database, 1U, &updated, error))
 			return false;
