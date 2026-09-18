@@ -28,7 +28,7 @@ typedef bool (*yt_info_panel_read_player_fn)(void *context,
 	struct yt_player *player, struct yt_error *error);
 typedef bool (*yt_info_panel_present_fn)(void *context,
 	const uint8_t *text, size_t length, enum yt_info_panel_output_kind kind,
-	float width, struct yt_info_panel_state *state,
+	uint8_t width, struct yt_info_panel_state *state,
 	struct yt_error *error);
 
 struct yt_info_panel_ops {

@@ -2958,26 +2958,26 @@ test_formatting_wrappers(void)
 	uint8_t overlong[79];
 	uint8_t over_capacity[YT_PRESENT_EVENT_DATA + 1U];
 
-	CHECK(yt_present_right_aligned((const uint8_t *)"abcd", 4, 2.5f,
+	CHECK(yt_present_right_aligned((const uint8_t *)"abcd", 4, 3U,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 3
 	    && memcmp(result.remote, "bcd", 3) == 0);
 	current.conversion_mode = 4;
-	CHECK(yt_present_right_aligned((const uint8_t *)"abcd", 4, 2.5f,
+	CHECK(yt_present_right_aligned((const uint8_t *)"abcd", 4, 2U,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 2
 	    && memcmp(result.remote, "cd", 2) == 0);
-	CHECK(yt_present_right_aligned((const uint8_t *)"abc", 3, 3.4f,
+	CHECK(yt_present_right_aligned((const uint8_t *)"abc", 3, 3U,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 3
 	    && memcmp(result.remote, "abc", 3) == 0);
-	CHECK(yt_present_right_aligned((const uint8_t *)"abc", 3, 0.0f,
+	CHECK(yt_present_right_aligned((const uint8_t *)"abc", 3, 0U,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0U);
 
 	current.conversion_mode = 0;
 	CHECK(yt_present_fixed_width(mutable, &mutable_length,
-	    sizeof(mutable), 4.0f, &current, &result) == YT_PRESENT_OK);
+	    sizeof(mutable), 4U, &current, &result) == YT_PRESENT_OK);
 	CHECK(mutable_length == 4 && memcmp(mutable, "ab  ", 4) == 0);
 	CHECK(result.remote_length == 4
 	    && memcmp(result.remote, "ab  ", 4) == 0);
@@ -2986,7 +2986,7 @@ test_formatting_wrappers(void)
 		size_t truncated_length = 4U;
 
 		CHECK(yt_present_fixed_width(truncated, &truncated_length,
-		    sizeof(truncated), 2.5f, &current, &result)
+		    sizeof(truncated), 3U, &current, &result)
 		    == YT_PRESENT_OK);
 		CHECK(truncated_length == 3U
 		    && memcmp(truncated, "abc", 3U) == 0
@@ -2996,7 +2996,7 @@ test_formatting_wrappers(void)
 		truncated_length = 4U;
 		current.conversion_mode = 4;
 		CHECK(yt_present_fixed_width(truncated, &truncated_length,
-		    sizeof(truncated), 2.5f, &current, &result)
+		    sizeof(truncated), 2U, &current, &result)
 		    == YT_PRESENT_OK);
 		CHECK(truncated_length == 2U
 		    && memcmp(truncated, "ab", 2U) == 0
@@ -7160,7 +7160,7 @@ test_clearance_presentation(void)
 
 static void
 earth_report_fixed(struct pager_capture *capture,
-    struct yt_present_state *current, const char *text, float width)
+    struct yt_present_state *current, const char *text, uint8_t width)
 {
 	struct yt_present_result result;
 	uint8_t field[80];
@@ -7180,8 +7180,8 @@ earth_report_row_fixture(struct pager_capture *capture,
     struct yt_pager_state *pager, struct yt_present_state *current,
     const char *label, const char *cost, const char *affordable)
 {
-	earth_report_fixed(capture, current, label, 22.0f);
-	earth_report_fixed(capture, current, cost, 9.0f);
+	earth_report_fixed(capture, current, label, 22U);
+	earth_report_fixed(capture, current, cost, 9U);
 	pager_fixture_b05d(pager, current, (const uint8_t *)affordable,
 	    strlen(affordable), capture);
 }
@@ -7777,15 +7777,15 @@ planet_display_cycle_fixture(bool ansi,
 		pager_capture_result(capture, &result);
 		CHECK(yt_present_right_aligned(
 		    (const uint8_t *)production[index],
-		    strlen(production[index]), 13.0f, current, &result)
+		    strlen(production[index]), 13U, current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
 		CHECK(yt_present_right_aligned((const uint8_t *)amount[index],
-		    strlen(amount[index]), 11.0f, current, &result)
+		    strlen(amount[index]), 11U, current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
 		CHECK(yt_present_right_aligned((const uint8_t *)held[index],
-		    strlen(held[index]), 12.0f, current, &result)
+		    strlen(held[index]), 12U, current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
 		CHECK(yt_present_line(NULL, 0, current, &result)
@@ -8694,7 +8694,7 @@ test_computer_front_presentation(void)
 
 		memcpy(mutable, left[index], length);
 		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
-		    40.0f, &current, &result) == YT_PRESENT_OK);
+		    40U, &current, &result) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		pager_fixture_b05d(&pager, &current,
 		    (const uint8_t *)right[index], strlen(right[index]), &capture);
@@ -8825,12 +8825,12 @@ computer_avoid_accepted_cycle_fixture(bool ansi, bool local_mode,
 		length = strlen(first);
 		memcpy(mutable, first, length);
 		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
-		    20.0f, current, &result) == YT_PRESENT_OK);
+		    20U, current, &result) == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
 		length = strlen(middle);
 		memcpy(mutable, middle, length);
 		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
-		    20.0f, current, &result) == YT_PRESENT_OK);
+		    20U, current, &result) == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
 		if (!computer_avoid_fixture_b05d(pager, current,
 		    (const uint8_t *)last, strlen(last), capture, cut))
@@ -9019,12 +9019,12 @@ test_computer_avoid_presentation(void)
 		length = strlen(first);
 		memcpy(mutable, first, length);
 		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
-		    20.0f, &current, &result) == YT_PRESENT_OK);
+		    20U, &current, &result) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		length = strlen(middle);
 		memcpy(mutable, middle, length);
 		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
-		    20.0f, &current, &result) == YT_PRESENT_OK);
+		    20U, &current, &result) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		pager_fixture_b05d(&pager, &current, (const uint8_t *)last,
 		    strlen(last), &capture);
@@ -10528,15 +10528,15 @@ test_computer_planet_inventory_presentation(void)
 		    strlen(labels[index]), &current, &result) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		CHECK(yt_present_right_aligned((const uint8_t *)production[index],
-		    strlen(production[index]), 13.0f, &current, &result)
+		    strlen(production[index]), 13U, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		CHECK(yt_present_right_aligned((const uint8_t *)amount[index],
-		    strlen(amount[index]), 11.0f, &current, &result)
+		    strlen(amount[index]), 11U, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		CHECK(yt_present_right_aligned((const uint8_t *)held[index],
-		    strlen(held[index]), 12.0f, &current, &result)
+		    strlen(held[index]), 12U, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
@@ -10754,7 +10754,7 @@ computer_fighter_finder_cycle_fixture(bool ansi,
 	pager_capture_result(capture, &result);
 	memcpy(mutable, " Sector", 7U);
 	length = 7U;
-	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 10.0f,
+	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 10U,
 	    current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	pager_fixture_b05d(pager, current, amount, sizeof(amount) - 1U,
@@ -10764,7 +10764,7 @@ computer_fighter_finder_cycle_fixture(bool ansi,
 		length = strlen(sectors[index]);
 		memcpy(mutable, sectors[index], length);
 		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
-		    9.0f, current, &result) == YT_PRESENT_OK);
+		    9U, current, &result) == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
 		pager_fixture_b05d(pager, current,
 		    (const uint8_t *)fighters[index], strlen(fighters[index]),
@@ -10900,7 +10900,7 @@ test_computer_finders_presentation(void)
 	pager_capture_result(&capture, &result);
 	memcpy(mutable, " Sector", strlen(" Sector"));
 	length = strlen(" Sector");
-	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 10.0f,
+	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 10U,
 	    &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	pager_fixture_b05d(&pager, &current, amount, sizeof(amount) - 1U,
@@ -10914,7 +10914,7 @@ test_computer_finders_presentation(void)
 		length = strlen(sectors[index]);
 		memcpy(mutable, sectors[index], length);
 		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
-		    9.0f, &current, &result) == YT_PRESENT_OK);
+		    9U, &current, &result) == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
 		pager_fixture_b05d(&pager, &current,
 		    (const uint8_t *)fighters[index], strlen(fighters[index]),
@@ -11091,17 +11091,17 @@ treasury_cycle_fixture(bool collecting, const uint8_t *command,
 
 	memcpy(mutable, "Sector: 5", strlen("Sector: 5"));
 	length = strlen("Sector: 5");
-	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 14.0f,
+	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 14U,
 	    current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	memcpy(mutable, "Alpha", strlen("Alpha"));
 	length = strlen("Alpha");
-	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 25.0f,
+	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 25U,
 	    current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	memcpy(mutable, " Credits: 10", strlen(" Credits: 10"));
 	length = strlen(" Credits: 10");
-	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 20.0f,
+	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 20U,
 	    current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	CHECK(yt_present_line(total, sizeof(total) - 1U, current, &result)
@@ -12351,7 +12351,7 @@ info_panel_presentation_read(void *context, struct yt_player *player,
 
 static bool
 info_panel_presentation_present(void *context, const uint8_t *text,
-    size_t length, enum yt_info_panel_output_kind kind, float width,
+    size_t length, enum yt_info_panel_output_kind kind, uint8_t width,
     struct yt_info_panel_state *state, struct yt_error *error)
 {
 	struct info_panel_presentation_context *fixture = context;
@@ -12664,7 +12664,7 @@ normal_exit_info_read(void *context, struct yt_player *player,
 
 static bool
 normal_exit_info_present(void *context, const uint8_t *text, size_t length,
-    enum yt_info_panel_output_kind kind, float width,
+    enum yt_info_panel_output_kind kind, uint8_t width,
     struct yt_info_panel_state *state, struct yt_error *error)
 {
 	struct normal_exit_info_context *fixture = context;
@@ -32823,7 +32823,7 @@ test_planet_port_refusal_cycle_presentation(void)
 
 static bool
 docking_earth_fixed(struct viewer_pager_join *join, const char *text,
-    float width)
+    uint8_t width)
 {
 	struct yt_present_result result;
 	uint8_t field[80];
@@ -32843,8 +32843,8 @@ static bool
 docking_earth_row(struct viewer_pager_join *join, const char *label,
     const char *cost, const char *affordable)
 {
-	return docking_earth_fixed(join, label, 22.0f)
-	    && docking_earth_fixed(join, cost, 9.0f)
+	return docking_earth_fixed(join, label, 22U)
+	    && docking_earth_fixed(join, cost, 9U)
 	    && normal_exit_b05d(join, (const uint8_t *)affordable,
 	    strlen(affordable), 0.0f);
 }

@@ -32,7 +32,7 @@ static bool
 present(struct yt_info_panel_state *state,
     const struct yt_info_panel_ops *ops, void *context,
     const uint8_t *text, size_t length, enum yt_info_panel_output_kind kind,
-    float width, struct yt_error *error)
+    uint8_t width, struct yt_error *error)
 {
 	return ops->present(context, text, length, kind, width, state, error);
 }
@@ -66,11 +66,11 @@ ordinary(struct yt_info_panel_state *state,
 	    && cell(right, sizeof(right), &right_length, right_label,
 	    right_value)
 	    && present(state, ops, context, left, left_length,
-	    YT_INFO_PANEL_FIXED, 26.0f, error)
+	    YT_INFO_PANEL_FIXED, 26U, error)
 	    && present(state, ops, context, right, right_length,
-	    YT_INFO_PANEL_FIXED, 23.0f, error)
+	    YT_INFO_PANEL_FIXED, 23U, error)
 	    && present(state, ops, context, &bar, 1U,
-	    YT_INFO_PANEL_LINE, 0.0f, error);
+	    YT_INFO_PANEL_LINE, 0U, error);
 }
 
 static bool
@@ -92,9 +92,9 @@ commodity(struct yt_info_panel_state *state,
 	    || !cell(left, sizeof(left), &left_length, left_label, left_value)
 	    || !cell(right, sizeof(right), &right_length, right_label, "")
 	    || !present(state, ops, context, left, left_length,
-	    YT_INFO_PANEL_FIXED, 26.0f, error)
+	    YT_INFO_PANEL_FIXED, 26U, error)
 	    || !present(state, ops, context, right, right_length,
-	    YT_INFO_PANEL_FIXED, 17.0f, error))
+	    YT_INFO_PANEL_FIXED, 17U, error))
 		return false;
 	if (right_value != 0.0f) {
 		state->bold = true;
@@ -102,12 +102,12 @@ commodity(struct yt_info_panel_state *state,
 		state->background = 4.0f;
 	}
 	if (!present(state, ops, context, (const uint8_t *)number,
-	    (size_t)number_length, YT_INFO_PANEL_FIXED, 6.0f, error))
+	    (size_t)number_length, YT_INFO_PANEL_FIXED, 6U, error))
 		return false;
 	state->foreground = 2.0f;
 	state->background = 0.0f;
 	return present(state, ops, context, &bar, 1U,
-	    YT_INFO_PANEL_LINE, 0.0f, error);
+	    YT_INFO_PANEL_LINE, 0U, error);
 }
 
 bool
@@ -150,31 +150,31 @@ yt_info_panel_run(struct yt_info_panel_state *state,
 	saved_foreground = state->foreground;
 	state->foreground = 2.0f;
 	if (!present(state, ops, context, NULL, 0U,
-	    YT_INFO_PANEL_LINE, 0.0f, error)
+	    YT_INFO_PANEL_LINE, 0U, error)
 	    || !present(state, ops, context, NULL, 0U,
-	    YT_INFO_PANEL_FIXED, 20.0f, error)
+	    YT_INFO_PANEL_FIXED, 20U, error)
 	    || !present(state, ops, context, title, sizeof(title) - 1U,
-	    YT_INFO_PANEL_LINE, 0.0f, error)
+	    YT_INFO_PANEL_LINE, 0U, error)
 	    || !present(state, ops, context, NULL, 0U,
-	    YT_INFO_PANEL_LINE, 0.0f, error))
+	    YT_INFO_PANEL_LINE, 0U, error))
 		return false;
 	row_length = 0U;
 	if (!append_bytes(row, sizeof(row), &row_length, "Name  : ", 8U)
 	    || !append_bytes(row, sizeof(row), &row_length,
 	    state->cached_name, state->cached_name_length)
 	    || !present(state, ops, context, row, row_length,
-	    YT_INFO_PANEL_LINE, 0.0f, error))
+	    YT_INFO_PANEL_LINE, 0U, error))
 		return false;
 	row_length = 0U;
 	if (!append_bytes(row, sizeof(row), &row_length, "Time  :", 7U)
 	    || !append_bytes(row, sizeof(row), &row_length,
 	    state->time_text, state->time_text_length)
 	    || !present(state, ops, context, row, row_length,
-	    YT_INFO_PANEL_LINE, 0.0f, error)
+	    YT_INFO_PANEL_LINE, 0U, error)
 	    || !ops->team(context, error)
 	    || !ops->read_player(context, &state->player, error)
 	    || !present(state, ops, context, top, sizeof(top),
-	    YT_INFO_PANEL_LINE, 0.0f, error))
+	    YT_INFO_PANEL_LINE, 0U, error))
 		return false;
 	length = qb_str_double(left, sizeof(left), (double)state->player.credits);
 	if (length < 0)
@@ -229,7 +229,7 @@ yt_info_panel_run(struct yt_info_panel_state *state,
 	    || !ordinary(state, ops, context, " Forces... :", left,
 	    " Plasma Bolts. :", right, error)
 	    || !present(state, ops, context, bottom, sizeof(bottom),
-	    YT_INFO_PANEL_LINE, 0.0f, error))
+	    YT_INFO_PANEL_LINE, 0U, error))
 		return false;
 	state->foreground = saved_foreground;
 	return true;

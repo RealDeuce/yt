@@ -563,7 +563,7 @@ session_fixed_width_bytes(struct yt_session *session, const uint8_t *text,
 		if (length != 0)
 			memcpy(mutable, text, length);
 		status = yt_present_fixed_width(mutable, &length,
-		    sizeof(mutable), (float)width, &session->presentation,
+		    sizeof(mutable), width, &session->presentation,
 		    &presentation);
 		if (status == YT_PRESENT_OK)
 			yt_out_present_result(&presentation);
@@ -586,7 +586,7 @@ session_right_aligned(struct yt_session *session, const char *text,
 	enum yt_present_status status;
 
 	status = yt_present_right_aligned((const uint8_t *)text, strlen(text),
-	    (float)width, &session->presentation, &presentation);
+	    width, &session->presentation, &presentation);
 	if (status == YT_PRESENT_OK)
 		yt_out_present_result(&presentation);
 	if (status == YT_PRESENT_OK)

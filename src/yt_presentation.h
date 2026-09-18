@@ -88,11 +88,11 @@ enum yt_present_status yt_present_forced_local_line(const uint8_t *text,
 enum yt_present_status yt_present_local_beep(
     struct yt_present_result *result);
 enum yt_present_status yt_present_right_aligned(const uint8_t *text,
-    size_t length, float width, struct yt_present_state *state,
-    struct yt_present_result *result);
+	size_t length, uint8_t width, struct yt_present_state *state,
+	struct yt_present_result *result);
 enum yt_present_status yt_present_fixed_width(uint8_t *text, size_t *length,
-    size_t capacity, float width, struct yt_present_state *state,
-    struct yt_present_result *result);
+	size_t capacity, uint8_t width, struct yt_present_state *state,
+	struct yt_present_result *result);
 enum yt_present_status yt_present_centered_line(const uint8_t *text,
     size_t length, struct yt_present_state *state,
     struct yt_present_result *result);

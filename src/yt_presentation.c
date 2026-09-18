@@ -79,19 +79,6 @@ append_beep(struct yt_present_result *result)
 }
 
 static enum yt_present_status
-convert(const struct yt_present_state *state, double value, int *converted)
-{
-	bool overflow;
-	int32_t result = qb_cint_mode(value, state->conversion_mode,
-	    &overflow);
-
-	if (overflow)
-		return YT_PRESENT_OVERFLOW;
-	*converted = (int)result;
-	return YT_PRESENT_OK;
-}
-
-static enum yt_present_status
 color_digit(int value, uint8_t *digit)
 {
 	if (value < 0 || value > 7)
@@ -377,36 +364,26 @@ yt_present_local_beep(struct yt_present_result *result)
 }
 
 enum yt_present_status
-yt_present_right_aligned(const uint8_t *text, size_t length, float width,
+yt_present_right_aligned(const uint8_t *text, size_t length, uint8_t width,
     struct yt_present_state *state, struct yt_present_result *result)
 {
 	uint8_t rendered[YT_PRESENT_EVENT_DATA];
 	size_t rendered_length;
-	int count;
-	enum yt_present_status status;
+	size_t count;
 
 	memset(result, 0, sizeof(*result));
-	if ((float)length < width) {
-		status = convert(state, (float)(width - (float)length), &count);
-		if (status != YT_PRESENT_OK)
-			return status;
-		if (count < 0)
-			return YT_PRESENT_RANGE;
+	if (length < (size_t)width) {
+		count = (size_t)width - length;
 		if (length > sizeof(rendered)
-		    || (size_t)count > sizeof(rendered) - length)
+		    || count > sizeof(rendered) - length)
 			return YT_PRESENT_CAPACITY;
-		memset(rendered, ' ', (size_t)count);
+		memset(rendered, ' ', count);
 		if (length != 0)
 			memcpy(rendered + count, text, length);
-		rendered_length = (size_t)count + length;
+		rendered_length = count + length;
 	}
 	else {
-		status = convert(state, width, &count);
-		if (status != YT_PRESENT_OK)
-			return status;
-		if (count < 0)
-			return YT_PRESENT_RANGE;
-		rendered_length = (size_t)count;
+		rendered_length = width;
 		if (rendered_length > length)
 			rendered_length = length;
 		if (rendered_length > sizeof(rendered))
@@ -420,34 +397,23 @@ yt_present_right_aligned(const uint8_t *text, size_t length, float width,
 
 enum yt_present_status
 yt_present_fixed_width(uint8_t *text, size_t *length, size_t capacity,
-    float width, struct yt_present_state *state,
+    uint8_t width, struct yt_present_state *state,
     struct yt_present_result *result)
 {
-	int space_count;
-	int left_count;
+	size_t space_count = width;
+	size_t left_count = width;
 	size_t concatenated;
-	enum yt_present_status status;
 
 	memset(result, 0, sizeof(*result));
 	if (*length > capacity)
 		return YT_PRESENT_CAPACITY;
-	status = convert(state, width, &space_count);
-	if (status != YT_PRESENT_OK)
-		return status;
-	if (space_count < 0)
-		return YT_PRESENT_RANGE;
-	if ((size_t)space_count > capacity - *length)
+	if (space_count > capacity - *length)
 		return YT_PRESENT_CAPACITY;
-	memset(text + *length, ' ', (size_t)space_count);
-	concatenated = *length + (size_t)space_count;
+	memset(text + *length, ' ', space_count);
+	concatenated = *length + space_count;
 	*length = concatenated;
-	status = convert(state, width, &left_count);
-	if (status != YT_PRESENT_OK)
-		return status;
-	if (left_count < 0)
-		return YT_PRESENT_RANGE;
-	if ((size_t)left_count < *length)
-		*length = (size_t)left_count;
+	if (left_count < *length)
+		*length = left_count;
 	return emit_character(text, *length, state, result);
 }
 
