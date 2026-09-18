@@ -162,13 +162,14 @@ display_sector_one(struct yt_session *session, int logical_sector,
 	    SESSION_PRESENT_LINE, "sector number row", error))
 		return false;
 	yt_sector_pager_add(private_pager, 1);
-	if ((logical_sector == session->disruption_sectors[0]
-	    || logical_sector == session->disruption_sectors[1])
-	    && !session_attention_bytes(session,
-	    (const uint8_t *)"** Space-time disruption detected! **",
-	    strlen("** Space-time disruption detected! **"),
-	    "sector disruption attention", error))
-		return false;
+	if (logical_sector == session->disruption_sectors[0]
+	    || logical_sector == session->disruption_sectors[1]) {
+		if (!session_attention_bytes(session,
+		    (const uint8_t *)"** Space-time disruption detected! **",
+		    strlen("** Space-time disruption detected! **"),
+		    "sector disruption attention", error))
+			return false;
+	}
 	if (logical_sector == session->disruption_sectors[0]
 	    || logical_sector == session->disruption_sectors[1])
 		yt_sector_pager_add(private_pager, 1);
@@ -192,9 +193,11 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		uint32_t physical_port;
 
 		if (!scanner_read_port(session, sector.port, &port,
-		    &physical_port, error)
-		    || !yt_sector_port_row(&port, row, sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
+		    &physical_port, error))
+			return false;
+		if (!yt_sector_port_row(&port, row, sizeof(row), &row_length))
+			return false;
+		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "sector port row", error))
 			return false;
 		port.sector = logical_sector;
@@ -212,10 +215,12 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		int saved_foreground;
 
 		if (!yt_session_update_planet_physical(session, physical_planet,
-		    &planet, NULL, error)
-		    || !scanner_read_planet(session, physical_planet, &planet,
-		    error)
-		    || !yt_sector_planet_row(&planet, row, sizeof(row),
+		    &planet, NULL, error))
+			return false;
+		if (!scanner_read_planet(session, physical_planet, &planet,
+		    error))
+			return false;
+		if (!yt_sector_planet_row(&planet, row, sizeof(row),
 		    &row_length))
 			return false;
 		saved_foreground = session->presentation.foreground;
@@ -270,10 +275,12 @@ display_sector_one(struct yt_session *session, int logical_sector,
 				first_visible = false;
 			}
 			if (!yt_game_read_player(&session->door->game, basic,
-			    &other, error)
-			    || !yt_sector_player_row(&other, row, sizeof(row),
-			    &row_length)
-			    || !session_present_text(session, row, row_length,
+			    &other, error))
+				return false;
+			if (!yt_sector_player_row(&other, row, sizeof(row),
+			    &row_length))
+				return false;
+			if (!session_present_text(session, row, row_length,
 			    SESSION_PRESENT_LINE, "sector visible-player row", error))
 				return false;
 		}
@@ -341,8 +348,9 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		    owner_pointer, team_pointer, row, sizeof(row), &row_length,
 		    session->combat.hostile_owner_label,
 		    sizeof(session->combat.hostile_owner_label), &scratch_length,
-		    &scratch_changed)
-		    || !session_present_text(session, row, row_length,
+		    &scratch_changed))
+			return false;
+		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "sector fighter owner row", error))
 			return false;
 		if (scratch_changed)
@@ -416,8 +424,9 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 		    session_record(session), &session->player, error))
 			return false;
 		current = session->player.sector;
-		if (!display_sector_one(session, current, &private_pager, error)
-		    || !yt_game_read_player(&session->door->game,
+		if (!display_sector_one(session, current, &private_pager, error))
+			return false;
+		if (!yt_game_read_player(&session->door->game,
 		    session_record(session), &session->player, error))
 			return false;
 		session_set_foreground(session, saved_foreground);
@@ -451,8 +460,9 @@ yt_session_display_sector(struct yt_session *session, bool adjacent,
 	if (!session_present_text(session,
 	    (const uint8_t *)"[ End Sensor Scan ]",
 	    strlen("[ End Sensor Scan ]"), SESSION_PRESENT_BOLD_LINE,
-	    "adjacent-sector sensor ending", error)
-	    || !yt_game_read_player(&session->door->game,
+	    "adjacent-sector sensor ending", error))
+		return false;
+	if (!yt_game_read_player(&session->door->game,
 	    session_record(session), &session->player, error))
 		return false;
 	session_set_foreground(session, saved_foreground);
@@ -466,15 +476,14 @@ yt_session_display_current_sector_cached(struct yt_session *session,
 	struct yt_sector_pager_state private_pager;
 	int saved_foreground = session->presentation.foreground;
 	int current = session->player.sector;
-	bool ok;
 
 	yt_sector_pager_begin(&private_pager);
 	session_set_foreground(session, 1);
-	ok = display_sector_one(session, current, &private_pager, error)
-	    && yt_game_read_player(&session->door->game,
-	    session_record(session), &session->player, error);
-	if (ok) {
-		session_set_foreground(session, saved_foreground);
-	}
-	return ok;
+	if (!display_sector_one(session, current, &private_pager, error))
+		return false;
+	if (!yt_game_read_player(&session->door->game,
+	    session_record(session), &session->player, error))
+		return false;
+	session_set_foreground(session, saved_foreground);
+	return true;
 }
