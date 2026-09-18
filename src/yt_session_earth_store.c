@@ -52,8 +52,8 @@ earth_purchase_holds(struct yt_session *session,
 		return false;
 	if (session->player.holds >= session->door->game.config.maximum_holds)
 		return session_earth_credit_error(session, "You dont need any holds.", error);
-	if (qb_str_single(amount, sizeof(amount), qb_single_subtract(
-	    session->door->game.config.maximum_holds,
+	if (qb_str_single(amount, sizeof(amount), (
+	    session->door->game.config.maximum_holds -
 	    session->player.holds)) < 0)
 		return session_range_error(error, "Earth Holds needed row");
 	if (snprintf(row, sizeof(row), "You need%s holds.", amount) < 0)
@@ -70,12 +70,12 @@ earth_purchase_holds(struct yt_session *session,
 	if ((double)quantity > affordable)
 		return session_earth_credit_error(session,
 		    "You do not have enough credits!", error);
-	if (qb_single_add(session->player.holds, quantity)
+	if ((session->player.holds + quantity)
 	    > session->door->game.config.maximum_holds)
 		return session_earth_credit_error(session,
 		    "You don't need that many!", error);
-	session->player.holds = qb_single_add(session->player.holds, quantity);
-	cost = qb_single_multiply(quantity, (float)price);
+	session->player.holds = (session->player.holds + quantity);
+	cost = (quantity * (float)price);
 	if (!session_write_player(session, error))
 		return false;
 	return session_earth_receipt(session, cached_earth, cost, error);
@@ -111,7 +111,7 @@ earth_purchase_supply(struct yt_session *session,
 	if ((double)quantity > affordable)
 		return session_earth_credit_error(session,
 		    "You do not have enough credits!", error);
-	cost = qb_single_multiply(quantity, (float)price);
+	cost = (quantity * (float)price);
 	yt_earth_supply_overlay(&session->player, choice, quantity);
 	if (!session_write_player(session, error))
 		return false;
@@ -170,14 +170,14 @@ earth_purchase_cloak(struct yt_session *session,
 		    : yt_earth_purchase_quantity(requested);
 		if (quantity_value < 1.0f)
 			return true;
-		if (qb_single_add((float)points, quantity_value) > 50.0f) {
+		if (((float)points + quantity_value) > 50.0f) {
 			if (!session_earth_credit_error(session,
 			    "You can't have over 100% cloak!", error))
 				return false;
 			continue;
 		}
 		quantity = (uint8_t)quantity_value;
-		cost = qb_single_multiply((float)quantity, 1000.0f);
+		cost = ((float)quantity * 1000.0f);
 		if (cost > session->player.credits)
 			return session_earth_credit_error(session,
 			    "You do not have enough credits!", error);
@@ -272,7 +272,7 @@ earth_purchase_spies(struct yt_session *session,
 			continue;
 		}
 		quantity = (int)quantity_value;
-		cost = qb_single_multiply(quantity_value, (float)price);
+		cost = (quantity_value * (float)price);
 		for (spy_index = 0; spy_index < quantity; ++spy_index) {
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE,

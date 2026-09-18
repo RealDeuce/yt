@@ -70,12 +70,12 @@ yt_port_market_update(struct yt_port_market_state *state,
 	if (qb_mbf64_encode(0.5, half) != QB_MBF_OK)
 		return yt_game_error(error, YT_RANGE,
 		    "ordinary port constants");
-	minute = qb_single_divide(state->timer_seconds, 60.0f);
-	elapsed = qb_single_add(
-	    qb_single_subtract((float)state->current_day,
-	    (float)state->port.last_day),
-	    qb_single_divide(qb_single_subtract(minute,
-	    state->port.last_minute), 1440.0f));
+	minute = (state->timer_seconds / 60.0f);
+	elapsed = (
+	    ((float)state->current_day -
+	    (float)state->port.last_day) +
+	    ((minute -
+	    state->port.last_minute) / 1440.0f));
 	if (elapsed > 10.0f || elapsed < 0.0f)
 		elapsed = 10.0f;
 	if (!market_encode_single((float)state->current_day, current_day_raw, error,
@@ -106,8 +106,8 @@ yt_port_market_update(struct yt_port_market_state *state,
 		    + YT_F49 + index * 4U, mutable_capacity[index]);
 		memcpy(mutable_production[index], state->port.record.bytes
 		    + YT_F61 + index * 4U, 4U);
-		growth_value = qb_single_multiply(
-		    qb_mbf32_decode(mutable_production[index]), elapsed);
+		growth_value = (
+		    qb_mbf32_decode(mutable_production[index]) * elapsed);
 		if (!market_encode_single(growth_value, growth_raw, error,
 		    "ordinary port growth"))
 			return false;

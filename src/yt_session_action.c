@@ -41,18 +41,18 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (!session_reload_player(session, error))
 		return false;
-	session->player.turns = qb_single_subtract(session->player.turns, 1.0f);
+	session->player.turns = (session->player.turns - 1.0f);
 	if (!yt_record_set_number(&session->player.record, YT_F49,
 	    session->player.turns))
 		return false;
-	quotient = qb_single_divide(session->player.turns, turn_divisor);
+	quotient = (session->player.turns / turn_divisor);
 	anti_cloak_allows = !session->earth.anti_cloak_enabled;
 	if (quotient == floorf(quotient) && anti_cloak_allows) {
 		uint8_t display;
 		int saved_foreground;
 		int cache_record;
 
-		session->player.cloak = qb_single_subtract(session->player.cloak,
+		session->player.cloak = (session->player.cloak -
 		    0.009999999776482582f);
 		if (session->player.cloak < 0.0f) {
 			session->player.cloak = 0.0f;
@@ -66,8 +66,8 @@ yt_session_finalize_action(struct yt_session *session, struct yt_error *error)
 		cache_record = session_record(session);
 		(void)yt_player_cache_set_cloak(&session->player_cache,
 		    cache_record, session->player.cloak);
-		display = (uint8_t)floorf(qb_single_multiply(
-		    session->player.cloak, cloak_display_scale));
+		display = (uint8_t)floorf((
+		    session->player.cloak * cloak_display_scale));
 		qb_str_single(number, sizeof(number), (float)display);
 		snprintf(row, sizeof(row), "Cloak at%s%%", number);
 		saved_foreground = session->presentation.foreground;

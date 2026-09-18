@@ -362,7 +362,7 @@ session_mutate_player_credits(struct yt_session *session, float argument,
 		return false;
 	if (hydrated != NULL)
 		*hydrated = true;
-	sum = qb_single_add(session->player.credits, argument);
+	sum = (session->player.credits + argument);
 	result = floorf(sum);
 	overflow_result = qb_mbf32_encode(sum, raw) == QB_MBF_OVERFLOW;
 	if (!overflow_result)

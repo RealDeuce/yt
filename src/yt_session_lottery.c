@@ -148,7 +148,7 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 
 		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
-		winning[index] = (int)floorf(qb_single_multiply(draw, 10.0f));
+		winning[index] = (int)floorf((draw * 10.0f));
 	}
 	matches = yt_lottery_match_count(winning, ticket, matched_winning);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -181,7 +181,7 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 			if (!yt_random_next(&session->door->game.random, &draw, error))
 				return false;
 			digit = (uint8_t)('0' + (int)floorf(
-			    qb_single_multiply(draw, 10.0f)));
+			    (draw * 10.0f)));
 			if (!session_present_text(session, &digit, 1U,
 			    SESSION_PRESENT_RAW, "lottery dummy digit", error))
 				return false;

@@ -42,7 +42,7 @@ bounded_random(struct yt_random *random, int bound, int *value,
 	}
 	if (!yt_random_next(random, &sample, error))
 		return false;
-	*value = (int)floorf(qb_single_multiply(sample, (float)bound)) + 1;
+	*value = (int)floorf((sample * (float)bound)) + 1;
 	return true;
 }
 
@@ -362,7 +362,7 @@ yt_init_world_build_graph(struct yt_init_world *world,
 		return false;
 	if (!yt_random_next(random, &position, error))
 		return false;
-	position = qb_single_add(qb_single_multiply(position, 400.0f), 8.0f);
+	position = ((position * 400.0f) + 8.0f);
 	while (position < (float)world->sectors) {
 		bool overflow;
 		int selected = (int)qb_cint(position, &overflow);
@@ -376,8 +376,8 @@ yt_init_world_build_graph(struct yt_init_world *world,
 			world->warps[selected][5] = 1;
 		if (!yt_random_next(random, &increment, error))
 			return false;
-		position = qb_single_add(position,
-		    qb_single_multiply(increment, 400.0f));
+		position = (position +
+		    (increment * 400.0f));
 	}
 	return true;
 }

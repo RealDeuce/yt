@@ -48,8 +48,8 @@ bribe_accept(struct yt_session *session, double cached_defenders,
 		return false;
 	current = session->player;
 	yt_bribe_player_overlay(&current,
-	    (float)qb_double_add((double)current.fighters, cached_defenders),
-	    (float)qb_double_subtract((double)current.credits, (double)offer));
+	    (float)((double)current.fighters + cached_defenders),
+	    (float)((double)current.credits - (double)offer));
 	return yt_database_write(&session->door->game.database,
 	    (size_t)player_record, &current.record, error);
 }

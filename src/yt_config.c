@@ -173,7 +173,7 @@ yt_config_headquarters_relocate(struct yt_database *database,
 	    (size_t)yt_sector_basic_record(config, old_logical), &field,
 	    error))
 		return false;
-	merged_fighters = qb_single_add(captured_candidate_fighters,
+	merged_fighters = (captured_candidate_fighters +
 	    yt_record_get_number(&field, YT_F81));
 	(void)yt_record_set_raw_number(&field, YT_F93, raw_clear);
 	(void)yt_record_set_raw_number(&field, YT_F85, raw_clear);

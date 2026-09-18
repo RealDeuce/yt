@@ -240,16 +240,16 @@ yt_maintenance_collect_mercenary_tax(struct yt_game *game, int port_count,
 		if (port.treasury == 0.0f)
 			continue;
 		tax = yt_maintenance_sint(
-		    qb_single_divide(port.treasury, 10.0f));
-		*tax_pool = qb_single_add(*tax_pool, tax);
-		port.treasury = qb_single_subtract(port.treasury,
+		    (port.treasury / 10.0f));
+		*tax_pool = (*tax_pool + tax);
+		port.treasury = (port.treasury -
 		    yt_maintenance_sint(
-		    qb_single_divide(port.treasury, 10.0f)));
+		    (port.treasury / 10.0f)));
 		if (!yt_game_write_port(game, port_number, &port, error))
 			return false;
 	}
 	*fleet_strength = yt_maintenance_sint(
-	    qb_single_divide(*tax_pool, 10.0f));
+	    (*tax_pool / 10.0f));
 	return true;
 }
 
@@ -299,7 +299,7 @@ yt_maintenance_place_mercenary_fleets(struct yt_game *game,
 		    &sector.record, error))
 			return false;
 	}
-	*hired_fighters = qb_single_multiply(strength, 10.0f);
+	*hired_fighters = (strength * 10.0f);
 	return true;
 }
 
@@ -325,7 +325,7 @@ yt_maintenance_mercenary_defections(struct yt_game *game, int sector_count,
 			if (!yt_random_next(&game->random, &sample, error))
 				return false;
 			if (sector.fighter_owner > 1
-			    && qb_single_multiply(sample, 100.0f) > sector.fighters) {
+			    && (sample * 100.0f) > sector.fighters) {
 				char amount[64];
 				char sector_text[64];
 				uint8_t line[YT_MAINTENANCE_OUTPUT_ROW_SIZE];
@@ -486,11 +486,11 @@ yt_maintenance_mercenary_mines(struct yt_game *game, int sector_number,
 	if (damage <= 0)
 		return true;
 	losses = (float)damage;
-	survivors = qb_single_subtract(moving_before, losses);
+	survivors = (moving_before - losses);
 	killed = survivors == 0.0f;
 	if (!yt_game_read_sector(game, sector_number, arrival_sector, error))
 		return false;
-	arrival_sector->mines = qb_single_subtract(arrival_sector->mines, 1.0f);
+	arrival_sector->mines = (arrival_sector->mines - 1.0f);
 	if (!yt_record_set_number(&arrival_sector->record, YT_F129,
 	    arrival_sector->mines)) {
 		set_error(error, YT_RANGE, "encode Mercenary mine",

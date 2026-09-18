@@ -123,7 +123,7 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 			return false;
 		if (!yt_random_next(&game->random, &second, error))
 			return false;
-		production = qb_single_multiply(qb_single_multiply(first, second), 3000.0f);
+		production = ((first * second) * 3000.0f);
 		if (!yt_record_set_number(&planet.record,
 		    YT_F45 + (size_t)index * 4U, production))
 			return false;
@@ -139,13 +139,13 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	if (!yt_random_next(&game->random, &gate, error))
 		return false;
 	if (!yt_record_set_number(&planet.record, YT_F77,
-	    yt_maintenance_sint(qb_single_add(
-	    qb_single_multiply(gate, 100.0f), 1.0f))))
+	    yt_maintenance_sint((
+	    (gate * 100.0f) + 1.0f))))
 		return false;
 	if (!yt_random_next(&game->random, &gate, error))
 		return false;
 	if (!yt_record_set_number(&planet.record, YT_F117,
-	    qb_single_multiply(gate, 16000000.0f)))
+	    (gate * 16000000.0f)))
 		return false;
 	if (!yt_record_set_raw_number(&planet.record, YT_F125,
 	    canonical_zero))

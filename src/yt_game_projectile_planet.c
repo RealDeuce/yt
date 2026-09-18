@@ -80,9 +80,9 @@ yt_projectile_planet_ground_damage(float ground, int owner,
 
 		if (!yt_random_next(random, &value, error))
 			return false;
-		ground = qb_single_subtract(ground,
-		    qb_single_multiply(value, 25.0f));
-		*remaining = qb_single_subtract(*remaining, 1.0f);
+		ground = (ground -
+		    (value * 25.0f));
+		*remaining = (*remaining - 1.0f);
 		result->ground = ground;
 	}
 	ground = floorf(ground);
@@ -109,8 +109,8 @@ yt_projectile_planet_productivity_damage(float updater_ore,
 	if (production == NULL || stock == NULL || remaining == NULL
 	    || random == NULL || result == NULL)
 		return false;
-	old_total = qb_single_add(qb_single_add(production[0],
-	    production[1]), production[2]);
+	old_total = ((production[0] +
+	    production[1]) + production[2]);
 	while ((updater_ore > 0.0f || production[1] > 0.0f
 	    || production[2] > 0.0f) && *remaining > 0.0f) {
 		for (index = 0U; index < 3U; ++index) {
@@ -118,23 +118,23 @@ yt_projectile_planet_productivity_damage(float updater_ore,
 
 			if (!yt_random_next(random, &value, error))
 				return false;
-			production[index] = qb_single_subtract(
-			    production[index], qb_single_multiply(value,
+			production[index] = (
+			    production[index] - (value *
 			    2000.0f));
 		}
-		*remaining = qb_single_subtract(*remaining, 1.0f);
+		*remaining = (*remaining - 1.0f);
 	}
 	for (index = 0U; index < 3U; ++index) {
 		float cap;
 
 		if (production[index] < 0.0f)
 			production[index] = 0.0f;
-		cap = qb_single_multiply(production[index], 10.0f);
+		cap = (production[index] * 10.0f);
 		if (stock[index] > cap)
 			stock[index] = cap;
 	}
-	new_total = qb_single_add(qb_single_add(production[0],
-	    production[1]), production[2]);
+	new_total = ((production[0] +
+	    production[1]) + production[2]);
 	result->old_total = old_total;
 	result->new_total = new_total;
 	return true;
@@ -175,7 +175,7 @@ yt_projectile_planet_productivity_row(float old_total, float new_total,
 	if (!yt_game_row_append(&builder, prefix, sizeof(prefix) - 1U))
 		return false;
 	if (!yt_game_row_number(&builder,
-	    qb_single_subtract(old_total, new_total), false))
+	    (old_total - new_total), false))
 		return false;
 	if (!yt_game_row_append(&builder, middle, sizeof(middle) - 1U))
 		return false;

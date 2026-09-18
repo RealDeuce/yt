@@ -6,12 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static float
-single_mul(float left, float right)
-{
-	return left * right;
-}
-
 static bool
 append_bytes(uint8_t *row, size_t capacity, size_t *length,
     const void *text, size_t text_length)
@@ -213,7 +207,7 @@ yt_info_panel_run(struct yt_info_panel_state *state,
 	if (state->anti_cloak != 0.0f)
 		(void)snprintf(right, sizeof(right), "%s", " FAIL");
 	else {
-		cloak_percent = (uint8_t)floorf(single_mul(state->player.cloak,
+		cloak_percent = (uint8_t)floorf((state->player.cloak *
 		    100.0f));
 		if (qb_str_single(right, sizeof(right), (float)cloak_percent) < 0
 		    || strlen(right) + 1U >= sizeof(right))

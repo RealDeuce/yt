@@ -142,12 +142,12 @@ direct_attack_attrition(struct yt_session *session, double committed,
 		if (!yt_random_next(&session->door->game.random, &sampled,
 		    error))
 			return false;
-		if (qb_single_add(qb_single_divide(cloak, 10.0f), sampled)
+		if (((cloak / 10.0f) + sampled)
 		    < 0.44999998807907104f)
-			*attacker_loss = qb_double_add(*attacker_loss,
+			*attacker_loss = (*attacker_loss +
 			    (double)quantum);
 		else
-			*defender_loss = qb_double_add(*defender_loss,
+			*defender_loss = (*defender_loss +
 			    (double)quantum);
 	}
 	return true;
@@ -193,7 +193,7 @@ yt_session_attack_player(struct yt_session *session, int target_record,
 		    "direct Attack too-many row", error);
 	}
 
-	cached_reserve = qb_double_subtract((double)current.fighters, committed);
+	cached_reserve = ((double)current.fighters - committed);
 	yt_direct_attack_fighter_overlay(&current, (float)cached_reserve);
 	if (!session_write_combat_player(session, current_player_record,
 	    &current, error))
@@ -218,10 +218,10 @@ yt_session_attack_player(struct yt_session *session, int target_record,
 	    &current, error))
 		return false;
 	cached_reserve = (double)current.fighters;
-	attacking = qb_double_subtract(committed, attacker_loss);
-	defenders = qb_double_subtract(defenders, defender_loss);
+	attacking = (committed - attacker_loss);
+	defenders = (defenders - defender_loss);
 	yt_direct_attack_fighter_overlay(&current,
-	    (float)qb_double_add(cached_reserve, attacking));
+	    (float)(cached_reserve + attacking));
 	if (!session_write_combat_player(session, current_player_record,
 	    &current, error))
 		return false;
@@ -263,7 +263,7 @@ yt_session_attack_player(struct yt_session *session, int target_record,
 	    &current, error))
 		return false;
 	yt_direct_attack_fighter_overlay(&current,
-	    (float)qb_double_add(cached_reserve, attacking));
+	    (float)(cached_reserve + attacking));
 	if (!session_write_combat_player(session, current_player_record,
 	    &current, error))
 		return false;

@@ -38,9 +38,9 @@ current_day_minute(struct yt_game *game, int16_t *day, float *minute,
 static float
 elapsed_days(int16_t day, float minute, int16_t old_day, float old_minute)
 {
-	float elapsed = qb_single_add(qb_single_subtract((float)day,
-	    (float)old_day),
-	    qb_single_divide(qb_single_subtract(minute, old_minute), 1440.0f));
+	float elapsed = (((float)day -
+	    (float)old_day) +
+	    ((minute - old_minute) / 1440.0f));
 
 	if (elapsed > 10.0f || elapsed < 0.0f)
 		elapsed = 10.0f;
@@ -64,14 +64,14 @@ yt_maintenance_update_port(struct yt_random *random, struct yt_port *port,
 	    port->last_minute);
 	for (commodity = 0; commodity < 3; ++commodity) {
 		stock[commodity] = (double)port->stock[commodity]
-		    + (double)qb_single_multiply(port->production[commodity], elapsed);
+		    + (double)(port->production[commodity] * elapsed);
 		if (stock[commodity] / 10.0
 		    > (double)port->production[commodity])
 			port->production[commodity] =
 			    (float)(stock[commodity] / 10.0);
 	}
-	*plagued = qb_single_add(qb_single_add(port->production[0],
-	    port->production[1]), port->production[2]) > 16000000.0f;
+	*plagued = ((port->production[0] +
+	    port->production[1]) + port->production[2]) > 16000000.0f;
 	if (*plagued) {
 		float maximum = 0.0f;
 		int selected = 0;
@@ -82,13 +82,13 @@ yt_maintenance_update_port(struct yt_random *random, struct yt_port *port,
 
 				if (!yt_random_next(random, &sample, error))
 					return false;
-				port->production[commodity] = qb_single_add(
-				    qb_single_multiply(sample, port->production[commodity]),
+				port->production[commodity] = (
+				    (sample * port->production[commodity]) +
 				    500.0f);
 			}
 		}
 		for (commodity = 0; commodity < 3; ++commodity) {
-			float cap = qb_single_multiply(port->production[commodity], 10.0f);
+			float cap = (port->production[commodity] * 10.0f);
 
 			if (stock[commodity] > (double)cap)
 				stock[commodity] = (double)cap;
@@ -267,60 +267,60 @@ yt_maintenance_update_planet(struct yt_random *random,
 	quantity[6] = planet->bank;
 	quantity[7] = planet->ground_forces;
 	quantity[8] = planet->plasma;
-	sum = qb_single_add(qb_single_add(production[0], production[1]), production[2]);
+	sum = ((production[0] + production[1]) + production[2]);
 	production[3] = yt_maintenance_sint(sum);
-	production[4] = yt_maintenance_sint(qb_single_divide(sum, 2500.0f));
-	production[5] = yt_maintenance_sint(qb_single_divide(sum, 25000.0f));
+	production[4] = yt_maintenance_sint((sum / 2500.0f));
+	production[5] = yt_maintenance_sint((sum / 25000.0f));
 	production[6] = 0.0f;
 	production[7] = 0.0f;
-	production[8] = yt_maintenance_sint(qb_single_multiply(sum, missile_multiplier));
+	production[8] = yt_maintenance_sint((sum * missile_multiplier));
 	elapsed = elapsed_days(day, minute, planet->last_day,
 	    planet->last_minute);
 	old_bank = quantity[6];
-	contribution[0] = qb_single_divide(old_bank, 10000.0f);
-	contribution[1] = qb_single_divide(old_bank, 20000.0f);
-	contribution[2] = qb_single_divide(old_bank, 30000.0f);
-	contribution[3] = qb_single_divide(old_bank, 500.0f);
-	contribution[4] = qb_single_multiply(old_bank, missile_multiplier);
-	contribution[5] = qb_single_multiply(old_bank, mine_multiplier);
+	contribution[0] = (old_bank / 10000.0f);
+	contribution[1] = (old_bank / 20000.0f);
+	contribution[2] = (old_bank / 30000.0f);
+	contribution[3] = (old_bank / 500.0f);
+	contribution[4] = (old_bank * missile_multiplier);
+	contribution[5] = (old_bank * mine_multiplier);
 	contribution[6] = 0.0f;
-	contribution[7] = qb_single_divide(old_bank, 10000.0f);
+	contribution[7] = (old_bank / 10000.0f);
 	contribution[8] = (float)((double)old_bank * 0.00000004);
 
-	quantity[6] = yt_maintenance_sint(qb_single_add(quantity[6],
-	    qb_single_multiply(qb_single_multiply(quantity[6], elapsed), one_percent)));
-	quantity[7] = yt_maintenance_sint(qb_single_add(qb_single_add(quantity[7],
-	    qb_single_multiply(qb_single_multiply(quantity[7], elapsed), one_percent)),
-	    qb_single_multiply(contribution[7], elapsed)));
+	quantity[6] = yt_maintenance_sint((quantity[6] +
+	    ((quantity[6] * elapsed) * one_percent)));
+	quantity[7] = yt_maintenance_sint(((quantity[7] +
+	    ((quantity[7] * elapsed) * one_percent)) +
+	    (contribution[7] * elapsed)));
 	for (index = 0; index < 3; ++index)
-		production[index] = qb_single_add(production[index],
-		    qb_single_multiply(qb_single_multiply(production[index], elapsed), one_percent));
+		production[index] = (production[index] +
+		    ((production[index] * elapsed) * one_percent));
 	for (index = 0; index < 6; ++index) {
-		quantity[index] = qb_single_add(quantity[index],
-		    qb_single_multiply(qb_single_add(production[index], contribution[index]), elapsed));
+		quantity[index] = (quantity[index] +
+		    ((production[index] + contribution[index]) * elapsed));
 		if (index < 3
-		    && quantity[index] > qb_single_multiply(production[index], 10.0f))
-			production[index] = qb_single_divide(quantity[index], 10.0f);
+		    && quantity[index] > (production[index] * 10.0f))
+			production[index] = (quantity[index] / 10.0f);
 	}
-	quantity[8] = qb_single_add(quantity[8],
-	    qb_single_multiply(qb_single_add(production[8], contribution[8]), elapsed));
+	quantity[8] = (quantity[8] +
+	    ((production[8] + contribution[8]) * elapsed));
 	for (index = 0; index < 3; ++index) {
 		if (production[index] < 1.0f)
 			production[index] = 1.0f;
 	}
 
-	old_total = qb_single_add(qb_single_add(production[0], production[1]), production[2]);
+	old_total = ((production[0] + production[1]) + production[2]);
 	old_ground = quantity[7];
 	if (!yt_random_next(random, &first, error))
 		return false;
 	if (!yt_random_next(random, &second, error))
 		return false;
-	if (qb_single_multiply(first, old_total)
-	    > qb_single_add(qb_single_multiply(second, 16000000.0f), 100000.0f))
+	if ((first * old_total)
+	    > ((second * 16000000.0f) + 100000.0f))
 		event = YT_MAINTENANCE_PLANET_PLAGUE;
 	if (!yt_random_next(random, &third, error))
 		return false;
-	if (qb_single_multiply(third, old_ground) > 16000000.0f)
+	if ((third * old_ground) > 16000000.0f)
 		event = YT_MAINTENANCE_PLANET_CIVIL_WAR;
 	if (event != YT_MAINTENANCE_PLANET_NO_EVENT) {
 		float expense = 0.0f;
@@ -330,7 +330,7 @@ yt_maintenance_update_planet(struct yt_random *random,
 
 			if (!yt_random_next(random, &sample, error))
 				return false;
-			production[index] = qb_single_multiply(sample, production[index]);
+			production[index] = (sample * production[index]);
 		}
 		if (quantity[7] > 0.0f) {
 			float a;
@@ -340,11 +340,11 @@ yt_maintenance_update_planet(struct yt_random *random,
 				return false;
 			if (!yt_random_next(random, &b, error))
 				return false;
-			quantity[7] = qb_single_subtract(quantity[7],
-			    qb_single_multiply(qb_single_multiply(quantity[7], a), b));
+			quantity[7] = (quantity[7] -
+			    ((quantity[7] * a) * b));
 		}
 		for (index = 0; index < 3; ++index) {
-			float cap = qb_single_multiply(production[index], 10.0f);
+			float cap = (production[index] * 10.0f);
 
 			if (quantity[index] > cap)
 				quantity[index] = cap;
@@ -354,7 +354,7 @@ yt_maintenance_update_planet(struct yt_random *random,
 
 			if (!yt_random_next(random, &sample, error))
 				return false;
-			expense = yt_maintenance_sint(qb_single_multiply(sample, quantity[6]));
+			expense = yt_maintenance_sint((sample * quantity[6]));
 			quantity[6] = (float)((double)quantity[6]
 			    - (double)expense);
 		}
@@ -375,7 +375,7 @@ yt_maintenance_update_planet(struct yt_random *random,
 	planet->last_minute = minute;
 	result->event = event;
 	result->old_event_total = old_total;
-	result->new_event_total = qb_single_add(qb_single_add(production[0], production[1]),
+	result->new_event_total = ((production[0] + production[1]) +
 	    production[2]);
 	result->old_event_ground = old_ground;
 	result->new_event_ground = quantity[7];

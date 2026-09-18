@@ -39,7 +39,7 @@ yt_clearance_normalize(size_t item, float *discount)
 uint8_t
 yt_clearance_percentage(float discount)
 {
-	return (uint8_t)floorf(qb_single_multiply(100.0f, discount));
+	return (uint8_t)floorf((100.0f * discount));
 }
 
 void
@@ -47,20 +47,20 @@ yt_earth_prices(const float discount[4], uint8_t price[4])
 {
 	if (discount == NULL || price == NULL)
 		return;
-	price[0] = (uint8_t)floorf(qb_single_subtract(250.0f,
-	    qb_single_multiply(250.0f, discount[0])));
-	price[1] = (uint8_t)floorf(qb_single_subtract(50.0f,
-	    qb_single_multiply(50.0f, discount[1])));
-	price[2] = (uint8_t)floorf(qb_single_multiply(50.0f,
-	    qb_single_subtract(1.0f, discount[2])));
-	price[3] = (uint8_t)floorf(qb_single_multiply(200.5f,
-	    qb_single_subtract(1.0f, discount[3])));
+	price[0] = (uint8_t)floorf((250.0f -
+	    (250.0f * discount[0])));
+	price[1] = (uint8_t)floorf((50.0f -
+	    (50.0f * discount[1])));
+	price[2] = (uint8_t)floorf((50.0f *
+	    (1.0f - discount[2])));
+	price[3] = (uint8_t)floorf((200.5f *
+	    (1.0f - discount[3])));
 }
 
 double
 yt_earth_affordable(float credits, uint32_t price)
 {
-	return floor(qb_double_divide((double)credits, (double)price));
+	return floor(((double)credits / (double)price));
 }
 
 int
@@ -86,20 +86,20 @@ yt_earth_receipt_amount(int owner, int buyer_record, float cost)
 	if (owner == 0)
 		return 0.0f;
 	if (owner == buyer_record)
-		return floorf(qb_single_multiply(0.009999999776482582f, cost));
+		return floorf((0.009999999776482582f * cost));
 	return cost;
 }
 
 uint8_t
 yt_earth_cloak_points(float cloak)
 {
-	return (uint8_t)floorf(qb_single_multiply(50.0f, cloak));
+	return (uint8_t)floorf((50.0f * cloak));
 }
 
 uint8_t
 yt_earth_cloak_default(uint8_t deficit, float credits)
 {
-	if (qb_single_multiply((float)deficit, 1000.0f) > credits)
+	if (((float)deficit * 1000.0f) > credits)
 		return (uint8_t)yt_earth_affordable(credits, 1000U);
 	return deficit;
 }
@@ -107,7 +107,7 @@ yt_earth_cloak_default(uint8_t deficit, float credits)
 float
 yt_earth_cloak_overlay(uint8_t points, uint8_t quantity)
 {
-	return qb_single_divide((float)(points + quantity), 50.0f);
+	return ((float)(points + quantity) / 50.0f);
 }
 
 void
@@ -116,13 +116,13 @@ yt_earth_supply_overlay(struct yt_player *player, int choice, float quantity)
 	if (player == NULL)
 		return;
 	if (choice == 3)
-		player->fighters = qb_single_add(player->fighters, quantity);
+		player->fighters = (player->fighters + quantity);
 	else if (choice == 7)
-		player->ground_forces = floorf(qb_single_add(
-		    player->ground_forces, quantity));
+		player->ground_forces = floorf((
+		    player->ground_forces + quantity));
 	else if (choice == 8)
-		player->shields = floorf(qb_single_add(
-		    player->shields, quantity));
+		player->shields = floorf((
+		    player->shields + quantity));
 }
 
 int

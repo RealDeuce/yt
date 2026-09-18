@@ -56,7 +56,7 @@ yt_maintenance_xannor_roaming_split(struct yt_random *random,
 	*skip_group = false;
 	if (*group_size >= 1.0f && *group_location >= 1.0f)
 		return true;
-	if (*group_one < qb_single_divide(top_score, 2000.0f)) {
+	if (*group_one < (top_score / 2000.0f)) {
 		*skip_group = true;
 		return true;
 	}
@@ -80,7 +80,7 @@ yt_maintenance_xannor_roaming_split(struct yt_random *random,
 		}
 	}
 	*group_size = (float)split;
-	*group_one = qb_single_subtract(*group_one, *group_size);
+	*group_one = (*group_one - *group_size);
 	*group_location = headquarters;
 	return true;
 }
@@ -169,7 +169,7 @@ yt_maintenance_xannor_target_override(int group_number,
 	top_override = (revenge_live_sector != 0 && group_number > 15
 	    && top_player_target != 0) || group_number == 20;
 	*target = top_override ? top_player_target : discovered_target;
-	if (group_one < qb_single_divide(top_score, 2000.0f))
+	if (group_one < (top_score / 2000.0f))
 		*target = headquarters;
 	return true;
 }
@@ -225,7 +225,7 @@ yt_maintenance_xannor_player_scan_admit(int group_number,
     float group_location, int player_location, float cached_cloak,
     float cloak_draw)
 {
-	float threshold = qb_single_subtract(cached_cloak, 0.33000001311302185f);
+	float threshold = (cached_cloak - 0.33000001311302185f);
 
 	return (float)player_location == group_location && group_number != 20
 	    && threshold <= cloak_draw;
@@ -288,14 +288,14 @@ yt_maintenance_xannor_defense(struct yt_random *random, float *group_size,
 		if (!yt_random_next(random, &sample, error))
 			return false;
 		if (sample > 0.5f)
-			xloss = qb_single_add(xloss, (float)quantum);
+			xloss = (xloss + (float)quantum);
 		else
-			dloss = qb_single_add(dloss, (float)quantum);
+			dloss = (dloss + (float)quantum);
 	}
 	xloss = fminf(xloss, original_xannor);
 	dloss = fminf(dloss, original_defenders);
-	*group_size = qb_single_subtract(original_xannor, xloss);
-	*defense_fighters = qb_single_subtract(original_defenders, dloss);
+	*group_size = (original_xannor - xloss);
+	*defense_fighters = (original_defenders - dloss);
 	if (*defense_fighters <= 0.0f) {
 		*defense_fighters = 0.0f;
 		*defense_owner = 0;
@@ -462,7 +462,7 @@ yt_maintenance_xannor_groups_extract(struct yt_game *game,
 			continue;
 		for (later = group + 1; later <= 20; ++later) {
 			if (location[later] == location[group]) {
-				size[group] = qb_single_add(size[group], size[later]);
+				size[group] = (size[group] + size[later]);
 				size[later] = 0.0f;
 				location[later] = 0.0f;
 			}
@@ -482,11 +482,11 @@ yt_maintenance_xannor_regeneration(float top_score, float size[21],
 	if (size == NULL || regeneration == NULL)
 		return false;
 	for (group = 1; group <= 20; ++group)
-		total = qb_single_add(total, size[group]);
+		total = (total + size[group]);
 	*regeneration = (double)yt_maintenance_sint(
-	    qb_single_divide(top_score, 500.0f));
+	    (top_score / 500.0f));
 	ceiling = yt_maintenance_sint(
-	    qb_single_divide(top_score, 100.0f));
+	    (top_score / 100.0f));
 	if (total > ceiling)
 		*regeneration = 0.0;
 	size[1] = (float)((double)size[1] + *regeneration);
@@ -565,7 +565,7 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		if (sample <= 0.5f)
 			defenders -= (double)quantum;
 		else
-			size[1] = qb_single_subtract(size[1], (float)quantum);
+			size[1] = (size[1] - (float)quantum);
 	}
 	successful = defenders <= 0.0;
 	if (!yt_game_read_sector(game, hq, &host, error))
@@ -966,15 +966,15 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 			return false;
 		if (!yt_game_read_planet(game, planet_count, &planet, error))
 			return false;
-		minute = (uint16_t)yt_maintenance_sint(qb_single_divide(
-		    (float)yt_clock_timer(&game->clock), 60.0f));
+		minute = (uint16_t)yt_maintenance_sint((
+		    (float)yt_clock_timer(&game->clock) / 60.0f));
 		if (!yt_random_next(&game->random, &sample, error))
 			return false;
 		planet.ground_forces = yt_maintenance_sint(
-		    qb_single_multiply(sample, 250.0f));
+		    (sample * 250.0f));
 		if (!yt_random_next(&game->random, &sample, error))
 			return false;
-		planet.bank = qb_single_add(100000.0f, qb_single_multiply(sample, 10000000.0f));
+		planet.bank = (100000.0f + (sample * 10000000.0f));
 		if (!maintenance_write_xannor_rebuild(game, planet_count,
 		    &planet, today, minute, error))
 			return false;
@@ -995,8 +995,8 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 		return false;
 	if (!yt_random_next(&game->random, &sample, error))
 		return false;
-	planet.ground_forces = qb_single_add(planet.ground_forces,
-	    yt_maintenance_sint(qb_single_multiply(sample, 25.0f)));
+	planet.ground_forces = (planet.ground_forces +
+	    yt_maintenance_sint((sample * 25.0f)));
 	planet.owner = -1;
 	if (planet.bank == 0.0f)
 		planet.bank = 16000000.0f;
@@ -1067,7 +1067,7 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 	if (!yt_random_next(&game->random, &gate, error))
 		return false;
 	if (*top_score < 2500000.0f
-	    || qb_single_subtract(player_cloak[top_record],
+	    || (player_cloak[top_record] -
 	    0.33000001311302185f) > gate)
 		return true;
 	name.data = player.record.bytes;

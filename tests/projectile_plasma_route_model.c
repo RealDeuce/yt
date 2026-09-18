@@ -5,24 +5,6 @@
 #include <math.h>
 #include <stdio.h>
 
-static float
-plasma_single_add(float left, float right)
-{
-	return left + right;
-}
-
-static float
-plasma_single_sub(float left, float right)
-{
-	return left - right;
-}
-
-static float
-plasma_single_mul(float left, float right)
-{
-	return left * right;
-}
-
 bool
 test_projectile_plasma_route_run(
     struct test_projectile_plasma_route_state *state,
@@ -129,10 +111,10 @@ test_projectile_plasma_route_run(
 					    YT_PROJECTILE_PLASMA_BLACK_HOLE_ORIGIN);
 				if (!ops->random(context, &draw, error))
 					return false;
-				span = plasma_single_sub(state->port_record_offset,
+				span = (state->port_record_offset -
 				    state->sector_record_offset);
-				*state->destination = floorf(plasma_single_add(
-				    plasma_single_mul(draw, span), 1.0f));
+				*state->destination = floorf((
+				    (draw * span) + 1.0f));
 				if (ops->arguments_changed != NULL)
 					ops->arguments_changed(context, *state->origin,
 					    *state->destination,

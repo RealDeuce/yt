@@ -36,7 +36,7 @@ void
 yt_projectile_plasma_opening_values(float bolts, double *energy,
     float *hop_loss)
 {
-	*energy = (double)qb_single_multiply(2500000.0f, bolts);
+	*energy = (double)(2500000.0f * bolts);
 	*hop_loss = (float)(*energy / 50.0);
 }
 
@@ -80,7 +80,7 @@ yt_projectile_plasma_firing_row(float counter, uint8_t *row,
 float
 yt_projectile_plasma_next_firing(float counter)
 {
-	return qb_single_add(counter, 1.0f);
+	return (counter + 1.0f);
 }
 
 void

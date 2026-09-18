@@ -17,18 +17,6 @@ surrender_append(uint8_t *output, size_t capacity, size_t *position,
 	return true;
 }
 
-static double
-surrender_double_add(double left, double right)
-{
-	return left + right;
-}
-
-static double
-surrender_double_sub(double left, double right)
-{
-	return left - right;
-}
-
 bool
 test_hostile_attack_surrender_run(
     struct test_hostile_surrender_state *state,
@@ -150,8 +138,8 @@ test_hostile_attack_surrender_run(
 	    || !ops->sound(context, YT_HOSTILE_SURRENDER_JOINED_SOUND, 1.0f,
 	    error))
 		return false;
-	surrendered_fighters = surrender_double_sub(
-	    state->deployed_fighters, state->defender_loss);
+	surrendered_fighters = (
+	    state->deployed_fighters - state->defender_loss);
 	if (qb_str_double(surrendered_number, sizeof(surrendered_number),
 	    surrendered_fighters) < 0)
 		return false;
@@ -169,9 +157,9 @@ test_hostile_attack_surrender_run(
 	    state->cached_player_name, state->cached_player_name_length)
 	    || !ops->append_news(context, news, position, error))
 		return false;
-	state->ship_fighters = surrender_double_add(surrender_double_sub(
-	    surrender_double_sub((double)state->current.fighters,
-	    state->attacker_loss), state->defender_loss),
+	state->ship_fighters = ((
+	    ((double)state->current.fighters -
+	    state->attacker_loss) - state->defender_loss) +
 	    state->deployed_fighters);
 	state->current.fighters = (float)state->ship_fighters;
 	state->deployed_remaining = 0.0;

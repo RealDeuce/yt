@@ -339,7 +339,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 				if (!yt_random_next(&session->door->game.random, &draw,
 				    error))
 					return false;
-				selected = (uint8_t)floorf(qb_single_multiply(draw, 6.0f));
+				selected = (uint8_t)floorf((draw * 6.0f));
 				if (destinations[selected] != 0) {
 					session->spies.sectors[spy] =
 					    destinations[selected];

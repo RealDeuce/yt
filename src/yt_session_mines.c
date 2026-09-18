@@ -22,14 +22,14 @@ mine_stock_loss(struct yt_session *session, float batch, float *stock,
     float *loss, struct yt_error *error)
 {
 	float sampled;
-	float range = qb_single_multiply(batch, *stock);
+	float range = (batch * *stock);
 
 	if (!yt_random_nested_single(&session->door->game.random, 3.0f,
 	    &range, &sampled, error))
 		return false;
 	if (sampled > *stock)
 		sampled = *stock;
-	*stock = qb_single_subtract(*stock, sampled);
+	*stock = (*stock - sampled);
 	*loss = sampled;
 	return true;
 }
@@ -98,13 +98,13 @@ mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
 	float range;
 
 	if (player->fighters != 0.0f) {
-		range = qb_single_multiply(40000.0f, batch);
+		range = (40000.0f * batch);
 		if (!yt_random_nested_single(&session->door->game.random, 3.0f,
 		    &range, &loss, error))
 			return false;
 		if (loss > player->fighters)
 			loss = player->fighters;
-		player->fighters = qb_single_subtract(player->fighters, loss);
+		player->fighters = (player->fighters - loss);
 		*touched |= YT_SECTOR_MINE_DAMAGE_FIGHTERS;
 		if (!mine_loss_row(session, YT_SECTOR_MINE_LOSS_FIGHTERS,
 		    loss, row, sizeof(row), error))
@@ -114,7 +114,7 @@ mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
 		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		loss = yt_sector_mine_cloak_loss(player->cloak, batch, draw);
-		player->cloak = qb_single_subtract(player->cloak, loss);
+		player->cloak = (player->cloak - loss);
 		*touched |= YT_SECTOR_MINE_DAMAGE_CLOAK;
 		if (!mine_loss_row(session, YT_SECTOR_MINE_LOSS_CLOAK, loss,
 		    row, sizeof(row), error))
@@ -124,7 +124,7 @@ mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
 		if (!yt_random_next(&session->door->game.random, &draw, error))
 			return false;
 		loss = yt_sector_mine_missile_loss(player->missiles, batch, draw);
-		player->missiles = qb_single_subtract(player->missiles, loss);
+		player->missiles = (player->missiles - loss);
 		*touched |= YT_SECTOR_MINE_DAMAGE_MISSILES;
 		if (!mine_loss_row(session, YT_SECTOR_MINE_LOSS_MISSILES, loss,
 		    row, sizeof(row), error))
@@ -167,10 +167,10 @@ mine_damage_unshielded(struct yt_session *session, struct yt_player *player,
 	if (!yt_random_nested_single(&session->door->game.random, 3.0f,
 	    &empty, &loss, error))
 		return false;
-	loss = qb_single_multiply(loss, batch);
+	loss = (loss * batch);
 	if (loss > empty)
 		loss = empty;
-	player->holds = qb_single_subtract(player->holds, loss);
+	player->holds = (player->holds - loss);
 	if (player->holds < 1.0f) {
 		player->holds = 0.0f;
 		session->destroyed = true;
@@ -274,7 +274,7 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 		return true;
 
 	session->navigation.self_mines_suppressed = true;
-	remaining = qb_single_subtract(carried, amount);
+	remaining = (carried - amount);
 	player.mines = remaining;
 	if (!yt_record_set_number(&player.record, YT_F129, remaining))
 		return false;
@@ -285,7 +285,7 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (!session_read_sector(session, current_sector, &sector, error))
 		return false;
-	sector.mines = qb_single_add(sector.mines, amount);
+	sector.mines = (sector.mines + amount);
 	if (!yt_record_set_number(&sector.record, YT_F129, sector.mines))
 		return false;
 	if (!session_write_sector(session, current_sector, &sector, error))
@@ -367,7 +367,7 @@ yt_session_mine_encounter(struct yt_session *session, bool *terminal,
 		mines_before = sector.mines;
 		batch = yt_sector_mine_batch(mines_before);
 		yt_sector_mine_sector_overlay(&sector,
-		    qb_single_subtract(mines_before, batch));
+		    (mines_before - batch));
 		if (!yt_database_write(&session->door->game.database,
 		    (size_t)yt_sector_basic_record(&session->door->game.config,
 		    current_sector), &sector.record, error))

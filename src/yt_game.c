@@ -103,7 +103,7 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 		if (!yt_random_next(&game->random, &draw, error))
 			return false;
 		span = config->port_offset - config->sector_offset - 2U;
-		product = qb_single_multiply(draw, (float)span);
+		product = (draw * (float)span);
 		selected = (uint16_t)floorf(product) + 2U;
 		disruption_sectors[index] = selected;
 	}

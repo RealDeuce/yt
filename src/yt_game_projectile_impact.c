@@ -144,7 +144,7 @@ yt_projectile_cruise_reroute_destination(float draw,
     uint16_t sector_record_offset, uint16_t port_record_offset)
 {
 	uint16_t span = port_record_offset - sector_record_offset;
-	uint16_t selected = (uint16_t)floorf(qb_single_multiply(draw,
+	uint16_t selected = (uint16_t)floorf((draw *
 	    (float)span));
 
 	return selected + 1U;
@@ -224,10 +224,10 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 		float value;
 		float scanner_product;
 
-		*remaining = qb_single_subtract(*remaining, 1.0f);
+		*remaining = (*remaining - 1.0f);
 		if (!yt_random_next(random, &value, error))
 			return false;
-		scanner_product = qb_single_multiply(value, *remaining);
+		scanner_product = (value * *remaining);
 		if (scanner_product > 100.0f
 		    && target->danger_scanner != 0) {
 			target->danger_scanner = 0;
@@ -235,7 +235,7 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 		}
 		if (!yt_random_next(random, &value, error))
 			return false;
-		fighter_damage = floor((double)qb_single_multiply(value,
+		fighter_damage = floor((double)(value *
 		    4001.0f) + fighter_damage);
 		if (!yt_random_next(random, &value, error))
 			return false;
@@ -243,20 +243,20 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 		if ((double)value * original_fighters < fighter_damage) {
 			if (!yt_random_next(random, &value, error))
 				return false;
-			shield_damage = qb_single_add(shield_damage,
-			    floorf(qb_single_multiply(value, 1001.0f)));
+			shield_damage = (shield_damage +
+			    floorf((value * 1001.0f)));
 		}
 		if (fighter_damage >= original_fighters
 		    && shield_damage >= original_shields)
 			break;
-		counter = qb_single_add(counter, 1.0f);
+		counter = (counter + 1.0f);
 	}
 	if (fighter_damage > original_fighters)
 		fighter_damage = original_fighters;
 	if (shield_damage > original_shields)
 		shield_damage = original_shields;
 	target->fighters = (float)(original_fighters - fighter_damage);
-	target->shields = qb_single_subtract(original_shields,
+	target->shields = (original_shields -
 	    shield_damage);
 	result->fighters = fighter_damage;
 	result->shields = shield_damage;

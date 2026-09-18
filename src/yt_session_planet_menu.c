@@ -40,10 +40,10 @@ yt_session_planet_menu(struct yt_session *session, int logical_planet,
 		session->pager.line_count = 0;
 		if (!session_reload_player(session, error))
 			return false;
-		free_holds = qb_double_subtract(qb_double_subtract(
-		    qb_double_subtract((double)session->player.holds,
-		    (double)session->player.ore),
-		    (double)session->player.organics),
+		free_holds = ((
+		    ((double)session->player.holds -
+		    (double)session->player.ore) -
+		    (double)session->player.organics) -
 		    (double)session->player.equipment);
 		if (qb_str_double(free_text, sizeof(free_text), free_holds) < 0)
 			return false;

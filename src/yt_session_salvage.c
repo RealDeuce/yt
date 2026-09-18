@@ -100,7 +100,7 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 		case 4U: stock = victim.ground_forces; break;
 		default: stock = victim.mines; break;
 		}
-		awards[index] = floorf(qb_single_multiply(draw, stock));
+		awards[index] = floorf((draw * stock));
 	}
 	if (!session_wait(session, 1.0, "ship salvage wait", error))
 		return false;
@@ -127,17 +127,17 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_LINE, "salvage result row", error))
 			return false;
-		*simple_fields[index - 1U] = qb_single_add(
-		    *simple_fields[index - 1U], awards[index]);
+		*simple_fields[index - 1U] = (
+		    *simple_fields[index - 1U] + awards[index]);
 	}
 	if (!salvage_save_player(session, killer_record, &killer, error))
 		return false;
 
 	requested_holds = awards[0];
-	if (qb_single_add(killer.holds, requested_holds)
+	if ((killer.holds + requested_holds)
 	    > session->door->game.config.maximum_holds)
-		requested_holds = qb_single_subtract(
-		    session->door->game.config.maximum_holds, killer.holds);
+		requested_holds = (
+		    session->door->game.config.maximum_holds - killer.holds);
 	if (requested_holds > 0.0f) {
 		int counter;
 
@@ -159,35 +159,35 @@ yt_session_salvage_player(struct yt_session *session, int victim_record,
 			    &session->door->game.random, cargo_remaining,
 			    &one_based, error))
 				return false;
-			pick = qb_single_subtract(one_based, 1.0f);
+			pick = (one_based - 1.0f);
 			if (pick < cargo_stock[0])
 				selected = 0;
 			else {
-				boundary = qb_single_add(cargo_stock[0],
+				boundary = (cargo_stock[0] +
 				    cargo_stock[1]);
 				if (pick < boundary)
 					selected = 1;
 				else {
-					boundary = qb_single_add(boundary,
+					boundary = (boundary +
 					    cargo_stock[2]);
 					selected = pick < boundary ? 2 : 3;
 				}
 			}
-			cargo_awards[selected] = qb_single_add(
-			    cargo_awards[selected], 1.0f);
+			cargo_awards[selected] = (
+			    cargo_awards[selected] + 1.0f);
 			if (selected < 3)
-				cargo_stock[selected] = qb_single_subtract(
-				    cargo_stock[selected], 1.0f);
-			cargo_remaining = qb_single_subtract(cargo_remaining, 1.0f);
+				cargo_stock[selected] = (
+				    cargo_stock[selected] - 1.0f);
+			cargo_remaining = (cargo_remaining - 1.0f);
 		}
 		if (!salvage_load_player(session, killer_record, &killer, error))
 			return false;
 		for (index = 0U; index < YT_ARRAY_LEN(cargo_awards); ++index)
-			killer.holds = qb_single_add(killer.holds,
+			killer.holds = (killer.holds +
 			    cargo_awards[index]);
-		killer.ore = qb_single_add(killer.ore, cargo_awards[0]);
-		killer.organics = qb_single_add(killer.organics, cargo_awards[1]);
-		killer.equipment = qb_single_add(killer.equipment,
+		killer.ore = (killer.ore + cargo_awards[0]);
+		killer.organics = (killer.organics + cargo_awards[1]);
+		killer.equipment = (killer.equipment +
 		    cargo_awards[2]);
 		if (!salvage_save_player(session, killer_record, &killer, error))
 			return false;

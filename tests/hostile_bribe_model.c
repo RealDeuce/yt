@@ -18,18 +18,6 @@ bribe_append(uint8_t *output, size_t capacity, size_t *position,
 	return true;
 }
 
-static double
-bribe_double_add(double left, double right)
-{
-	return left + right;
-}
-
-static double
-bribe_double_sub(double left, double right)
-{
-	return left - right;
-}
-
 bool
 test_hostile_bribe_accept_run(
     struct test_hostile_bribe_accept_state *state,
@@ -72,10 +60,10 @@ test_hostile_bribe_accept_run(
 	    &state->current, error))
 		return false;
 	state->player_read = true;
-	state->persisted_fighters = (float)bribe_double_add(
-	    (double)state->current.fighters, (double)state->cached_defenders);
-	state->persisted_credits = (float)bribe_double_sub(
-	    (double)state->current.credits, (double)state->offer);
+	state->persisted_fighters = (float)(
+	    (double)state->current.fighters + (double)state->cached_defenders);
+	state->persisted_credits = (float)(
+	    (double)state->current.credits - (double)state->offer);
 	yt_bribe_player_overlay(&state->current, state->persisted_fighters,
 	    state->persisted_credits);
 	if (!ops->write_player(context, state->current_player_record,

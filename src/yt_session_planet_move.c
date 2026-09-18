@@ -206,7 +206,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 			if (!yt_random_next(&session->door->game.random, &draw,
 			    error))
 				return false;
-			actual_destination = (int)(floorf(qb_single_multiply(draw,
+			actual_destination = (int)(floorf((draw *
 			    (float)maximum)) + 1.0f);
 			if (!session_read_sector(session, actual_destination,
 			    &target, error))

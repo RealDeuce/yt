@@ -177,7 +177,7 @@ hostile_surrender_run(struct yt_session *session,
 	if (!session_sound(session, YT_SOUND_CUE_REWARD,
 	    "hostile surrender sound", error))
 		return false;
-	surrendered_fighters = qb_double_subtract(state->deployed_fighters,
+	surrendered_fighters = (state->deployed_fighters -
 	    state->defender_loss);
 	if (qb_str_double(surrendered_number, sizeof(surrendered_number),
 	    surrendered_fighters) < 0)
@@ -201,9 +201,9 @@ hostile_surrender_run(struct yt_session *session,
 		return false;
 	if (!yt_news_append_bytes(news, position, error))
 		return false;
-	state->ship_fighters = qb_double_add(qb_double_subtract(qb_double_subtract(
-	    (double)state->current.fighters, state->attacker_loss),
-	    state->defender_loss), state->deployed_fighters);
+	state->ship_fighters = (((
+	    (double)state->current.fighters - state->attacker_loss) -
+	    state->defender_loss) + state->deployed_fighters);
 	state->current.fighters = (float)state->ship_fighters;
 	state->deployed_remaining = 0.0;
 	state->fighter_owner = 0;
@@ -320,7 +320,7 @@ hostile_attack_tail_run(struct yt_session *session,
 		bonus = yt_xannor_attack_bonus(state->defender_loss,
 		    state->current.turns, state->turns_per_day);
 		if (bonus >= 1.0f) {
-			state->current.turns = qb_single_add(state->current.turns,
+			state->current.turns = (state->current.turns +
 			    bonus);
 			(void)yt_record_set_number(&state->current.record, YT_F49,
 			    state->current.turns);
@@ -430,9 +430,9 @@ yt_session_attack_deployed(struct yt_session *session,
 		return false;
 
 	do {
-		double remaining_attacker = qb_double_subtract(commitment,
+		double remaining_attacker = (commitment -
 		    attacker_loss);
-		double remaining_defender = qb_double_subtract(old_count,
+		double remaining_defender = (old_count -
 		    defender_loss);
 		quantum = yt_hostile_attack_quantum(remaining_attacker,
 		    remaining_defender);
@@ -495,17 +495,17 @@ yt_session_attack_deployed(struct yt_session *session,
 		if (!yt_random_next(&session->door->game.random, &last_draw, error))
 			return false;
 		if (yt_hostile_attack_loses_attacker(current.cloak, last_draw))
-			attacker_loss = qb_double_add(attacker_loss, (double)quantum);
+			attacker_loss = (attacker_loss + (double)quantum);
 		else
-			defender_loss = qb_double_add(defender_loss, (double)quantum);
+			defender_loss = (defender_loss + (double)quantum);
 	} while (attacker_loss < commitment && defender_loss < old_count);
 	if (attacker_loss > commitment)
 		attacker_loss = commitment;
 	if (defender_loss > old_count)
 		defender_loss = old_count;
 	if (!surrendered) {
-		ship_fighters = qb_double_subtract(old_ship, attacker_loss);
-		deployed_remaining = qb_double_subtract(old_count, defender_loss);
+		ship_fighters = (old_ship - attacker_loss);
+		deployed_remaining = (old_count - defender_loss);
 		current.fighters = (float)ship_fighters;
 		session->combat.ship_fighters = ship_fighters;
 		session->player = current;

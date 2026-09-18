@@ -148,6 +148,6 @@ yt_projectile_sector_mines_overlay(struct yt_sector *sector,
 {
 	if (sector == NULL)
 		return false;
-	sector->mines = qb_single_add(sector->mines, carried_mines);
+	sector->mines = (sector->mines + carried_mines);
 	return yt_record_set_number(&sector->record, YT_F129, sector->mines);
 }

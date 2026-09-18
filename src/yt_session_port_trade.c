@@ -70,11 +70,11 @@ commodity_prepare(const struct yt_port_market_state *market,
 	terms->factor = market->port.factor[commodity];
 	terms->price = market->price[commodity];
 	terms->credits = (double)player->credits;
-	free_holds = qb_double_subtract((double)player->holds,
+	free_holds = ((double)player->holds -
 	    (double)player->ore);
-	free_holds = qb_double_subtract(free_holds,
+	free_holds = (free_holds -
 	    (double)player->organics);
-	free_holds = qb_double_subtract(free_holds,
+	free_holds = (free_holds -
 	    (double)player->equipment);
 	terms->free_holds = (float)free_holds;
 	terms->port_sells = terms->factor > 0;
@@ -100,14 +100,14 @@ commodity_prepare(const struct yt_port_market_state *market,
 			    "commodity trade cached quantity CSNG");
 		terms->maximum = qb_mbf32_decode(single_raw);
 	}
-	if ((double)floorf(qb_single_multiply((float)terms->price,
+	if ((double)floorf(((float)terms->price *
 	    terms->maximum)) > terms->credits) {
 		double affordable;
 
 		if (terms->price == 0U)
 			return commodity_error(error,
 			    "commodity trade credit/price division");
-		affordable = qb_double_divide(terms->credits,
+		affordable = (terms->credits /
 		    (double)terms->price);
 		if (!isfinite(affordable) || floor(affordable) > FLT_MAX
 		    || floor(affordable) < -FLT_MAX)
@@ -282,8 +282,8 @@ yt_session_trade_commodity(struct yt_session *session,
 		}
 		break;
 	}
-	total = floorf(qb_single_add(
-	    qb_single_multiply((float)terms.price, quantity), 0.5f));
+	total = floorf((
+	    ((float)terms.price * quantity) + 0.5f));
 	if (qb_str_single(first, sizeof(first), quantity) < 0)
 		return false;
 	if (snprintf(row, sizeof(row), "Agreed,%s units.", first) < 0)
@@ -313,8 +313,8 @@ yt_session_trade_commodity(struct yt_session *session,
 		float receipt = total;
 
 		if (market->port.owner == session_record(session))
-			receipt = floorf(qb_single_multiply(
-			    0.009999999776482582f, total));
+			receipt = floorf((
+			    0.009999999776482582f * total));
 		if (!session_read_port_physical(session, market->port_physical_record,
 		    &fresh_port, error))
 			return false;
@@ -326,7 +326,7 @@ yt_session_trade_commodity(struct yt_session *session,
 	}
 	direction = terms.factor > 0 ? 1 : terms.factor < 0 ? -1 : 0;
 	if (!session_mutate_player_credits(session,
-	    -qb_single_multiply(total, (float)direction), NULL, error))
+	    -(total * (float)direction), NULL, error))
 		return false;
 	if (!session_reload_player(session, error))
 		return false;
@@ -422,10 +422,10 @@ yt_session_ordinary_commerce(struct yt_session *session,
 	}
 	if (!session_reload_player(session, error))
 		return false;
-	free = qb_double_subtract((double)session->player.holds,
+	free = ((double)session->player.holds -
 	    (double)session->player.ore);
-	free = qb_double_subtract(free, (double)session->player.organics);
-	free = qb_double_subtract(free, (double)session->player.equipment);
+	free = (free - (double)session->player.organics);
+	free = (free - (double)session->player.equipment);
 	if (qb_str_double(credits, sizeof(credits),
 	    (double)session->player.credits) < 0)
 		return session_range_error(error,

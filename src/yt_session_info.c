@@ -382,8 +382,8 @@ yt_session_show_ship(struct yt_session *session, struct yt_error *error)
 	if (anti_cloak)
 		(void)snprintf(right, sizeof(right), "%s", " FAIL");
 	else {
-		cloak_percent = (uint8_t)floorf(qb_single_multiply(
-		    session->player.cloak, 100.0f));
+		cloak_percent = (uint8_t)floorf((
+		    session->player.cloak * 100.0f));
 		if (qb_str_single(right, sizeof(right), (float)cloak_percent) < 0)
 			return false;
 		if (strlen(right) + 1U >= sizeof(right))

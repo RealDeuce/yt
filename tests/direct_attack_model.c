@@ -6,30 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static float
-test_direct_attack_single_add(float left, float right)
-{
-	return left + right;
-}
-
-static float
-test_direct_attack_single_div(float left, float right)
-{
-	return left / right;
-}
-
-static double
-test_direct_attack_double_add(double left, double right)
-{
-	return left + right;
-}
-
-static double
-test_direct_attack_double_sub(double left, double right)
-{
-	return left - right;
-}
-
 bool
 test_direct_attack_attrition_run(
     struct test_direct_attack_attrition_state *state,
@@ -58,13 +34,13 @@ test_direct_attack_attrition_run(
 			state->quantum = 1.0f;
 		if (!draw(context, &sampled, error))
 			return false;
-		if (test_direct_attack_single_add(test_direct_attack_single_div(
-		    state->cloak, 10.0f), sampled) < 0.44999998807907104f)
-			state->attacker_loss = test_direct_attack_double_add(
-			    state->attacker_loss, (double)state->quantum);
+		if (((
+		    state->cloak / 10.0f) + sampled) < 0.44999998807907104f)
+			state->attacker_loss = (
+			    state->attacker_loss + (double)state->quantum);
 		else
-			state->defender_loss = test_direct_attack_double_add(
-			    state->defender_loss, (double)state->quantum);
+			state->defender_loss = (
+			    state->defender_loss + (double)state->quantum);
 		++state->iterations;
 	}
 	state->complete = true;
@@ -128,8 +104,8 @@ test_direct_attack_combat_run(
 		return true;
 	}
 
-	state->cached_reserve = test_direct_attack_double_sub(
-	    (double)state->current.fighters, state->committed);
+	state->cached_reserve = (
+	    (double)state->current.fighters - state->committed);
 	yt_direct_attack_fighter_overlay(&state->current,
 	    (float)state->cached_reserve);
 	if (!ops->write_player(context, state->current_player_record,
@@ -161,12 +137,12 @@ test_direct_attack_combat_run(
 	    &state->current, error))
 		return false;
 	state->cached_reserve = (double)state->current.fighters;
-	state->attacking = test_direct_attack_double_sub(state->committed,
+	state->attacking = (state->committed -
 	    state->attrition.attacker_loss);
-	state->defenders = test_direct_attack_double_sub(state->defenders,
+	state->defenders = (state->defenders -
 	    state->attrition.defender_loss);
 	yt_direct_attack_fighter_overlay(&state->current,
-	    (float)test_direct_attack_double_add(state->cached_reserve,
+	    (float)(state->cached_reserve +
 	    state->attacking));
 	if (!ops->write_player(context, state->current_player_record,
 	    &state->current, error))
@@ -218,7 +194,7 @@ test_direct_attack_combat_run(
 	    &state->current, error))
 		return false;
 	yt_direct_attack_fighter_overlay(&state->current,
-	    (float)test_direct_attack_double_add(state->cached_reserve,
+	    (float)(state->cached_reserve +
 	    state->attacking));
 	if (!ops->write_player(context, state->current_player_record,
 	    &state->current, error))

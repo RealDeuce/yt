@@ -154,7 +154,7 @@ yt_initializer_prepare_yt(const struct yt_clock *clock,
 	    preparation->config.epoch_year, NULL);
 	preparation->config.last_maintenance =
 	    (uint16_t)(preparation->today - 1);
-	preparation->config.headquarters = (float)((int)floorf(qb_single_multiply(sample,
+	preparation->config.headquarters = (float)((int)floorf((sample *
 	    (float)(YT_INIT_SECTORS - 7))) + 1);
 	return true;
 }
@@ -509,14 +509,14 @@ write_world_database(struct yt_database *database,
 			if (!yt_random_next(random, &sample, error))
 				return false;
 			yt_record_set_number(&record, YT_F61 + (size_t)index * 4U,
-			    (float)((int)floorf(qb_single_multiply(sample, 31767.0f))
+			    (float)((int)floorf((sample * 31767.0f))
 			    + 1000));
 		}
 		for (index = 0; index < 3; ++index) {
 			if (!yt_random_next(random, &sample, error))
 				return false;
 			yt_record_set_number(&record, YT_F73 + (size_t)index * 4U,
-			    (float)(-(int)floorf(qb_single_multiply(sample, 100.0f))
+			    (float)(-(int)floorf((sample * 100.0f))
 			    - 1));
 		}
 		if (logical == 1)
@@ -528,7 +528,7 @@ write_world_database(struct yt_database *database,
 			return false;
 		if (!yt_random_next(random, &sample, error))
 			return false;
-		commodity = (int)floorf(qb_single_multiply(sample, 3.0f)) + 1;
+		commodity = (int)floorf((sample * 3.0f)) + 1;
 		yt_record_set_text(&record, (const uint8_t *)name, strlen(name));
 		yt_record_set_number(&record, YT_F41, (float)commodity);
 		yt_record_set_number(&record, YT_F45, (float)(today - 10));
@@ -707,8 +707,8 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			goto done;
 		if (!yt_random_next(random, &sample, error))
 			goto done;
-		config.headquarters = (float)((int)floorf(qb_single_multiply(sample,
-		    qb_single_add((float)world.sectors, -7.0f))) + 1);
+		config.headquarters = (float)((int)floorf((sample *
+		    ((float)world.sectors + -7.0f))) + 1);
 		if (!rmt_present_after_headquarters(options, &config, error))
 			goto done;
 		make_config_record(&config, config.scoreboard_length);
@@ -798,8 +798,8 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			    config.epoch_year, NULL) - 1);
 			if (!yt_random_next(random, &sample, error))
 				goto done;
-			config.headquarters = (float)((int)floorf(qb_single_multiply(sample,
-			    qb_single_add((float)world.sectors, -7.0f))) + 1);
+			config.headquarters = (float)((int)floorf((sample *
+			    ((float)world.sectors + -7.0f))) + 1);
 		}
 		make_config_record(&config, config.scoreboard_length);
 		if (!write_config_and_players(database, &config, options, error))

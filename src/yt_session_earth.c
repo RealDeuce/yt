@@ -70,7 +70,7 @@ session_earth_receipt(struct yt_session *session, const struct yt_port *cached_e
 
 		if (!session_read_port(session, 1, &earth, error))
 			return false;
-		earth.treasury = qb_single_add(earth.treasury, receipt);
+		earth.treasury = (earth.treasury + receipt);
 		if (!session_write_port(session, 1, &earth, error))
 			return false;
 	}

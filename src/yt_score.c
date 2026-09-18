@@ -168,20 +168,20 @@ base_score(const struct yt_player *player)
 
 	if (player->killed_by != 0)
 		return 0;
-	score = qb_single_add(score, qb_single_multiply(player->shields, 50.0f));
-	score = qb_single_add(score, qb_single_multiply(player->fighters, 100.0f));
-	score = qb_single_add(score, qb_single_multiply(player->holds, 2500.0f));
-	score = qb_single_add(score, qb_single_multiply(player->ore, 20.0f));
-	score = qb_single_add(score, qb_single_multiply(player->organics, 30.0f));
-	score = qb_single_add(score, qb_single_multiply(player->equipment, 40.0f));
-	score = qb_single_add(score, qb_single_multiply(
-	    (float)player->ports_owned, 50000.0f));
-	score = qb_single_add(score, qb_single_multiply(player->missiles, 1000.0f));
-	score = qb_single_add(score, qb_single_multiply(player->ground_forces, 750.0f));
-	score = qb_single_add(score, qb_single_multiply(player->mines, 2500.0f));
-	score = qb_single_add(score, player->credits);
+	score = (score + (player->shields * 50.0f));
+	score = (score + (player->fighters * 100.0f));
+	score = (score + (player->holds * 2500.0f));
+	score = (score + (player->ore * 20.0f));
+	score = (score + (player->organics * 30.0f));
+	score = (score + (player->equipment * 40.0f));
+	score = (score + (
+	    (float)player->ports_owned * 50000.0f));
+	score = (score + (player->missiles * 1000.0f));
+	score = (score + (player->ground_forces * 750.0f));
+	score = (score + (player->mines * 2500.0f));
+	score = (score + player->credits);
 	return (double)score
-	    + (double)qb_single_multiply(player->plasma, 16000000.0f)
+	    + (double)(player->plasma * 16000000.0f)
 	    + (player->danger_scanner != 0 ? 250000.0 : 0.0);
 }
 
@@ -287,7 +287,7 @@ yt_scoreboard_score_sectors(struct yt_scoreboard *scoreboard,
 		if (!score_read_sector(scoreboard->game,
 		    scoreboard->sector_record_offset, index, &sector, error))
 			return false;
-		contribution = (double)qb_single_multiply(sector.fighters, 100.0f);
+		contribution = (double)(sector.fighters * 100.0f);
 		owner = sector.fighter_owner;
 		if (owner == -1)
 			scoreboard->xannor += contribution;

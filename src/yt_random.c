@@ -80,12 +80,12 @@ nested_single(struct yt_random *random, float count, float *range,
 		return true;
 	terminal = count;
 	for (index = 1.0f; index <= terminal;
-	    index = qb_single_add(index, 1.0f)) {
+	    index = (index + 1.0f)) {
 		float selection;
 		if (!yt_random_next(random, &selection, error))
 			return false;
-		*value = qb_single_add(floorf(qb_single_multiply(selection,
-		    *range)), 1.0f);
+		*value = (floorf((selection *
+		    *range)) + 1.0f);
 		*range = *value;
 		*produced = true;
 	}
@@ -151,10 +151,10 @@ yt_random_market_bases(struct yt_random *random, float bases[3],
 			return false;
 		if (!yt_random_next(random, &second, error))
 			return false;
-		bases[commodity] = qb_single_add(
-		    qb_single_subtract(center[commodity],
-		    qb_single_multiply(first, span[commodity])),
-		    qb_single_multiply(second, span[commodity]));
+		bases[commodity] = (
+		    (center[commodity] -
+		    (first * span[commodity])) +
+		    (second * span[commodity]));
 	}
 	return true;
 }

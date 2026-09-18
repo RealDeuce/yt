@@ -110,7 +110,7 @@ yt_generate_port_name(struct yt_random *random, char name[42],
 		return false;
 	if (!yt_random_next(random, &second, error))
 		return false;
-	parts = (int)floorf(qb_single_multiply(qb_single_multiply(first, second),
+	parts = (int)floorf(((first * second) *
 	    3.0f)) + 2;
 	name[0] = '\0';
 	for (part = 0; part < parts; ++part) {
@@ -122,7 +122,7 @@ yt_generate_port_name(struct yt_random *random, char name[42],
 
 		if (!yt_random_next(random, &sample, error))
 			return false;
-		selected = (int)floorf(qb_single_multiply(sample,
+		selected = (int)floorf((sample *
 		    (float)YT_NAME_TOKENS));
 		token = &prepared_port_names.tokens[selected];
 		cursor = token->text;

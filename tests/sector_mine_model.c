@@ -5,18 +5,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static float
-test_single_mul(float left, float right)
-{
-	return left * right;
-}
-
-static float
-test_single_sub(float left, float right)
-{
-	return left - right;
-}
-
 static void
 test_sector_mine_apply_style(struct test_sector_mine_state *state,
     const struct test_sector_mine_ops *ops, void *context)
@@ -32,12 +20,12 @@ test_sector_mine_stock_loss(const struct test_sector_mine_ops *ops, void *contex
 {
 	float sampled;
 
-	if (!ops->shrink(context, test_single_mul(batch, *stock),
+	if (!ops->shrink(context, (batch * *stock),
 	    &sampled, error))
 		return false;
 	if (sampled > *stock)
 		sampled = *stock;
-	*stock = test_single_sub(*stock, sampled);
+	*stock = (*stock - sampled);
 	*loss = sampled;
 	return true;
 }
@@ -120,7 +108,7 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 		state->mines_before = state->sector.mines;
 		state->batch = yt_sector_mine_batch(state->mines_before);
 		yt_sector_mine_sector_overlay(&state->sector,
-		    test_single_sub(state->mines_before, state->batch));
+		    (state->mines_before - state->batch));
 		if (!ops->write_sector(context, current, &state->sector, error))
 			return false;
 		++state->batches;
@@ -195,13 +183,13 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 } while (0)
 			if (working.fighters != 0.0f) {
 				if (!ops->shrink(context,
-				    test_single_mul(40000.0f, state->batch),
+				    (40000.0f * state->batch),
 				    &loss, error))
 					return false;
 				if (loss > working.fighters)
 					loss = working.fighters;
-				working.fighters = test_single_sub(
-				    working.fighters, loss);
+				working.fighters = (
+				    working.fighters - loss);
 				state->touched |= YT_SECTOR_MINE_DAMAGE_FIGHTERS;
 				MINE_LOSS_ROW(YT_SECTOR_MINE_LOSS_FIGHTERS,
 				    "sector mine fighter loss");
@@ -211,8 +199,8 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 					return false;
 				loss = yt_sector_mine_cloak_loss(working.cloak,
 				    state->batch, draw);
-				working.cloak = test_single_sub(
-				    working.cloak, loss);
+				working.cloak = (
+				    working.cloak - loss);
 				state->touched |= YT_SECTOR_MINE_DAMAGE_CLOAK;
 				MINE_LOSS_ROW(YT_SECTOR_MINE_LOSS_CLOAK,
 				    "sector mine cloak loss");
@@ -222,8 +210,8 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 					return false;
 				loss = yt_sector_mine_missile_loss(working.missiles,
 				    state->batch, draw);
-				working.missiles = test_single_sub(
-				    working.missiles, loss);
+				working.missiles = (
+				    working.missiles - loss);
 				state->touched |= YT_SECTOR_MINE_DAMAGE_MISSILES;
 				MINE_LOSS_ROW(YT_SECTOR_MINE_LOSS_MISSILES,
 				    "sector mine missile loss");
@@ -265,10 +253,10 @@ test_sector_mine_run(struct test_sector_mine_state *state,
 			if (empty > 0.0f) {
 				if (!ops->shrink(context, empty, &loss, error))
 					return false;
-				loss = test_single_mul(loss, state->batch);
+				loss = (loss * state->batch);
 				if (loss > empty)
 					loss = empty;
-			working.holds = test_single_sub(working.holds,
+			working.holds = (working.holds -
 			    loss);
 			if (working.holds < 1.0f) {
 				working.holds = 0.0f;

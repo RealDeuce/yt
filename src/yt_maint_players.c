@@ -404,14 +404,14 @@ yt_maintenance_age_player(float *cloak, uint16_t last_active,
 	*cached_cloak = working;
 	*action = YT_MAINTENANCE_PLAYER_UNCHANGED;
 	if (working > 0.0f) {
-		working = qb_single_add(working, cloak_charge);
+		working = (working + cloak_charge);
 		if (working < 0.0f)
 			working = 0.0f;
 		*cloak = working;
 		if (working == 0.0f)
 			*action = YT_MAINTENANCE_PLAYER_CLOAK_EXPIRED;
 	}
-	cutoff = qb_single_subtract((float)today, retention_days);
+	cutoff = ((float)today - retention_days);
 	if (*action != YT_MAINTENANCE_PLAYER_CLOAK_EXPIRED
 	    && (float)last_active <= cutoff && killer_status != 0)
 		*action = YT_MAINTENANCE_PLAYER_DELETE;

@@ -228,8 +228,8 @@ plasma_route_run(struct yt_session *session,
 					return false;
 				span = (uint16_t)(session_port_offset(session)
 				    - session_sector_offset(session));
-				selected = (uint16_t)floorf(qb_single_add(
-				    qb_single_multiply(draw, (float)span), 1.0f));
+				selected = (uint16_t)floorf((
+				    (draw * (float)span) + 1.0f));
 				*destination = (float)selected;
 				route->destination = *destination;
 				if (!session_present_text(session, NULL, 0U,

@@ -362,14 +362,14 @@ yt_session_missile_sector(struct yt_session *session, int sector_number,
 
 			if (!yt_random_next(&session->door->game.random, &draw, error))
 				return false;
-			destroyed = floorf(qb_single_add(qb_single_multiply(draw, 5000.0f),
+			destroyed = floorf(((draw * 5000.0f) +
 			    destroyed));
-			*remaining = qb_single_subtract(*remaining, 1.0f);
+			*remaining = (*remaining - 1.0f);
 			if ((double)destroyed >= original_fighters) {
 				destroyed = (float)original_fighters;
 				break;
 			}
-			counter = qb_single_add(counter, 1.0f);
+			counter = (counter + 1.0f);
 		}
 		if (!cruise_defense_damage_row(destroyed, row, sizeof(row),
 		    &row_length))

@@ -5,24 +5,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static float
-attack_single_add(float left, float right)
-{
-	return left + right;
-}
-
-static double
-attack_double_add(double left, double right)
-{
-	return left + right;
-}
-
-static double
-attack_double_sub(double left, double right)
-{
-	return left - right;
-}
-
 static bool
 attack_append(uint8_t *output, size_t capacity, size_t *position,
     const uint8_t *text, size_t length)
@@ -175,10 +157,10 @@ test_hostile_attack_combat_run(
 	if (!ops->sound(context, 2.0f, error))
 		return false;
 	do {
-		double remaining_attacker = attack_double_sub(
-		    state->commitment, state->attacker_loss);
-		double remaining_defender = attack_double_sub(
-		    state->old_count, state->defender_loss);
+		double remaining_attacker = (
+		    state->commitment - state->attacker_loss);
+		double remaining_defender = (
+		    state->old_count - state->defender_loss);
 		state->quantum = yt_hostile_attack_quantum(remaining_attacker,
 		    remaining_defender);
 		if (remaining_defender == 0.0) {
@@ -233,11 +215,11 @@ test_hostile_attack_combat_run(
 			return false;
 		if (yt_hostile_attack_loses_attacker(state->current.cloak,
 		    state->last_draw)) {
-			state->attacker_loss = attack_double_add(
-			    state->attacker_loss, (double)state->quantum);
+			state->attacker_loss = (
+			    state->attacker_loss + (double)state->quantum);
 		} else {
-			state->defender_loss = attack_double_add(
-			    state->defender_loss, (double)state->quantum);
+			state->defender_loss = (
+			    state->defender_loss + (double)state->quantum);
 		}
 		++state->iterations;
 	} while (state->attacker_loss < state->commitment
@@ -249,10 +231,10 @@ test_hostile_attack_combat_run(
 		state->defender_loss = state->old_count;
 	}
 	if (!state->surrendered) {
-		state->ship_fighters = attack_double_sub(state->old_ship,
+		state->ship_fighters = (state->old_ship -
 		    state->attacker_loss);
-		state->deployed_remaining = attack_double_sub(
-		    state->old_count, state->defender_loss);
+		state->deployed_remaining = (
+		    state->old_count - state->defender_loss);
 		state->current.fighters = (float)state->ship_fighters;
 		ops->store_ship(context, state->ship_fighters);
 		ops->cache_player(context, &state->current);
@@ -384,8 +366,8 @@ test_hostile_attack_tail_run(struct test_hostile_attack_tail_state *state,
 		bonus = yt_xannor_attack_bonus(state->defender_loss,
 		    state->current.turns, state->turns_per_day);
 		if (bonus >= 1.0f) {
-			state->current.turns = attack_single_add(
-			    state->current.turns, bonus);
+			state->current.turns = (
+			    state->current.turns + bonus);
 			(void)yt_record_set_number(&state->current.record, YT_F49,
 			    state->current.turns);
 			if (!ops->write_player(context,

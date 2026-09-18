@@ -235,8 +235,8 @@ test_owned_port_purchase(void)
 	(void)snprintf(port.name, sizeof(port.name), "%s", "Old Port");
 	port.name_length = 8U;
 	port.last_day = (int16_t)today;
-	port.last_minute = qb_single_divide((float)yt_clock_timer(
-	    &door.game.clock),
+	port.last_minute = ((float)yt_clock_timer(
+	    &door.game.clock) /
 	    60.0f);
 	port.treasury = 4.0f;
 	port.sector = 9;
