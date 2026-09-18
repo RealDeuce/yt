@@ -22,8 +22,9 @@ static bool
 append_text(uint8_t *destination, size_t capacity, size_t *length,
     const char *text)
 {
-	return text != NULL && append_bytes(destination, capacity, length,
-	    text, strlen(text));
+	if (text == NULL)
+		return false;
+	return append_bytes(destination, capacity, length, text, strlen(text));
 }
 
 bool
@@ -51,18 +52,24 @@ yt_team_audit_message(enum yt_team_audit_event event,
 	default:
 		return false;
 	}
-	if (!append_text(message, capacity, &used, player_name)
-	    || !append_text(message, capacity, &used, " *** ")
-	    || !append_text(message, capacity, &used, event_text))
+	if (!append_text(message, capacity, &used, player_name))
+		return false;
+	if (!append_text(message, capacity, &used, " *** "))
+		return false;
+	if (!append_text(message, capacity, &used, event_text))
 		return false;
 	if (event == YT_TEAM_AUDIT_INVALID_PASSWORD) {
 		if (!append_text(message, capacity, &used, attempt))
 			return false;
-	} else if (date == NULL || time_text == NULL
-	    || !append_text(message, capacity, &used, date)
-	    || !append_text(message, capacity, &used, " at ")
-	    || !append_text(message, capacity, &used, time_text)) {
-		return false;
+	} else {
+		if (date == NULL || time_text == NULL)
+			return false;
+		if (!append_text(message, capacity, &used, date))
+			return false;
+		if (!append_text(message, capacity, &used, " at "))
+			return false;
+		if (!append_text(message, capacity, &used, time_text))
+			return false;
 	}
 	if (!append_text(message, capacity, &used, "!"))
 		return false;
@@ -87,26 +94,33 @@ yt_info_team_row(enum yt_info_team_row_kind kind, int team_id,
 		return false;
 	switch (kind) {
 	case YT_INFO_TEAM_SUMMARY:
-		if (!append_text(row, capacity, &used, "Team  :")
-		    || !append_bytes(row, capacity, &used, number,
-		    (size_t)number_length)
-		    || !append_text(row, capacity, &used, ", ")
-		    || !append_bytes(row, capacity, &used, name, name_length))
+		if (!append_text(row, capacity, &used, "Team  :"))
+			return false;
+		if (!append_bytes(row, capacity, &used, number,
+		    (size_t)number_length))
+			return false;
+		if (!append_text(row, capacity, &used, ", "))
+			return false;
+		if (!append_bytes(row, capacity, &used, name, name_length))
 			return false;
 		break;
 	case YT_INFO_TEAM_SELF_CAPTAIN:
 		if (!append_text(row, capacity, &used,
-		    "You are the Captain of team")
-		    || !append_bytes(row, capacity, &used, number,
-		    (size_t)number_length)
-		    || !append_text(row, capacity, &used, "!"))
+		    "You are the Captain of team"))
+			return false;
+		if (!append_bytes(row, capacity, &used, number,
+		    (size_t)number_length))
+			return false;
+		if (!append_text(row, capacity, &used, "!"))
 			return false;
 		break;
 	case YT_INFO_TEAM_OTHER_CAPTAIN:
 		if (!append_text(row, capacity, &used,
-		    "Your Team Captain is: ")
-		    || !append_bytes(row, capacity, &used, name, name_length)
-		    || !append_text(row, capacity, &used, "!"))
+		    "Your Team Captain is: "))
+			return false;
+		if (!append_bytes(row, capacity, &used, name, name_length))
+			return false;
+		if (!append_text(row, capacity, &used, "!"))
 			return false;
 		break;
 	default:
