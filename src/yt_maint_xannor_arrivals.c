@@ -20,14 +20,14 @@ set_error(struct yt_error *error, enum yt_status status,
 	    path != NULL ? path : "");
 }
 
-static float
+static uint16_t
 xannor_quantum(float first, float second)
 {
-	float quantum = first > 5000.0f && second > 5000.0f
-	    ? 5000.0f : 500.0f;
+	uint16_t quantum = first > 5000.0f && second > 5000.0f
+	    ? 5000U : 500U;
 
 	if (first < 500.0f || second < 500.0f)
-		quantum = 1.0f;
+		quantum = 1U;
 	return quantum;
 }
 
@@ -44,15 +44,15 @@ xannor_player_fighter_phase(struct yt_random *random,
 	while (player_losses < original_player
 	    && xannor_losses < original_xannor) {
 		float sample;
-		float quantum = xannor_quantum(original_player - player_losses,
+		uint16_t quantum = xannor_quantum(original_player - player_losses,
 		    original_xannor - xannor_losses);
 
 		if (!yt_random_next(random, &sample, error))
 			return false;
 		if (sample > 0.5f)
-			xannor_losses = qb_single_add(xannor_losses, quantum);
+			xannor_losses = qb_single_add(xannor_losses, (float)quantum);
 		else
-			player_losses = qb_single_add(player_losses, quantum);
+			player_losses = qb_single_add(player_losses, (float)quantum);
 	}
 	player_losses = fminf(player_losses, original_player);
 	xannor_losses = fminf(xannor_losses, original_xannor);
@@ -73,15 +73,16 @@ xannor_player_shield_phase(struct yt_random *random, float player_fighters,
 	while (player_fighters < 1.0f
 	    && xannor_losses < original_xannor && *player_shields > 0.0f) {
 		float sample;
-		float quantum = xannor_quantum(original_xannor - xannor_losses,
+		uint16_t quantum = xannor_quantum(original_xannor - xannor_losses,
 		    *player_shields);
 
 		if (!yt_random_next(random, &sample, error))
 			return false;
 		if (sample >= 0.5f)
-			*player_shields = qb_single_subtract(*player_shields, quantum);
+			*player_shields = qb_single_subtract(*player_shields,
+			    (float)quantum);
 		else
-			xannor_losses = qb_single_add(xannor_losses, quantum);
+			xannor_losses = qb_single_add(xannor_losses, (float)quantum);
 	}
 	if (*player_shields < 0.0f)
 		*player_shields = 0.0f;
@@ -432,10 +433,10 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 	    || planet.production[1] > 0.0f
 	    || planet.production[2] > 0.0f)) {
 		float gate;
-		float quantum = (planet.production[0] > 500.0f
+		uint16_t quantum = (planet.production[0] > 500.0f
 		    || planet.production[1] > 500.0f
 		    || planet.production[2] > 500.0f) && *group_location != 0.0f
-		    ? 450.0f : 1.0f;
+		    ? 450U : 1U;
 
 		if (!yt_random_next(&game->random, &gate, error))
 			return false;
@@ -447,13 +448,15 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 					return false;
 				planet.production[index] = qb_single_subtract(
 				    planet.production[index],
-				    qb_single_divide(qb_single_multiply(sample, quantum), 3.0f));
+				    qb_single_divide(qb_single_multiply(sample,
+				    (float)quantum), 3.0f));
 				if (planet.production[index] < 0.0f)
 					planet.production[index] = 0.0f;
 			}
 		}
 		else
-			*group_size = qb_single_subtract(*group_size, quantum);
+			*group_size = qb_single_subtract(*group_size,
+			    (float)quantum);
 	}
 	for (index = 0; index < 3; ++index) {
 		float cap = qb_single_multiply(planet.production[index], 10.0f);

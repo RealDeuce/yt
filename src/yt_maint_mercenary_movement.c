@@ -216,8 +216,8 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 		return false;
 	while (defenders > 0.0 && moving > 0.0) {
 		float sample;
-		double quantum = defenders > 200.0 && moving > 200.0
-		    ? 150.0 : 1.0;
+		uint8_t quantum = defenders > 200.0 && moving > 200.0
+		    ? 150U : 1U;
 
 		if (!yt_random_next(&game->random, &sample, error))
 			return false;

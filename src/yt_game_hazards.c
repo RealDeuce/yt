@@ -23,8 +23,8 @@ float
 yt_sector_mine_shield_result(float shields, float batch, float draw)
 {
 	volatile float product = draw * 1001.0f;
-	volatile float quantum = floorf(product);
-	volatile float loss = quantum * batch;
+	uint16_t quantum = (uint16_t)floorf(product);
+	volatile float loss = (float)quantum * batch;
 	volatile float result = shields - loss;
 
 	return result < 1.0f ? 0.0f : result;

@@ -52,19 +52,19 @@ yt_hostile_surrender_route(int owner)
 bool
 yt_fighter_shield_spill_step(double *fighters, float *shields, float draw)
 {
-	float quantum;
+	uint8_t quantum;
 
 	if (fighters == NULL || shields == NULL
 	    || *fighters <= 0.0 || *shields <= 0.0f)
 		return false;
-	quantum = *fighters > 100.0 && *shields > 100.0f ? 100.0f : 1.0f;
+	quantum = *fighters > 100.0 && *shields > 100.0f ? 100U : 1U;
 	if (draw >= 0.5f) {
 		volatile double reduced = *fighters - (double)quantum;
 
 		*fighters = reduced;
 	}
 	else {
-		volatile float reduced = *shields - quantum;
+		volatile float reduced = *shields - (float)quantum;
 
 		*shields = reduced;
 	}

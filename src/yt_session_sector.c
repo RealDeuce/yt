@@ -356,7 +356,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		if (scratch_changed)
 			session->combat.hostile_owner_label_length = scratch_length;
 		yt_sector_pager_add(private_pager,
-		    owner_team_nonzero ? 3.0f : 2.0f);
+		    owner_team_nonzero ? 3 : 2);
 	}
 	if (!session_present_text(session, (const uint8_t *)"Warps lead to:",
 	    sizeof("Warps lead to:") - 1U, SESSION_PRESENT_RAW,

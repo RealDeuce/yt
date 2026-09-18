@@ -12757,15 +12757,14 @@ check_sector_force_routes(void)
 	route = yt_sector_force_route(10.0f, 3, 2, &owner);
 	if (route != YT_SECTOR_FORCE_OWNER_GET || owner != 3)
 		return false;
-	if (!yt_sector_mines_admitted(0.4f, 0.0f)
-	    || yt_sector_mines_admitted(0.0f, 0.0f)
-	    || yt_sector_mines_admitted(-0.4f, 0.0f)
-	    || yt_sector_mines_admitted(1.0f, -1.0f)
-	    || yt_sector_mines_admitted(1.0f, 1.0f)
-	    || !yt_sector_force_same_team(3.0f, 3.0f)
-	    || !yt_sector_force_same_team(-3.0f, -3.0f)
-	    || yt_sector_force_same_team(0.0f, 0.0f)
-	    || yt_sector_force_same_team(3.0f, 4.0f))
+	if (!yt_sector_mines_admitted(0.4f, false)
+	    || yt_sector_mines_admitted(0.0f, false)
+	    || yt_sector_mines_admitted(-0.4f, false)
+	    || yt_sector_mines_admitted(1.0f, true)
+	    || !yt_sector_force_same_team(3, 3)
+	    || !yt_sector_force_same_team(-3, -3)
+	    || yt_sector_force_same_team(0, 0)
+	    || yt_sector_force_same_team(3, 4))
 		return false;
 	return true;
 }

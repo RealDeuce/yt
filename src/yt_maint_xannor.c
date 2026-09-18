@@ -22,14 +22,14 @@ set_error(struct yt_error *error, enum yt_status status,
 	    path != NULL ? path : "");
 }
 
-static float
+static uint16_t
 xannor_quantum(float first, float second)
 {
-	float quantum = first > 5000.0f && second > 5000.0f
-	    ? 5000.0f : 500.0f;
+	uint16_t quantum = first > 5000.0f && second > 5000.0f
+	    ? 5000U : 500U;
 
 	if (first < 500.0f || second < 500.0f)
-		quantum = 1.0f;
+		quantum = 1U;
 	return quantum;
 }
 
@@ -281,15 +281,15 @@ yt_maintenance_xannor_defense(struct yt_random *random, float *group_size,
 	original_defenders = *defense_fighters;
 	while (dloss < original_defenders && xloss < original_xannor) {
 		float sample;
-		float quantum = xannor_quantum(original_defenders - dloss,
+		uint16_t quantum = xannor_quantum(original_defenders - dloss,
 		    original_xannor - xloss);
 
 		if (!yt_random_next(random, &sample, error))
 			return false;
 		if (sample > 0.5f)
-			xloss = qb_single_add(xloss, quantum);
+			xloss = qb_single_add(xloss, (float)quantum);
 		else
-			dloss = qb_single_add(dloss, quantum);
+			dloss = qb_single_add(dloss, (float)quantum);
 	}
 	xloss = fminf(xloss, original_xannor);
 	dloss = fminf(dloss, original_defenders);
@@ -560,15 +560,15 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		return false;
 	while (defenders > 0.0 && size[1] > 0.0f) {
 		float sample;
-		float quantum = defenders > 250.0 && size[1] > 250.0f
-		    ? 250.0f : 1.0f;
+		uint8_t quantum = defenders > 250.0 && size[1] > 250.0f
+		    ? 250U : 1U;
 
 		if (!yt_random_next(&game->random, &sample, error))
 			return false;
 		if (sample <= 0.5f)
 			defenders -= (double)quantum;
 		else
-			size[1] = qb_single_subtract(size[1], quantum);
+			size[1] = qb_single_subtract(size[1], (float)quantum);
 	}
 	successful = defenders <= 0.0;
 	if (!yt_game_read_sector(game, hq, &host, error))

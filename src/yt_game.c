@@ -129,9 +129,9 @@ yt_sector_force_route(float fighters, int owner, int current_player_record,
 }
 
 bool
-yt_sector_mines_admitted(float mines, float suppression)
+yt_sector_mines_admitted(float mines, bool suppressed)
 {
-	return mines > 0.0f && suppression == 0.0f;
+	return mines > 0.0f && !suppressed;
 }
 
 bool

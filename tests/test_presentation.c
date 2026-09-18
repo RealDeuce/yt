@@ -28963,7 +28963,7 @@ direct_emergency_warp_main_mine_cycle_run(
 	    || !direct_emergency_warp_mined_reentry_scanner(fixture, cycle))
 		return false;
 	ends[2] = join->remote_length;
-	if (!yt_sector_mines_admitted(fixture->hazard_sector.mines, 0.0f))
+	if (!yt_sector_mines_admitted(fixture->hazard_sector.mines, false))
 		return false;
 	fixture->hazard.current_player_record = 2;
 	fixture->hazard.current_sector = 1003.0f;
@@ -29152,7 +29152,7 @@ direct_emergency_warp_hostile_mine_cycle_run(
 	if (!direct_emergency_warp_hostile_cycle_run(fixture, ansi, command,
 	    command_length, DIRECT_WARP_HOSTILE_MINE, cycle, ends))
 		return false;
-	if (!yt_sector_mines_admitted(fixture->hazard_sector.mines, 0.0f))
+	if (!yt_sector_mines_admitted(fixture->hazard_sector.mines, false))
 		return false;
 	fixture->hazard.current_player_record = 2;
 	fixture->hazard.current_sector = 1003.0f;
