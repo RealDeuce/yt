@@ -29,6 +29,19 @@ record_generated_i16(const struct yt_record *record, size_t offset,
 	return true;
 }
 
+static bool
+record_generated_port_factor(const struct yt_record *record, size_t offset,
+    int8_t *result)
+{
+	float value = yt_record_get_number(record, offset);
+
+	if (!isfinite(value) || value < -100.0f || value > 100.0f
+	    || value == 0.0f || floorf(value) != value)
+		return false;
+	*result = (int8_t)value;
+	return true;
+}
+
 bool
 yt_current_player_hydrate(struct yt_player *player,
     const struct yt_player *fresh, int player_record,
@@ -232,7 +245,8 @@ yt_port_decode(struct yt_port *port, const struct yt_record *record)
 		port->stock[index] = yt_record_get_number(record, YT_F49 + index * 4U);
 		port->production[index] =
 		    yt_record_get_number(record, YT_F61 + index * 4U);
-		port->factor[index] = yt_record_get_number(record, YT_F73 + index * 4U);
+		(void)record_generated_port_factor(record,
+		    YT_F73 + index * 4U, &port->factor[index]);
 	}
 	port->name_length = (size_t)yt_record_get_number(record, YT_F85);
 	port->treasury = yt_record_get_number(record, YT_F89);
@@ -267,7 +281,7 @@ yt_port_encode(struct yt_port *port)
 		    port->production[index]);
 		yt_record_set_number_if_changed(&port->record,
 		    YT_F73 + index * 4U,
-		    port->factor[index]);
+		    (float)port->factor[index]);
 	}
 	yt_record_set_number_if_changed(&port->record, YT_F85,
 	    (float)port->name_length);

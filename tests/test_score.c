@@ -3045,9 +3045,9 @@ check_maintenance_port_model(void)
 	port.stock[0] = 6000.0f;
 	port.stock[1] = 10000.0f;
 	port.stock[2] = 20000.0f;
-	port.factor[0] = 1.0f;
-	port.factor[1] = -1.0f;
-	port.factor[2] = -1.0f;
+	port.factor[0] = 1;
+	port.factor[1] = -1;
+	port.factor[2] = -1;
 	port.commodity_class = 3;
 	port.last_day = 100;
 	port.last_minute = 720.0f;
@@ -3071,9 +3071,9 @@ check_maintenance_port_model(void)
 	port.stock[0] = 100000000.0f;
 	port.stock[1] = 50000000.0f;
 	port.stock[2] = 20000000.0f;
-	port.factor[0] = -2.0f;
-	port.factor[1] = 3.0f;
-	port.factor[2] = -4.0f;
+	port.factor[0] = -2;
+	port.factor[1] = 3;
+	port.factor[2] = -4;
 	port.commodity_class = 1;
 	port.last_day = 1;
 	script.position = 0U;
@@ -3088,8 +3088,8 @@ check_maintenance_port_model(void)
 	    || port.stock[1] != 25005000.0f
 	    || port.stock[2] != 15005000.0f
 	    || port.commodity_class != 3
-	    || port.factor[0] != 2.0f || port.factor[1] != -3.0f
-	    || port.factor[2] != -4.0f)
+	    || port.factor[0] != 2 || port.factor[1] != -3
+	    || port.factor[2] != -4)
 		return false;
 	return !yt_maintenance_update_port(NULL, &port, 1, 0.0f,
 	    &plagued, &error);
@@ -13242,7 +13242,7 @@ check_hostile_menu_front(void)
 		(void)yt_record_set_number(&expected, YT_F69, 13.0f);
 		(void)yt_record_set_number(&expected, YT_F73, 20.0f);
 		(void)yt_record_set_number(&expected, YT_F77, 30.0f);
-		yt_trade_holds_overlay(&holds, 0U, 3.0f, 1.0f);
+		yt_trade_holds_overlay(&holds, 0U, 3.0f, 1);
 		if (holds.ore != 13.0f || holds.organics != 20.0f
 		    || holds.equipment != 30.0f
 		    || memcmp(holds.record.bytes, expected.bytes,

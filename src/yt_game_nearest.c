@@ -192,7 +192,8 @@ yt_nearest_market_project(struct yt_nearest_market *market,
 			    "nearest market production replacement"))
 				return false;
 		}
-		if (!nearest_mul(market->factor[index], market->stock[index],
+		if (!nearest_mul((float)market->factor[index],
+		    market->stock[index],
 		    &numerator, error, "nearest market numerator"))
 			return false;
 		if (!nearest_mul(market->production[index], 1000.0f,

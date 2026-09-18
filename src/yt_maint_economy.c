@@ -96,13 +96,14 @@ yt_maintenance_update_port(struct yt_random *random, struct yt_port *port,
 				maximum = (float)stock[commodity];
 				selected = commodity + 1;
 			}
-			port->factor[commodity] =
-			    -fabsf(port->factor[commodity]);
+			if (port->factor[commodity] > 0)
+				port->factor[commodity] =
+				    (int8_t)-port->factor[commodity];
 		}
 		port->commodity_class = 4 - selected;
 		if (selected > 0)
 			port->factor[selected - 1] =
-			    fabsf(port->factor[selected - 1]);
+			    (int8_t)-port->factor[selected - 1];
 	}
 	for (commodity = 0; commodity < 3; ++commodity)
 		port->stock[commodity] = (float)stock[commodity];
@@ -143,7 +144,7 @@ maintenance_write_port(struct yt_game *game, int logical,
 		}
 		if (!yt_record_set_number(&port->record,
 		    YT_F73 + (size_t)commodity * 4U,
-		    port->factor[commodity])) {
+		    (float)port->factor[commodity])) {
 			set_error(error, YT_RANGE, "encode maintained port",
 			    "YTDATA.DAT");
 			return false;

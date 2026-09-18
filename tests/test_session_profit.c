@@ -16,7 +16,7 @@ static int failures;
 
 static void
 prepare_port(struct yt_port *port, int commodity_class,
-    const float factor[3])
+    const int8_t factor[3])
 {
 	size_t index;
 
@@ -35,8 +35,8 @@ static void
 test_adjacent_and_global_reports(void)
 {
 	static const char path[] = "SESSION-PROFIT.DAT";
-	static const float source_factor[3] = {-20.0f, -30.0f, 50.0f};
-	static const float target_factor[3] = {-40.0f, 50.0f, -25.0f};
+	static const int8_t source_factor[3] = {-20, -30, 50};
+	static const int8_t target_factor[3] = {-40, 50, -25};
 	struct yt_door door;
 	struct yt_session session;
 	struct yt_sector earth;
@@ -79,9 +79,9 @@ test_adjacent_and_global_reports(void)
 	target.port = 3;
 	target.warps[0] = 2;
 	yt_sector_encode(&target);
-	prepare_port(&earth_port, 1.0f, source_factor);
-	prepare_port(&source_port, 1.0f, source_factor);
-	prepare_port(&target_port, 2.0f, target_factor);
+	prepare_port(&earth_port, 1, source_factor);
+	prepare_port(&source_port, 1, source_factor);
+	prepare_port(&target_port, 2, target_factor);
 
 	before[0] = earth.record;
 	before[1] = source.record;

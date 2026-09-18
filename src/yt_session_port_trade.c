@@ -14,7 +14,7 @@ struct commodity_trade_terms {
 	double selected_quantity;
 	double displayed_hold;
 	double credits;
-	float factor;
+	int8_t factor;
 	uint8_t price;
 	float free_holds;
 	float maximum;
@@ -77,7 +77,7 @@ commodity_prepare(const struct yt_port_market_state *market,
 	free_holds = qb_double_subtract(free_holds,
 	    (double)player->equipment);
 	terms->free_holds = (float)free_holds;
-	terms->port_sells = floorf(terms->factor) > 0.0f;
+	terms->port_sells = terms->factor > 0;
 	if (!terms->port_sells) {
 		if (qb_mbf32_from_mbf64_raw(terms->floored_quantity_raw,
 		    single_raw) == QB_MBF_OVERFLOW)
@@ -137,7 +137,7 @@ yt_session_trade_commodity(struct yt_session *session,
 	char response[80];
 	float quantity;
 	float total;
-	float direction;
+	int8_t direction;
 	uint8_t single_raw[4];
 	uint8_t promoted_raw[8];
 	enum yt_yes_no_answer answer;
@@ -324,10 +324,9 @@ yt_session_trade_commodity(struct yt_session *session,
 		    error))
 			return false;
 	}
-	direction = terms.factor > 0.0f ? 1.0f
-	    : terms.factor < 0.0f ? -1.0f : 0.0f;
+	direction = terms.factor > 0 ? 1 : terms.factor < 0 ? -1 : 0;
 	if (!session_mutate_player_credits(session,
-	    -qb_single_multiply(total, direction), NULL, error))
+	    -qb_single_multiply(total, (float)direction), NULL, error))
 		return false;
 	if (!session_reload_player(session, error))
 		return false;
@@ -380,7 +379,7 @@ yt_session_ordinary_commerce(struct yt_session *session,
 	for (index = 0U; index < 3U; ++index) {
 		bool reached = false;
 
-		if (market.port.factor[index] < 0.0f) {
+		if (market.port.factor[index] < 0) {
 			if (!yt_session_trade_commodity(session, &market, index,
 			    &reached, error))
 				return false;
@@ -391,7 +390,7 @@ yt_session_ordinary_commerce(struct yt_session *session,
 	for (index = 0U; index < 3U; ++index) {
 		bool reached = false;
 
-		if (market.port.factor[index] > 0.0f) {
+		if (market.port.factor[index] > 0) {
 			if (!yt_session_trade_commodity(session, &market, index,
 			    &reached, error))
 				return false;

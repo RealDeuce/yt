@@ -60,8 +60,8 @@ test_port_update(void)
 	for (index = 0U; index < 3U; ++index) {
 		port.stock[index] = (float)(100U * (index + 1U));
 		port.production[index] = (float)(10U * (index + 1U));
-		port.factor[index] = index == 1U ? 74.0f
-		    : (index == 0U ? -60.0f : -66.0f);
+		port.factor[index] = index == 1U ? 74
+		    : (index == 0U ? -60 : -66);
 	}
 	yt_port_encode(&port);
 
@@ -103,7 +103,7 @@ test_zero_capacity_trade(void)
 	session.door = &door;
 	session.active_player_record = 2;
 	market.port_physical_record = 2057U;
-	market.port.factor[0] = 60.0f;
+	market.port.factor[0] = 60;
 	market.price[0] = 20U;
 	CHECK(qb_mbf64_encode(0.0, market.capacity_raw[0]) == QB_MBF_OK);
 	yt_record_blank(&player.record);
@@ -244,7 +244,7 @@ test_owned_port_purchase(void)
 	for (index = 0U; index < 3U; ++index) {
 		port.stock[index] = (float)(100U * (index + 1U));
 		port.production[index] = (float)(10U * (index + 1U));
-		port.factor[index] = index == 0U ? 60.0f : -60.0f;
+		port.factor[index] = index == 0U ? 60 : -60;
 	}
 	yt_port_encode(&port);
 	yt_error_clear(&error);

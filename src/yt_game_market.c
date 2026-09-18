@@ -308,7 +308,7 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 		const uint8_t *status;
 		size_t position = 0U;
 
-		if (market->port.factor[index] < 0.0f) {
+		if (market->port.factor[index] < 0) {
 			status = buying;
 			item->foreground = 3;
 		}
@@ -397,7 +397,7 @@ yt_trade_treasury_overlay(struct yt_port *port, float receipt)
 
 void
 yt_trade_holds_overlay(struct yt_player *player, size_t commodity,
-    float quantity, float direction)
+	float quantity, int8_t direction)
 {
 	float *selected;
 	volatile float single_delta;
@@ -407,7 +407,7 @@ yt_trade_holds_overlay(struct yt_player *player, size_t commodity,
 		return;
 	selected = commodity == 0U ? &player->ore
 	    : commodity == 1U ? &player->organics : &player->equipment;
-	single_delta = quantity * direction;
+	single_delta = quantity * (float)direction;
 	updated = (double)*selected + (double)single_delta;
 	*selected = (float)updated;
 	(void)yt_record_set_number(&player->record, YT_F69, player->ore);

@@ -70,7 +70,7 @@ struct yt_port {
 	int16_t last_day;
 	float stock[3];
 	float production[3];
-	float factor[3];
+	int8_t factor[3];
 	size_t name_length;
 	float treasury;
 	int sector;
@@ -592,7 +592,7 @@ bool yt_port_report_compose(const struct yt_port_market_state *market,
 int yt_computer_selector_position(const char *command);
 void yt_trade_treasury_overlay(struct yt_port *port, float receipt);
 void yt_trade_holds_overlay(struct yt_player *player, size_t commodity,
-    float quantity, float direction);
+	float quantity, int8_t direction);
 const char *yt_planet_take_one_title(int item);
 void yt_planet_take_one_player_overlay(struct yt_player *player, int item,
     float amount);
@@ -855,7 +855,7 @@ struct yt_nearest_market {
 	float elapsed;
 	float stock[3];
 	float production[3];
-	float factor[3];
+	int8_t factor[3];
 	int16_t stored_day;
 	float stored_minute;
 	uint8_t price[3];
