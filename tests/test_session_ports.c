@@ -40,7 +40,7 @@ test_port_update(void)
 	memset(&sector, 0, sizeof(sector));
 	memset(&port, 0, sizeof(port));
 	session.door = &door;
-	door.game.config.epoch_year = 26.0f;
+	door.game.config.epoch_year = 26U;
 	door.game.config.sector_offset = 51.0f;
 	door.game.config.port_offset = 2055.0f;
 	session.market_bases[0] = 20.0f;
@@ -48,7 +48,7 @@ test_port_update(void)
 	session.market_bases[2] = 40.0f;
 	yt_error_clear(&error);
 	CHECK(yt_current_date_serial(&door.game.clock,
-	    door.game.config.epoch_year, &today,
+	    (float)door.game.config.epoch_year, &today,
 	    &adjusted_year, &error));
 
 	yt_record_blank(&sector.record);
@@ -201,7 +201,7 @@ test_owned_port_purchase(void)
 	session.door = &door;
 	session.active_player_record = 2;
 	session.pager.nonstop = true;
-	door.game.config.epoch_year = 26.0f;
+	door.game.config.epoch_year = 26U;
 	door.game.config.sector_offset = 100.0f;
 	door.game.config.port_offset = 200.0f;
 	session.market_bases[0] = 20.0f;
@@ -229,7 +229,7 @@ test_owned_port_purchase(void)
 	sector.port = 3;
 	yt_sector_encode(&sector);
 	CHECK(yt_current_date_serial(&door.game.clock,
-	    door.game.config.epoch_year, &today,
+	    (float)door.game.config.epoch_year, &today,
 	    &adjusted_year, &error));
 	yt_record_blank(&port.record);
 	(void)snprintf(port.name, sizeof(port.name), "%s", "Old Port");

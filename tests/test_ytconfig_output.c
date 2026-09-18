@@ -99,7 +99,7 @@ test_canonical_menu(void)
 	config.initial_credits = 1000.0f;
 	config.initial_holds = 20.0f;
 	config.retention_days = 30.0f;
-	config.last_maintenance = 0.0f;
+	config.last_maintenance = 0U;
 	config.headquarters = 85.0f;
 	config.genesis_ports = 301.0f;
 	working.scoreboard_path = scoreboard;
@@ -130,7 +130,7 @@ test_alternate_rows_and_binary_path(void)
 	struct yt_config_output_result result;
 
 	memset(&config, 0, sizeof(config));
-	config.last_maintenance = 42.0f;
+	config.last_maintenance = 42U;
 	config.genesis_ports = 300.0f;
 	working.scoreboard_path = scoreboard;
 	working.scoreboard_path_length = sizeof(scoreboard);

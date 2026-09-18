@@ -51,11 +51,11 @@ test_self_owned_planet(void)
 	session.door = &door;
 	session.active_player_record = 2;
 	session.pager.nonstop = true;
-	door.game.config.epoch_year = 26.0f;
+	door.game.config.epoch_year = 26U;
 	door.game.config.planet_offset = 3.0f;
 	yt_error_clear(&error);
 	CHECK(yt_current_date_serial(&door.game.clock,
-	    door.game.config.epoch_year, &today,
+	    (float)door.game.config.epoch_year, &today,
 	    &adjusted_year, &error));
 	planet.last_day = (float)today;
 	planet.owner = 2;
@@ -117,14 +117,14 @@ test_land_and_leave_owned_planet(void)
 	session.running = true;
 	memcpy(session.io.typeahead, answer, sizeof(answer) - 1U);
 	session.io.typeahead_length = sizeof(answer) - 1U;
-	door.game.config.epoch_year = 26.0f;
+	door.game.config.epoch_year = 26U;
 	door.game.config.sector_offset = 3.0f;
 	door.game.config.port_offset = 5.0f;
 	door.game.config.planet_offset = 6.0f;
 	door.game.config.total_records = 7.0f;
 	yt_error_clear(&error);
 	CHECK(yt_current_date_serial(&door.game.clock,
-	    door.game.config.epoch_year, &today,
+	    (float)door.game.config.epoch_year, &today,
 	    &adjusted_year, &error));
 
 	yt_record_blank(&player.record);

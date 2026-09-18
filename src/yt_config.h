@@ -8,7 +8,7 @@ struct yt_config {
 	struct yt_record record;
 	char scoreboard[42];
 	size_t scoreboard_length;
-	float epoch_year;
+	uint8_t epoch_year;
 	float turns_per_day;
 	uint8_t sector_offset;
 	uint16_t port_offset;
@@ -17,7 +17,7 @@ struct yt_config {
 	float initial_credits;
 	float initial_holds;
 	float retention_days;
-	float last_maintenance;
+	uint16_t last_maintenance;
 	bool local_screen;
 	uint16_t total_records;
 	float lottery_plays;

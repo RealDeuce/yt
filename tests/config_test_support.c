@@ -13,7 +13,7 @@ test_config_encode(struct yt_config *config)
 	    (const uint8_t *)config->scoreboard, length);
 	yt_record_set_number_if_changed(&config->record, YT_F41, (float)length);
 	yt_record_set_number_if_changed(&config->record, YT_F45,
-	    config->epoch_year);
+	    (float)config->epoch_year);
 	yt_record_set_number_if_changed(&config->record, YT_F49,
 	    config->turns_per_day);
 	yt_record_set_number_if_changed(&config->record, YT_F53,
@@ -31,7 +31,7 @@ test_config_encode(struct yt_config *config)
 	yt_record_set_number_if_changed(&config->record, YT_F77,
 	    config->retention_days);
 	yt_record_set_number_if_changed(&config->record, YT_F81,
-	    config->last_maintenance);
+	    (float)config->last_maintenance);
 	yt_record_set_number_if_changed(&config->record, YT_F85,
 	    config->local_screen ? -1.0f : 0.0f);
 	yt_record_set_number_if_changed(&config->record, YT_F93,

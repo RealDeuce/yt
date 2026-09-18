@@ -27,7 +27,7 @@ current_day_minute(struct yt_game *game, float *day, float *minute,
 	int serial;
 
 	if (!yt_current_date_serial(&game->clock,
-	    game->config.epoch_year, &serial,
+	    (float)game->config.epoch_year, &serial,
 	    NULL, error))
 		return false;
 	*day = (float)serial;

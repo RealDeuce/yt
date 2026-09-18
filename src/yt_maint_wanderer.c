@@ -140,7 +140,8 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 		}
 	}
 	if (removed_sector == 0) {
-		if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
+		if (!yt_current_date_serial(&game->clock,
+		    (float)game->config.epoch_year,
 		    &today, NULL, error))
 			return false;
 		if (!yt_maintenance_compose_wanderer_phase(blank,

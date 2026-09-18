@@ -63,7 +63,7 @@ test_adjacent_and_global_reports(void)
 	session.market_bases[0] = 20.0f;
 	session.market_bases[1] = 30.0f;
 	session.market_bases[2] = 40.0f;
-	door.game.config.epoch_year = 26.0f;
+	door.game.config.epoch_year = 26U;
 	door.game.config.sector_offset = 2.0f;
 	door.game.config.port_offset = 5.0f;
 	yt_record_blank(&door.game.config.record);

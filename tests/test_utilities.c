@@ -516,7 +516,7 @@ test_rmt_config_normalization(void)
 
 	memset(&preserved, 0, sizeof(preserved));
 	strcpy(preserved.scoreboard, "SCORE.TXT");
-	preserved.epoch_year = 99.0f;
+	preserved.epoch_year = 99U;
 	preserved.turns_per_day = 777.0f;
 	preserved.sector_offset = 6.0f;
 	preserved.port_offset = 26.0f;
@@ -525,7 +525,7 @@ test_rmt_config_normalization(void)
 	preserved.initial_credits = 3456.0f;
 	preserved.initial_holds = 17.0f;
 	preserved.retention_days = 9.0f;
-	preserved.last_maintenance = 999.0f;
+	preserved.last_maintenance = 999U;
 	preserved.local_screen = false;
 	preserved.total_records = 33.0f;
 	preserved.lottery_plays = 1.0f;
@@ -537,7 +537,7 @@ test_rmt_config_normalization(void)
 	defaults = preserved;
 	yt_rmt_normalize_config(&preserved, false);
 	if (strcmp(preserved.scoreboard, "SCORE.TXT") != 0
-	    || preserved.epoch_year != 99.0f
+	    || preserved.epoch_year != 99U
 	    || preserved.turns_per_day != 777.0f
 	    || preserved.sector_offset != 6.0f
 	    || preserved.port_offset != 26.0f
@@ -546,7 +546,7 @@ test_rmt_config_normalization(void)
 	    || preserved.initial_credits != 3456.0f
 	    || preserved.initial_holds != 17.0f
 	    || preserved.retention_days != 9.0f
-	    || preserved.last_maintenance != 999.0f
+	    || preserved.last_maintenance != 999U
 	    || preserved.local_screen
 	    || preserved.total_records != 33.0f
 	    || preserved.lottery_plays != 1.0f
@@ -596,10 +596,24 @@ test_config_integer_boundaries(void)
 	test_config_encode(&source);
 	yt_error_clear(&error);
 	if (!yt_config_decode(&decoded, &source.record, &error)
+	    || decoded.epoch_year != 0U
 	    || decoded.sector_offset != 51U
 	    || decoded.port_offset != 2055U
 	    || decoded.planet_offset != 3055U
+	    || decoded.last_maintenance != 0U
 	    || decoded.total_records != 3155U)
+		return false;
+	record = source.record;
+	(void)yt_record_set_number(&record, YT_F45, 26.5f);
+	yt_error_clear(&error);
+	if (yt_config_decode(&decoded, &record, &error)
+	    || error.status != YT_RANGE)
+		return false;
+	record = source.record;
+	(void)yt_record_set_number(&record, YT_F45, 200.0f);
+	yt_error_clear(&error);
+	if (yt_config_decode(&decoded, &record, &error)
+	    || error.status != YT_RANGE)
 		return false;
 
 	record = source.record;
@@ -628,6 +642,18 @@ test_config_integer_boundaries(void)
 		return false;
 	record = source.record;
 	(void)yt_record_set_number(&record, YT_F61, -1.0f);
+	yt_error_clear(&error);
+	if (yt_config_decode(&decoded, &record, &error)
+	    || error.status != YT_RANGE)
+		return false;
+	record = source.record;
+	(void)yt_record_set_number(&record, YT_F81, 204.5f);
+	yt_error_clear(&error);
+	if (yt_config_decode(&decoded, &record, &error)
+	    || error.status != YT_RANGE)
+		return false;
+	record = source.record;
+	(void)yt_record_set_number(&record, YT_F81, 733.0f);
 	yt_error_clear(&error);
 	if (yt_config_decode(&decoded, &record, &error)
 	    || error.status != YT_RANGE)
@@ -1247,9 +1273,9 @@ test_yt_init_pre_input_presentation(void)
 	}
 	if (TEST_DRAWS(random) != 1U || lcg.state != UINT32_C(0x5dd6b4)
 	    || clock.calls != 2U
-	    || preparation.config.epoch_year != 26.0f
+	    || preparation.config.epoch_year != 26U
 	    || preparation.config.headquarters != 733.0f
-	    || preparation.config.last_maintenance != 202.0f
+	    || preparation.config.last_maintenance != 202U
 	    || preparation.today != 203)
 		return false;
 
@@ -1625,7 +1651,7 @@ test_initializer_graph_retries(void)
 	options.clock = &utility_fixed_clock_source;
 	options.yt_presenter = &discard_yt_presenter;
 	rmt_small_config(&options.config);
-	options.config.epoch_year = 26.0f;
+	options.config.epoch_year = 26U;
 	options.config.port_offset = 10.0f;
 	options.config.planet_offset = 14.0f;
 	options.config.total_records = 15.0f;
@@ -3097,12 +3123,12 @@ test_ytconfig(struct yt_error *error)
 	    error) || !yt_config_load(&game.database, &game.config, error))
 		return false;
 	game.config.local_screen = true;
-	game.config.last_maintenance = -1.0f;
+	game.config.last_maintenance = 0U;
 	if (!test_config_store(&game.database, &game.config, error))
 		goto done;
 	if (!yt_config_prepare_menu_working(&game.config, scoreboard, &working))
 		goto done;
-	if (!yt_current_date_serial(&game.clock, game.config.epoch_year,
+	if (!yt_current_date_serial(&game.clock, (float)game.config.epoch_year,
 	    &today, &year,
 	    error))
 		goto done;
@@ -3480,7 +3506,7 @@ test_ytconfig_scalar_options(struct yt_error *error)
 	game.config.initial_credits = 1000.0f;
 	game.config.initial_holds = 20.0f;
 	game.config.retention_days = 30.0f;
-	game.config.last_maintenance = -1.0f;
+	game.config.last_maintenance = 0U;
 	if (game.config.headquarters == 0.0f)
 		game.config.headquarters = 85.0f;
 	if (!test_config_store(&game.database, &game.config, error)
@@ -3530,9 +3556,9 @@ test_ytconfig_scalar_options(struct yt_error *error)
 	    && yt_record_set_number(&expected, YT_F73, 1000.0f)
 	    && yt_record_set_number(&expected, YT_F77, 123.5f)
 	    && yt_record_set_number(&expected, YT_F45,
-		game.config.epoch_year);
+		(float)game.config.epoch_year);
 	yt_record_set_raw_number(&expected, YT_F81, raw_allow);
-	valid = valid && game.config.last_maintenance == 0.0f
+	valid = valid && game.config.last_maintenance == 0U
 	    && memcmp(game.config.record.bytes, expected.bytes,
 		YT_RECORD_SIZE) == 0;
 

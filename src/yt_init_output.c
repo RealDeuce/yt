@@ -582,7 +582,7 @@ yt_init_present_prepared_configuration(
 	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_INLINE,
 	    "Starting year:", error))
 		return false;
-	if (!yt_init_present_number(presenter, config->epoch_year,
+	if (!yt_init_present_number(presenter, (float)config->epoch_year,
 	    YT_INIT_OUTPUT_LINE, error))
 		return false;
 	if (!yt_init_present_text(presenter, YT_INIT_OUTPUT_LINE,

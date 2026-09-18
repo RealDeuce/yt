@@ -46,7 +46,7 @@ yt_session_update_planet_physical(struct yt_session *session,
 	float timer_seconds;
 
 	if (!yt_current_date_serial(&session->door->game.clock,
-	    session->door->game.config.epoch_year,
+	    (float)session->door->game.config.epoch_year,
 	    &today, &adjusted_year, error))
 		return false;
 	session->door->game.today = today;

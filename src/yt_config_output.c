@@ -179,7 +179,7 @@ yt_config_compose_menu_prompt(const struct yt_config *config,
 		return false;
 	if (!append_literal(result, "<G> OK to run Maintenance?:"))
 		return false;
-	if (!append_line(result, config->last_maintenance == (float)today
+	if (!append_line(result, config->last_maintenance == (uint16_t)today
 	    ? " No, Ran Today Already" : " Yes"))
 		return false;
 	if (!append_numeric_line(result,

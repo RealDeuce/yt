@@ -42,7 +42,9 @@ yt_config_decode(struct yt_config *config, const struct yt_record *record,
 	config->scoreboard_length = stored_length;
 	memcpy(config->scoreboard, record->bytes, stored_length);
 	config->scoreboard[stored_length] = '\0';
-	config->epoch_year = yt_record_get_number(record, YT_F45);
+	if (!config_decode_unsigned(record, YT_F45, 199U, &integer, error))
+		return false;
+	config->epoch_year = (uint8_t)integer;
 	config->turns_per_day = yt_record_get_number(record, YT_F49);
 	if (!config_decode_unsigned(record, YT_F53, UINT8_MAX, &integer,
 	    error))
@@ -60,7 +62,9 @@ yt_config_decode(struct yt_config *config, const struct yt_record *record,
 	config->initial_credits = yt_record_get_number(record, YT_F69);
 	config->initial_holds = yt_record_get_number(record, YT_F73);
 	config->retention_days = yt_record_get_number(record, YT_F77);
-	config->last_maintenance = yt_record_get_number(record, YT_F81);
+	if (!config_decode_unsigned(record, YT_F81, 732U, &integer, error))
+		return false;
+	config->last_maintenance = (uint16_t)integer;
 	config->local_screen = yt_record_get_number(record, YT_F85) != 0.0f;
 	if (!config_decode_unsigned(record, YT_F93, UINT16_MAX, &integer,
 	    error))

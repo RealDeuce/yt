@@ -140,7 +140,7 @@ yt_initializer_prepare_yt(const struct yt_clock *clock,
 		return false;
 	if (!yt_random_next(random, &sample, error))
 		return false;
-	preparation->config.epoch_year = (float)(epoch_date.year % 100);
+	preparation->config.epoch_year = (uint8_t)(epoch_date.year % 100);
 	preparation->config.turns_per_day = 500.0f;
 	preparation->config.initial_fighters = 25.0f;
 	preparation->config.initial_credits = 1005.0f;
@@ -153,8 +153,9 @@ yt_initializer_prepare_yt(const struct yt_clock *clock,
 	preparation->config.marker = 6324U;
 	preparation->config.maximum_planets = 0U;
 	preparation->today = yt_date_serial(&maintenance_date,
-	    preparation->config.epoch_year, NULL);
-	preparation->config.last_maintenance = (float)(preparation->today - 1);
+	    (float)preparation->config.epoch_year, NULL);
+	preparation->config.last_maintenance =
+	    (uint16_t)(preparation->today - 1);
 	preparation->config.headquarters = (float)((int)floorf(qb_single_multiply(sample,
 	    (float)(YT_INIT_SECTORS - 7))) + 1);
 	return true;
@@ -170,7 +171,8 @@ make_config_record(struct yt_config *config, size_t stored_scoreboard_length)
 	    (const uint8_t *)config->scoreboard, length);
 	yt_record_set_number(&config->record, YT_F41,
 	    (float)stored_scoreboard_length);
-	yt_record_set_number(&config->record, YT_F45, config->epoch_year);
+	yt_record_set_number(&config->record, YT_F45,
+	    (float)config->epoch_year);
 	yt_record_set_number(&config->record, YT_F49, config->turns_per_day);
 	yt_record_set_number(&config->record, YT_F53,
 	    (float)config->sector_offset);
@@ -183,7 +185,7 @@ make_config_record(struct yt_config *config, size_t stored_scoreboard_length)
 	yt_record_set_number(&config->record, YT_F73, config->initial_holds);
 	yt_record_set_number(&config->record, YT_F77, config->retention_days);
 	yt_record_set_number(&config->record, YT_F81,
-	    config->last_maintenance);
+	    (float)config->last_maintenance);
 	yt_record_set_number(&config->record, YT_F85,
 	    config->local_screen ? -1.0f : 0.0f);
 	yt_record_set_number(&config->record, YT_F93,
@@ -246,8 +248,8 @@ rmt_present_before_headquarters(const struct yt_initializer_options *options,
 	if (!yt_clock_read(options->clock, &maintenance_date, error))
 		return false;
 	maintenance_serial = yt_date_serial(&maintenance_date,
-	    config->epoch_year, NULL);
-	config->last_maintenance = (float)(maintenance_serial - 1);
+	    (float)config->epoch_year, NULL);
+	config->last_maintenance = (uint16_t)(maintenance_serial - 1);
 	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
 	    "  Last day maintenance run: Yesterday", error))
 		return false;
@@ -463,7 +465,7 @@ write_world_database(struct yt_database *database,
 		return false;
 	if (!yt_clock_read(options->clock, &port_date, error))
 		return false;
-	today = yt_date_serial(&port_date, config->epoch_year, NULL);
+	today = yt_date_serial(&port_date, (float)config->epoch_year, NULL);
 	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
 		return false;
 	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
@@ -701,7 +703,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			goto done;
 		if (!yt_clock_read(options->clock, &current, error))
 			goto done;
-		config.epoch_year = (float)(current.year % 100);
+		config.epoch_year = (uint8_t)(current.year % 100);
 		if (!rmt_present_before_headquarters(options, &config, error))
 			goto done;
 		if (!yt_random_next(random, &sample, error))
@@ -767,7 +769,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			    < sizeof(config.scoreboard) - 1U
 			    ? scoreboard_length : sizeof(config.scoreboard) - 1U] = '\0';
 			config.scoreboard_length = scoreboard_length;
-			config.epoch_year = (float)(current.year % 100);
+			config.epoch_year = (uint8_t)(current.year % 100);
 			config.turns_per_day = 500.0f;
 			config.sector_offset = YT_INIT_PLAYERS + 1;
 			config.port_offset = config.sector_offset + YT_INIT_SECTORS;
@@ -793,8 +795,8 @@ yt_initialize_world(const struct yt_initializer_options *options,
 		if (!options->prepared_yt) {
 			if (!yt_clock_read(options->clock, &current, error))
 				goto done;
-			config.last_maintenance = (float)(yt_date_serial(&current,
-			    config.epoch_year, NULL) - 1);
+			config.last_maintenance = (uint16_t)(yt_date_serial(&current,
+			    (float)config.epoch_year, NULL) - 1);
 			if (!yt_random_next(random, &sample, error))
 				goto done;
 			config.headquarters = (float)((int)floorf(qb_single_multiply(sample,

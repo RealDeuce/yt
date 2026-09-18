@@ -161,7 +161,8 @@ bool yt_maintenance_clear_protected_mines(struct yt_game *game,
     struct yt_error *error);
 bool yt_maintenance_write_header(const struct yt_clock *clock,
     struct yt_error *error);
-bool yt_maintenance_same_day(float stored_marker, float computed_serial);
+bool yt_maintenance_same_day(uint16_t stored_marker,
+    uint16_t computed_serial);
 bool yt_maintenance_compose_entry(bool same_day,
     struct yt_maintenance_output_result *result);
 bool yt_maintenance_compose_wrapper(
@@ -202,7 +203,7 @@ bool yt_maintenance_super_lottery(struct yt_game *game, int player_count,
     int planet_count, int sector_count, const uint8_t *blank,
     size_t blank_length, yt_maintenance_score_line_fn line_output,
     void *line_context, struct yt_error *error);
-bool yt_maintenance_store_final_marker(struct yt_game *game, float serial,
+bool yt_maintenance_store_final_marker(struct yt_game *game, uint16_t serial,
     struct yt_error *error);
 bool yt_maintenance_age_player(float *cloak, float last_active,
     int killer_status, float today, float retention_days,

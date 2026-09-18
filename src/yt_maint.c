@@ -127,7 +127,7 @@ store_config_field(struct maint_state *state, size_t offset, float value,
 }
 
 bool
-yt_maintenance_store_final_marker(struct yt_game *game, float serial,
+yt_maintenance_store_final_marker(struct yt_game *game, uint16_t serial,
     struct yt_error *error)
 {
 	struct yt_record fresh;
@@ -139,7 +139,7 @@ yt_maintenance_store_final_marker(struct yt_game *game, float serial,
 	}
 	if (!yt_database_read(&game->database, 1U, &fresh, error))
 		return false;
-	if (!yt_record_set_number(&fresh, YT_F81, serial)) {
+	if (!yt_record_set_number(&fresh, YT_F81, (float)serial)) {
 		set_error(error, YT_RANGE, "encode maintenance final marker",
 		    "YTDATA.DAT");
 		return false;
@@ -156,11 +156,12 @@ store_final_marker(struct yt_game *game, struct yt_error *error)
 {
 	int serial;
 
-	if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
+	if (!yt_current_date_serial(&game->clock,
+	    (float)game->config.epoch_year,
 	    &serial, NULL,
 	    error))
 		return false;
-	return yt_maintenance_store_final_marker(game, (float)serial,
+	return yt_maintenance_store_final_marker(game, (uint16_t)serial,
 	    error);
 }
 
@@ -238,7 +239,7 @@ yt_maintenance_run(struct yt_error *error)
 	    - (int)state.game.config.planet_offset;
 	state.today = state.game.today;
 	same_day = yt_maintenance_same_day(state.game.config.last_maintenance,
-	    (float)state.today);
+	    (uint16_t)state.today);
 	if (state.player_count < 1 || state.sector_count < 7
 	    || state.port_count < 1 || state.planet_count < 1) {
 		set_error(error, YT_RANGE, "maintenance layout", "YTDATA.DAT");

@@ -43,7 +43,7 @@ maintenance_text_valid(const struct yt_maintenance_text *text)
 }
 
 bool
-yt_maintenance_same_day(float stored_marker, float computed_serial)
+yt_maintenance_same_day(uint16_t stored_marker, uint16_t computed_serial)
 {
 	return stored_marker == computed_serial;
 }

@@ -70,7 +70,7 @@ profit_project(struct yt_session *session, const struct profit_report *report,
 	float timer_seconds;
 
 	if (!yt_current_date_serial(&session->door->game.clock,
-	    session->door->game.config.epoch_year,
+	    (float)session->door->game.config.epoch_year,
 	    &today, &adjusted_year, error))
 		return false;
 	session->door->game.today = today;

@@ -43,7 +43,7 @@ test_one_sector_all_ports(void)
 	session.market_bases[0] = 100.0f;
 	session.market_bases[1] = 100.0f;
 	session.market_bases[2] = 100.0f;
-	door.game.config.epoch_year = 26.0f;
+	door.game.config.epoch_year = 26U;
 	door.game.config.sector_offset = 3.0f;
 	door.game.config.port_offset = 4.0f;
 	yt_record_blank(&door.game.config.record);

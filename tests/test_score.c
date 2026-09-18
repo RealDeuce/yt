@@ -124,7 +124,7 @@ check_startup_configuration_transaction(void)
 	yt_test_random_use_provider(&game.random, startup_random_fill, &random);
 	yt_record_blank(&source.record);
 	memcpy(source.scoreboard, "YTSCORE.ASC", sizeof("YTSCORE.ASC"));
-	source.epoch_year = 26.0f;
+	source.epoch_year = 26U;
 	source.turns_per_day = 500.0f;
 	source.sector_offset = 4.0f;
 	source.port_offset = 10.0f;
@@ -133,7 +133,7 @@ check_startup_configuration_transaction(void)
 	source.initial_credits = 1005.0f;
 	source.initial_holds = 10.0f;
 	source.retention_days = 14.0f;
-	source.last_maintenance = 100.0f;
+	source.last_maintenance = 100U;
 	source.local_screen = false;
 	source.total_records = 20.0f;
 	source.lottery_plays = 5.0f;
@@ -2933,8 +2933,8 @@ check_maintenance_entry_output(void)
 	struct yt_maintenance_output_result result;
 	size_t prefix_length = sizeof(expected_same_day) - 1U;
 
-	if (!yt_maintenance_same_day(123.0f, 123.0f)
-	    || yt_maintenance_same_day(122.0f, 123.0f)
+	if (!yt_maintenance_same_day(123U, 123U)
+	    || yt_maintenance_same_day(122U, 123U)
 	    || !yt_maintenance_compose_entry(false, &result)
 	    || result.row_count != 11U || MAINT_OUTPUT(result)->final_column != 0U
 	    || MAINT_OUTPUT(result)->length != sizeof(expected_common) - 1U
@@ -3866,7 +3866,7 @@ check_maintenance_config_defaults(void)
 	memset(config.scoreboard, 0xa5, sizeof(config.scoreboard));
 	config.scoreboard[0] = '\0';
 	config.scoreboard_length = 0U;
-	config.epoch_year = 26.0f;
+	config.epoch_year = 26U;
 	config.turns_per_day = 777.0f;
 	config.sector_offset = 51.0f;
 	config.port_offset = 2055.0f;
@@ -3875,7 +3875,7 @@ check_maintenance_config_defaults(void)
 	config.initial_credits = 1005.0f;
 	config.initial_holds = 10.0f;
 	config.retention_days = 14.0f;
-	config.last_maintenance = 123.0f;
+	config.last_maintenance = 123U;
 	config.local_screen = true;
 	config.total_records = 3155.0f;
 	config.lottery_plays = 0.9999f;
@@ -4015,7 +4015,7 @@ check_maintenance_headquarters_write(void)
 	memset(&database, 0, sizeof(database));
 	memset(&config, 0, sizeof(config));
 	yt_record_blank(&config.record);
-	config.epoch_year = 26.0f;
+	config.epoch_year = 26U;
 	config.sector_offset = 1.0f;
 	config.port_offset = 1.0f;
 	config.planet_offset = 1.0f;
@@ -4412,7 +4412,7 @@ check_maintenance_port_pass(void)
 	memset(&game, 0, sizeof(game));
 	game.config.port_offset = 1.0f;
 	game.config.planet_offset = 3.0f;
-	game.config.epoch_year = 26.0f;
+	game.config.epoch_year = 26U;
 	yt_random_init(&game.random);
 	yt_test_random_use_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);
@@ -4596,7 +4596,7 @@ check_maintenance_mercenary_rebuild_phase_pass(void)
 	game.config.port_offset = 4.0f;
 	game.config.planet_offset = 5.0f;
 	game.config.total_records = 7.0f;
-	game.config.epoch_year = 26.0f;
+	game.config.epoch_year = 26U;
 	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
 		goto done;
 	yt_random_init(&game.random);
@@ -5138,7 +5138,7 @@ check_maintenance_mercenary_base_pass(void)
 	memset(&game, 0, sizeof(game));
 	game.config.sector_offset = 1.0f;
 	game.config.planet_offset = 4.0f;
-	game.config.epoch_year = 26.0f;
+	game.config.epoch_year = 26U;
 	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
 		goto done;
 	yt_random_init(&game.random);
@@ -6435,8 +6435,8 @@ check_maintenance_final_marker_pass(void)
 		goto done;
 	expected = before;
 	if (!yt_record_set_number(&expected, YT_F81, 204.0f)
-	    || !yt_maintenance_store_final_marker(&game, 204.0f, &error)
-	    || game.config.last_maintenance != 204.0f
+	    || !yt_maintenance_store_final_marker(&game, 204U, &error)
+	    || game.config.last_maintenance != 204U
 	    || memcmp(game.config.record.bytes, expected.bytes,
 	    YT_RECORD_SIZE) != 0
 	    || !yt_database_read(&game.database, 1U, &after, &error)
@@ -6545,14 +6545,14 @@ check_maintenance_final_suffix_pass(void)
 	memset(&game, 0, sizeof(game));
 	yt_record_blank(&game.config.record);
 	strcpy(game.config.scoreboard, "NUL");
-	game.config.epoch_year = 26.0f;
+	game.config.epoch_year = 26U;
 	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
 		goto done;
 	game.config.sector_offset = 2.0f;
 	game.config.port_offset = 3.0f;
 	game.config.planet_offset = 4.0f;
 	game.config.total_records = 5.0f;
-	game.config.last_maintenance = 17.0f;
+	game.config.last_maintenance = 17U;
 	test_config_encode(&game.config);
 	before = game.config.record;
 	expected = before;
@@ -6582,7 +6582,7 @@ check_maintenance_final_suffix_pass(void)
 	    || game.database.file != NULL || TEST_DRAWS(game.random) != 1U
 	    || random_script.position != sizeof(coin_draw)
 	    || clock_script.position != 3U
-	    || game.config.last_maintenance != 204.0f
+	    || game.config.last_maintenance != 204U
 	    || memcmp(game.config.record.bytes, expected.bytes,
 	    YT_RECORD_SIZE) != 0
 	    || !yt_text_read("YTTEMP", &bulletin, &error))
@@ -6662,7 +6662,7 @@ check_maintenance_final_suffix_pass(void)
 		    cut_length) != 0
 		    || game.database.file == NULL || TEST_DRAWS(game.random) != 1U
 		    || clock_script.position != 3U
-		    || game.config.last_maintenance != 204.0f
+		    || game.config.last_maintenance != 204U
 		    || !yt_database_read(&game.database, 2U, &after, &error)
 		    || yt_record_get_number(&after, YT_F109) != 100.0f)
 			goto done;
@@ -6863,7 +6863,7 @@ check_maintenance_planet_pass(void)
 	memset(&game, 0, sizeof(game));
 	game.config.planet_offset = 1.0f;
 	game.config.total_records = 4.0f;
-	game.config.epoch_year = 26.0f;
+	game.config.epoch_year = 26U;
 	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
 		goto done;
 	yt_random_init(&game.random);
@@ -7001,7 +7001,7 @@ check_maintenance_wanderer_pass(void)
 	game.config.port_offset = 4.0f;
 	game.config.planet_offset = 4.0f;
 	game.config.total_records = 5.0f;
-	game.config.epoch_year = 26.0f;
+	game.config.epoch_year = 26U;
 	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
 		goto done;
 	random_script = (struct score_random_script){
@@ -7060,7 +7060,7 @@ check_maintenance_wanderer_pass(void)
 	game.config.port_offset = 4.0f;
 	game.config.planet_offset = 4.0f;
 	game.config.total_records = 5.0f;
-	game.config.epoch_year = 26.0f;
+	game.config.epoch_year = 26U;
 	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
 		goto done;
 	random_script = (struct score_random_script){
@@ -7191,7 +7191,7 @@ check_maintenance_xannor_home_pass(void)
 	game.config.planet_offset = 4.0f;
 	game.config.total_records = 7.0f;
 	game.config.headquarters = 2.0f;
-	game.config.epoch_year = 26.0f;
+	game.config.epoch_year = 26U;
 	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
 		goto done;
 	yt_random_init(&game.random);
@@ -14848,7 +14848,7 @@ main(void)
 		goto done;
 	strcpy(game.config.scoreboard, "YTSCORE.ASC");
 	game.config.scoreboard_length = 11U;
-	game.config.epoch_year = 0.0f;
+	game.config.epoch_year = 0U;
 	game.config.sector_offset = 3.0f;
 	game.config.port_offset = 5.0f;
 	game.config.planet_offset = 5.0f;

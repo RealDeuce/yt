@@ -946,7 +946,8 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 		return false;
 	rebuilt = sector.planet == 0;
 	if (rebuilt) {
-		if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
+		if (!yt_current_date_serial(&game->clock,
+		    (float)game->config.epoch_year,
 		    &today, NULL, error))
 			return false;
 		if (!yt_maintenance_compose_xannor_home(blank,
