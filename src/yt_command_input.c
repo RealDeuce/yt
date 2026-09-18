@@ -123,8 +123,9 @@ yt_input_save_command(char *text, size_t text_capacity,
 	    || queue_length == NULL || *queue_position > *queue_length
 	    || *queue_length >= queue_capacity || saved_command == NULL
 	    || saved_capacity == 0U || output_source == NULL
-	    || output_capacity == 0U || notice_ready == NULL
-	    || !bounded_string_length(text, text_capacity, &length))
+	    || output_capacity == 0U || notice_ready == NULL)
+		return false;
+	if (!bounded_string_length(text, text_capacity, &length))
 		return false;
 	*notice_ready = false;
 	if (length == 0U || text[length - 1U] != '/')
@@ -388,7 +389,9 @@ yt_input_yes_no_candidate(const char *command_accumulator,
 	size_t queue_length = 0U;
 	bool bold = false;
 
-	if (answer == NULL || !yt_input_confirmation(command_accumulator,
+	if (answer == NULL)
+		return false;
+	if (!yt_input_confirmation(command_accumulator,
 	    output_source, output_source_capacity, prompt, sizeof(prompt),
 	    &prompt_length, queue, sizeof(queue), &queue_position, &queue_length,
 	    &bold, answer, &outcome))

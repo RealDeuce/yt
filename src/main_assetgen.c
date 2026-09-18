@@ -135,6 +135,7 @@ write_asset(const char *directory, const struct packed_asset *asset)
 	FILE *file;
 	int written;
 	int ok = 0;
+	int valid_asset;
 
 	packed = malloc(asset->packed_size);
 	output = malloc(asset->original_size);
@@ -142,9 +143,12 @@ write_asset(const char *directory, const struct packed_asset *asset)
 		fprintf(stderr, "assetgen: out of memory\n");
 		goto done;
 	}
-	if (!decode_base64(asset, packed)
-	    || !unpack_lzss(asset, packed, output)
-	    || fnv1a(output, asset->original_size) != asset->checksum) {
+	valid_asset = decode_base64(asset, packed) != 0;
+	if (valid_asset)
+		valid_asset = unpack_lzss(asset, packed, output) != 0;
+	if (valid_asset)
+		valid_asset = fnv1a(output, asset->original_size) == asset->checksum;
+	if (!valid_asset) {
 		fprintf(stderr, "assetgen: corrupt embedded asset %s\n",
 		    asset->name);
 		goto done;
@@ -162,7 +166,11 @@ write_asset(const char *directory, const struct packed_asset *asset)
 		goto done;
 	}
 	if (fwrite(output, 1, asset->original_size, file)
-	    != asset->original_size || fclose(file) != 0) {
+	    != asset->original_size) {
+		fprintf(stderr, "assetgen: cannot write %s\n", path);
+		goto done;
+	}
+	if (fclose(file) != 0) {
 		fprintf(stderr, "assetgen: cannot write %s\n", path);
 		goto done;
 	}
