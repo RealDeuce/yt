@@ -316,7 +316,7 @@ nearest_scan_run(struct yt_session *session, int selector,
 				int adjusted_year;
 
 				if (!yt_current_date_serial(&session->door->game.clock,
-				    (float)session->door->game.config.epoch_year, &today,
+				    session->door->game.config.epoch_year, &today,
 				    &adjusted_year, error))
 					goto done;
 				session->door->game.today = today;

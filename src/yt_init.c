@@ -151,7 +151,7 @@ yt_initializer_prepare_yt(const struct yt_clock *clock,
 	preparation->config.marker = 6324U;
 	preparation->config.maximum_planets = 0U;
 	preparation->today = yt_date_serial(&maintenance_date,
-	    (float)preparation->config.epoch_year, NULL);
+	    preparation->config.epoch_year, NULL);
 	preparation->config.last_maintenance =
 	    (uint16_t)(preparation->today - 1);
 	preparation->config.headquarters = (float)((int)floorf(qb_single_multiply(sample,
@@ -246,7 +246,7 @@ rmt_present_before_headquarters(const struct yt_initializer_options *options,
 	if (!yt_clock_read(options->clock, &maintenance_date, error))
 		return false;
 	maintenance_serial = yt_date_serial(&maintenance_date,
-	    (float)config->epoch_year, NULL);
+	    config->epoch_year, NULL);
 	config->last_maintenance = (uint16_t)(maintenance_serial - 1);
 	if (!rmt_present_text(options, YT_RMT_OUTPUT_LINE,
 	    "  Last day maintenance run: Yesterday", error))
@@ -463,7 +463,7 @@ write_world_database(struct yt_database *database,
 		return false;
 	if (!yt_clock_read(options->clock, &port_date, error))
 		return false;
-	today = yt_date_serial(&port_date, (float)config->epoch_year, NULL);
+	today = yt_date_serial(&port_date, config->epoch_year, NULL);
 	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE, "", error))
 		return false;
 	if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
@@ -794,7 +794,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			if (!yt_clock_read(options->clock, &current, error))
 				goto done;
 			config.last_maintenance = (uint16_t)(yt_date_serial(&current,
-			    (float)config.epoch_year, NULL) - 1);
+			    config.epoch_year, NULL) - 1);
 			if (!yt_random_next(random, &sample, error))
 				goto done;
 			config.headquarters = (float)((int)floorf(qb_single_multiply(sample,

@@ -364,7 +364,7 @@ yt_game_open(struct yt_game *game, enum yt_open_mode mode,
 		return false;
 	}
 	return yt_current_date_serial(&game->clock,
-	    (float)game->config.epoch_year,
+	    game->config.epoch_year,
 	    &game->today, &game->adjusted_year, error);
 }
 

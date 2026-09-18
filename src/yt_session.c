@@ -52,7 +52,7 @@ session_current_date_serial(struct yt_session *session, int *serial,
     int *adjusted_year, struct yt_error *error)
 {
 	return yt_current_date_serial(&session->door->game.clock,
-	    (float)session->door->game.config.epoch_year,
+	    session->door->game.config.epoch_year,
 	    serial, adjusted_year, error);
 }
 

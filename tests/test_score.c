@@ -9081,7 +9081,7 @@ check_date_serial(void)
 	script.values[0] = date;
 	yt_error_clear(&error);
 	const struct yt_clock clock = {score_clock_read, &script};
-	if (!yt_current_date_serial(&clock, 27.5f, &serial, &adjusted, &error)
+	if (!yt_current_date_serial(&clock, 28U, &serial, &adjusted, &error)
 	    || serial != 61 || adjusted != 28 || script.position != 1U) {
 		return false;
 	}

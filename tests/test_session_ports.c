@@ -48,7 +48,7 @@ test_port_update(void)
 	session.market_bases[2] = 40.0f;
 	yt_error_clear(&error);
 	CHECK(yt_current_date_serial(&door.game.clock,
-	    (float)door.game.config.epoch_year, &today,
+	    door.game.config.epoch_year, &today,
 	    &adjusted_year, &error));
 
 	yt_record_blank(&sector.record);
@@ -229,7 +229,7 @@ test_owned_port_purchase(void)
 	sector.port = 3;
 	yt_sector_encode(&sector);
 	CHECK(yt_current_date_serial(&door.game.clock,
-	    (float)door.game.config.epoch_year, &today,
+	    door.game.config.epoch_year, &today,
 	    &adjusted_year, &error));
 	yt_record_blank(&port.record);
 	(void)snprintf(port.name, sizeof(port.name), "%s", "Old Port");

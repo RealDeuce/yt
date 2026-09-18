@@ -225,7 +225,7 @@ edit_maintenance(struct yt_game *game, struct yt_error *error)
 			break;
 	}
 	if (!yt_current_date_serial(&game->clock,
-	    (float)game->config.epoch_year,
+	    game->config.epoch_year,
 	    &serial,
 	    &adjusted, error))
 		return false;
@@ -1091,7 +1091,7 @@ open_complete:
 		if (!yt_config_load(&game.database, &game.config, &error))
 			goto failure;
 		if (!yt_current_date_serial(&game.clock,
-		    (float)game.config.epoch_year, &today, &year, &error))
+		    game.config.epoch_year, &today, &year, &error))
 			goto failure;
 		if (!redraw_repairs(&game, working.maximum_holds, &error))
 			goto failure;

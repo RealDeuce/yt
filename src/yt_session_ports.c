@@ -48,7 +48,7 @@ yt_session_update_port(struct yt_session *session, int sector_number,
 	market->port_physical_record = session_port_basic_record(session,
 	    market->logical_port);
 	if (!yt_current_date_serial(&session->door->game.clock,
-	    (float)session->door->game.config.epoch_year,
+	    session->door->game.config.epoch_year,
 	    &today, &adjusted_year, error))
 		return false;
 	session->door->game.today = today;

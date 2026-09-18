@@ -157,7 +157,7 @@ store_final_marker(struct yt_game *game, struct yt_error *error)
 	int serial;
 
 	if (!yt_current_date_serial(&game->clock,
-	    (float)game->config.epoch_year,
+	    game->config.epoch_year,
 	    &serial, NULL,
 	    error))
 		return false;

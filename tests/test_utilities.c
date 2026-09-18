@@ -3128,7 +3128,7 @@ test_ytconfig(struct yt_error *error)
 		goto done;
 	if (!yt_config_prepare_menu_working(&game.config, scoreboard, &working))
 		goto done;
-	if (!yt_current_date_serial(&game.clock, (float)game.config.epoch_year,
+	if (!yt_current_date_serial(&game.clock, game.config.epoch_year,
 	    &today, &year,
 	    error))
 		goto done;

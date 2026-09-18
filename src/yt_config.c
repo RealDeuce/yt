@@ -369,7 +369,7 @@ yt_config_normalize_maintenance(struct yt_config *config)
 }
 
 static int
-date_serial_epoch(const struct yt_clock_value *date, float epoch,
+date_serial_epoch(const struct yt_clock_value *date, uint8_t epoch,
     int *adjusted_year)
 {
 	static const int days_before[] =
@@ -378,17 +378,15 @@ date_serial_epoch(const struct yt_clock_value *date, float epoch,
 	int serial;
 	int16_t prior;
 
-	if ((float)year < epoch)
+	if (year < (int)epoch)
 		year += 100;
 	serial = date->day + days_before[date->month];
 	if (year % 4 == 0 && date->month > 2)
 		++serial;
 	prior = (int16_t)(year - 1);
-	if ((float)year != epoch && (float)prior >= epoch) {
-		float quarter = epoch * 0.25f;
-
+	if (year != (int)epoch && prior >= (int16_t)epoch) {
 		serial += 365;
-		if (quarter == floorf(quarter))
+		if (epoch % 4U == 0U)
 			++serial;
 	}
 	if (adjusted_year != NULL)
@@ -397,14 +395,14 @@ date_serial_epoch(const struct yt_clock_value *date, float epoch,
 }
 
 int
-yt_date_serial(const struct yt_clock_value *date, float epoch_year,
+yt_date_serial(const struct yt_clock_value *date, uint8_t epoch_year,
     int *adjusted_year)
 {
 	return date_serial_epoch(date, epoch_year, adjusted_year);
 }
 
 bool
-yt_current_date_serial(const struct yt_clock *clock, float epoch, int *serial,
+yt_current_date_serial(const struct yt_clock *clock, uint8_t epoch, int *serial,
     int *adjusted_year, struct yt_error *error)
 {
 	struct yt_clock_value current;
