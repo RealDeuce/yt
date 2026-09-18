@@ -399,14 +399,14 @@ test_rmt_remote_status(void)
 {
 	struct yt_rmt_standalone_output output;
 
-	return yt_rmt_remote_status_compose(true, 2.0f, 2400.0f, &output)
+	return yt_rmt_remote_status_compose(true, 2U, 2400U, &output)
 	    && output.length == 32U
 	    && memcmp(output.bytes, "Opening COM port 2 at 2400 baud\r", 32U)
 	    == 0
-	    && yt_rmt_remote_status_compose(false, 0.0f, 0.0f, &output)
+	    && yt_rmt_remote_status_compose(false, 0U, 0U, &output)
 	    && output.length == 19U
 	    && memcmp(output.bytes, "Local Console Mode\r", 19U) == 0
-	    && !yt_rmt_remote_status_compose(false, 0.0f, 0.0f, NULL);
+	    && !yt_rmt_remote_status_compose(false, 0U, 0U, NULL);
 }
 
 

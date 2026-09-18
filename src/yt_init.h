@@ -120,8 +120,8 @@ bool yt_rmt_standalone_prompt_compose(
     struct yt_rmt_standalone_output *output);
 bool yt_rmt_standalone_response_compose(const uint8_t *response,
     size_t response_length, struct yt_rmt_standalone_output *output);
-bool yt_rmt_remote_status_compose(bool serial_open, float com_port,
-    float baud, struct yt_rmt_standalone_output *output);
+bool yt_rmt_remote_status_compose(bool serial_open, uint8_t com_port,
+    uint32_t baud, struct yt_rmt_standalone_output *output);
 bool yt_rmt_credited_name(const char *first, const char *last,
     const struct yt_name_file *names, char *credited, size_t credited_size);
 void yt_rmt_normalize_config(struct yt_config *config, bool local_mode);

@@ -16,7 +16,7 @@ struct rmt_remote_info {
 	size_t description_length;
 	char first[128];
 	char last[128];
-	float com_port;
+	uint8_t com_port;
 	bool local_mode;
 };
 
@@ -208,14 +208,14 @@ read_dorinfo_name(const char *path, struct rmt_remote_info *info,
 	if (description_length != 0U)
 		memcpy(info->description, description, description_length);
 	info->description_length = description_length;
-	info->com_port = (float)port_value.value;
+	info->com_port = (uint8_t)port_value.value;
 	if (first_length != 0U)
 		memcpy(info->first, first_value, first_length);
 	info->first[first_length] = '\0';
 	if (last_length != 0U)
 		memcpy(info->last, last_value, last_length);
 	info->last[last_length] = '\0';
-	info->local_mode = info->com_port < 1.0f || info->com_port > 4.0f;
+	info->local_mode = info->com_port < 1U || info->com_port > 4U;
 	valid = true;
 
 done:
@@ -461,7 +461,7 @@ main(void)
 	char credited[90];
 	bool standalone;
 	bool local_mode;
-	float com_port = 0.0f;
+	uint8_t com_port = 0U;
 	uint32_t old_size;
 
 	yt_error_clear(&error);
@@ -526,19 +526,19 @@ main(void)
 			    remote.description_length, &framing))
 				return finish_rmt_start_failure(&handoff_file,
 				    &door, &error);
-			if (!yt_rmt_door_prepare(&door, (int)com_port, &framing,
+			if (!yt_rmt_door_prepare(&door, com_port, &framing,
 			    &error))
 				return finish_rmt_start_failure(&handoff_file,
 				    &door, &error);
 			if (!rmt_observed_baud_supported(door.serial.observed_baud))
 				return finish_rmt_start_failure(&handoff_file,
 				    &door, &error);
-			if (!yt_rmt_door_start(&door, (int)com_port, &error))
+			if (!yt_rmt_door_start(&door, com_port, &error))
 				return finish_rmt_start_failure(&handoff_file,
 				    &door, &error);
 		}
 		if (!yt_rmt_remote_status_compose(!local_mode, com_port,
-		    local_mode ? 0.0f : (float)door.serial.observed_baud, &output)) {
+		    local_mode ? 0U : door.serial.observed_baud, &output)) {
 			yt_cli_error("RMT-INIT", &error);
 			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 		}

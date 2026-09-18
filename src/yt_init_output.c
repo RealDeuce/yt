@@ -453,7 +453,7 @@ yt_rmt_standalone_response_compose(const uint8_t *response,
 }
 
 bool
-yt_rmt_remote_status_compose(bool serial_open, float com_port, float baud,
+yt_rmt_remote_status_compose(bool serial_open, uint8_t com_port, uint32_t baud,
     struct yt_rmt_standalone_output *output)
 {
 	static const uint8_t local[] = "Local Console Mode\r";
@@ -472,7 +472,7 @@ yt_rmt_remote_status_compose(bool serial_open, float com_port, float baud,
 	}
 	memcpy(output->bytes, opening, sizeof(opening) - 1U);
 	length = sizeof(opening) - 1U;
-	number_length = qb_print_single(number, sizeof(number), com_port);
+	number_length = qb_print_single(number, sizeof(number), (float)com_port);
 	if (number_length < 0
 	    || (size_t)number_length > sizeof(output->bytes) - length)
 		return false;
@@ -482,7 +482,7 @@ yt_rmt_remote_status_compose(bool serial_open, float com_port, float baud,
 		return false;
 	memcpy(output->bytes + length, "at", sizeof("at") - 1U);
 	length += sizeof("at") - 1U;
-	number_length = qb_print_single(number, sizeof(number), baud);
+	number_length = qb_print_single(number, sizeof(number), (float)baud);
 	if (number_length < 0
 	    || (size_t)number_length > sizeof(output->bytes) - length)
 		return false;
