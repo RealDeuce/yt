@@ -11,8 +11,9 @@ lottery_settle(struct yt_session *session,
     const struct yt_port *cached_earth, float cost,
     struct yt_error *error)
 {
-	if (!session_wait(session, 3.0, "lottery caller wait", error)
-	    || !session_write_player(session, error))
+	if (!session_wait(session, 3.0, "lottery caller wait", error))
+		return false;
+	if (!session_write_player(session, error))
 		return false;
 	return session_earth_receipt(session, cached_earth, cost, error);
 }
@@ -54,10 +55,13 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 		char limit[64];
 		char row[128];
 
-		if (qb_str_single(limit, sizeof(limit), session->door->game.config.lottery_plays) < 0
-		    || snprintf(row, sizeof(row), "You may play%s times daily.",
-		    limit) < 0
-		    || !session_present_text(session, (const uint8_t *)row,
+		if (qb_str_single(limit, sizeof(limit),
+		    session->door->game.config.lottery_plays) < 0)
+			return false;
+		if (snprintf(row, sizeof(row), "You may play%s times daily.",
+		    limit) < 0)
+			return false;
+		if (!session_present_text(session, (const uint8_t *)row,
 		    strlen(row), SESSION_PRESENT_LINE, "lottery daily limit row",
 		    error))
 			return false;
@@ -83,10 +87,12 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 		char row[128];
 
 		if (qb_str_single(plays, sizeof(plays),
-		    (float)session->player.lottery_plays) < 0
-		    || snprintf(row, sizeof(row),
-		    "You've played%s times already.", plays) < 0
-		    || !session_present_text(session, (const uint8_t *)row,
+		    (float)session->player.lottery_plays) < 0)
+			return false;
+		if (snprintf(row, sizeof(row),
+		    "You've played%s times already.", plays) < 0)
+			return false;
+		if (!session_present_text(session, (const uint8_t *)row,
 		    strlen(row), SESSION_PRESENT_LINE,
 		    "lottery already-played row", error))
 			return false;
@@ -111,8 +117,9 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 		    (const uint8_t *)
 		    "Enter a 6 digit number for the lottery computer -+>",
 		    strlen("Enter a 6 digit number for the lottery computer -+>"),
-		    "lottery ticket prompt", error)
-		    || !session_read_command(session, ticket, sizeof(ticket)))
+		    "lottery ticket prompt", error))
+			return false;
+		if (!session_read_command(session, ticket, sizeof(ticket)))
 			return false;
 		if (strlen(ticket) != 6U) {
 			if (!session_present_text(session,
@@ -145,8 +152,9 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 	}
 	matches = yt_lottery_match_count(winning, ticket, matched_winning);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "lottery winning display blank", error)
-	    || !session_present_text(session,
+	    "lottery winning display blank", error))
+		return false;
+	if (!session_present_text(session,
 	    (const uint8_t *)"The Galactic Lottery Computer picked: ",
 	    strlen("The Galactic Lottery Computer picked: "),
 	    SESSION_PRESENT_RAW, "lottery winning prefix", error))
@@ -199,8 +207,9 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 	session_set_color(session, saved_foreground);
 	}
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "lottery post-digits first blank", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "lottery post-digits first blank", error))
+		return false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "lottery post-digits second blank", error))
 		return false;
 	if (matches == 0) {
@@ -218,10 +227,12 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 
 		award = yt_lottery_award(matches);
 		if (qb_str_single(match_text, sizeof(match_text),
-		    (float)matches) < 0
-		    || qb_str_double(award_text, sizeof(award_text),
-		    (double)award) < 0
-		    || !session_present_text(session,
+		    (float)matches) < 0)
+			return false;
+		if (qb_str_double(award_text, sizeof(award_text),
+		    (double)award) < 0)
+			return false;
+		if (!session_present_text(session,
 		    (const uint8_t *)"You matched", strlen("You matched"),
 		    SESSION_PRESENT_RAW, "lottery award prefix", error))
 			return false;
@@ -257,16 +268,17 @@ session_earth_lottery(struct yt_session *session, const struct yt_port *cached_e
 		char news[300];
 		char amount[80];
 
-		if (qb_str_double(amount, sizeof(amount), (double)award) < 0
-		    || snprintf(news, sizeof(news),
+		if (qb_str_double(amount, sizeof(amount), (double)award) < 0)
+			return session_range_error(error, "lottery news row");
+		if (snprintf(news, sizeof(news),
 		    "%s won%s credits in the lottery!", cached_name, amount) < 0)
 			return session_range_error(error, "lottery news row");
 		if (!yt_news_append(news, error))
 			return false;
 	}
-	if (!session_mutate_player_credits(session, award, NULL, error)
-	    || !session_wait(session, 3.0, "lottery award wait", error))
+	if (!session_mutate_player_credits(session, award, NULL, error))
+		return false;
+	if (!session_wait(session, 3.0, "lottery award wait", error))
 		return false;
 	return lottery_settle(session, cached_earth, 5.0f, error);
 }
-
