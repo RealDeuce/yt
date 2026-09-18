@@ -38,6 +38,73 @@
 #define yt_rmdir rmdir
 #endif
 
+static bool
+computer_port_select_text(const char *text, uint16_t maximum,
+    uint16_t *selected, enum yt_computer_port_selection_route *route,
+    struct yt_error *error)
+{
+	struct qb_val_result parsed = qb_val(text);
+
+	return yt_computer_port_select(&parsed, text != NULL && text[0] == '\0',
+	    maximum, selected, route, error);
+}
+
+static bool
+computer_path_parse_text(const char *text, float *selected,
+    struct yt_error *error)
+{
+	struct qb_val_result parsed = qb_val(text);
+
+	return yt_computer_path_parse(&parsed, selected, error);
+}
+
+static bool
+computer_avoid_select_slot_text(const char *text, uint8_t conversion_mode,
+    int *index, enum yt_computer_avoid_selection_route *route,
+    struct yt_error *error)
+{
+	struct qb_val_result parsed = qb_val(text);
+
+	return yt_computer_avoid_select_slot(&parsed, conversion_mode, index,
+	    route, error);
+}
+
+static bool
+computer_avoid_select_sector_text(const char *text, uint16_t maximum,
+    float *selected, enum yt_computer_avoid_selection_route *route,
+    struct yt_error *error)
+{
+	struct qb_val_result parsed = qb_val(text);
+
+	return yt_computer_avoid_select_sector(&parsed, maximum, selected,
+	    route, error);
+}
+
+static float
+planet_landing_commitment_text(const char *text)
+{
+	struct qb_val_result parsed = qb_val(text);
+
+	return yt_planet_landing_commitment(&parsed);
+}
+
+static float
+planet_move_destination_text(const char *text)
+{
+	struct qb_val_result parsed = qb_val(text);
+
+	return yt_planet_move_destination(&parsed);
+}
+
+static bool
+planet_transfer_fighter_amount_text(const char *text, float *amount,
+    struct yt_error *error)
+{
+	struct qb_val_result parsed = qb_val(text);
+
+	return yt_planet_transfer_fighter_amount(&parsed, amount, error);
+}
+
 static int
 fail(const char *message)
 {
@@ -1835,8 +1902,8 @@ check_planet_landing_model(void)
 	    || !yt_planet_landing_unrest_row(2.0f, 10.0f, row,
 	    sizeof(row), &length) || length != sizeof(reduction) - 1U
 	    || memcmp(row, reduction, length) != 0
-	    || yt_planet_landing_commitment("5.9") != 5.0f
-	    || yt_planet_landing_commitment("") != 0.0f
+	    || planet_landing_commitment_text("5.9") != 5.0f
+	    || planet_landing_commitment_text("") != 0.0f
 	    || !yt_planet_landing_commitment_valid(5.0f, 5.0f)
 	    || yt_planet_landing_commitment_valid(0.0f, 5.0f)
 	    || yt_planet_landing_commitment_valid(6.0f, 5.0f))
@@ -2044,8 +2111,8 @@ check_planet_move_model(void)
 	size_t length;
 	size_t index;
 
-	if (yt_planet_move_destination("3.9") != 3.0f
-	    || yt_planet_move_destination("") != 0.0f
+	if (planet_move_destination_text("3.9") != 3.0f
+	    || planet_move_destination_text("") != 0.0f
 	    || yt_planet_move_add_cost(10U) != 20U
 	    || !yt_planet_move_path_heading(1U, 3U, row,
 	    sizeof(row), &length) || length != sizeof(heading) - 1U
@@ -12384,15 +12451,15 @@ check_planet_take_all_overlays(void)
 		float parsed_amount;
 
 		yt_error_clear(&transfer_error);
-		if (!yt_planet_transfer_fighter_amount("16777217",
+		if (!planet_transfer_fighter_amount_text("16777217",
 		    &parsed_amount, &transfer_error)
 		    || parsed_amount != 16777216.0f
-		    || !yt_planet_transfer_fighter_amount("Q",
+		    || !planet_transfer_fighter_amount_text("Q",
 		    &parsed_amount, &transfer_error)
 		    || parsed_amount != 0.0f)
 			return false;
 		yt_error_clear(&transfer_error);
-		if (yt_planet_transfer_fighter_amount("1D39",
+		if (planet_transfer_fighter_amount_text("1D39",
 		    &parsed_amount, &transfer_error)
 		    || transfer_error.status != YT_RANGE)
 			return false;
@@ -13770,19 +13837,19 @@ check_computer_port_selection(void)
 	size_t index;
 
 	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
-		if (!yt_computer_port_select(cases[index].response, maximum,
+		if (!computer_port_select_text(cases[index].response, maximum,
 		    &selected, &route, NULL)
 		    || route != cases[index].route
 		    || selected != cases[index].selected)
 			return false;
 	}
 	yt_error_clear(&error);
-	if (yt_computer_port_select("1.7014118E+38", maximum, &selected, &route,
+	if (computer_port_select_text("1.7014118E+38", maximum, &selected, &route,
 	    &error) || error.status != YT_RANGE
 	    || strcmp(error.operation, "computer port sector CSNG") != 0)
 		return false;
 	yt_error_clear(&error);
-	if (yt_computer_port_select("1E+9999", maximum, &selected, &route,
+	if (computer_port_select_text("1E+9999", maximum, &selected, &route,
 	    &error) || error.status != YT_RANGE
 	    || strcmp(error.operation, "computer port sector VAL") != 0)
 		return false;
@@ -13811,7 +13878,7 @@ check_computer_path_numeric_boundary(void)
 	uint16_t hops = 0U;
 
 	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
-		if (!yt_computer_path_parse(cases[index].response, &selected,
+		if (!computer_path_parse_text(cases[index].response, &selected,
 		    NULL)
 		    || selected != cases[index].expected)
 			return false;
@@ -13827,18 +13894,18 @@ check_computer_path_numeric_boundary(void)
 	    || !yt_computer_path_wrap_required(75))
 		return false;
 	yt_error_clear(&error);
-	if (yt_computer_path_parse("1.7014118E+38", &selected,
+	if (computer_path_parse_text("1.7014118E+38", &selected,
 	    &error) || error.status != YT_RANGE
 	    || strcmp(error.operation, "computer path sector CSNG") != 0)
 		return false;
 	yt_error_clear(&error);
-	if (yt_computer_path_parse("1E+9999", &selected,
+	if (computer_path_parse_text("1E+9999", &selected,
 	    &error) || error.status != YT_RANGE
 	    || strcmp(error.operation, "computer path sector VAL") != 0)
 		return false;
 	return !yt_computer_path_parse(NULL, &selected, &error)
 	    && error.status == YT_INVALID
-	    && !yt_computer_path_parse("1", NULL, &error);
+	    && !computer_path_parse_text("1", NULL, &error);
 }
 
 static bool
@@ -13868,35 +13935,35 @@ check_computer_avoid_selection(void)
 	int index;
 	size_t transition;
 
-	if (!yt_computer_avoid_select_slot("2.5", 0U, &index,
+	if (!computer_avoid_select_slot_text("2.5", 0U, &index,
 	    &route, NULL)
 	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED
 	    || index != 3
-	    || !yt_computer_avoid_select_slot("3.5", 0U, &index,
+	    || !computer_avoid_select_slot_text("3.5", 0U, &index,
 	    &route, NULL)
 	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED || index != 4
-	    || !yt_computer_avoid_select_slot("", 0U, &index,
+	    || !computer_avoid_select_slot_text("", 0U, &index,
 	    &route, NULL)
 	    || route != YT_COMPUTER_AVOID_SELECTION_INVALID
 	    || index != 0
-	    || !yt_computer_avoid_select_sector(witness, maximum, &selected,
+	    || !computer_avoid_select_sector_text(witness, maximum, &selected,
 	    &route, NULL)
 	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED
 	    || selected != 0x1.00000ap0f
 	    || qb_str_single(formatted, sizeof(formatted), selected) != 9
 	    || strcmp(formatted, " 1.000001") != 0
-	    || !yt_computer_avoid_select_sector("7.5", maximum, &selected,
+	    || !computer_avoid_select_sector_text("7.5", maximum, &selected,
 	    &route, NULL)
 	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED
 	    || selected != 7.5f
-	    || !yt_computer_avoid_select_sector("1D-56", maximum, &selected,
+	    || !computer_avoid_select_sector_text("1D-56", maximum, &selected,
 	    &route, NULL)
 	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED
 	    || selected != 0.0f
-	    || !yt_computer_avoid_select_sector("-1", maximum, &selected,
+	    || !computer_avoid_select_sector_text("-1", maximum, &selected,
 	    &route, NULL)
 	    || route != YT_COMPUTER_AVOID_SELECTION_INVALID
-	    || !yt_computer_avoid_select_sector("2005", maximum, &selected,
+	    || !computer_avoid_select_sector_text("2005", maximum, &selected,
 	    &route, NULL)
 	    || route != YT_COMPUTER_AVOID_SELECTION_INVALID)
 		return false;
@@ -13911,12 +13978,12 @@ check_computer_avoid_selection(void)
 	}
 
 	yt_error_clear(&error);
-	if (yt_computer_avoid_select_slot("0D39", 0U, &index,
+	if (computer_avoid_select_slot_text("0D39", 0U, &index,
 	    &route, &error) || error.status != YT_RANGE
 	    || strcmp(error.operation, "avoid slot VAL") != 0)
 		return false;
 	yt_error_clear(&error);
-	if (yt_computer_avoid_select_sector("1D39", maximum, &selected,
+	if (computer_avoid_select_sector_text("1D39", maximum, &selected,
 	    &route, &error) || error.status != YT_RANGE
 	    || strcmp(error.operation, "avoid sector VAL") != 0)
 		return false;

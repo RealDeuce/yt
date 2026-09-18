@@ -23,6 +23,7 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	static const uint8_t engaged[] = "Autopilot Engaged.";
 	static const uint8_t stop_notice[] = "Ctrl-X to Stop";
 	enum yt_yes_no_answer answer;
+	struct qb_val_result parsed;
 	char response[160];
 	char programmed_moves[YT_COMMAND_SIZE];
 	size_t programmed_moves_length;
@@ -46,11 +47,11 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 		    sizeof(start_prompt) - 1U, "path start prompt", error))
 			return false;
 		if (!session_read_number_command(session, response,
-		    sizeof(response)))
+		    sizeof(response), &parsed))
 			return false;
 		if (response[0] == '\0')
 			return true;
-		if (!yt_computer_path_parse(response, &start_value, error))
+		if (!yt_computer_path_parse(&parsed, &start_value, error))
 			return false;
 		session->navigation.route_start_sector = start_value;
 	}
@@ -64,11 +65,12 @@ yt_session_computer_route(struct yt_session *session, bool autopilot,
 	if (!session_present_timed_paged_row(session, destination_prompt,
 	    sizeof(destination_prompt) - 1U, "path destination prompt", error))
 		return false;
-	if (!session_read_number_command(session, response, sizeof(response)))
+	if (!session_read_number_command(session, response, sizeof(response),
+	    &parsed))
 		return false;
 	if (response[0] == '\0')
 		return true;
-	if (!yt_computer_path_parse(response, &destination_value, error))
+	if (!yt_computer_path_parse(&parsed, &destination_value, error))
 		return false;
 	maximum = (uint16_t)session_sector_count(session);
 	if (destination_value < 1.0f || destination_value > (float)maximum

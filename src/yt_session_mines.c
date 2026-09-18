@@ -209,7 +209,6 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 	enum qb_mbf_status conversion;
 	char response[4096] = {0};
 	char number[64];
-	uint8_t amount_raw[4];
 	uint8_t row[192];
 	float amount;
 	float carried;
@@ -259,22 +258,18 @@ yt_session_command_mines(struct yt_session *session, struct yt_error *error)
 	if (!session_present_timed_paged_row(session, row, row_length,
 	    "sector mine prompt", error))
 		return false;
-	if (!session_read_number_command(session, response, sizeof(response)))
+	if (!session_read_number_command(session, response, sizeof(response),
+	    &parsed))
 		return false;
-	if (response[0] == '\0')
-		amount = 0.0f;
-	else {
-		parsed = qb_val(response);
+	if (response[0] != '\0') {
 		if (!parsed.valid || parsed.overflow)
 			return drop_mines_failure(error, YT_RANGE,
 			    "drop-mines:VAL");
-		amount = (float)parsed.value;
 	}
-	conversion = qb_mbf32_encode(amount, amount_raw);
+	conversion = qb_val_single_or_zero(&parsed, &amount);
 	if (conversion == QB_MBF_OVERFLOW)
 		return drop_mines_failure(error, YT_RANGE,
 		    "drop-mines:amount-csng");
-	amount = qb_mbf32_decode(amount_raw);
 	if (yt_sector_mine_admit(carried, amount) != YT_SECTOR_MINE_ACCEPTED)
 		return true;
 

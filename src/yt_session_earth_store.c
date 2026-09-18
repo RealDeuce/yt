@@ -17,13 +17,12 @@ earth_quantity_input(struct yt_session *session, const char *prompt,
 	    (const uint8_t *)prompt, strlen(prompt),
 	    "Earth purchase quantity prompt", error))
 		return false;
-	if (!session_read_number_command(session, line, sizeof(line)))
+	if (!session_read_number_command(session, line, sizeof(line), &parsed))
 		return false;
 	*blank = line[0] == '\0';
-	parsed = qb_val(line);
 	if (parsed.overflow)
 		return session_range_error(error, "Earth purchase quantity VAL");
-	*value = parsed.valid ? parsed.value : 0.0;
+	*value = qb_val_value_or_zero(&parsed);
 	return true;
 }
 
@@ -501,7 +500,7 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 			return session_range_error(error, "Earth menu VAL");
 		{
 			bool overflow;
-			float selected = (float)(parsed.valid ? parsed.value : 0.0);
+			float selected = (float)qb_val_value_or_zero(&parsed);
 
 			choice = (int)qb_cint(selected, &overflow);
 			if (overflow)

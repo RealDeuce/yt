@@ -205,7 +205,7 @@ yt_session_trade_commodity(struct yt_session *session,
 			if (parsed.overflow)
 				return commodity_error(error,
 				    "commodity trade VAL");
-			quantity = parsed.valid ? (float)floor(parsed.value) : 0.0f;
+			quantity = (float)qb_val_int_or_zero(&parsed);
 		}
 		if (quantity < 1.0f)
 			return true;

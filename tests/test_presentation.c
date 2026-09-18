@@ -8774,6 +8774,7 @@ computer_avoid_accepted_cycle_fixture(bool ansi, bool local_mode,
 	static const uint8_t computer_prompt[] =
 	    "Time: 14:59  Computer command (?=help)? ";
 	struct yt_present_result result;
+	struct qb_val_result parsed = qb_val(sector_response);
 	enum yt_computer_avoid_selection_route route;
 	char accumulator[80] = "";
 	float new_value;
@@ -8781,7 +8782,7 @@ computer_avoid_accepted_cycle_fixture(bool ansi, bool local_mode,
 	bool locked;
 	int row;
 
-	CHECK(yt_computer_avoid_select_sector(sector_response, 2004U,
+	CHECK(yt_computer_avoid_select_sector(&parsed, 2004U,
 	    &new_value, &route, NULL));
 	CHECK(route == YT_COMPUTER_AVOID_SELECTION_ACCEPTED);
 	yt_computer_avoid_transition(old_value, new_value, &locked, &available);

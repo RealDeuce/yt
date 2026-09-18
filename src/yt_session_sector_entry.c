@@ -20,7 +20,6 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 	enum yt_hostile_attack_admission admission;
 	double cached_ship_fighters;
 	float commitment;
-	uint8_t commitment_raw[4];
 
 	if (!session_present_paged_fragment(session, heading, sizeof(heading) - 1U))
 		return false;
@@ -32,14 +31,13 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 	if (!session_present_timed_paged_row(session, prompt, sizeof(prompt) - 1U,
 	    "hostile Attack amount prompt", error))
 		return false;
-	if (!session_read_number_command(session, response, sizeof(response)))
+	if (!session_read_number_command(session, response, sizeof(response),
+	    &parsed))
 		return false;
 	if (response[0] == '\0') {
 		memset(&parsed, 0, sizeof(parsed));
 		parsed.valid = true;
 	}
-	else
-		parsed = qb_val(response);
 	if (!parsed.valid || parsed.overflow) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -48,8 +46,7 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 		}
 		return false;
 	}
-	commitment = (float)parsed.value;
-	status = qb_mbf32_encode(commitment, commitment_raw);
+	status = qb_val_single_or_zero(&parsed, &commitment);
 	if (status == QB_MBF_OVERFLOW) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -58,7 +55,6 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 		}
 		return false;
 	}
-	commitment = qb_mbf32_decode(commitment_raw);
 	admission = yt_hostile_attack_admit((float)cached_ship_fighters,
 	    commitment);
 	if (admission == YT_HOSTILE_ATTACK_TOO_MANY) {

@@ -289,7 +289,6 @@ yt_session_command_move(struct yt_session *session, bool *moved,
 	struct qb_val_result parsed;
 	uint16_t maximum;
 	float target;
-	uint8_t target_raw[4];
 	size_t row_length;
 	size_t slot;
 	bool denied;
@@ -317,18 +316,15 @@ yt_session_command_move(struct yt_session *session, bool *moved,
 			return false;
 		memset(response, 0, sizeof(response));
 		if (!session_read_number_command(session, response,
-		    sizeof(response)))
+		    sizeof(response), &parsed))
 			return false;
 		if (strcmp(response, "M") != 0)
 			break;
 	}
-	parsed = qb_val(response);
 	if (parsed.overflow)
 		return movement_range_error(error, "movement destination VAL");
-	target = (float)(parsed.valid ? parsed.value : 0.0);
-	if (qb_mbf32_encode(target, target_raw) == QB_MBF_OVERFLOW)
+	if (qb_val_single_or_zero(&parsed, &target) == QB_MBF_OVERFLOW)
 		return movement_range_error(error, "movement destination CSNG");
-	target = qb_mbf32_decode(target_raw);
 	maximum = (uint16_t)(session_port_offset(session)
 	    - session_sector_offset(session));
 	if (target < 1.0f || target > (float)maximum)

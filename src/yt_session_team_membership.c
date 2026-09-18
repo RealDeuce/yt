@@ -216,9 +216,8 @@ session_team_join(struct yt_session *session, struct yt_error *error)
 	if (!session_present_timed_paged_row(session, selection_prompt,
 	    sizeof(selection_prompt) - 1U, "team join selection prompt", error))
 		return false;
-	if (!session_read_number_command(session, line, sizeof(line)))
+	if (!session_read_number_command(session, line, sizeof(line), &parsed))
 		return false;
-	parsed = qb_val(line);
 	if (!parsed.valid || parsed.overflow) {
 		if (error != NULL) {
 			error->status = YT_RANGE;

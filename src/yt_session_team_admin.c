@@ -36,7 +36,6 @@ session_team_transfer(struct yt_session *session, struct yt_error *error)
 		char response[160];
 		struct qb_val_result parsed;
 		enum qb_mbf_status conversion;
-		uint8_t amount_raw[4];
 		float amount;
 
 		if (qb_str_double(fighter_text, sizeof(fighter_text),
@@ -60,9 +59,9 @@ session_team_transfer(struct yt_session *session, struct yt_error *error)
 		if (!session_present_timed_paged_row(session, prompt,
 		    sizeof(prompt) - 1U, "team transfer prompt", error))
 			return false;
-		if (!session_read_number_command(session, response, sizeof(response)))
+		if (!session_read_number_command(session, response, sizeof(response),
+		    &parsed))
 			return false;
-		parsed = qb_val(response);
 		if (parsed.overflow) {
 			if (error != NULL) {
 				error->status = YT_RANGE;
@@ -71,8 +70,7 @@ session_team_transfer(struct yt_session *session, struct yt_error *error)
 			}
 			return false;
 		}
-		amount = parsed.valid ? (float)parsed.value : 0.0f;
-		conversion = qb_mbf32_encode(amount, amount_raw);
+		conversion = qb_val_single_or_zero(&parsed, &amount);
 		if (conversion == QB_MBF_OVERFLOW) {
 			if (error != NULL) {
 				error->status = YT_RANGE;
@@ -82,7 +80,6 @@ session_team_transfer(struct yt_session *session, struct yt_error *error)
 			}
 			return false;
 		}
-		amount = qb_mbf32_decode(amount_raw);
 		if (amount < 1.0f)
 			return true;
 		if ((double)amount > initial_fighters) {

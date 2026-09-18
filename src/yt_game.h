@@ -382,10 +382,12 @@ enum yt_computer_port_selection_route {
 	YT_COMPUTER_PORT_SELECTION_INVALID,
 	YT_COMPUTER_PORT_SELECTION_ACCEPTED,
 };
-bool yt_computer_port_select(const char *response, uint16_t maximum,
+bool yt_computer_port_select(const struct qb_val_result *parsed, bool blank,
+    uint16_t maximum,
 	uint16_t *selected, enum yt_computer_port_selection_route *route,
 	struct yt_error *error);
-bool yt_computer_path_parse(const char *response, float *selected,
+bool yt_computer_path_parse(const struct qb_val_result *parsed,
+    float *selected,
 	struct yt_error *error);
 bool yt_computer_path_append_hop(char *scratch, size_t capacity,
 	size_t *length, uint16_t next_sector, uint16_t *hop_count,
@@ -395,11 +397,12 @@ enum yt_computer_avoid_selection_route {
 	YT_COMPUTER_AVOID_SELECTION_INVALID,
 	YT_COMPUTER_AVOID_SELECTION_ACCEPTED,
 };
-bool yt_computer_avoid_select_slot(const char *response,
+bool yt_computer_avoid_select_slot(const struct qb_val_result *parsed,
 	uint8_t conversion_mode, int *index,
 	enum yt_computer_avoid_selection_route *route,
 	struct yt_error *error);
-bool yt_computer_avoid_select_sector(const char *response, uint16_t maximum,
+bool yt_computer_avoid_select_sector(const struct qb_val_result *parsed,
+    uint16_t maximum,
 	float *selected, enum yt_computer_avoid_selection_route *route,
 	struct yt_error *error);
 void yt_computer_avoid_transition(float old_value, float new_value,
@@ -456,7 +459,7 @@ bool yt_planet_landing_sensor_row(float fresh_ground_forces,
     size_t *length);
 bool yt_planet_landing_amount_prompt(float cached_carried_forces,
     uint8_t *prompt, size_t capacity, size_t *length);
-float yt_planet_landing_commitment(const char *response);
+float yt_planet_landing_commitment(const struct qb_val_result *parsed);
 bool yt_planet_landing_commitment_valid(float commitment,
     float cached_carried_forces);
 bool yt_planet_landing_unrest_row(float reduced, float original,
@@ -494,7 +497,7 @@ bool yt_planet_creation_news(const uint8_t *trader_name,
 bool yt_planet_creation_success_row(const uint8_t *planet_name,
     size_t planet_name_length, uint8_t *row, size_t capacity,
     size_t *length);
-float yt_planet_move_destination(const char *response);
+float yt_planet_move_destination(const struct qb_val_result *parsed);
 uint16_t yt_planet_move_add_cost(uint16_t cost);
 void yt_planet_move_sector_overlay(struct yt_sector *sector,
     int planet_link);
@@ -625,7 +628,8 @@ int yt_planet_menu_selector_position(const char *command);
 bool yt_planet_transfer_cargo_empty(const double held[3]);
 bool yt_planet_transfer_fighter_rejected(float amount,
     float cached_fighters);
-bool yt_planet_transfer_fighter_amount(const char *response, float *amount,
+bool yt_planet_transfer_fighter_amount(const struct qb_val_result *parsed,
+    float *amount,
     struct yt_error *error);
 double yt_planet_bank_available(float cached_credits, float cached_bank);
 double yt_planet_bank_remaining(float cached_credits, float cached_bank,

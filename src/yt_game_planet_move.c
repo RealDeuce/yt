@@ -7,16 +7,9 @@
 #include <string.h>
 
 float
-yt_planet_move_destination(const char *response)
+yt_planet_move_destination(const struct qb_val_result *parsed)
 {
-	struct qb_val_result parsed;
-	volatile double integral;
-
-	if (response == NULL)
-		return 0.0f;
-	parsed = qb_val(response);
-	integral = floor(parsed.valid ? parsed.value : 0.0);
-	return (float)integral;
+	return (float)qb_val_int_or_zero(parsed);
 }
 
 uint16_t

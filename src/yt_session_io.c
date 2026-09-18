@@ -206,14 +206,20 @@ session_read_upper_command(struct yt_session *session, char *text, size_t size)
 }
 
 bool
-session_read_number_command(struct yt_session *session, char *text, size_t size)
+session_read_number_command(struct yt_session *session, char *text, size_t size,
+    struct qb_val_result *parsed)
 {
+	if (parsed == NULL)
+		return false;
 	if (!session_read_upper_command(session, text, size))
 		return false;
 	if (strchr(text, 'E') != NULL)
 		text[0] = '\0';
-	return session_store_output_source(session, (const uint8_t *)text,
-	    strlen(text));
+	if (!session_store_output_source(session, (const uint8_t *)text,
+	    strlen(text)))
+		return false;
+	*parsed = qb_val(text);
+	return true;
 }
 
 static bool

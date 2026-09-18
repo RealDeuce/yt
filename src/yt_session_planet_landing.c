@@ -351,6 +351,7 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 	if (permission_denied) {
 		enum yt_yes_no_answer answer;
 		char response[YT_COMMAND_SIZE];
+		struct qb_val_result parsed;
 		float commitment;
 		bool defeated;
 
@@ -381,9 +382,10 @@ yt_session_command_land(struct yt_session *session, bool *enter_sector,
 		if (!session_present_timed_paged_row(session, prompt, prompt_length,
 		    "planet landing commitment prompt", error))
 			return false;
-		if (!session_read_number_command(session, response, sizeof(response)))
+		if (!session_read_number_command(session, response,
+		    sizeof(response), &parsed))
 			return false;
-		commitment = yt_planet_landing_commitment(response);
+		commitment = yt_planet_landing_commitment(&parsed);
 		if (!yt_planet_landing_commitment_valid(commitment,
 		    cached_carried)) {
 			if (enter_sector != NULL)

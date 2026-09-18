@@ -24,9 +24,7 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 	char response[160];
 	char number[64];
 	char row[160];
-	uint8_t desired_raw[4];
 	double available;
-	double desired_integer;
 	float desired;
 	float delta;
 	float remaining;
@@ -63,7 +61,8 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 	    sizeof(prompt) - 1U, "fighter desired-count prompt", error))
 		return false;
 	memset(response, 0, sizeof(response));
-	if (!session_read_number_command(session, response, sizeof(response)))
+	if (!session_read_number_command(session, response, sizeof(response),
+	    &parsed))
 		return false;
 	if (memchr(response, '\0', sizeof(response)) == NULL) {
 		if (error != NULL) {
@@ -75,7 +74,6 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 	}
 	if (response[0] == '\0')
 		return true;
-	parsed = qb_val(response);
 	if (parsed.overflow) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -84,9 +82,7 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 		}
 		return false;
 	}
-	desired_integer = floor(parsed.valid ? parsed.value : 0.0);
-	desired = (float)desired_integer;
-	if (qb_mbf32_encode(desired, desired_raw) == QB_MBF_OVERFLOW) {
+	if (qb_val_int_single_or_zero(&parsed, &desired) == QB_MBF_OVERFLOW) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
 			snprintf(error->operation, sizeof(error->operation), "%s",
@@ -94,7 +90,6 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 		}
 		return false;
 	}
-	desired = qb_mbf32_decode(desired_raw);
 	if (desired < 0.0f)
 		return true;
 	delta = qb_single_subtract(first_sector.fighters, desired);

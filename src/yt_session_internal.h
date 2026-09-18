@@ -201,7 +201,7 @@ bool session_read_command(struct yt_session *session, char *text,
 bool session_read_upper_command(struct yt_session *session, char *text,
     size_t size);
 bool session_read_number_command(struct yt_session *session, char *text,
-    size_t size);
+    size_t size, struct qb_val_result *parsed);
 bool session_confirm(struct yt_session *session, const uint8_t *prompt,
     size_t prompt_length, enum yt_yes_no_answer *answer,
     struct yt_error *error);

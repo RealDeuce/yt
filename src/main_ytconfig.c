@@ -128,7 +128,7 @@ numeric_edit(struct yt_game *game, char key, float *maximum, float *lottery,
 	if (blank && yt_config_scalar_blank_unchanged(scalar))
 		return true;
 	parsed = qb_val(line);
-	value = (float)(parsed.valid ? parsed.value : 0.0);
+	value = (float)qb_val_value_or_zero(&parsed);
 	if (!yt_config_scalar_valid(scalar, value)) {
 		if (!yt_config_compose_scalar_rejection(scalar,
 		    output.final_column, &output))
@@ -175,7 +175,7 @@ edit_genesis(struct yt_game *game, struct yt_error *error)
 	if (line[0] == '\0')
 		return true;
 	parsed = qb_val(line);
-	threshold = (float)(parsed.valid ? parsed.value : 0.0);
+	threshold = (float)qb_val_value_or_zero(&parsed);
 	if (!yt_config_genesis_valid(threshold)) {
 		if (!yt_config_compose_local_beep(output.final_column, &output))
 			return false;
@@ -330,7 +330,7 @@ edit_headquarters(struct yt_game *game, struct yt_error *error)
 	if (line[0] == '\0')
 		return true;
 	parsed = qb_val(line);
-	raw = (float)(parsed.valid ? parsed.value : 0.0);
+	raw = (float)qb_val_value_or_zero(&parsed);
 	if (!yt_config_hq_in_range(raw, upper)) {
 		if (!yt_config_compose_hq_diagnostic(YT_CONFIG_HQ_INVALID,
 		    output.final_column, &output))
@@ -451,7 +451,7 @@ edit_planets(struct yt_game *game, struct yt_error *error)
 			if (!yt_cli_line(entered, sizeof(entered)))
 				return true;
 			parsed = qb_val(entered);
-			raw = (float)(parsed.valid ? parsed.value : 0.0);
+			raw = (float)qb_val_value_or_zero(&parsed);
 			if (raw == 0.0f)
 				continue;
 			if (!yt_config_planet_selection_in_range(raw)) {
@@ -874,7 +874,7 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 				return true;
 			}
 			parsed = qb_val(entered);
-			raw = (float)(parsed.valid ? parsed.value : 0.0);
+			raw = (float)qb_val_value_or_zero(&parsed);
 			if (raw == 0.0f)
 				continue;
 			if (!yt_config_alias_selection_in_range(raw, player_count)) {

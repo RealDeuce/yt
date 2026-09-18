@@ -234,6 +234,7 @@ test_numeric(void)
 	bool overflow;
 	struct qb_val_result value;
 	char rendered[64];
+	float single;
 
 	CHECK(qb_int(-1.2) == -2.0);
 	CHECK(qb_cint(1.5, &overflow) == 2 && !overflow);
@@ -291,6 +292,28 @@ test_numeric(void)
 	CHECK(qb_val("12.5%trailing").value == 12.5);
 	CHECK(qb_val("12.5#trailing").value == 12.5);
 	CHECK(qb_val("12.5!trailing").value == 12.5);
+	value = qb_val("16777217");
+	CHECK(qb_val_value_or_zero(&value) == 16777217.0);
+	CHECK(qb_val_int_or_zero(&value) == 16777217.0);
+	CHECK(qb_val_single_or_zero(&value, &single) == QB_MBF_OK);
+	CHECK(single == 16777216.0f);
+	value = qb_val("-0.1");
+	CHECK(qb_val_int_or_zero(&value) == -1.0);
+	CHECK(qb_val_int_single_or_zero(&value, &single) == QB_MBF_OK);
+	CHECK(single == -1.0f);
+	value = qb_val("not numeric");
+	CHECK(qb_val_value_or_zero(&value) == 0.0);
+	CHECK(qb_val_int_or_zero(&value) == 0.0);
+	CHECK(qb_val_single_or_zero(&value, &single) == QB_MBF_OK);
+	CHECK(single == 0.0f);
+	CHECK(qb_val_int_single_or_zero(&value, &single) == QB_MBF_OK);
+	CHECK(single == 0.0f);
+	CHECK(qb_val_single_or_zero(NULL, &single) == QB_MBF_OK);
+	CHECK(single == 0.0f);
+	CHECK(qb_val_single_or_zero(&value, NULL) == QB_MBF_DOMAIN);
+	value = qb_val("1D39");
+	CHECK(qb_val_single_or_zero(&value, &single) == QB_MBF_OVERFLOW);
+	CHECK(qb_val_int_single_or_zero(&value, &single) == QB_MBF_OVERFLOW);
 	qb_str_double(rendered, sizeof(rendered), 11.0);
 	CHECK(strcmp(rendered, " 11") == 0);
 	qb_str_double(rendered, sizeof(rendered), -11.0);

@@ -223,7 +223,7 @@ yt_input_expand_repeat_with_notice(char *text, size_t text_capacity,
 		result->fault_valid = true;
 		return false;
 	}
-	integer = qb_int(parsed.valid ? parsed.value : 0.0);
+	integer = qb_val_int_or_zero(&parsed);
 	if (qb_mbf64_encode(integer, mbf64) != QB_MBF_OK)
 		return false;
 	count = (float)integer;

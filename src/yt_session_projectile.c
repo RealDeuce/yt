@@ -618,10 +618,7 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 	char response[4096];
 	struct qb_val_result parsed;
 	enum qb_mbf_status conversion;
-	uint8_t target_raw[4];
-	uint8_t amount_raw[4];
 	size_t prompt_length;
-	double integral;
 	float displayed = plasma ? session->player.plasma
 	    : session->player.missiles;
 	uint16_t maximum_sector = (uint16_t)session_sector_count(session);
@@ -658,20 +655,17 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 		    prompt_length, "projectile target prompt", error))
 			return false;
 		if (!session_read_number_command(session, response,
-		    sizeof(response)))
+		    sizeof(response), &parsed))
 			return false;
 		if (response[0] == '\0')
 			return true;
-		parsed = qb_val(response);
 		if (parsed.overflow)
 			return projectile_command_error(error, YT_RANGE,
 			    "projectile target VAL");
-		target = (float)(parsed.valid ? parsed.value : 0.0);
-		conversion = qb_mbf32_encode(target, target_raw);
+		conversion = qb_val_single_or_zero(&parsed, &target);
 		if (conversion == QB_MBF_OVERFLOW)
 			return projectile_command_error(error, YT_RANGE,
 			    "projectile target CSNG");
-		target = qb_mbf32_decode(target_raw);
 		if (target >= 1.0f && target <= (float)maximum_sector)
 			break;
 		if (!session_present_alert(session, invalid_sector,
@@ -683,19 +677,16 @@ yt_session_command_projectile(struct yt_session *session, bool plasma,
 	if (!session_present_timed_paged_row(session, quantity_prompt,
 	    sizeof(quantity_prompt) - 1U, "projectile quantity prompt", error))
 		return false;
-	if (!session_read_number_command(session, response, sizeof(response)))
+	if (!session_read_number_command(session, response, sizeof(response),
+	    &parsed))
 		return false;
-	parsed = qb_val(response);
 	if (parsed.overflow)
 		return projectile_command_error(error, YT_RANGE,
 		    "projectile quantity VAL");
-	integral = floor(parsed.valid ? parsed.value : 0.0);
-	amount = (float)integral;
-	conversion = qb_mbf32_encode(amount, amount_raw);
+	conversion = qb_val_int_single_or_zero(&parsed, &amount);
 	if (conversion == QB_MBF_OVERFLOW)
 		return projectile_command_error(error, YT_RANGE,
 		    "projectile quantity CSNG");
-	amount = qb_mbf32_decode(amount_raw);
 	if (amount < 1.0f)
 		return true;
 	if (amount > available)

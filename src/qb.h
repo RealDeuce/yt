@@ -56,6 +56,12 @@ int32_t qb_cint(double value, bool *overflow);
 int32_t qb_cint_mode(double value, uint8_t mode, bool *overflow);
 struct qb_val_result qb_val(const char *text);
 struct qb_val_result qb_val_n(const uint8_t *text, size_t length);
+double qb_val_value_or_zero(const struct qb_val_result *parsed);
+double qb_val_int_or_zero(const struct qb_val_result *parsed);
+enum qb_mbf_status qb_val_single_or_zero(const struct qb_val_result *parsed,
+    float *value);
+enum qb_mbf_status qb_val_int_single_or_zero(
+    const struct qb_val_result *parsed, float *value);
 
 size_t qb_ltrim(char *text);
 size_t qb_rtrim(char *text);

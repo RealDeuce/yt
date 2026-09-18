@@ -116,7 +116,6 @@ yt_session_bribe_deployed(struct yt_session *session,
 	char response[4096] = {0};
 	struct qb_val_result parsed;
 	enum qb_mbf_status conversion;
-	uint8_t raw[4];
 	size_t row_length;
 	size_t prompt_length = 0U;
 	double cached_defenders;
@@ -210,11 +209,11 @@ yt_session_bribe_deployed(struct yt_session *session,
 	if (!session_present_timed_paged_row(session, prompt, prompt_length,
 	    "Mercenary Bribe offer prompt", error))
 		return false;
-	if (!session_read_number_command(session, response, sizeof(response)))
+	if (!session_read_number_command(session, response, sizeof(response),
+	    &parsed))
 		return false;
 	if (response[0] == '\0')
 		return true;
-	parsed = qb_val(response);
 	if (!parsed.valid || parsed.overflow) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -223,8 +222,7 @@ yt_session_bribe_deployed(struct yt_session *session,
 		}
 		return false;
 	}
-	offer = (float)parsed.value;
-	conversion = qb_mbf32_encode(offer, raw);
+	conversion = qb_val_single_or_zero(&parsed, &offer);
 	if (conversion == QB_MBF_OVERFLOW) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -233,7 +231,6 @@ yt_session_bribe_deployed(struct yt_session *session,
 		}
 		return false;
 	}
-	offer = qb_mbf32_decode(raw);
 	if (!yt_random_next(&session->door->game.random, &draw, error))
 		return false;
 	threshold = yt_bribe_offer_threshold(cached_defenders, draw);

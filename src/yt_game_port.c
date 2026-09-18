@@ -7,37 +7,31 @@
 #include <string.h>
 
 bool
-yt_computer_port_select(const char *response, uint16_t maximum,
+yt_computer_port_select(const struct qb_val_result *parsed, bool blank,
+    uint16_t maximum,
     uint16_t *selected, enum yt_computer_port_selection_route *route,
     struct yt_error *error)
 {
-	struct qb_val_result parsed;
-	uint8_t raw[4];
-	volatile float candidate;
 	float converted;
 	bool above;
 	bool below;
 	enum qb_mbf_status status;
 
-	if (response == NULL || selected == NULL || route == NULL)
+	if (parsed == NULL || selected == NULL || route == NULL)
 		return yt_game_error(error, YT_INVALID,
 		    "computer port selection arguments");
 	*selected = 0U;
-	if (response[0] == '\0') {
+	if (blank) {
 		*route = YT_COMPUTER_PORT_SELECTION_EMPTY;
 		return true;
 	}
-	parsed = qb_val(response);
-	if (parsed.overflow)
+	if (parsed->overflow)
 		return yt_game_error(error, YT_RANGE,
 		    "computer port sector VAL");
-	candidate = (float)qb_int(parsed.valid ? parsed.value : 0.0);
-	status = qb_mbf32_encode(candidate, raw);
+	status = qb_val_int_single_or_zero(parsed, &converted);
 	if (status == QB_MBF_OVERFLOW)
 		return yt_game_error(error, YT_RANGE,
 		    "computer port sector CSNG");
-	converted = status == QB_MBF_UNDERFLOW ? 0.0f
-	    : qb_mbf32_decode(raw);
 	above = converted > (float)maximum;
 	below = converted < 1.0f;
 	*route = (above | below) ? YT_COMPUTER_PORT_SELECTION_INVALID
@@ -48,32 +42,21 @@ yt_computer_port_select(const char *response, uint16_t maximum,
 }
 
 bool
-yt_computer_path_parse(const char *response, float *selected,
+yt_computer_path_parse(const struct qb_val_result *parsed, float *selected,
     struct yt_error *error)
 {
-	struct qb_val_result parsed;
-	uint8_t integer_raw[8];
-	uint8_t selected_raw[4];
 	enum qb_mbf_status status;
 
-	if (response == NULL || selected == NULL)
+	if (parsed == NULL || selected == NULL)
 		return yt_game_error(error, YT_INVALID,
 		    "computer path parse arguments");
-	parsed = qb_val(response);
-	if (parsed.overflow)
+	if (parsed->overflow)
 		return yt_game_error(error, YT_RANGE,
 		    "computer path sector VAL");
-	status = qb_mbf64_floor_raw(parsed.mbf, integer_raw);
-	if (status != QB_MBF_OK)
-		return yt_game_error(error, YT_RANGE,
-		    "computer path sector INT");
-	status = qb_mbf32_from_mbf64_raw(integer_raw, selected_raw);
+	status = qb_val_int_single_or_zero(parsed, selected);
 	if (status == QB_MBF_OVERFLOW || status == QB_MBF_DOMAIN)
 		return yt_game_error(error, YT_RANGE,
 		    "computer path sector CSNG");
-	if (status == QB_MBF_UNDERFLOW)
-		memset(selected_raw, 0, 4U);
-	*selected = qb_mbf32_decode(selected_raw);
 	return true;
 }
 
@@ -115,44 +98,29 @@ yt_computer_path_wrap_required(int local_column)
 	return local_column > 74;
 }
 
-static bool
-computer_avoid_csng(const struct qb_val_result *parsed, float *selected,
-    struct yt_error *error, const char *operation)
-{
-	uint8_t raw[4];
-	enum qb_mbf_status status;
-
-	status = qb_mbf32_from_mbf64_raw(parsed->mbf, raw);
-	if (status == QB_MBF_OVERFLOW || status == QB_MBF_DOMAIN)
-		return yt_game_error(error, YT_RANGE, operation);
-	*selected = status == QB_MBF_UNDERFLOW ? 0.0f
-	    : qb_mbf32_decode(raw);
-	return true;
-}
-
 bool
-yt_computer_avoid_select_slot(const char *response, uint8_t conversion_mode,
+yt_computer_avoid_select_slot(const struct qb_val_result *parsed,
+    uint8_t conversion_mode,
     int *index,
     enum yt_computer_avoid_selection_route *route, struct yt_error *error)
 {
-	struct qb_val_result parsed;
 	float selected;
 	bool overflow;
+	enum qb_mbf_status status;
 
-	if (response == NULL || index == NULL
+	if (parsed == NULL || index == NULL
 	    || route == NULL)
 		return yt_game_error(error, YT_INVALID,
 		    "avoid slot arguments");
 	selected = 0.0f;
 	*index = 0;
 	*route = YT_COMPUTER_AVOID_SELECTION_INVALID;
-	parsed = qb_val(response);
-	if (parsed.overflow)
+	if (parsed->overflow)
 		return yt_game_error(error, YT_RANGE,
 		    "avoid slot VAL");
-	if (!computer_avoid_csng(&parsed, &selected, error,
-	    "avoid slot CSNG"))
-		return false;
+	status = qb_val_single_or_zero(parsed, &selected);
+	if (status == QB_MBF_OVERFLOW || status == QB_MBF_DOMAIN)
+		return yt_game_error(error, YT_RANGE, "avoid slot CSNG");
 	if (selected < 1.0f || selected > 30.0f)
 		return true;
 	*index = (int)qb_cint_mode((double)selected, conversion_mode,
@@ -165,24 +133,24 @@ yt_computer_avoid_select_slot(const char *response, uint8_t conversion_mode,
 }
 
 bool
-yt_computer_avoid_select_sector(const char *response, uint16_t maximum,
+yt_computer_avoid_select_sector(const struct qb_val_result *parsed,
+    uint16_t maximum,
     float *selected, enum yt_computer_avoid_selection_route *route,
     struct yt_error *error)
 {
-	struct qb_val_result parsed;
+	enum qb_mbf_status status;
 
-	if (response == NULL || selected == NULL || route == NULL)
+	if (parsed == NULL || selected == NULL || route == NULL)
 		return yt_game_error(error, YT_INVALID,
 		    "avoid sector arguments");
 	*selected = 0.0f;
 	*route = YT_COMPUTER_AVOID_SELECTION_INVALID;
-	parsed = qb_val(response);
-	if (parsed.overflow)
+	if (parsed->overflow)
 		return yt_game_error(error, YT_RANGE,
 		    "avoid sector VAL");
-	if (!computer_avoid_csng(&parsed, selected, error,
-	    "avoid sector CSNG"))
-		return false;
+	status = qb_val_single_or_zero(parsed, selected);
+	if (status == QB_MBF_OVERFLOW || status == QB_MBF_DOMAIN)
+		return yt_game_error(error, YT_RANGE, "avoid sector CSNG");
 	if (*selected < 0.0f || *selected > (float)maximum)
 		return true;
 	*route = YT_COMPUTER_AVOID_SELECTION_ACCEPTED;

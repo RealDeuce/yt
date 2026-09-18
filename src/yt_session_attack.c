@@ -373,10 +373,9 @@ yt_session_command_attack(struct yt_session *session, bool *enter_sector,
 		    "direct Attack commitment prompt", error))
 			return false;
 		if (!session_read_number_command(session, response,
-		    sizeof(response)))
+		    sizeof(response), &parsed))
 			return false;
-		parsed = qb_val(response);
-		if ((parsed.valid ? parsed.value : 0.0) < 1.0)
+		if (qb_val_value_or_zero(&parsed) < 1.0)
 			return true;
 		return yt_session_attack_player(session, record, parsed.value,
 		    error);

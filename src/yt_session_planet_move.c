@@ -280,6 +280,7 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	static const uint8_t confirmation[] = "Move the planet? (Y/[N])";
 	static const uint8_t engaged[] = "Planet thrusters engaged.";
 	static const uint8_t moving[] = "Moving to sector:";
+	struct qb_val_result parsed;
 	char response[160];
 	char number[64];
 	uint8_t row[512];
@@ -308,9 +309,10 @@ yt_session_planet_move(struct yt_session *session, bool *enter_sector,
 	    sizeof(destination_prompt) - 1U,
 	    "planet Thrusters destination prompt", error))
 		return false;
-	if (!session_read_number_command(session, response, sizeof(response)))
+	if (!session_read_number_command(session, response, sizeof(response),
+	    &parsed))
 		return false;
-	destination_value = yt_planet_move_destination(response);
+	destination_value = yt_planet_move_destination(&parsed);
 	if (destination_value == (float)start)
 		return session_present_alert(session, same_sector,
 		    sizeof(same_sector) - 1U,

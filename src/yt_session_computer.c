@@ -87,6 +87,7 @@ yt_session_computer_port_report(struct yt_session *session,
 	uint16_t maximum = (uint16_t)session_sector_count(session);
 	int cached_team = session->player.team;
 	char response[80];
+	struct qb_val_result parsed;
 	uint16_t selected;
 	int sector_number;
 	struct yt_sector sector;
@@ -105,7 +106,9 @@ yt_session_computer_port_report(struct yt_session *session,
 			return false;
 		if (!session_read_command(session, response, sizeof(response)))
 			return false;
-		if (!yt_computer_port_select(response, maximum, &selected,
+		parsed = qb_val(response);
+		if (!yt_computer_port_select(&parsed, response[0] == '\0', maximum,
+		    &selected,
 		    &route, error))
 			return false;
 		if (route == YT_COMPUTER_PORT_SELECTION_EMPTY)
@@ -192,13 +195,12 @@ yt_session_computer_planet_report(struct yt_session *session,
 		    sizeof(prompt) - 1U, "computer planet sector prompt", error))
 			return false;
 		if (!session_read_number_command(session, response,
-		    sizeof(response)))
+		    sizeof(response), &parsed))
 			return false;
-		parsed = qb_val(response);
 		if (parsed.overflow)
 			return session_computer_error(error, YT_RANGE,
 			    "computer planet sector VAL");
-		selected = parsed.valid ? (float)qb_int(parsed.value) : 0.0f;
+		selected = (float)qb_val_int_or_zero(&parsed);
 		if (selected < 1.0f)
 			return true;
 		if (selected > (float)maximum) {

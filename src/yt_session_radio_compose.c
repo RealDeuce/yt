@@ -118,11 +118,11 @@ radio_edit_draft(struct yt_session *session, char lines[21][76],
 	    (const uint8_t *)prompt, strlen(prompt),
 	    "radio edit line prompt", error))
 		return false;
-	if (!session_read_number_command(session, response, sizeof(response)))
+	if (!session_read_number_command(session, response, sizeof(response),
+	    &parsed))
 		return false;
 	if (response[0] == '\0')
 		return true;
-	parsed = qb_val(response);
 	if (parsed.overflow) {
 		if (error != NULL) {
 			error->status = YT_RANGE;

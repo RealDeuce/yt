@@ -33,7 +33,6 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 		bool captain = false;
 		struct qb_val_result parsed;
 		enum qb_mbf_status conversion;
-		uint8_t numeric_raw[4];
 		uint8_t prompt[sizeof(prompt_prefix) - 1U
 		    + sizeof(session->time.text) + sizeof(prompt_body) - 1U];
 		size_t prompt_length = 0;
@@ -113,8 +112,7 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 			}
 			return false;
 		}
-		numeric = (float)parsed.value;
-		conversion = qb_mbf32_encode(numeric, numeric_raw);
+		conversion = qb_val_single_or_zero(&parsed, &numeric);
 		if (conversion == QB_MBF_OVERFLOW) {
 			if (error != NULL) {
 				error->status = YT_RANGE;
@@ -123,7 +121,6 @@ yt_session_command_team(struct yt_session *session, struct yt_error *error)
 			}
 			return false;
 		}
-		numeric = qb_mbf32_decode(numeric_raw);
 		captain_cint = captain ? -1 : 0;
 		invalid = yt_team_choice_rejected(numeric, session->player.team,
 		    captain_cint);

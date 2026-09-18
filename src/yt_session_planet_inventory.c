@@ -188,13 +188,13 @@ yt_session_planet_take_one(struct yt_session *session, int logical_planet,
 	    (const uint8_t *)prompt, strlen(prompt),
 	    "planet Take One amount prompt", error))
 		return false;
-	if (!session_read_number_command(session, response, sizeof(response)))
+	if (!session_read_number_command(session, response, sizeof(response),
+	    &parsed))
 		return false;
 	if (response[0] == '\0')
 		quantity = maximum;
 	else {
-		parsed = qb_val(response);
-		quantity = (float)floor(parsed.valid ? parsed.value : 0.0);
+		quantity = (float)qb_val_int_or_zero(&parsed);
 	}
 	if ((double)quantity > floor(session->planet.economy.quantity[item])
 	    || quantity < 0.0f) {

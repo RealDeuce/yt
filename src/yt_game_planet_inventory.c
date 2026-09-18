@@ -292,27 +292,22 @@ yt_planet_transfer_fighter_rejected(float amount, float cached_fighters)
 }
 
 bool
-yt_planet_transfer_fighter_amount(const char *response, float *amount,
+yt_planet_transfer_fighter_amount(const struct qb_val_result *parsed,
+    float *amount,
     struct yt_error *error)
 {
-	struct qb_val_result parsed;
-	uint8_t raw[4];
-	volatile float candidate;
 	enum qb_mbf_status status;
 
-	if (response == NULL || amount == NULL)
+	if (parsed == NULL || amount == NULL)
 		return yt_game_error(error, YT_INVALID,
 		    "planet Transfer fighter amount arguments");
-	parsed = qb_val(response);
-	if (parsed.overflow)
+	if (parsed->overflow)
 		return yt_game_error(error, YT_RANGE,
 		    "planet Transfer fighter VAL");
-	candidate = (float)(parsed.valid ? parsed.value : 0.0);
-	status = qb_mbf32_encode(candidate, raw);
+	status = qb_val_single_or_zero(parsed, amount);
 	if (status == QB_MBF_OVERFLOW)
 		return yt_game_error(error, YT_RANGE,
 		    "planet Transfer fighter CSNG");
-	*amount = status == QB_MBF_UNDERFLOW ? 0.0f : qb_mbf32_decode(raw);
 	return true;
 }
 

@@ -1190,3 +1190,62 @@ qb_val(const char *text)
 	return qb_val_n((const uint8_t *)text,
 	    text == NULL ? 0U : strlen(text));
 }
+
+double
+qb_val_value_or_zero(const struct qb_val_result *parsed)
+{
+	return parsed != NULL && parsed->valid ? parsed->value : 0.0;
+}
+
+double
+qb_val_int_or_zero(const struct qb_val_result *parsed)
+{
+	return qb_int(qb_val_value_or_zero(parsed));
+}
+
+static enum qb_mbf_status
+val_raw_single(const uint8_t source[8], float *value)
+{
+	uint8_t raw[4];
+	enum qb_mbf_status status;
+
+	if (source == NULL || value == NULL)
+		return QB_MBF_DOMAIN;
+	status = qb_mbf32_from_mbf64_raw(source, raw);
+	if (status == QB_MBF_OK)
+		*value = qb_mbf32_decode(raw);
+	else if (status == QB_MBF_UNDERFLOW)
+		*value = 0.0f;
+	return status;
+}
+
+enum qb_mbf_status
+qb_val_single_or_zero(const struct qb_val_result *parsed, float *value)
+{
+	static const uint8_t zero[8];
+
+	if (value == NULL)
+		return QB_MBF_DOMAIN;
+	if (parsed != NULL && parsed->overflow)
+		return QB_MBF_OVERFLOW;
+	return val_raw_single(parsed != NULL && parsed->valid
+	    ? parsed->mbf : zero, value);
+}
+
+enum qb_mbf_status
+qb_val_int_single_or_zero(const struct qb_val_result *parsed, float *value)
+{
+	static const uint8_t zero[8];
+	uint8_t integral[8];
+	enum qb_mbf_status status;
+
+	if (value == NULL)
+		return QB_MBF_DOMAIN;
+	if (parsed != NULL && parsed->overflow)
+		return QB_MBF_OVERFLOW;
+	status = qb_mbf64_floor_raw(parsed != NULL && parsed->valid
+	    ? parsed->mbf : zero, integral);
+	if (status != QB_MBF_OK)
+		return status;
+	return val_raw_single(integral, value);
+}

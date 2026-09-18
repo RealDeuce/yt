@@ -52,12 +52,12 @@ yt_session_planet_garrison(struct yt_session *session, int logical_planet,
 	if (!session_present_timed_paged_row(session, prompt, prompt_length,
 	    "planet garrison prompt", error))
 		return false;
-	if (!session_read_number_command(session, response, sizeof(response)))
+	if (!session_read_number_command(session, response, sizeof(response),
+	    &parsed))
 		return false;
 	if (response[0] == '\0')
 		return true;
-	parsed = qb_val(response);
-	desired = (float)floor(parsed.valid ? parsed.value : 0.0);
+	desired = (float)qb_val_int_or_zero(&parsed);
 	after = yt_planet_garrison_after(session->player.ground_forces,
 	    desired, old_garrison);
 	if (desired < 0.0f || after < 0.0f)
@@ -145,14 +145,14 @@ yt_session_planet_bank(struct yt_session *session, int logical_planet,
 	if (!session_present_timed_paged_row(session, (const uint8_t *)prompt,
 	    strlen(prompt), "planet Bank amount prompt", error))
 		return false;
-	if (!session_read_number_command(session, response, sizeof(response)))
+	if (!session_read_number_command(session, response, sizeof(response),
+	    &parsed))
 		return false;
 	if (response[0] == '\0')
 		return true;
-	parsed = qb_val(response);
 	if (parsed.overflow)
 		return session_range_error(error, "planet Bank amount VAL");
-	target = qb_int(parsed.valid ? parsed.value : 0.0);
+	target = qb_val_int_or_zero(&parsed);
 	if (target < 0.0)
 		return session_present_alert(session, savings, sizeof(savings) - 1U,
 		    "planet Bank savings error", error);
@@ -375,6 +375,7 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 		char number[64];
 		char prompt[160];
 		char response[160];
+		struct qb_val_result parsed;
 		float cached_fighters = session->player.fighters;
 		float amount;
 
@@ -393,11 +394,12 @@ yt_session_planet_transfer(struct yt_session *session, int logical_planet,
 		    (const uint8_t *)prompt, strlen(prompt),
 		    "planet Transfer fighter prompt", error))
 			return false;
-		if (!session_read_number_command(session, response, sizeof(response)))
+		if (!session_read_number_command(session, response,
+		    sizeof(response), &parsed))
 			return false;
 		if (response[0] == '\0')
 			return true;
-		if (!yt_planet_transfer_fighter_amount(response, &amount, error))
+		if (!yt_planet_transfer_fighter_amount(&parsed, &amount, error))
 			return false;
 		if (yt_planet_transfer_fighter_rejected(amount, cached_fighters))
 			return true;
@@ -541,13 +543,13 @@ yt_session_planet_productivity(struct yt_session *session,
 	if (!session_present_timed_paged_row(session, prompt,
 	    sizeof(prompt) - 1U, "planet Productivity spend prompt", error))
 		return false;
-	if (!session_read_number_command(session, response, sizeof(response)))
+	if (!session_read_number_command(session, response, sizeof(response),
+	    &parsed))
 		return false;
-	parsed = qb_val(response);
 	if (parsed.overflow)
 		return session_range_error(error,
 		    "planet Productivity amount VAL");
-	spend = qb_int(parsed.valid ? parsed.value : 0.0);
+	spend = qb_val_int_or_zero(&parsed);
 	if (spend < 1.0)
 		return true;
 	if (spend > (double)session->player.credits)

@@ -26,6 +26,7 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 	static const uint8_t heading_two[] = "Current sectors to avoid are:";
 	static const uint8_t slot_prompt[] =
 	    "Enter the number of the slot to change [1 - 30]: ";
+	struct qb_val_result parsed;
 	char response[80];
 	uint16_t maximum;
 	float new_value;
@@ -77,9 +78,10 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 	if (!session_present_timed_paged_row(session, slot_prompt,
 	    sizeof(slot_prompt) - 1U, "avoid slot prompt", error))
 		return false;
-	if (!session_read_number_command(session, response, sizeof(response)))
+	if (!session_read_number_command(session, response, sizeof(response),
+	    &parsed))
 		return false;
-	if (!yt_computer_avoid_select_slot(response,
+	if (!yt_computer_avoid_select_slot(&parsed,
 	    session->presentation.conversion_mode, &slot,
 	    &route, error))
 		return false;
@@ -105,10 +107,10 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 		    "avoid sector prompt", error))
 			return false;
 		if (!session_read_number_command(session, response,
-		    sizeof(response)))
+		    sizeof(response), &parsed))
 			return false;
 	}
-	if (!yt_computer_avoid_select_sector(response, maximum, &new_value,
+	if (!yt_computer_avoid_select_sector(&parsed, maximum, &new_value,
 	    &route, error))
 		return false;
 	if (route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED)
