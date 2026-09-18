@@ -532,8 +532,8 @@ test_rmt_config_normalization(void)
 	preserved.genesis_ports = 20.0f;
 	preserved.headquarters = 85.0f;
 	preserved.maximum_holds = 5.0f;
-	preserved.marker = 123.0f;
-	preserved.maximum_planets = 456.0f;
+	preserved.marker = 123U;
+	preserved.maximum_planets = 255U;
 	defaults = preserved;
 	yt_rmt_normalize_config(&preserved, false);
 	if (strcmp(preserved.scoreboard, "SCORE.TXT") != 0
@@ -553,8 +553,8 @@ test_rmt_config_normalization(void)
 	    || preserved.genesis_ports != 20.0f
 	    || preserved.headquarters != 85.0f
 	    || preserved.maximum_holds != 5.0f
-	    || preserved.marker != 6324.0f
-	    || preserved.maximum_planets != 0.0f)
+	    || preserved.marker != 6324U
+	    || preserved.maximum_planets != 0U)
 		return false;
 	defaults.scoreboard[0] = '\0';
 	defaults.local_screen = true;
@@ -567,8 +567,8 @@ test_rmt_config_normalization(void)
 	    || defaults.lottery_plays != 1.0f
 	    || defaults.genesis_ports != 200.0f
 	    || defaults.maximum_holds != 50.0f
-	    || defaults.marker != 6324.0f
-	    || defaults.maximum_planets != 0.0f)
+	    || defaults.marker != 6324U
+	    || defaults.maximum_planets != 0U)
 		return false;
 	defaults.local_screen = false;
 	defaults.genesis_ports = 19.0f;
@@ -938,7 +938,7 @@ rmt_small_config(struct yt_config *config)
 	config->genesis_ports = 200.0f;
 	config->headquarters = 85.0f;
 	config->maximum_holds = 1000.0f;
-	config->marker = 6324.0f;
+	config->marker = 6324U;
 }
 
 static bool

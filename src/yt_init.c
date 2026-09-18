@@ -42,8 +42,8 @@ yt_rmt_normalize_config(struct yt_config *config, bool local_mode)
 	if (config->maximum_holds < 5.0f
 	    || config->maximum_holds > 1000.0f)
 		config->maximum_holds = 50.0f;
-	config->marker = 6324.0f;
-	config->maximum_planets = 0.0f;
+	config->marker = 6324U;
+	config->maximum_planets = 0U;
 }
 
 bool
@@ -147,8 +147,8 @@ yt_initializer_prepare_yt(const struct yt_clock *clock,
 	preparation->config.lottery_plays = 5.0f;
 	preparation->config.genesis_ports = 300.0f;
 	preparation->config.maximum_holds = 1000.0f;
-	preparation->config.marker = 6324.0f;
-	preparation->config.maximum_planets = 0.0f;
+	preparation->config.marker = 6324U;
+	preparation->config.maximum_planets = 0U;
 	preparation->today = yt_date_serial(&maintenance_date,
 	    preparation->config.epoch_year, NULL);
 	preparation->config.last_maintenance = (float)(preparation->today - 1);
@@ -185,9 +185,9 @@ make_config_record(struct yt_config *config, size_t stored_scoreboard_length)
 	yt_record_set_number(&config->record, YT_F105, config->genesis_ports);
 	yt_record_set_number(&config->record, YT_F117, config->headquarters);
 	yt_record_set_number(&config->record, YT_F121, config->maximum_holds);
-	yt_record_set_number(&config->record, YT_F125, config->marker);
+	yt_record_set_number(&config->record, YT_F125, (float)config->marker);
 	yt_record_set_number(&config->record, YT_F129,
-	    config->maximum_planets);
+	    (float)config->maximum_planets);
 	config->scoreboard_length = stored_scoreboard_length;
 }
 
@@ -549,7 +549,8 @@ write_world_database(struct yt_database *database,
 			    config->headquarters);
 			yt_record_set_number(&record, YT_F121,
 			    config->maximum_holds);
-			yt_record_set_number(&record, YT_F125, config->marker);
+			yt_record_set_number(&record, YT_F125,
+			    (float)config->marker);
 		}
 		if (!yt_database_write(database,
 		    (size_t)yt_port_basic_record(config, logical),
@@ -771,8 +772,8 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			config.lottery_plays = 5.0f;
 			config.genesis_ports = 300.0f;
 			config.maximum_holds = 1000.0f;
-			config.marker = 6324.0f;
-			config.maximum_planets = 0.0f;
+			config.marker = 6324U;
+			config.maximum_planets = 0U;
 			world.sectors = YT_INIT_SECTORS;
 			world.ports = YT_INIT_PORTS;
 		}

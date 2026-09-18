@@ -45,9 +45,9 @@ test_config_encode(struct yt_config *config)
 	yt_record_set_number_if_changed(&config->record, YT_F121,
 	    config->maximum_holds);
 	yt_record_set_number_if_changed(&config->record, YT_F125,
-	    config->marker);
+	    (float)config->marker);
 	yt_record_set_number_if_changed(&config->record, YT_F129,
-	    config->maximum_planets);
+	    (float)config->maximum_planets);
 }
 
 bool

@@ -373,7 +373,7 @@ main(void)
 	    || game.config.lottery_plays != 5.0f
 	    || game.config.genesis_ports != 300.0f
 	    || game.config.maximum_holds != 1000.0f
-	    || game.config.marker != 6324.0f) {
+	    || game.config.marker != 6324U) {
 		failure = "initialized configuration defaults differ";
 		goto close;
 	}

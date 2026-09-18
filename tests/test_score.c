@@ -140,8 +140,8 @@ check_startup_configuration_transaction(void)
 	source.genesis_ports = 300.0f;
 	source.headquarters = 3.0f;
 	source.maximum_holds = 1000.0f;
-	source.marker = 6324.0f;
-	source.maximum_planets = 0.0f;
+	source.marker = 6324U;
+	source.maximum_planets = 0U;
 	test_config_encode(&source);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, path, YT_OPEN_CREATE, &error)
@@ -165,7 +165,7 @@ check_startup_configuration_transaction(void)
 	    || strcmp(game.config.scoreboard, "YTSCORE.ASC") != 0
 	    || game.config.scoreboard_length != 11U
 	    || game.config.headquarters != 3.0f
-	    || game.config.maximum_planets != 100.0f
+	    || game.config.maximum_planets != 100U
 	    || game.config.maximum_holds != 1000.0f
 	    || game.config.turns_per_day != 500.0f
 	    || local_screen
@@ -3882,8 +3882,8 @@ check_maintenance_config_defaults(void)
 	config.genesis_ports = 300.0f;
 	config.headquarters = 99.0f;
 	config.maximum_holds = 9.9999f;
-	config.marker = 6324.0f;
-	config.maximum_planets = 100.0f;
+	config.marker = 6324U;
+	config.maximum_planets = 100U;
 	before = config;
 	yt_config_normalize_maintenance(&config);
 	if (memcmp(config.scoreboard, "NUL\0", 4U) != 0

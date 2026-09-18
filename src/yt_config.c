@@ -4,11 +4,34 @@
 #include <math.h>
 #include <string.h>
 
+static bool
+config_decode_unsigned(const struct yt_record *record, size_t offset,
+    uint32_t maximum, uint32_t *result, struct yt_error *error)
+{
+	float value = yt_record_get_number(record, offset);
+
+	if (!isfinite(value) || value < 0.0f || value > (float)maximum
+	    || floorf(value) != value) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			error->system_error = 0;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "decode configuration integer");
+			(void)snprintf(error->path, sizeof(error->path), "%s",
+			    "YTDATA.DAT");
+		}
+		return false;
+	}
+	*result = (uint32_t)value;
+	return true;
+}
+
 bool
 yt_config_decode(struct yt_config *config, const struct yt_record *record,
     struct yt_error *error)
 {
 	size_t stored_length;
+	uint32_t integer;
 
 	memset(config, 0, sizeof(*config));
 	config->record = *record;
@@ -35,8 +58,14 @@ yt_config_decode(struct yt_config *config, const struct yt_record *record,
 	config->genesis_ports = yt_record_get_number(record, YT_F105);
 	config->headquarters = yt_record_get_number(record, YT_F117);
 	config->maximum_holds = yt_record_get_number(record, YT_F121);
-	config->marker = yt_record_get_number(record, YT_F125);
-	config->maximum_planets = yt_record_get_number(record, YT_F129);
+	if (!config_decode_unsigned(record, YT_F125, UINT16_MAX, &integer,
+	    error))
+		return false;
+	config->marker = (uint16_t)integer;
+	if (!config_decode_unsigned(record, YT_F129, UINT8_MAX, &integer,
+	    error))
+		return false;
+	config->maximum_planets = (uint8_t)integer;
 	return true;
 }
 

@@ -24,8 +24,8 @@ struct yt_config {
 	float genesis_ports;
 	float headquarters;
 	float maximum_holds;
-	float marker;
-	float maximum_planets;
+	uint16_t marker;
+	uint8_t maximum_planets;
 };
 
 enum yt_config_hq_route {

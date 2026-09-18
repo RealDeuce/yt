@@ -60,8 +60,8 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 	if (config->lottery_plays < 0.0f || config->lottery_plays > 9.0f) {
 		config->lottery_plays = 3.0f;
 	}
-	if (config->maximum_planets == 0.0f) {
-		config->maximum_planets = 100.0f;
+	if (config->maximum_planets == 0U) {
+		config->maximum_planets = 100U;
 	}
 	if (config->maximum_holds < 5.0f || config->maximum_holds > 1000.0f) {
 		config->maximum_holds = 1000.0f;
