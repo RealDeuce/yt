@@ -58,7 +58,9 @@ yt_cli_line(char *text, size_t size)
 {
 	size_t length;
 
-	if (size == 0 || fgets(text, (int)size, stdin) == NULL)
+	if (size == 0)
+		return false;
+	if (fgets(text, (int)size, stdin) == NULL)
 		return false;
 	length = strlen(text);
 	while (length > 0 && (text[length - 1] == '\n'
@@ -77,7 +79,9 @@ yt_cli_key(void)
 	struct termios raw;
 	int key;
 
-	if (!isatty(STDIN_FILENO) || tcgetattr(STDIN_FILENO, &saved) != 0)
+	if (!isatty(STDIN_FILENO))
+		return getchar();
+	if (tcgetattr(STDIN_FILENO, &saved) != 0)
 		return getchar();
 	raw = saved;
 	raw.c_lflag &= (tcflag_t)~(ICANON | ECHO);

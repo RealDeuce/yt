@@ -80,9 +80,12 @@ maintenance_stdout_line(void *context, const uint8_t *line, size_t length,
     struct yt_error *error)
 {
 	(void)context;
-	if (length > 0 && fwrite(line, 1, length, stdout) != length) {
-		set_error(error, YT_IO_ERROR, "write maintenance screen", "stdout");
-		return false;
+	if (length > 0) {
+		if (fwrite(line, 1, length, stdout) != length) {
+			set_error(error, YT_IO_ERROR, "write maintenance screen",
+			    "stdout");
+			return false;
+		}
 	}
 	if (fputc('\n', stdout) == EOF) {
 		set_error(error, YT_IO_ERROR, "write maintenance screen", "stdout");
@@ -96,9 +99,12 @@ maintenance_stdout_semi(void *context, const uint8_t *text, size_t length,
     struct yt_error *error)
 {
 	(void)context;
-	if (length != 0U && fwrite(text, 1, length, stdout) != length) {
-		set_error(error, YT_IO_ERROR, "write maintenance screen", "stdout");
-		return false;
+	if (length != 0U) {
+		if (fwrite(text, 1, length, stdout) != length) {
+			set_error(error, YT_IO_ERROR, "write maintenance screen",
+			    "stdout");
+			return false;
+		}
 	}
 	return true;
 }

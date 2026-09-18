@@ -255,14 +255,16 @@ write_local_bytes(struct yt_rmt_door *door, const uint8_t *bytes,
 		}
 		return false;
 	}
-	if (length != 0U && fwrite(bytes, 1U, length, stdout) != length) {
-		if (error != NULL) {
-			error->status = YT_IO_ERROR;
-			error->system_error = 0;
-			snprintf(error->operation, sizeof(error->operation),
-			    "write RMT-INIT console");
+	if (length != 0U) {
+		if (fwrite(bytes, 1U, length, stdout) != length) {
+			if (error != NULL) {
+				error->status = YT_IO_ERROR;
+				error->system_error = 0;
+				snprintf(error->operation, sizeof(error->operation),
+				    "write RMT-INIT console");
+			}
+			return false;
 		}
-		return false;
 	}
 	return true;
 }

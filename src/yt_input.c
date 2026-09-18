@@ -137,9 +137,11 @@ yt_input_source_ready(struct yt_input *input, bool remote, bool *ready)
 
 	if (input == NULL || ready == NULL)
 		return false;
-	if (!input->pending_valid && od_get_input(&event, 0, GETIN_RAW)) {
-		input_value(&event, &input->pending);
-		input->pending_valid = true;
+	if (!input->pending_valid) {
+		if (od_get_input(&event, 0, GETIN_RAW)) {
+			input_value(&event, &input->pending);
+			input->pending_valid = true;
+		}
 	}
 	*ready = input->pending_valid && input->pending.remote == remote;
 	return true;

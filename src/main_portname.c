@@ -12,14 +12,16 @@ write_output(void *context, const uint8_t *data, size_t length,
 {
 	FILE *stream = context;
 
-	if (length != 0U && fwrite(data, 1U, length, stream) != length) {
-		if (error != NULL) {
-			error->status = YT_IO_ERROR;
-			error->system_error = 0;
-			snprintf(error->operation, sizeof(error->operation),
-			    "write PORTNAME console");
+	if (length != 0U) {
+		if (fwrite(data, 1U, length, stream) != length) {
+			if (error != NULL) {
+				error->status = YT_IO_ERROR;
+				error->system_error = 0;
+				snprintf(error->operation, sizeof(error->operation),
+				    "write PORTNAME console");
+			}
+			return false;
 		}
-		return false;
 	}
 	return true;
 }
