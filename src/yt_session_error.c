@@ -14,8 +14,11 @@ attach_database_get_fault(struct yt_session *session, struct yt_error *error,
 	uint16_t basic_error =
 	    session->door->game.database.last_get_basic_error;
 
-	if (basic_error == 0U
-	    || !yt_error_attach_basic_fault_number(error, site, basic_error))
+	if (basic_error == 0U) {
+		(void)yt_error_attach_basic_fault(error, site);
+		return;
+	}
+	if (!yt_error_attach_basic_fault_number(error, site, basic_error))
 		(void)yt_error_attach_basic_fault(error, site);
 }
 
@@ -26,9 +29,10 @@ attach_database_put_fault(struct yt_session *session, struct yt_error *error,
 	uint16_t basic_error =
 	    session->door->game.database.last_put_basic_error;
 
-	if (basic_error != 0U
-	    && !yt_error_attach_basic_fault_number(error, site, basic_error))
-		(void)yt_error_attach_basic_fault(error, site);
+	if (basic_error != 0U) {
+		if (!yt_error_attach_basic_fault_number(error, site, basic_error))
+			(void)yt_error_attach_basic_fault(error, site);
+	}
 }
 bool
 session_present_forced_local_line(const uint8_t *text, size_t length,
@@ -91,8 +95,9 @@ session_commit_shared_terminal(struct yt_session *session,
 		case YT_SHARED_ERROR_SESSION_AND_NEWS:
 			if (!session_present_text(session, event->data,
 			    event->length, SESSION_PRESENT_LINE,
-			    "shared error session row", error)
-			    || !yt_news_append_bytes(event->data,
+			    "shared error session row", error))
+				return false;
+			if (!yt_news_append_bytes(event->data,
 			    event->length, error))
 				return false;
 			break;
@@ -139,8 +144,9 @@ session_route_basic_fault(struct yt_session *session, struct yt_error *error)
 			return SESSION_FAULT_HANDLER_FAILED;
 		if (projection.disposition == YT_BASIC_FAULT_RESUME_GAMEPLAY)
 			return SESSION_FAULT_RESUME_GAMEPLAY;
-		if (!yt_clock_read(&session->door->game.clock, &date_now, error)
-		    || !yt_clock_read(&session->door->game.clock, &time_now,
+		if (!yt_clock_read(&session->door->game.clock, &date_now, error))
+			return SESSION_FAULT_HANDLER_FAILED;
+		if (!yt_clock_read(&session->door->game.clock, &time_now,
 		    error))
 			return SESSION_FAULT_HANDLER_FAILED;
 		yt_format_date(&date_now, date);
@@ -154,8 +160,9 @@ session_route_basic_fault(struct yt_session *session, struct yt_error *error)
 		/* The session row completes before ERRORS.DOR is opened. */
 		if (!session_present_text(session, projection.main.action,
 		    projection.main.action_length, SESSION_PRESENT_LINE,
-		    "main error fatal row", error)
-		    || !yt_main_error_append_fatal(&projection.main, error))
+		    "main error fatal row", error))
+			return SESSION_FAULT_HANDLER_FAILED;
+		if (!yt_main_error_append_fatal(&projection.main, error))
 			return SESSION_FAULT_HANDLER_FAILED;
 	}
 	else {
