@@ -45,17 +45,23 @@ maintenance_write_wanderer_rebuild(struct yt_game *game,
 		goto range;
 	for (index = 0; index < 3; ++index) {
 		if (!yt_record_set_number(&planet->record,
-		    production_offsets[index], 5000.0f)
-		    || !yt_record_set_number(&planet->record,
+		    production_offsets[index], 5000.0f))
+			goto range;
+		if (!yt_record_set_number(&planet->record,
 		    stock_offsets[index], 0.0f))
 			goto range;
 	}
-	if (!yt_record_set_number(&planet->record, YT_F69, 0.0f)
-	    || !yt_record_set_number(&planet->record, YT_F73, 0.0f)
-	    || !yt_record_set_number(&planet->record, YT_F77, 0.0f)
-	    || !yt_record_set_number(&planet->record, YT_F85, 12.0f)
-	    || !yt_record_set_number(&planet->record, YT_F117, 250000.0f)
-	    || !yt_record_set_number(&planet->record, YT_F125, 0.0f))
+	if (!yt_record_set_number(&planet->record, YT_F69, 0.0f))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F73, 0.0f))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F77, 0.0f))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F85, 12.0f))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F117, 250000.0f))
+		goto range;
+	if (!yt_record_set_number(&planet->record, YT_F125, 0.0f))
 		goto range;
 	return yt_database_write(&game->database,
 	    (size_t)yt_planet_basic_record(&game->config, 1),
@@ -71,8 +77,11 @@ maintenance_write_wanderer_planet(struct yt_game *game,
     struct yt_planet *planet, struct yt_error *error)
 {
 	if (!yt_record_set_number(&planet->record, YT_F73,
-	    (float)planet->owner)
-	    || !yt_record_set_number(&planet->record, YT_F117, planet->bank)) {
+	    (float)planet->owner)) {
+		set_error(error, YT_RANGE, "encode Wanderer planet", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_record_set_number(&planet->record, YT_F117, planet->bank)) {
 		set_error(error, YT_RANGE, "encode Wanderer planet", "YTDATA.DAT");
 		return false;
 	}
@@ -104,8 +113,11 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	sector_count = (int)(game->config.port_offset
 	    - game->config.sector_offset);
 	if (sector_count < 1
-	    || game->config.total_records - game->config.planet_offset < 1.0f
-	    || !yt_maintenance_compose_wanderer_phase(blank,
+	    || game->config.total_records - game->config.planet_offset < 1.0f) {
+		set_error(error, YT_RANGE, "maintain Wanderer", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_maintenance_compose_wanderer_phase(blank,
 	    blank_length, false, &output)) {
 		set_error(error, YT_RANGE, "maintain Wanderer", "YTDATA.DAT");
 		return false;
@@ -129,21 +141,26 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	}
 	if (removed_sector == 0) {
 		if (!yt_current_date_serial(&game->clock, game->config.epoch_year,
-		    &today, NULL,
-		    error)
-		    || !yt_maintenance_compose_wanderer_phase(blank,
+		    &today, NULL, error))
+			return false;
+		if (!yt_maintenance_compose_wanderer_phase(blank,
 		    blank_length, true, &output))
 			return false;
 		if (!line_output(line_context, output.rows[2].data,
-		    output.rows[2].length, error)
-		    || !yt_news_append_bytes(output.rows[2].data,
-		    output.rows[2].length, error)
-		    || !yt_game_read_planet(game, 1, &planet, error)
-		    || !maintenance_write_wanderer_rebuild(game, &planet, today,
-		    error)
-		    || !line_output(line_context, output.rows[3].data,
-		    output.rows[3].length, error)
-		    || !yt_news_append_bytes(output.rows[3].data,
+		    output.rows[2].length, error))
+			return false;
+		if (!yt_news_append_bytes(output.rows[2].data,
+		    output.rows[2].length, error))
+			return false;
+		if (!yt_game_read_planet(game, 1, &planet, error))
+			return false;
+		if (!maintenance_write_wanderer_rebuild(game, &planet, today,
+		    error))
+			return false;
+		if (!line_output(line_context, output.rows[3].data,
+		    output.rows[3].length, error))
+			return false;
+		if (!yt_news_append_bytes(output.rows[3].data,
 		    output.rows[3].length, error))
 			return false;
 	}
@@ -162,8 +179,9 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 			break;
 	}
 	sector.planet = 1;
-	if (!maintenance_write_wanderer_sector(game, logical, &sector, error)
-	    || !yt_game_read_planet(game, 1, &planet, error))
+	if (!maintenance_write_wanderer_sector(game, logical, &sector, error))
+		return false;
+	if (!yt_game_read_planet(game, 1, &planet, error))
 		return false;
 	planet.owner = 0;
 	if (planet.bank == 0.0f)
