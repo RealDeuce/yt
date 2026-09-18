@@ -10,7 +10,7 @@
 bool
 yt_game_load_startup_configuration(struct yt_game *game, const char *path,
     bool local_mode, struct yt_player_cache *player_cache,
-    int disruption_sectors[2], bool *local_screen, struct yt_error *error)
+    uint16_t disruption_sectors[2], bool *local_screen, struct yt_error *error)
 {
 	struct yt_config *config;
 	int basic;
@@ -96,20 +96,16 @@ yt_game_load_startup_configuration(struct yt_game *game, const char *path,
 	}
 	for (index = 0U; index < 2U; ++index) {
 		float draw;
-		float difference;
-		float span;
+		uint16_t span;
 		float product;
-		float integral;
+		uint16_t selected;
 
 		if (!yt_random_next(&game->random, &draw, error))
 			return false;
-		difference = qb_single_subtract((float)config->port_offset,
-		    (float)config->sector_offset);
-		span = qb_single_subtract(difference, 2.0f);
-		product = qb_single_multiply(draw, span);
-		integral = floorf(product);
-		disruption_sectors[index] =
-		    (int)qb_single_add(integral, 2.0f);
+		span = config->port_offset - config->sector_offset - 2U;
+		product = qb_single_multiply(draw, (float)span);
+		selected = (uint16_t)floorf(product) + 2U;
+		disruption_sectors[index] = selected;
 	}
 	return true;
 }

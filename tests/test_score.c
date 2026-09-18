@@ -110,7 +110,7 @@ check_startup_configuration_transaction(void)
 	struct yt_player_cache cache;
 	struct yt_record persisted;
 	struct yt_error error;
-	int disruption_sectors[2] = {0, 0};
+	uint16_t disruption_sectors[2] = {0, 0};
 	bool local_screen = true;
 	struct startup_random random = {0U};
 	int record;

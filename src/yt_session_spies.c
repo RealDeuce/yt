@@ -127,7 +127,7 @@ yt_session_spy_sweep(struct yt_session *session, struct yt_error *error)
 	    "The spy detected the shimmering of a cloaking device!";
 	static const uint8_t ship_heading[] = "Other Ships: ";
 	static const uint8_t fighter_heading[] = "Fighters in sector:";
-	int disruption_sectors[2] = {
+	uint16_t disruption_sectors[2] = {
 		session->disruption_sectors[0],
 		session->disruption_sectors[1]
 	};

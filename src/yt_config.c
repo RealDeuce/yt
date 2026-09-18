@@ -125,8 +125,8 @@ yt_config_headquarters_relocate(struct yt_database *database,
 	int old_logical;
 	int32_t converted;
 	float captured_candidate_fighters;
-	float candidate_planet;
-	float candidate_fighter_owner;
+	uint8_t candidate_planet;
+	int8_t candidate_fighter_owner;
 	float merged_fighters;
 	uint8_t planet_link;
 
@@ -146,12 +146,9 @@ yt_config_headquarters_relocate(struct yt_database *database,
 	    (size_t)yt_sector_basic_record(config, candidate_logical),
 	    &candidate_initial, error))
 		return false;
-	candidate_planet = yt_record_get_number(&candidate_initial, YT_F93);
-	converted = qb_cint((double)candidate_planet, &overflow);
-	if (overflow)
-		return config_hq_error(error, YT_RANGE,
-		    "YTCONFIG Headquarters planet link");
-	if (converted != 0) {
+	candidate_planet = (uint8_t)yt_record_get_number(&candidate_initial,
+	    YT_F93);
+	if (candidate_planet != 0U) {
 		*route = YT_CONFIG_HQ_ROUTE_OCCUPIED;
 		return true;
 	}
@@ -161,9 +158,9 @@ yt_config_headquarters_relocate(struct yt_database *database,
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters fighters");
-	candidate_fighter_owner = yt_record_get_number(&candidate_initial,
-	    YT_F85);
-	if (converted != 0 && candidate_fighter_owner != -1.0f) {
+	candidate_fighter_owner = (int8_t)yt_record_get_number(
+	    &candidate_initial, YT_F85);
+	if (converted != 0 && candidate_fighter_owner != -1) {
 		*route = YT_CONFIG_HQ_ROUTE_OCCUPIED;
 		return true;
 	}

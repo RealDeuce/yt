@@ -239,9 +239,9 @@ uint16_t
 yt_emergency_warp_destination(float draw, uint16_t sector_count)
 {
 	volatile float product = draw * (float)sector_count;
-	volatile float integral = floorf(product);
+	uint16_t selected = (uint16_t)floorf(product);
 
-	return (uint16_t)integral + 1U;
+	return selected + 1U;
 }
 
 float

@@ -37,7 +37,7 @@ struct yt_player {
 
 bool yt_game_load_startup_configuration(struct yt_game *game,
     const char *path, bool local_mode, struct yt_player_cache *player_cache,
-    int disruption_sectors[2], bool *local_screen,
+    uint16_t disruption_sectors[2], bool *local_screen,
     struct yt_error *error);
 
 struct yt_sector {

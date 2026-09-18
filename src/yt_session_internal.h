@@ -109,7 +109,7 @@ struct yt_session {
 	struct session_combat_state combat;
 	float market_bases[3];
 	struct session_planet_state planet;
-	int disruption_sectors[2];
+	uint16_t disruption_sectors[2];
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_player_name_length;
 	struct yt_player_cache player_cache;

@@ -218,18 +218,19 @@ plasma_route_run(struct yt_session *session,
 			if (next_hop == session->disruption_sectors[0]
 			    || next_hop == session->disruption_sectors[1]) {
 				float draw;
-				float span;
+				uint16_t span;
+				uint16_t selected;
 
 				*origin = (float)next_hop;
 				route->origin = *origin;
 				if (!yt_random_next(&session->door->game.random, &draw,
 				    error))
 					return false;
-				span = qb_single_subtract(
-				    (float)session_port_offset(session),
-				    (float)session_sector_offset(session));
-				*destination = floorf(qb_single_add(qb_single_multiply(draw, span),
-				    1.0f));
+				span = (uint16_t)(session_port_offset(session)
+				    - session_sector_offset(session));
+				selected = (uint16_t)floorf(qb_single_add(
+				    qb_single_multiply(draw, (float)span), 1.0f));
+				*destination = (float)selected;
 				route->destination = *destination;
 				if (!session_present_text(session, NULL, 0U,
 				    SESSION_PRESENT_LINE, "plasma route line", error))
