@@ -13688,7 +13688,7 @@ check_port_market_update(void)
 	static const float production[3] = {5.0f, 10.0f, 15.0f};
 	static const float expected_capacity[3] = {105.0f, 210.0f, 315.0f};
 	static const float expected_production[3] = {10.5f, 21.0f, 31.5f};
-	static const float expected_price[3] = {32.0f, 8.0f, 66.0f};
+	static const uint8_t expected_price[3] = {32U, 8U, 66U};
 	struct yt_port_market_state state;
 	struct yt_record expected;
 	struct yt_error error;
@@ -13756,19 +13756,19 @@ check_computer_port_selection(void)
 	static const struct {
 		const char *response;
 		enum yt_computer_port_selection_route route;
-		float selected;
+		uint16_t selected;
 	} cases[] = {
-		{"", YT_COMPUTER_PORT_SELECTION_EMPTY, 0.0f},
-		{"2e0", YT_COMPUTER_PORT_SELECTION_ACCEPTED, 2.0f},
-		{"2.9", YT_COMPUTER_PORT_SELECTION_ACCEPTED, 2.0f},
-		{"-0.1", YT_COMPUTER_PORT_SELECTION_INVALID, -1.0f},
-		{"E", YT_COMPUTER_PORT_SELECTION_INVALID, 0.0f},
-		{"2005", YT_COMPUTER_PORT_SELECTION_INVALID, 2005.0f},
+		{"", YT_COMPUTER_PORT_SELECTION_EMPTY, 0U},
+		{"2e0", YT_COMPUTER_PORT_SELECTION_ACCEPTED, 2U},
+		{"2.9", YT_COMPUTER_PORT_SELECTION_ACCEPTED, 2U},
+		{"-0.1", YT_COMPUTER_PORT_SELECTION_INVALID, 0U},
+		{"E", YT_COMPUTER_PORT_SELECTION_INVALID, 0U},
+		{"2005", YT_COMPUTER_PORT_SELECTION_INVALID, 0U},
 	};
 	struct yt_error error;
 	enum yt_computer_port_selection_route route;
 	uint16_t maximum = 2004U;
-	float selected;
+	uint16_t selected;
 	size_t index;
 
 	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
@@ -13870,17 +13870,17 @@ check_computer_avoid_selection(void)
 	int index;
 	size_t transition;
 
-	if (!yt_computer_avoid_select_slot("2.5", 0U, &selected, &index,
+	if (!yt_computer_avoid_select_slot("2.5", 0U, &index,
 	    &route, NULL)
 	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED
-	    || selected != 2.5f || index != 3
-	    || !yt_computer_avoid_select_slot("3.5", 0U, &selected, &index,
+	    || index != 3
+	    || !yt_computer_avoid_select_slot("3.5", 0U, &index,
 	    &route, NULL)
 	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED || index != 4
-	    || !yt_computer_avoid_select_slot("", 0U, &selected, &index,
+	    || !yt_computer_avoid_select_slot("", 0U, &index,
 	    &route, NULL)
 	    || route != YT_COMPUTER_AVOID_SELECTION_INVALID
-	    || selected != 0.0f || index != 0
+	    || index != 0
 	    || !yt_computer_avoid_select_sector(witness, maximum, &selected,
 	    &route, NULL)
 	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED
@@ -13913,7 +13913,7 @@ check_computer_avoid_selection(void)
 	}
 
 	yt_error_clear(&error);
-	if (yt_computer_avoid_select_slot("0D39", 0U, &selected, &index,
+	if (yt_computer_avoid_select_slot("0D39", 0U, &index,
 	    &route, &error) || error.status != YT_RANGE
 	    || strcmp(error.operation, "avoid slot VAL") != 0)
 		return false;
@@ -13923,7 +13923,7 @@ check_computer_avoid_selection(void)
 	    || strcmp(error.operation, "avoid sector VAL") != 0)
 		return false;
 	yt_error_clear(&error);
-	return !yt_computer_avoid_select_slot(NULL, 0U, &selected, &index,
+	return !yt_computer_avoid_select_slot(NULL, 0U, &index,
 	    &route, &error) && error.status == YT_INVALID
 	    && !yt_computer_avoid_select_sector(NULL, 1U, &selected, &route,
 	    &error);

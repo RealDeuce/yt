@@ -104,7 +104,7 @@ test_zero_capacity_trade(void)
 	session.active_player_record = 2;
 	market.port_physical_record = 2057U;
 	market.port.factor[0] = 60.0f;
-	market.price[0] = 20.0f;
+	market.price[0] = 20U;
 	CHECK(qb_mbf64_encode(0.0, market.capacity_raw[0]) == QB_MBF_OK);
 	yt_record_blank(&player.record);
 	player.holds = 35.0f;

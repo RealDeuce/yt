@@ -72,11 +72,11 @@ yt_present_text(const struct yt_initializer_options *options,
 
 bool
 yt_present_number(const struct yt_initializer_options *options,
-    float value, enum yt_init_output_entry entry,
+    uint16_t value, enum yt_init_output_entry entry,
     struct yt_error *error)
 {
 	char text[32];
-	int length = qb_str_single(text, sizeof(text), value);
+	int length = qb_str_single(text, sizeof(text), (float)value);
 
 	if (length < 0 || (size_t)length >= sizeof(text)) {
 		set_error(error, YT_RANGE, "format YT-INIT number", "");
@@ -89,12 +89,12 @@ yt_present_number(const struct yt_initializer_options *options,
 
 bool
 yt_present_str_number_line(const struct yt_initializer_options *options,
-    const char *label, float value, struct yt_error *error)
+    const char *label, uint16_t value, struct yt_error *error)
 {
 	uint8_t payload[192];
 	char number[32];
 	size_t label_length = strlen(label);
-	int number_length = qb_str_single(number, sizeof(number), value);
+	int number_length = qb_str_single(number, sizeof(number), (float)value);
 
 	if (number_length < 0
 	    || label_length + (size_t)number_length > sizeof(payload)) {

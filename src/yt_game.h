@@ -383,7 +383,7 @@ enum yt_computer_port_selection_route {
 	YT_COMPUTER_PORT_SELECTION_ACCEPTED,
 };
 bool yt_computer_port_select(const char *response, uint16_t maximum,
-	float *selected, enum yt_computer_port_selection_route *route,
+	uint16_t *selected, enum yt_computer_port_selection_route *route,
 	struct yt_error *error);
 bool yt_computer_path_parse(const char *response, float *selected,
 	struct yt_error *error);
@@ -396,7 +396,7 @@ enum yt_computer_avoid_selection_route {
 	YT_COMPUTER_AVOID_SELECTION_ACCEPTED,
 };
 bool yt_computer_avoid_select_slot(const char *response,
-	uint8_t conversion_mode, float *selected, int *index,
+	uint8_t conversion_mode, int *index,
 	enum yt_computer_avoid_selection_route *route,
 	struct yt_error *error);
 bool yt_computer_avoid_select_sector(const char *response, uint16_t maximum,
@@ -567,7 +567,7 @@ struct yt_port_market_state {
 	float base_price[3];
 	uint8_t capacity_raw[3][8];
 	uint8_t price_raw[3][4];
-	float price[3];
+	uint8_t price[3];
 };
 bool yt_port_market_update(struct yt_port_market_state *state,
 	struct yt_error *error);
@@ -858,7 +858,7 @@ struct yt_nearest_market {
 	float factor[3];
 	int16_t stored_day;
 	float stored_minute;
-	float price[3];
+	uint8_t price[3];
 };
 
 bool yt_nearest_market_project(struct yt_nearest_market *market,

@@ -116,14 +116,14 @@ nearest_filter(const struct nearest_scan *scan, bool member)
 }
 
 static bool
-nearest_price_cell(float price, char result[4])
+nearest_price_cell(uint8_t price, char result[4])
 {
 	char number[64];
 	char source[65];
 	size_t length;
 	size_t amount;
 	size_t padding;
-	int rendered = qb_str_single(number, sizeof(number), price);
+	int rendered = qb_str_single(number, sizeof(number), (float)price);
 
 	if (rendered < 0)
 		return false;

@@ -87,7 +87,7 @@ yt_session_computer_port_report(struct yt_session *session,
 	uint16_t maximum = (uint16_t)session_sector_count(session);
 	int cached_team = session->player.team;
 	char response[80];
-	float selected;
+	uint16_t selected;
 	int sector_number;
 	struct yt_sector sector;
 	bool denied;
@@ -127,7 +127,7 @@ yt_session_computer_port_report(struct yt_session *session,
 				return false;
 		}
 	}
-	sector_number = (int)selected;
+	sector_number = selected;
 	if (!session_read_sector_at_fault(session, sector_number, &sector,
 	    YT_BASIC_FAULT_PORT_SELECTED_SECTOR_GET, error))
 		return false;

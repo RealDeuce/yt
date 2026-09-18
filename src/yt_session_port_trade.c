@@ -15,7 +15,7 @@ struct commodity_trade_terms {
 	double displayed_hold;
 	double credits;
 	float factor;
-	float price;
+	uint8_t price;
 	float free_holds;
 	float maximum;
 	bool port_sells;
@@ -100,11 +100,11 @@ commodity_prepare(const struct yt_port_market_state *market,
 			    "commodity trade cached quantity CSNG");
 		terms->maximum = qb_mbf32_decode(single_raw);
 	}
-	if ((double)floorf(qb_single_multiply(terms->price,
+	if ((double)floorf(qb_single_multiply((float)terms->price,
 	    terms->maximum)) > terms->credits) {
 		double affordable;
 
-		if (terms->price == 0.0f)
+		if (terms->price == 0U)
 			return commodity_error(error,
 			    "commodity trade credit/price division");
 		affordable = qb_double_divide(terms->credits,
@@ -283,7 +283,7 @@ yt_session_trade_commodity(struct yt_session *session,
 		break;
 	}
 	total = floorf(qb_single_add(
-	    qb_single_multiply(terms.price, quantity), 0.5f));
+	    qb_single_multiply((float)terms.price, quantity), 0.5f));
 	if (qb_str_single(first, sizeof(first), quantity) < 0)
 		return false;
 	if (snprintf(row, sizeof(row), "Agreed,%s units.", first) < 0)

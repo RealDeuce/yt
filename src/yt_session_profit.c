@@ -44,25 +44,9 @@ profit_single(float value, float *result, struct yt_error *error,
 }
 
 static bool
-profit_add(float left, float right, float *result, struct yt_error *error,
-    const char *operation)
-{
-	return profit_single(qb_single_add(left, right), result, error,
-	    operation);
-}
-
-static bool
-profit_sub(float left, float right, float *result, struct yt_error *error,
-    const char *operation)
-{
-	return profit_single(qb_single_subtract(left, right), result, error,
-	    operation);
-}
-
-static bool
 profit_project(struct yt_session *session, const struct profit_report *report,
     const struct yt_port *port, struct yt_nearest_market *market,
-    float prices[4], struct yt_error *error)
+    uint8_t prices[4], struct yt_error *error)
 {
 	int today;
 	int adjusted_year;
@@ -83,7 +67,7 @@ profit_project(struct yt_session *session, const struct profit_report *report,
 	if (!yt_nearest_market_project(market, port, report->base_price,
 	    current_day, timer_seconds, error))
 		return false;
-	prices[0] = 0.0f;
+	prices[0] = 0U;
 	prices[1] = market->price[0];
 	prices[2] = market->price[1];
 	prices[3] = market->price[2];
@@ -134,13 +118,13 @@ profit_class_text(int commodity_class)
 }
 
 static bool
-profit_right_four(uint8_t result[4], float value, bool integer)
+profit_right_four(uint8_t result[4], uint16_t value, bool integer)
 {
 	char number[64];
 	uint8_t source[68];
 	int rendered = integer
-	    ? qb_str_integer(number, sizeof(number), (int16_t)(int)value)
-	    : qb_str_single(number, sizeof(number), value);
+	    ? qb_str_integer(number, sizeof(number), (int16_t)value)
+	    : qb_str_single(number, sizeof(number), (float)value);
 	size_t length;
 	size_t amount;
 
@@ -159,8 +143,8 @@ profit_right_four(uint8_t result[4], float value, bool integer)
 static bool
 profit_compose_row(struct yt_session *session, uint16_t source_number,
     uint16_t target_number, const struct yt_port *source_port,
-    const struct yt_port *target_port, const float source_price[4],
-    const float target_price[4], uint8_t row[36], struct yt_error *error)
+    const struct yt_port *target_port, const uint8_t source_price[4],
+    const uint8_t target_price[4], uint8_t row[36], struct yt_error *error)
 {
 	static const uint8_t arrows[3][7] = {
 		{'E', 'q', 'u', ' ', '-', '>', ' '},
@@ -170,9 +154,9 @@ profit_compose_row(struct yt_session *session, uint16_t source_number,
 	static const uint8_t labels[3][3] = {
 		{'E', 'q', 'u'}, {'O', 'r', 'g'}, {'O', 'r', 'e'},
 	};
-	float source_leg;
-	float target_leg;
-	float profit;
+	uint16_t source_leg;
+	uint16_t target_leg;
+	uint16_t profit;
 	int source_index = profit_price_index(source_port->commodity_class);
 	int target_index = profit_price_index(target_port->commodity_class);
 	int source_text = profit_class_text(source_port->commodity_class);
@@ -182,28 +166,20 @@ profit_compose_row(struct yt_session *session, uint16_t source_number,
 	int rendered;
 	size_t length = 0U;
 
-	if (!profit_sub(source_price[source_index], target_price[source_index],
-	    &source_leg, error, "profit source leg"))
-		return false;
-	if (!profit_single(fabsf(source_leg), &source_leg, error,
-	    "profit source ABS"))
-		return false;
-	if (!profit_sub(target_price[target_index], source_price[target_index],
-	    &target_leg, error, "profit target leg"))
-		return false;
-	if (!profit_single(fabsf(target_leg), &target_leg, error,
-	    "profit target ABS"))
-		return false;
-	if (!profit_add(source_leg, target_leg, &profit, error,
-	    "profit spread"))
-		return false;
+	source_leg = source_price[source_index] > target_price[source_index]
+	    ? (uint16_t)(source_price[source_index] - target_price[source_index])
+	    : (uint16_t)(target_price[source_index] - source_price[source_index]);
+	target_leg = target_price[target_index] > source_price[target_index]
+	    ? (uint16_t)(target_price[target_index] - source_price[target_index])
+	    : (uint16_t)(source_price[target_index] - target_price[target_index]);
+	profit = source_leg + target_leg;
 	profit_pair_color(session, source_port->commodity_class,
 	    target_port->commodity_class);
-	if (!profit_right_four(row + length, (float)source_number, false))
+	if (!profit_right_four(row + length, source_number, false))
 		return profit_error(error, YT_RANGE, "profit source formatting");
 	length += 4U;
 	row[length++] = ',';
-	if (!profit_right_four(row + length, (float)target_number, true))
+	if (!profit_right_four(row + length, target_number, true))
 		return profit_error(error, YT_RANGE, "profit target formatting");
 	length += 4U;
 	row[length++] = ' ';
@@ -213,7 +189,7 @@ profit_compose_row(struct yt_session *session, uint16_t source_number,
 	length += 3U;
 	memcpy(row + length, " @ Profit of", 12U);
 	length += 12U;
-	rendered = qb_str_single(number, sizeof(number), profit);
+	rendered = qb_str_single(number, sizeof(number), (float)profit);
 	if (rendered < 0 || (size_t)rendered + 3U > sizeof(field))
 		return profit_error(error, YT_RANGE, "profit value formatting");
 	memcpy(field, number, (size_t)rendered);
@@ -266,7 +242,7 @@ static bool
 profit_emit_pair(struct yt_session *session, struct profit_report *report,
     uint16_t source_number, uint16_t target_number,
     const struct yt_port *source_port, const struct yt_port *target_port,
-    const float source_price[4], const float target_price[4],
+    const uint8_t source_price[4], const uint8_t target_price[4],
     bool *keep_going, struct yt_error *error)
 {
 	static const uint8_t separator[] = {' ', 0xba, ' '};
@@ -317,7 +293,7 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 	struct yt_sector sector;
 	struct yt_port source_port;
 	struct yt_nearest_market source_market;
-	float source_prices[4];
+	uint8_t source_prices[4];
 	int current_sector_record =
 	    session->navigation.current_sector_physical_record;
 	uint16_t display_source = (uint16_t)(current_sector_record
@@ -356,7 +332,7 @@ profit_adjacent(struct yt_session *session, struct profit_report *report,
 		struct yt_sector target_sector;
 		struct yt_port target_port;
 		struct yt_nearest_market target_market;
-		float target_prices[4];
+		uint8_t target_prices[4];
 		int target_record;
 		int target = warps[slot];
 		bool keep_going;
@@ -410,7 +386,7 @@ profit_global(struct yt_session *session, struct profit_report *report,
 		struct yt_sector sector;
 		struct yt_port source_port;
 		struct yt_nearest_market source_market;
-		float source_prices[4];
+		uint8_t source_prices[4];
 		int physical_record;
 		int warps[6];
 		size_t slot;
@@ -436,7 +412,7 @@ profit_global(struct yt_session *session, struct profit_report *report,
 			struct yt_sector target_sector;
 			struct yt_port target_port;
 			struct yt_nearest_market target_market;
-			float target_prices[4];
+			uint8_t target_prices[4];
 			int target = warps[slot];
 			bool keep_going;
 

@@ -150,14 +150,14 @@ randomize_sector(struct yt_init_world *world, int sector,
 						    destination_text,
 						    (size_t)destination_length);
 						if (!yt_present_number(options,
-						    (float)sector, YT_INIT_OUTPUT_INLINE,
+						    (uint16_t)sector, YT_INIT_OUTPUT_INLINE,
 						    error))
 							return false;
 						if (!yt_present_text(options,
 						    YT_INIT_OUTPUT_INLINE, "-", error))
 							return false;
 						if (!yt_present_number(options,
-						    (float)destination, YT_INIT_OUTPUT_LINE,
+						    (uint16_t)destination, YT_INIT_OUTPUT_LINE,
 						    error))
 							return false;
 						if (!rmt_present(options,
@@ -259,7 +259,7 @@ yt_init_world_build_graph(struct yt_init_world *world,
 		if (!yt_present_text(options, YT_INIT_OUTPUT_INLINE,
 		    "Verifying warp to sector", error))
 			return false;
-		if (!yt_present_number(options, (float)sector,
+		if (!yt_present_number(options, (uint16_t)sector,
 		    YT_INIT_OUTPUT_INLINE, error))
 			return false;
 		if (!reachable(world, sector, &found, error))
@@ -321,13 +321,13 @@ yt_init_world_build_graph(struct yt_init_world *world,
 			if (!yt_present_text(options, YT_INIT_OUTPUT_INLINE,
 			    "Sector", error))
 				return false;
-			if (!yt_present_number(options, (float)sector,
+			if (!yt_present_number(options, (uint16_t)sector,
 			    YT_INIT_OUTPUT_INLINE, error))
 				return false;
 			if (!yt_present_text(options, YT_INIT_OUTPUT_INLINE,
 			    "has been linked to sector", error))
 				return false;
-			if (!yt_present_number(options, (float)candidate,
+			if (!yt_present_number(options, (uint16_t)candidate,
 			    YT_INIT_OUTPUT_LINE, error))
 				return false;
 			if (!rmt_present(options, YT_RMT_OUTPUT_LINE,

@@ -27,7 +27,6 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 	static const uint8_t slot_prompt[] =
 	    "Enter the number of the slot to change [1 - 30]: ";
 	char response[80];
-	float slot_value;
 	uint16_t maximum;
 	float new_value;
 	float old_value;
@@ -81,7 +80,7 @@ yt_session_computer_avoid(struct yt_session *session, struct yt_error *error)
 	if (!session_read_number_command(session, response, sizeof(response)))
 		return false;
 	if (!yt_computer_avoid_select_slot(response,
-	    session->presentation.conversion_mode, &slot_value, &slot,
+	    session->presentation.conversion_mode, &slot,
 	    &route, error))
 		return false;
 	if (route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED)

@@ -18,10 +18,10 @@ bool yt_present_text(const struct yt_initializer_options *options,
     enum yt_init_output_entry entry, const char *text,
     struct yt_error *error);
 bool yt_present_number(const struct yt_initializer_options *options,
-    float value, enum yt_init_output_entry entry,
-    struct yt_error *error);
+	uint16_t value, enum yt_init_output_entry entry,
+	struct yt_error *error);
 bool yt_present_str_number_line(const struct yt_initializer_options *options,
-    const char *label, float value, struct yt_error *error);
+	const char *label, uint16_t value, struct yt_error *error);
 bool rmt_present(const struct yt_initializer_options *options,
     enum yt_rmt_output_entry entry, const uint8_t *payload,
     size_t payload_length, struct yt_error *error);

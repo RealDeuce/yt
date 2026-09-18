@@ -274,12 +274,12 @@ append_literal(struct text_builder *builder, const char *literal)
 }
 
 static bool
-append_str_single(struct text_builder *builder, float value, bool print)
+append_str_single(struct text_builder *builder, int32_t value, bool print)
 {
 	char rendered[64];
 	int length = print
-	    ? qb_print_single(rendered, sizeof(rendered), value)
-	    : qb_str_single(rendered, sizeof(rendered), value);
+	    ? qb_print_single(rendered, sizeof(rendered), (float)value)
+	    : qb_str_single(rendered, sizeof(rendered), (float)value);
 
 	if (length < 0)
 		return false;
@@ -318,7 +318,7 @@ compose_debug(int16_t error_number, int32_t source_line,
 
 	if (!append_literal(&builder, "YT DEBUG Error Trap Entry ERL= "))
 		return false;
-	if (!append_str_single(&builder, (float)source_line, true))
+	if (!append_str_single(&builder, source_line, true))
 		return false;
 	if (!append_literal(&builder, "  ERR= "))
 		return false;
@@ -364,11 +364,11 @@ compose_fatal(int16_t error_number, int32_t source_line,
 	if (!append_literal(&builder,
 	    "YTMerg2 1.15 Untrapped Error ERL="))
 		return false;
-	if (!append_str_single(&builder, (float)source_line, false))
+	if (!append_str_single(&builder, source_line, false))
 		return false;
 	if (!append_literal(&builder, " ERR="))
 		return false;
-	if (!append_str_single(&builder, (float)error_number, false))
+	if (!append_str_single(&builder, error_number, false))
 		return false;
 	if (!append_literal(&builder, " Date >"))
 		return false;
@@ -456,7 +456,7 @@ compose_shared_debug(int16_t error_number, int32_t source_line,
 	if (!append_literal(&builder,
 	    "YT-SUB DEBUG Error Trap Entry ERL= "))
 		return false;
-	if (!append_str_single(&builder, (float)source_line, false))
+	if (!append_str_single(&builder, source_line, false))
 		return false;
 	if (!append_literal(&builder, " ERR="))
 		return false;
@@ -503,7 +503,7 @@ add_shared_generic(int16_t error_number, int32_t source_line,
 		return false;
 	if (!append_literal(&builder, " Line> "))
 		return false;
-	if (!append_str_single(&builder, (float)source_line, false))
+	if (!append_str_single(&builder, source_line, false))
 		return false;
 	event->length = builder.length;
 	return true;

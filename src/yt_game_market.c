@@ -4,6 +4,7 @@
 
 #include "qb.h"
 
+#include <math.h>
 #include <string.h>
 
 static bool
@@ -190,6 +191,7 @@ yt_port_market_update(struct yt_port_market_state *state,
 		return false;
 	for (index = 0U; index < 3U; ++index) {
 		uint8_t stored_capacity[4];
+		float decoded_price;
 
 		if (qb_mbf32_from_mbf64_raw(mutable_capacity[index],
 		    stored_capacity) == QB_MBF_OVERFLOW)
@@ -205,7 +207,12 @@ yt_port_market_update(struct yt_port_market_state *state,
 			    "ordinary port FIELD overlay");
 		memcpy(state->capacity_raw[index], mutable_capacity[index], 8U);
 		memcpy(state->price_raw[index], mutable_price[index], 4U);
-		state->price[index] = qb_mbf32_decode(mutable_price[index]);
+		decoded_price = qb_mbf32_decode(mutable_price[index]);
+		if (decoded_price < 0.0f || decoded_price > (float)UINT8_MAX
+		    || floorf(decoded_price) != decoded_price)
+			return yt_game_error(error, YT_RANGE,
+			    "ordinary port price integer range");
+		state->price[index] = (uint8_t)decoded_price;
 	}
 	yt_port_decode(&state->port, &updated);
 	return true;

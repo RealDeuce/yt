@@ -357,7 +357,8 @@ write_config_and_players(struct yt_database *database,
 		if (!yt_present_text(options, YT_INIT_OUTPUT_INLINE,
 		    "Generating Player Records for", error))
 			return false;
-		if (!yt_present_number(options, (float)config->sector_offset - 1.0f,
+		if (!yt_present_number(options,
+		    (uint16_t)(config->sector_offset - 1U),
 		    YT_INIT_OUTPUT_INLINE, error))
 			return false;
 		if (!yt_present_text(options, YT_INIT_OUTPUT_LINE,
@@ -500,7 +501,7 @@ write_world_database(struct yt_database *database,
 		int commodity;
 		int index;
 
-		if (!yt_present_number(options, (float)logical,
+		if (!yt_present_number(options, (uint16_t)logical,
 		    YT_INIT_OUTPUT_COMMA, error))
 			return false;
 		yt_record_clear(&record);
@@ -583,7 +584,7 @@ write_world_database(struct yt_database *database,
 	    "Initializing planets...", error))
 		return false;
 	if (!yt_present_str_number_line(options, "   Maximum number of planets:",
-	    (float)((int)config->total_records - (int)config->planet_offset),
+	    (uint16_t)(config->total_records - config->planet_offset),
 	    error))
 		return false;
 	if (!rmt_present(options, YT_RMT_OUTPUT_BLANK, NULL, 0U, error))

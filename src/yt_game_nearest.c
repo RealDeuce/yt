@@ -211,11 +211,14 @@ yt_nearest_market_project(struct yt_nearest_market *market,
 		    "nearest market price rounding"))
 			return false;
 		rounded = floorf(rounded);
-		if (!nearest_single(rounded, &market->price[index], error,
+		if (!nearest_single(rounded, &rounded, error,
 		    "nearest market price INT"))
 			return false;
-		if (market->price[index] < 1.0f)
-			market->price[index] = 1.0f;
+		if (rounded < 1.0f)
+			rounded = 1.0f;
+		if (rounded > (float)UINT8_MAX)
+			return nearest_error(error, "nearest market price range");
+		market->price[index] = (uint8_t)rounded;
 	}
 	return true;
 }
