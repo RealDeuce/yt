@@ -307,9 +307,11 @@ yt_text_input_read_string_token(struct yt_text_input *input,
 			}
 			if (byte == ',')
 				break;
-			if (byte != 0U
-			    && !text_input_token_append(input, &used, byte, error))
-				goto failed;
+			if (byte != 0U) {
+				if (!text_input_token_append(input, &used, byte,
+				    error))
+					goto failed;
+			}
 			if (!text_input_consume_byte(input, &byte, &eof, error))
 				goto failed;
 			if (eof) {
@@ -488,8 +490,9 @@ text_output_parent_exists(const char *path)
 		return false;
 	memcpy(directory, path, length);
 	directory[length] = '\0';
-	return stat(directory, &info) == 0
-	    && yt_text_stat_is_dir(info.st_mode);
+	if (stat(directory, &info) != 0)
+		return false;
+	return yt_text_stat_is_dir(info.st_mode);
 }
 
 static uint16_t
@@ -770,8 +773,13 @@ opened:
 		return false;
 	}
 	errno = 0;
-	if (yt_text_fseeko(output->file, 0, SEEK_END) != 0
-	    || (length = (int64_t)yt_text_ftello(output->file)) < 0) {
+	if (yt_text_fseeko(output->file, 0, SEEK_END) != 0) {
+		saved_errno = errno;
+		text_output_open_failure(output, true, 52U, saved_errno, error);
+		return false;
+	}
+	length = (int64_t)yt_text_ftello(output->file);
+	if (length < 0) {
 		saved_errno = errno;
 		text_output_open_failure(output, true, 52U, saved_errno, error);
 		return false;
@@ -961,13 +969,17 @@ text_output_close_execute(struct yt_text_output *output, bool close_all,
 
 		output->pending_count = 0U;
 		if (!text_output_close_write(output, file, output->pending,
-		    pending_count, close_all, error)
-		    || !text_output_close_write(output, file, &eof_byte, 1U,
+		    pending_count, close_all, error))
+			return false;
+		if (!text_output_close_write(output, file, &eof_byte, 1U,
 		    close_all, error))
 			return false;
 		errno = 0;
 		position = text_output_position(file);
-		result = position < 0 || fflush(file) != 0;
+		if (position < 0)
+			result = 1;
+		else
+			result = fflush(file) != 0;
 #ifdef _WIN32
 		if (!result)
 			result = _chsize_s(yt_text_fileno(file), position) != 0;
@@ -1033,10 +1045,14 @@ yt_text_write(const char *path, const uint8_t *data, size_t length,
 
 	if (dos_eof) {
 		yt_text_output_init(&output);
-		if (yt_text_output_open(&output, path, error)
-		    && yt_text_output_write(&output, data, length, error)
-		    && yt_text_output_close(&output, error))
-			result = true;
+		if (!yt_text_output_open(&output, path, error))
+			goto dos_eof_done;
+		if (!yt_text_output_write(&output, data, length, error))
+			goto dos_eof_done;
+		if (!yt_text_output_close(&output, error))
+			goto dos_eof_done;
+		result = true;
+dos_eof_done:
 		yt_text_output_destroy(&output);
 		return result;
 	}
@@ -1048,8 +1064,13 @@ yt_text_write(const char *path, const uint8_t *data, size_t length,
 		set_error(error, YT_IO_ERROR, "open output", resolved);
 		return false;
 	}
-	if ((length > 0 && fwrite(data, 1, length, file) != length)
-	    || fclose(file) != 0) {
+	if (length > 0) {
+		if (fwrite(data, 1, length, file) != length) {
+			set_error(error, YT_IO_ERROR, "write output", resolved);
+			return false;
+		}
+	}
+	if (fclose(file) != 0) {
 		set_error(error, YT_IO_ERROR, "write output", resolved);
 		return false;
 	}
@@ -1065,11 +1086,16 @@ yt_text_append_line(const char *path, const uint8_t *line, size_t length,
 	bool result = false;
 
 	yt_text_output_init(&output);
-	if (yt_text_output_open_append(&output, path, error)
-	    && yt_text_output_write(&output, line, length, error)
-	    && yt_text_output_write(&output, newline, sizeof(newline), error)
-	    && yt_text_output_close(&output, error))
-		result = true;
+	if (!yt_text_output_open_append(&output, path, error))
+		goto done;
+	if (!yt_text_output_write(&output, line, length, error))
+		goto done;
+	if (!yt_text_output_write(&output, newline, sizeof(newline), error))
+		goto done;
+	if (!yt_text_output_close(&output, error))
+		goto done;
+	result = true;
+done:
 	yt_text_output_destroy(&output);
 	return result;
 }
