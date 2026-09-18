@@ -33,8 +33,9 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 	int logical_sector;
 	int amount;
 
-	if (!session_present_paged_fragment(session, title, sizeof(title) - 1U)
-	    || !session_reload_player(session, error))
+	if (!session_present_paged_fragment(session, title, sizeof(title) - 1U))
+		return false;
+	if (!session_reload_player(session, error))
 		return false;
 	if (session->player.sector < 8)
 		return session_present_alert(session, union_refusal,
@@ -50,12 +51,15 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 	available = qb_double_add((double)first_sector.fighters,
 	    (double)session->player.fighters);
 	amount = qb_str_double(number, sizeof(number), available);
-	if (amount < 0 || snprintf(row, sizeof(row),
+	if (amount < 0)
+		return false;
+	if (snprintf(row, sizeof(row),
 	    "You have%s fighters available.", number) < 0)
 		return false;
 	if (!session_present_paged_fragment(session, (const uint8_t *)row,
-	    strlen(row))
-	    || !session_present_timed_paged_row(session, prompt,
+	    strlen(row)))
+		return false;
+	if (!session_present_timed_paged_row(session, prompt,
 	    sizeof(prompt) - 1U, "fighter desired-count prompt", error))
 		return false;
 	memset(response, 0, sizeof(response));
@@ -100,22 +104,31 @@ yt_session_command_fighters(struct yt_session *session, struct yt_error *error)
 		return session_present_alert(session, insufficient,
 		    sizeof(insufficient) - 1U, "fighter insufficient notice", error);
 	if (!session_read_sector(session, logical_sector, &accepted_sector,
-	    error)
-	    || !yt_main_fighters_sector_overlay(&accepted_sector, desired,
-	    session_record(session))
-	    || !session_write_sector(session, logical_sector, &accepted_sector,
-	    error)
-	    || !yt_game_read_player(&session->door->game,
-	    session_record(session), &accepted_player, error)
-	    || !yt_main_fighters_player_overlay(&accepted_player, remaining)
-	    || !yt_game_write_player(&session->door->game,
+	    error))
+		return false;
+	if (!yt_main_fighters_sector_overlay(&accepted_sector, desired,
+	    session_record(session)))
+		return false;
+	if (!session_write_sector(session, logical_sector, &accepted_sector,
+	    error))
+		return false;
+	if (!yt_game_read_player(&session->door->game,
+	    session_record(session), &accepted_player, error))
+		return false;
+	if (!yt_main_fighters_player_overlay(&accepted_player, remaining))
+		return false;
+	if (!yt_game_write_player(&session->door->game,
 	    session_record(session), &accepted_player, error))
 		return false;
 	amount = qb_str_single(number, sizeof(number), remaining);
-	if (amount < 0 || snprintf(row, sizeof(row),
+	if (amount < 0)
+		return false;
+	if (snprintf(row, sizeof(row),
 	    "Done.  You have%s fighters left.", number) < 0)
 		return false;
-	return session_present_paged_fragment(session, (const uint8_t *)row,
-	    strlen(row))
-	    && session_sound(session, YT_SOUND_CUE_ACTION, "sector fighter sound", error);
+	if (!session_present_paged_fragment(session, (const uint8_t *)row,
+	    strlen(row)))
+		return false;
+	return session_sound(session, YT_SOUND_CUE_ACTION,
+	    "sector fighter sound", error);
 }
