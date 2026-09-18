@@ -139,10 +139,11 @@ main(int argc, char **argv)
 		yt_cli_error("LOCAL", &error);
 		return EXIT_FAILURE;
 	}
-	if (command[0] == '\0'
-	    && !select_name(&names, command, sizeof(command))) {
-		yt_names_free(&names);
-		return EXIT_SUCCESS;
+	if (command[0] == '\0') {
+		if (!select_name(&names, command, sizeof(command))) {
+			yt_names_free(&names);
+			return EXIT_SUCCESS;
+		}
 	}
 	yt_names_free(&names);
 	qb_trim(command);
@@ -150,10 +151,16 @@ main(int argc, char **argv)
 	qb_ascii_upper(command);
 	yt_names_split(command, first, sizeof(first), last, sizeof(last));
 	puts("Loading...");
-	if (!yt_cli_write_dorinfo(first, last, &error)
-	    || !yt_platform_executable_path(executable, sizeof(executable),
-	    argv[0], &error)
-	    || !yt_platform_sibling_program(child, sizeof(child), executable,
+	if (!yt_cli_write_dorinfo(first, last, &error)) {
+		yt_cli_error("LOCAL", &error);
+		return EXIT_FAILURE;
+	}
+	if (!yt_platform_executable_path(executable, sizeof(executable),
+	    argv[0], &error)) {
+		yt_cli_error("LOCAL", &error);
+		return EXIT_FAILURE;
+	}
+	if (!yt_platform_sibling_program(child, sizeof(child), executable,
 	    "yt", &error)) {
 		yt_cli_error("LOCAL", &error);
 		return EXIT_FAILURE;
